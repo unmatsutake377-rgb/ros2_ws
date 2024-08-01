@@ -1,0 +1,17 @@
+package.xml
+setup.cfg
+setup.py
+../../build/color_shape_detector/color_shape_detector.egg-info/PKG-INFO
+../../build/color_shape_detector/color_shape_detector.egg-info/SOURCES.txt
+../../build/color_shape_detector/color_shape_detector.egg-info/dependency_links.txt
+../../build/color_shape_detector/color_shape_detector.egg-info/entry_points.txt
+../../build/color_shape_detector/color_shape_detector.egg-info/requires.txt
+../../build/color_shape_detector/color_shape_detector.egg-info/top_level.txt
+../../build/color_shape_detector/color_shape_detector.egg-info/zip-safe
+color_shape_detector/__init__.py
+color_shape_detector/basic_image_publisher.py
+color_shape_detector/basic_image_subscriber.py
+resource/color_shape_detector
+test/test_copyright.py
+test/test_flake8.py
+test/test_pep257.py

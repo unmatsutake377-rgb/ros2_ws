@@ -1,0 +1,3 @@
+[console_scripts]
+shape_detector = shape_detector.shape_detector:main
+

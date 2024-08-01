@@ -1,0 +1,4 @@
+[console_scripts]
+img_publisher = color_shape_detector.basic_image_publisher:main
+img_subscriber = color_shape_detector.basic_image_subscriber:main
+

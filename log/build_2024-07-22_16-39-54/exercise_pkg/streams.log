@@ -1,0 +1,23 @@
+[1.620s] Invoking command in '/home/ssfa/ros2_ws/src/exercise_pkg': PYTHONPATH=/home/ssfa/ros2_ws/build/exercise_pkg/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/ssfa/ros2_ws/install/exercise_pkg/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated setup.py egg_info --egg-base ../../build/exercise_pkg build --build-base /home/ssfa/ros2_ws/build/exercise_pkg/build install --record /home/ssfa/ros2_ws/build/exercise_pkg/install.log --single-version-externally-managed install_data
+[1.907s] running egg_info
+[1.908s] writing ../../build/exercise_pkg/exercise_pkg.egg-info/PKG-INFO
+[1.908s] writing dependency_links to ../../build/exercise_pkg/exercise_pkg.egg-info/dependency_links.txt
+[1.908s] writing entry points to ../../build/exercise_pkg/exercise_pkg.egg-info/entry_points.txt
+[1.908s] writing requirements to ../../build/exercise_pkg/exercise_pkg.egg-info/requires.txt
+[1.908s] writing top-level names to ../../build/exercise_pkg/exercise_pkg.egg-info/top_level.txt
+[1.910s] reading manifest file '../../build/exercise_pkg/exercise_pkg.egg-info/SOURCES.txt'
+[1.910s] writing manifest file '../../build/exercise_pkg/exercise_pkg.egg-info/SOURCES.txt'
+[1.910s] running build
+[1.910s] running build_py
+[1.911s] running install
+[1.911s] running install_lib
+[1.912s] running install_data
+[1.912s] running install_egg_info
+[1.914s] removing '/home/ssfa/ros2_ws/install/exercise_pkg/lib/python3.10/site-packages/exercise_pkg-0.0.0-py3.10.egg-info' (and everything under it)
+[1.914s] Copying ../../build/exercise_pkg/exercise_pkg.egg-info to /home/ssfa/ros2_ws/install/exercise_pkg/lib/python3.10/site-packages/exercise_pkg-0.0.0-py3.10.egg-info
+[1.914s] running install_scripts
+[1.934s] Installing exercise1 script to /home/ssfa/ros2_ws/install/exercise_pkg/lib/exercise_pkg
+[1.934s] Installing exercise2 script to /home/ssfa/ros2_ws/install/exercise_pkg/lib/exercise_pkg
+[1.934s] Installing exercise3 script to /home/ssfa/ros2_ws/install/exercise_pkg/lib/exercise_pkg
+[1.935s] writing list of installed files to '/home/ssfa/ros2_ws/build/exercise_pkg/install.log'
+[2.280s] Invoked command in '/home/ssfa/ros2_ws/src/exercise_pkg' returned '0': PYTHONPATH=/home/ssfa/ros2_ws/build/exercise_pkg/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/ssfa/ros2_ws/install/exercise_pkg/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated setup.py egg_info --egg-base ../../build/exercise_pkg build --build-base /home/ssfa/ros2_ws/build/exercise_pkg/build install --record /home/ssfa/ros2_ws/build/exercise_pkg/install.log --single-version-externally-managed install_data

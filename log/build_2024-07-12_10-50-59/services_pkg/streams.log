@@ -1,0 +1,23 @@
+[2.060s] Invoking command in '/home/ssfa/ros2_ws/build/services_pkg': PYTHONPATH=/home/ssfa/ros2_ws/build/services_pkg/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/ssfa/ros2_ws/install/services_pkg/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated setup.py develop --editable --build-directory /home/ssfa/ros2_ws/build/services_pkg/build --no-deps symlink_data
+[2.364s] /usr/lib/python3/dist-packages/setuptools/dist.py:723: UserWarning: Usage of dash-separated 'script-dir' will not be supported in future versions. Please use the underscore name 'script_dir' instead
+[2.365s]   warnings.warn(
+[2.406s] running develop
+[2.407s] /usr/lib/python3/dist-packages/setuptools/command/easy_install.py:158: EasyInstallDeprecationWarning: easy_install command is deprecated. Use build and pip and other standards-based tools.
+[2.407s]   warnings.warn(
+[2.593s] running egg_info
+[2.594s] writing services_pkg.egg-info/PKG-INFO
+[2.594s] writing dependency_links to services_pkg.egg-info/dependency_links.txt
+[2.594s] writing entry points to services_pkg.egg-info/entry_points.txt
+[2.594s] writing requirements to services_pkg.egg-info/requires.txt
+[2.594s] writing top-level names to services_pkg.egg-info/top_level.txt
+[2.595s] reading manifest file 'services_pkg.egg-info/SOURCES.txt'
+[2.596s] writing manifest file 'services_pkg.egg-info/SOURCES.txt'
+[2.598s] running build_ext
+[2.599s] Creating /home/ssfa/ros2_ws/install/services_pkg/lib/python3.10/site-packages/services-pkg.egg-link (link to .)
+[2.599s] Installing service script to /home/ssfa/ros2_ws/install/services_pkg/lib/services_pkg
+[2.600s] Installing service2 script to /home/ssfa/ros2_ws/install/services_pkg/lib/services_pkg
+[2.600s] Installing service_client script to /home/ssfa/ros2_ws/install/services_pkg/lib/services_pkg
+[2.600s] 
+[2.600s] Installed /home/ssfa/ros2_ws/build/services_pkg
+[2.601s] running symlink_data
+[2.649s] Invoked command in '/home/ssfa/ros2_ws/build/services_pkg' returned '0': PYTHONPATH=/home/ssfa/ros2_ws/build/services_pkg/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/ssfa/ros2_ws/install/services_pkg/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated setup.py develop --editable --build-directory /home/ssfa/ros2_ws/build/services_pkg/build --no-deps symlink_data

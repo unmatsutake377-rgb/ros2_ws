@@ -1,0 +1,25 @@
+[2.422s] Invoking command in '/home/ssfa/ros2_ws/src/t3/services_pkg': PYTHONPATH=/home/ssfa/ros2_ws/build/services_pkg/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/ssfa/ros2_ws/install/services_pkg/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated setup.py egg_info --egg-base ../../../build/services_pkg build --build-base /home/ssfa/ros2_ws/build/services_pkg/build install --record /home/ssfa/ros2_ws/build/services_pkg/install.log --install-scripts $base/lib/services_pkg --single-version-externally-managed install_data
+[3.053s] /usr/lib/python3/dist-packages/setuptools/dist.py:723: UserWarning: Usage of dash-separated 'script-dir' will not be supported in future versions. Please use the underscore name 'script_dir' instead
+[3.053s]   warnings.warn(
+[3.072s] running egg_info
+[3.076s] writing ../../../build/services_pkg/services_pkg.egg-info/PKG-INFO
+[3.076s] writing dependency_links to ../../../build/services_pkg/services_pkg.egg-info/dependency_links.txt
+[3.076s] writing entry points to ../../../build/services_pkg/services_pkg.egg-info/entry_points.txt
+[3.077s] writing requirements to ../../../build/services_pkg/services_pkg.egg-info/requires.txt
+[3.077s] writing top-level names to ../../../build/services_pkg/services_pkg.egg-info/top_level.txt
+[3.081s] reading manifest file '../../../build/services_pkg/services_pkg.egg-info/SOURCES.txt'
+[3.083s] writing manifest file '../../../build/services_pkg/services_pkg.egg-info/SOURCES.txt'
+[3.083s] running build
+[3.083s] running build_py
+[3.084s] running install
+[3.085s] running install_lib
+[3.088s] running install_data
+[3.088s] running install_egg_info
+[3.092s] removing '/home/ssfa/ros2_ws/install/services_pkg/lib/python3.10/site-packages/services_pkg-0.0.0-py3.10.egg-info' (and everything under it)
+[3.093s] Copying ../../../build/services_pkg/services_pkg.egg-info to /home/ssfa/ros2_ws/install/services_pkg/lib/python3.10/site-packages/services_pkg-0.0.0-py3.10.egg-info
+[3.095s] running install_scripts
+[3.142s] Installing service script to /home/ssfa/ros2_ws/install/services_pkg/lib/services_pkg
+[3.142s] Installing service2 script to /home/ssfa/ros2_ws/install/services_pkg/lib/services_pkg
+[3.142s] Installing service_client script to /home/ssfa/ros2_ws/install/services_pkg/lib/services_pkg
+[3.143s] writing list of installed files to '/home/ssfa/ros2_ws/build/services_pkg/install.log'
+[3.279s] Invoked command in '/home/ssfa/ros2_ws/src/t3/services_pkg' returned '0': PYTHONPATH=/home/ssfa/ros2_ws/build/services_pkg/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/ssfa/ros2_ws/install/services_pkg/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated setup.py egg_info --egg-base ../../../build/services_pkg build --build-base /home/ssfa/ros2_ws/build/services_pkg/build install --record /home/ssfa/ros2_ws/build/services_pkg/install.log --install-scripts $base/lib/services_pkg --single-version-externally-managed install_data

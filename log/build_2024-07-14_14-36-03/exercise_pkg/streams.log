@@ -1,0 +1,19 @@
+[3.194s] Invoking command in '/home/ssfa/ros2_ws/build/exercise_pkg': PYTHONPATH=/home/ssfa/ros2_ws/build/exercise_pkg/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/ssfa/ros2_ws/install/exercise_pkg/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated setup.py develop --editable --build-directory /home/ssfa/ros2_ws/build/exercise_pkg/build --no-deps symlink_data
+[3.788s] running develop
+[3.788s] /usr/lib/python3/dist-packages/setuptools/command/easy_install.py:158: EasyInstallDeprecationWarning: easy_install command is deprecated. Use build and pip and other standards-based tools.
+[3.788s]   warnings.warn(
+[4.072s] running egg_info
+[4.073s] writing exercise_pkg.egg-info/PKG-INFO
+[4.074s] writing dependency_links to exercise_pkg.egg-info/dependency_links.txt
+[4.074s] writing entry points to exercise_pkg.egg-info/entry_points.txt
+[4.074s] writing requirements to exercise_pkg.egg-info/requires.txt
+[4.074s] writing top-level names to exercise_pkg.egg-info/top_level.txt
+[4.077s] reading manifest file 'exercise_pkg.egg-info/SOURCES.txt'
+[4.077s] writing manifest file 'exercise_pkg.egg-info/SOURCES.txt'
+[4.080s] running build_ext
+[4.080s] Creating /home/ssfa/ros2_ws/install/exercise_pkg/lib/python3.10/site-packages/exercise-pkg.egg-link (link to .)
+[4.080s] Installing exercise1 script to /home/ssfa/ros2_ws/install/exercise_pkg/lib/exercise_pkg
+[4.080s] 
+[4.080s] Installed /home/ssfa/ros2_ws/build/exercise_pkg
+[4.080s] running symlink_data
+[5.343s] Invoked command in '/home/ssfa/ros2_ws/build/exercise_pkg' returned '0': PYTHONPATH=/home/ssfa/ros2_ws/build/exercise_pkg/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/ssfa/ros2_ws/install/exercise_pkg/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated setup.py develop --editable --build-directory /home/ssfa/ros2_ws/build/exercise_pkg/build --no-deps symlink_data

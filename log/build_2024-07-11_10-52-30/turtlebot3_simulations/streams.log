@@ -1,0 +1,21 @@
+[0.015s] Invoking command in '/home/ssfa/ros2_ws/build/turtlebot3_simulations': AMENT_PREFIX_PATH=/home/ssfa/ros2_ws/install/turtlebot3_gazebo:/home/ssfa/ros2_ws/install/turtlebot3_description:${AMENT_PREFIX_PATH} CMAKE_PREFIX_PATH=/home/ssfa/ros2_ws/install/turtlebot3_gazebo:/home/ssfa/ros2_ws/install/turtlebot3_description:/opt/ros/humble /usr/bin/cmake --build /home/ssfa/ros2_ws/build/turtlebot3_simulations -- -j12 -l12
+[0.058s] Invoked command in '/home/ssfa/ros2_ws/build/turtlebot3_simulations' returned '0': AMENT_PREFIX_PATH=/home/ssfa/ros2_ws/install/turtlebot3_gazebo:/home/ssfa/ros2_ws/install/turtlebot3_description:${AMENT_PREFIX_PATH} CMAKE_PREFIX_PATH=/home/ssfa/ros2_ws/install/turtlebot3_gazebo:/home/ssfa/ros2_ws/install/turtlebot3_description:/opt/ros/humble /usr/bin/cmake --build /home/ssfa/ros2_ws/build/turtlebot3_simulations -- -j12 -l12
+[0.083s] Invoking command in '/home/ssfa/ros2_ws/build/turtlebot3_simulations': AMENT_PREFIX_PATH=/home/ssfa/ros2_ws/install/turtlebot3_gazebo:/home/ssfa/ros2_ws/install/turtlebot3_description:${AMENT_PREFIX_PATH} CMAKE_PREFIX_PATH=/home/ssfa/ros2_ws/install/turtlebot3_gazebo:/home/ssfa/ros2_ws/install/turtlebot3_description:/opt/ros/humble /usr/bin/cmake --install /home/ssfa/ros2_ws/build/turtlebot3_simulations
+[0.092s] -- Install configuration: ""
+[0.092s] -- Execute custom install script
+[0.093s] -- Up-to-date symlink: /home/ssfa/ros2_ws/install/turtlebot3_simulations/share/ament_index/resource_index/package_run_dependencies/turtlebot3_simulations
+[0.093s] -- Up-to-date symlink: /home/ssfa/ros2_ws/install/turtlebot3_simulations/share/ament_index/resource_index/parent_prefix_path/turtlebot3_simulations
+[0.094s] -- Up-to-date symlink: /home/ssfa/ros2_ws/install/turtlebot3_simulations/share/turtlebot3_simulations/environment/ament_prefix_path.sh
+[0.094s] -- Up-to-date symlink: /home/ssfa/ros2_ws/install/turtlebot3_simulations/share/turtlebot3_simulations/environment/ament_prefix_path.dsv
+[0.094s] -- Up-to-date symlink: /home/ssfa/ros2_ws/install/turtlebot3_simulations/share/turtlebot3_simulations/environment/path.sh
+[0.094s] -- Up-to-date symlink: /home/ssfa/ros2_ws/install/turtlebot3_simulations/share/turtlebot3_simulations/environment/path.dsv
+[0.094s] -- Up-to-date symlink: /home/ssfa/ros2_ws/install/turtlebot3_simulations/share/turtlebot3_simulations/local_setup.bash
+[0.094s] -- Up-to-date symlink: /home/ssfa/ros2_ws/install/turtlebot3_simulations/share/turtlebot3_simulations/local_setup.sh
+[0.095s] -- Up-to-date symlink: /home/ssfa/ros2_ws/install/turtlebot3_simulations/share/turtlebot3_simulations/local_setup.zsh
+[0.095s] -- Up-to-date symlink: /home/ssfa/ros2_ws/install/turtlebot3_simulations/share/turtlebot3_simulations/local_setup.dsv
+[0.095s] -- Symlinking: /home/ssfa/ros2_ws/install/turtlebot3_simulations/share/turtlebot3_simulations/package.dsv
+[0.105s] -- Up-to-date symlink: /home/ssfa/ros2_ws/install/turtlebot3_simulations/share/ament_index/resource_index/packages/turtlebot3_simulations
+[0.105s] -- Up-to-date symlink: /home/ssfa/ros2_ws/install/turtlebot3_simulations/share/turtlebot3_simulations/cmake/turtlebot3_simulationsConfig.cmake
+[0.105s] -- Up-to-date symlink: /home/ssfa/ros2_ws/install/turtlebot3_simulations/share/turtlebot3_simulations/cmake/turtlebot3_simulationsConfig-version.cmake
+[0.105s] -- Up-to-date symlink: /home/ssfa/ros2_ws/install/turtlebot3_simulations/share/turtlebot3_simulations/package.xml
+[0.109s] Invoked command in '/home/ssfa/ros2_ws/build/turtlebot3_simulations' returned '0': AMENT_PREFIX_PATH=/home/ssfa/ros2_ws/install/turtlebot3_gazebo:/home/ssfa/ros2_ws/install/turtlebot3_description:${AMENT_PREFIX_PATH} CMAKE_PREFIX_PATH=/home/ssfa/ros2_ws/install/turtlebot3_gazebo:/home/ssfa/ros2_ws/install/turtlebot3_description:/opt/ros/humble /usr/bin/cmake --install /home/ssfa/ros2_ws/build/turtlebot3_simulations

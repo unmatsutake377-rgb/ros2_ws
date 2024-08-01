@@ -1,0 +1,19 @@
+[3.043s] Invoking command in '/home/ssfa/ros2_ws/build/publisher_pkg': PYTHONPATH=/home/ssfa/ros2_ws/build/publisher_pkg/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/ssfa/ros2_ws/install/publisher_pkg/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated setup.py develop --editable --build-directory /home/ssfa/ros2_ws/build/publisher_pkg/build --no-deps symlink_data
+[3.494s] running develop
+[3.495s] /usr/lib/python3/dist-packages/setuptools/command/easy_install.py:158: EasyInstallDeprecationWarning: easy_install command is deprecated. Use build and pip and other standards-based tools.
+[3.495s]   warnings.warn(
+[3.686s] running egg_info
+[3.686s] writing publisher_pkg.egg-info/PKG-INFO
+[3.686s] writing dependency_links to publisher_pkg.egg-info/dependency_links.txt
+[3.687s] writing entry points to publisher_pkg.egg-info/entry_points.txt
+[3.687s] writing requirements to publisher_pkg.egg-info/requires.txt
+[3.687s] writing top-level names to publisher_pkg.egg-info/top_level.txt
+[3.689s] reading manifest file 'publisher_pkg.egg-info/SOURCES.txt'
+[3.690s] writing manifest file 'publisher_pkg.egg-info/SOURCES.txt'
+[3.692s] running build_ext
+[3.692s] Creating /home/ssfa/ros2_ws/install/publisher_pkg/lib/python3.10/site-packages/publisher-pkg.egg-link (link to .)
+[3.693s] Installing simple_publisher script to /home/ssfa/ros2_ws/install/publisher_pkg/lib/publisher_pkg
+[3.694s] 
+[3.694s] Installed /home/ssfa/ros2_ws/build/publisher_pkg
+[3.694s] running symlink_data
+[3.769s] Invoked command in '/home/ssfa/ros2_ws/build/publisher_pkg' returned '0': PYTHONPATH=/home/ssfa/ros2_ws/build/publisher_pkg/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/ssfa/ros2_ws/install/publisher_pkg/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated setup.py develop --editable --build-directory /home/ssfa/ros2_ws/build/publisher_pkg/build --no-deps symlink_data

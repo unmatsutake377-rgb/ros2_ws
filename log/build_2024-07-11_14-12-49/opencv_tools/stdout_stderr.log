@@ -1,0 +1,23 @@
+running develop
+/usr/lib/python3/dist-packages/setuptools/command/easy_install.py:158: EasyInstallDeprecationWarning: easy_install command is deprecated. Use build and pip and other standards-based tools.
+  warnings.warn(
+running egg_info
+creating opencv_tools.egg-info
+writing opencv_tools.egg-info/PKG-INFO
+writing dependency_links to opencv_tools.egg-info/dependency_links.txt
+writing entry points to opencv_tools.egg-info/entry_points.txt
+writing requirements to opencv_tools.egg-info/requires.txt
+writing top-level names to opencv_tools.egg-info/top_level.txt
+writing manifest file 'opencv_tools.egg-info/SOURCES.txt'
+reading manifest file 'opencv_tools.egg-info/SOURCES.txt'
+writing manifest file 'opencv_tools.egg-info/SOURCES.txt'
+running build_ext
+Creating /home/ssfa/ros2_ws/install/opencv_tools/lib/python3.10/site-packages/opencv-tools.egg-link (link to .)
+
+Installed /home/ssfa/ros2_ws/build/opencv_tools
+running symlink_data
+creating /home/ssfa/ros2_ws/install/opencv_tools/share/ament_index
+creating /home/ssfa/ros2_ws/install/opencv_tools/share/ament_index/resource_index
+creating /home/ssfa/ros2_ws/install/opencv_tools/share/ament_index/resource_index/packages
+symbolically linking /home/ssfa/ros2_ws/build/opencv_tools/resource/opencv_tools -> /home/ssfa/ros2_ws/install/opencv_tools/share/ament_index/resource_index/packages
+symbolically linking /home/ssfa/ros2_ws/build/opencv_tools/package.xml -> /home/ssfa/ros2_ws/install/opencv_tools/share/opencv_tools

@@ -1,0 +1,39 @@
+[1.912s] Invoking command in '/home/ssfa/ros2_ws/build/topic_exercise': PYTHONPATH=/home/ssfa/ros2_ws/build/topic_exercise/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/ssfa/ros2_ws/install/topic_exercise/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated setup.py develop --uninstall --editable --build-directory /home/ssfa/ros2_ws/build/topic_exercise/build
+[2.448s] running develop
+[2.448s] /usr/lib/python3/dist-packages/setuptools/command/easy_install.py:158: EasyInstallDeprecationWarning: easy_install command is deprecated. Use build and pip and other standards-based tools.
+[2.448s]   warnings.warn(
+[2.804s] Removing /home/ssfa/ros2_ws/install/topic_exercise/lib/python3.10/site-packages/topic-exercise.egg-link (link to .)
+[2.864s] Invoked command in '/home/ssfa/ros2_ws/build/topic_exercise' returned '0': PYTHONPATH=/home/ssfa/ros2_ws/build/topic_exercise/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/ssfa/ros2_ws/install/topic_exercise/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated setup.py develop --uninstall --editable --build-directory /home/ssfa/ros2_ws/build/topic_exercise/build
+[2.867s] Invoking command in '/home/ssfa/ros2_ws/src/topic_exercise': PYTHONPATH=/home/ssfa/ros2_ws/build/topic_exercise/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/ssfa/ros2_ws/install/topic_exercise/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated setup.py egg_info --egg-base ../../build/topic_exercise build --build-base /home/ssfa/ros2_ws/build/topic_exercise/build install --record /home/ssfa/ros2_ws/build/topic_exercise/install.log --single-version-externally-managed install_data --force
+[3.607s] running egg_info
+[3.622s] writing ../../build/topic_exercise/topic_exercise.egg-info/PKG-INFO
+[3.623s] writing dependency_links to ../../build/topic_exercise/topic_exercise.egg-info/dependency_links.txt
+[3.624s] writing entry points to ../../build/topic_exercise/topic_exercise.egg-info/entry_points.txt
+[3.624s] writing requirements to ../../build/topic_exercise/topic_exercise.egg-info/requires.txt
+[3.625s] writing top-level names to ../../build/topic_exercise/topic_exercise.egg-info/top_level.txt
+[3.630s] reading manifest file '../../build/topic_exercise/topic_exercise.egg-info/SOURCES.txt'
+[3.641s] writing manifest file '../../build/topic_exercise/topic_exercise.egg-info/SOURCES.txt'
+[3.641s] running build
+[3.641s] running build_py
+[3.642s] creating /home/ssfa/ros2_ws/build/topic_exercise/build
+[3.642s] creating /home/ssfa/ros2_ws/build/topic_exercise/build/lib
+[3.642s] creating /home/ssfa/ros2_ws/build/topic_exercise/build/lib/topic_exercise
+[3.642s] copying topic_exercise/exercise.py -> /home/ssfa/ros2_ws/build/topic_exercise/build/lib/topic_exercise
+[3.643s] copying topic_exercise/__init__.py -> /home/ssfa/ros2_ws/build/topic_exercise/build/lib/topic_exercise
+[3.647s] running install
+[3.648s] running install_lib
+[3.652s] creating /home/ssfa/ros2_ws/install/topic_exercise/lib/python3.10/site-packages/topic_exercise
+[3.652s] copying /home/ssfa/ros2_ws/build/topic_exercise/build/lib/topic_exercise/exercise.py -> /home/ssfa/ros2_ws/install/topic_exercise/lib/python3.10/site-packages/topic_exercise
+[3.652s] copying /home/ssfa/ros2_ws/build/topic_exercise/build/lib/topic_exercise/__init__.py -> /home/ssfa/ros2_ws/install/topic_exercise/lib/python3.10/site-packages/topic_exercise
+[3.654s] byte-compiling /home/ssfa/ros2_ws/install/topic_exercise/lib/python3.10/site-packages/topic_exercise/exercise.py to exercise.cpython-310.pyc
+[3.663s] byte-compiling /home/ssfa/ros2_ws/install/topic_exercise/lib/python3.10/site-packages/topic_exercise/__init__.py to __init__.cpython-310.pyc
+[3.665s] running install_data
+[3.665s] copying resource/topic_exercise -> /home/ssfa/ros2_ws/install/topic_exercise/share/ament_index/resource_index/packages
+[3.665s] copying package.xml -> /home/ssfa/ros2_ws/install/topic_exercise/share/topic_exercise
+[3.666s] copying launch/exercise.launch.py -> /home/ssfa/ros2_ws/install/topic_exercise/share/topic_exercise
+[3.673s] running install_egg_info
+[3.677s] Copying ../../build/topic_exercise/topic_exercise.egg-info to /home/ssfa/ros2_ws/install/topic_exercise/lib/python3.10/site-packages/topic_exercise-0.0.0-py3.10.egg-info
+[3.688s] running install_scripts
+[3.773s] Installing exercise script to /home/ssfa/ros2_ws/install/topic_exercise/lib/topic_exercise
+[3.773s] writing list of installed files to '/home/ssfa/ros2_ws/build/topic_exercise/install.log'
+[3.861s] Invoked command in '/home/ssfa/ros2_ws/src/topic_exercise' returned '0': PYTHONPATH=/home/ssfa/ros2_ws/build/topic_exercise/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/ssfa/ros2_ws/install/topic_exercise/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated setup.py egg_info --egg-base ../../build/topic_exercise build --build-base /home/ssfa/ros2_ws/build/topic_exercise/build install --record /home/ssfa/ros2_ws/build/topic_exercise/install.log --single-version-externally-managed install_data --force

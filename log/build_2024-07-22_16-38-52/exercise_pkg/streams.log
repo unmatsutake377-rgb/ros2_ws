@@ -1,0 +1,41 @@
+[1.541s] Invoking command in '/home/ssfa/ros2_ws/build/exercise_pkg': PYTHONPATH=/home/ssfa/ros2_ws/build/exercise_pkg/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/ssfa/ros2_ws/install/exercise_pkg/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated setup.py develop --uninstall --editable --build-directory /home/ssfa/ros2_ws/build/exercise_pkg/build
+[1.980s] running develop
+[1.981s] /usr/lib/python3/dist-packages/setuptools/command/easy_install.py:158: EasyInstallDeprecationWarning: easy_install command is deprecated. Use build and pip and other standards-based tools.
+[1.981s]   warnings.warn(
+[2.237s] Removing /home/ssfa/ros2_ws/install/exercise_pkg/lib/python3.10/site-packages/exercise-pkg.egg-link (link to .)
+[2.276s] Invoked command in '/home/ssfa/ros2_ws/build/exercise_pkg' returned '0': PYTHONPATH=/home/ssfa/ros2_ws/build/exercise_pkg/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/ssfa/ros2_ws/install/exercise_pkg/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated setup.py develop --uninstall --editable --build-directory /home/ssfa/ros2_ws/build/exercise_pkg/build
+[2.277s] Invoking command in '/home/ssfa/ros2_ws/src/exercise_pkg': PYTHONPATH=/home/ssfa/ros2_ws/build/exercise_pkg/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/ssfa/ros2_ws/install/exercise_pkg/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated setup.py egg_info --egg-base ../../build/exercise_pkg build --build-base /home/ssfa/ros2_ws/build/exercise_pkg/build install --record /home/ssfa/ros2_ws/build/exercise_pkg/install.log --single-version-externally-managed install_data --force
+[2.482s] running egg_info
+[2.482s] writing ../../build/exercise_pkg/exercise_pkg.egg-info/PKG-INFO
+[2.482s] writing dependency_links to ../../build/exercise_pkg/exercise_pkg.egg-info/dependency_links.txt
+[2.482s] writing entry points to ../../build/exercise_pkg/exercise_pkg.egg-info/entry_points.txt
+[2.482s] writing requirements to ../../build/exercise_pkg/exercise_pkg.egg-info/requires.txt
+[2.483s] writing top-level names to ../../build/exercise_pkg/exercise_pkg.egg-info/top_level.txt
+[2.484s] reading manifest file '../../build/exercise_pkg/exercise_pkg.egg-info/SOURCES.txt'
+[2.484s] writing manifest file '../../build/exercise_pkg/exercise_pkg.egg-info/SOURCES.txt'
+[2.484s] running build
+[2.484s] running build_py
+[2.485s] running install
+[2.485s] running install_lib
+[2.485s] creating /home/ssfa/ros2_ws/install/exercise_pkg/lib/python3.10/site-packages/exercise_pkg
+[2.485s] copying /home/ssfa/ros2_ws/build/exercise_pkg/build/lib/exercise_pkg/exercise3.py -> /home/ssfa/ros2_ws/install/exercise_pkg/lib/python3.10/site-packages/exercise_pkg
+[2.485s] copying /home/ssfa/ros2_ws/build/exercise_pkg/build/lib/exercise_pkg/exercise2.py -> /home/ssfa/ros2_ws/install/exercise_pkg/lib/python3.10/site-packages/exercise_pkg
+[2.486s] copying /home/ssfa/ros2_ws/build/exercise_pkg/build/lib/exercise_pkg/exercise1.py -> /home/ssfa/ros2_ws/install/exercise_pkg/lib/python3.10/site-packages/exercise_pkg
+[2.486s] copying /home/ssfa/ros2_ws/build/exercise_pkg/build/lib/exercise_pkg/__init__.py -> /home/ssfa/ros2_ws/install/exercise_pkg/lib/python3.10/site-packages/exercise_pkg
+[2.486s] byte-compiling /home/ssfa/ros2_ws/install/exercise_pkg/lib/python3.10/site-packages/exercise_pkg/exercise3.py to exercise3.cpython-310.pyc
+[2.487s] byte-compiling /home/ssfa/ros2_ws/install/exercise_pkg/lib/python3.10/site-packages/exercise_pkg/exercise2.py to exercise2.cpython-310.pyc
+[2.487s] byte-compiling /home/ssfa/ros2_ws/install/exercise_pkg/lib/python3.10/site-packages/exercise_pkg/exercise1.py to exercise1.cpython-310.pyc
+[2.488s] byte-compiling /home/ssfa/ros2_ws/install/exercise_pkg/lib/python3.10/site-packages/exercise_pkg/__init__.py to __init__.cpython-310.pyc
+[2.488s] running install_data
+[2.488s] copying resource/exercise_pkg -> /home/ssfa/ros2_ws/install/exercise_pkg/share/ament_index/resource_index/packages
+[2.488s] copying package.xml -> /home/ssfa/ros2_ws/install/exercise_pkg/share/exercise_pkg
+[2.488s] copying launch/exercise3.launch.py -> /home/ssfa/ros2_ws/install/exercise_pkg/share/exercise_pkg/launch
+[2.489s] copying launch/exercise2.launch.py -> /home/ssfa/ros2_ws/install/exercise_pkg/share/exercise_pkg/launch
+[2.489s] copying launch/exercise1.launch.py -> /home/ssfa/ros2_ws/install/exercise_pkg/share/exercise_pkg/launch
+[2.489s] running install_egg_info
+[2.490s] Copying ../../build/exercise_pkg/exercise_pkg.egg-info to /home/ssfa/ros2_ws/install/exercise_pkg/lib/python3.10/site-packages/exercise_pkg-0.0.0-py3.10.egg-info
+[2.490s] running install_scripts
+[2.508s] Installing exercise1 script to /home/ssfa/ros2_ws/install/exercise_pkg/lib/exercise_pkg
+[2.508s] Installing exercise2 script to /home/ssfa/ros2_ws/install/exercise_pkg/lib/exercise_pkg
+[2.508s] Installing exercise3 script to /home/ssfa/ros2_ws/install/exercise_pkg/lib/exercise_pkg
+[2.508s] writing list of installed files to '/home/ssfa/ros2_ws/build/exercise_pkg/install.log'

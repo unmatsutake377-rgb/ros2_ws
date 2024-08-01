@@ -1,0 +1,27 @@
+[0.742s] Invoking command in '/home/ssfa/ros2_ws/build/client_pkg': PYTHONPATH=/home/ssfa/ros2_ws/build/client_pkg/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/ssfa/ros2_ws/install/client_pkg/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated setup.py develop --editable --build-directory /home/ssfa/ros2_ws/build/client_pkg/build --no-deps symlink_data
+[1.071s] running develop
+[1.071s] /usr/lib/python3/dist-packages/setuptools/command/easy_install.py:158: EasyInstallDeprecationWarning: easy_install command is deprecated. Use build and pip and other standards-based tools.
+[1.071s]   warnings.warn(
+[1.253s] running egg_info
+[1.253s] creating client_pkg.egg-info
+[1.253s] writing client_pkg.egg-info/PKG-INFO
+[1.253s] writing dependency_links to client_pkg.egg-info/dependency_links.txt
+[1.253s] writing entry points to client_pkg.egg-info/entry_points.txt
+[1.254s] writing requirements to client_pkg.egg-info/requires.txt
+[1.254s] writing top-level names to client_pkg.egg-info/top_level.txt
+[1.254s] writing manifest file 'client_pkg.egg-info/SOURCES.txt'
+[1.256s] reading manifest file 'client_pkg.egg-info/SOURCES.txt'
+[1.256s] writing manifest file 'client_pkg.egg-info/SOURCES.txt'
+[1.259s] running build_ext
+[1.259s] Creating /home/ssfa/ros2_ws/install/client_pkg/lib/python3.10/site-packages/client-pkg.egg-link (link to .)
+[1.260s] Installing service_client script to /home/ssfa/ros2_ws/install/client_pkg/lib/client_pkg
+[1.260s] 
+[1.260s] Installed /home/ssfa/ros2_ws/build/client_pkg
+[1.261s] running symlink_data
+[1.261s] creating /home/ssfa/ros2_ws/install/client_pkg/share/ament_index
+[1.261s] creating /home/ssfa/ros2_ws/install/client_pkg/share/ament_index/resource_index
+[1.261s] creating /home/ssfa/ros2_ws/install/client_pkg/share/ament_index/resource_index/packages
+[1.261s] symbolically linking /home/ssfa/ros2_ws/build/client_pkg/resource/client_pkg -> /home/ssfa/ros2_ws/install/client_pkg/share/ament_index/resource_index/packages
+[1.261s] symbolically linking /home/ssfa/ros2_ws/build/client_pkg/package.xml -> /home/ssfa/ros2_ws/install/client_pkg/share/client_pkg
+[1.261s] symbolically linking /home/ssfa/ros2_ws/build/client_pkg/launch/service_client_launch_file.launch.py -> /home/ssfa/ros2_ws/install/client_pkg/share/client_pkg
+[1.294s] Invoked command in '/home/ssfa/ros2_ws/build/client_pkg' returned '0': PYTHONPATH=/home/ssfa/ros2_ws/build/client_pkg/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/ssfa/ros2_ws/install/client_pkg/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated setup.py develop --editable --build-directory /home/ssfa/ros2_ws/build/client_pkg/build --no-deps symlink_data

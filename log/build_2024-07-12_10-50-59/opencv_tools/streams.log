@@ -1,0 +1,18 @@
+[2.701s] Invoking command in '/home/ssfa/ros2_ws/build/opencv_tools': PYTHONPATH=/home/ssfa/ros2_ws/build/opencv_tools/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/ssfa/ros2_ws/install/opencv_tools/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated setup.py develop --editable --build-directory /home/ssfa/ros2_ws/build/opencv_tools/build --no-deps symlink_data
+[3.044s] running develop
+[3.044s] /usr/lib/python3/dist-packages/setuptools/command/easy_install.py:158: EasyInstallDeprecationWarning: easy_install command is deprecated. Use build and pip and other standards-based tools.
+[3.044s]   warnings.warn(
+[3.277s] running egg_info
+[3.277s] writing opencv_tools.egg-info/PKG-INFO
+[3.278s] writing dependency_links to opencv_tools.egg-info/dependency_links.txt
+[3.278s] writing entry points to opencv_tools.egg-info/entry_points.txt
+[3.278s] writing requirements to opencv_tools.egg-info/requires.txt
+[3.278s] writing top-level names to opencv_tools.egg-info/top_level.txt
+[3.281s] reading manifest file 'opencv_tools.egg-info/SOURCES.txt'
+[3.281s] writing manifest file 'opencv_tools.egg-info/SOURCES.txt'
+[3.284s] running build_ext
+[3.284s] Creating /home/ssfa/ros2_ws/install/opencv_tools/lib/python3.10/site-packages/opencv-tools.egg-link (link to .)
+[3.285s] 
+[3.285s] Installed /home/ssfa/ros2_ws/build/opencv_tools
+[3.285s] running symlink_data
+[4.226s] Invoked command in '/home/ssfa/ros2_ws/build/opencv_tools' returned '0': PYTHONPATH=/home/ssfa/ros2_ws/build/opencv_tools/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/ssfa/ros2_ws/install/opencv_tools/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated setup.py develop --editable --build-directory /home/ssfa/ros2_ws/build/opencv_tools/build --no-deps symlink_data

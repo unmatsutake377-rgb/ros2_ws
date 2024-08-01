@@ -1,0 +1,6 @@
+Invoking command in '/home/ssfa/ros2_ws/build/turtlebot3_description': CMAKE_PREFIX_PATH=/opt/ros/humble /usr/bin/cmake /home/ssfa/ros2_ws/src/t3/turtlebot3/turtlebot3/turtlebot3_description -DAMENT_CMAKE_SYMLINK_INSTALL=1 -DCMAKE_INSTALL_PREFIX=/home/ssfa/ros2_ws/install/turtlebot3_description
+Invoked command in '/home/ssfa/ros2_ws/build/turtlebot3_description' returned '0': CMAKE_PREFIX_PATH=/opt/ros/humble /usr/bin/cmake /home/ssfa/ros2_ws/src/t3/turtlebot3/turtlebot3/turtlebot3_description -DAMENT_CMAKE_SYMLINK_INSTALL=1 -DCMAKE_INSTALL_PREFIX=/home/ssfa/ros2_ws/install/turtlebot3_description
+Invoking command in '/home/ssfa/ros2_ws/build/turtlebot3_description': CMAKE_PREFIX_PATH=/opt/ros/humble /usr/bin/cmake --build /home/ssfa/ros2_ws/build/turtlebot3_description -- -j12 -l12
+Invoked command in '/home/ssfa/ros2_ws/build/turtlebot3_description' returned '0': CMAKE_PREFIX_PATH=/opt/ros/humble /usr/bin/cmake --build /home/ssfa/ros2_ws/build/turtlebot3_description -- -j12 -l12
+Invoking command in '/home/ssfa/ros2_ws/build/turtlebot3_description': CMAKE_PREFIX_PATH=/opt/ros/humble /usr/bin/cmake --install /home/ssfa/ros2_ws/build/turtlebot3_description
+Invoked command in '/home/ssfa/ros2_ws/build/turtlebot3_description' returned '0': CMAKE_PREFIX_PATH=/opt/ros/humble /usr/bin/cmake --install /home/ssfa/ros2_ws/build/turtlebot3_description

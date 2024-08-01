@@ -1,0 +1,19 @@
+[0.867s] Invoking command in '/home/ssfa/ros2_ws/build/custom_interface_example': AMENT_PREFIX_PATH=/home/ssfa/ros2_ws/install/custom_interfaces:${AMENT_PREFIX_PATH} CMAKE_PREFIX_PATH=/home/ssfa/ros2_ws/install/custom_interfaces LD_LIBRARY_PATH=/home/ssfa/ros2_ws/install/custom_interfaces/lib:${LD_LIBRARY_PATH} PYTHONPATH=/home/ssfa/ros2_ws/build/custom_interface_example/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/ssfa/ros2_ws/install/custom_interface_example/lib/python3.10/site-packages:/home/ssfa/ros2_ws/install/custom_interfaces/local/lib/python3.10/dist-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated setup.py develop --editable --build-directory /home/ssfa/ros2_ws/build/custom_interface_example/build --no-deps symlink_data
+[1.202s] running develop
+[1.203s] /usr/lib/python3/dist-packages/setuptools/command/easy_install.py:158: EasyInstallDeprecationWarning: easy_install command is deprecated. Use build and pip and other standards-based tools.
+[1.203s]   warnings.warn(
+[1.370s] running egg_info
+[1.370s] writing custom_interface_example.egg-info/PKG-INFO
+[1.370s] writing dependency_links to custom_interface_example.egg-info/dependency_links.txt
+[1.370s] writing entry points to custom_interface_example.egg-info/entry_points.txt
+[1.370s] writing requirements to custom_interface_example.egg-info/requires.txt
+[1.370s] writing top-level names to custom_interface_example.egg-info/top_level.txt
+[1.372s] reading manifest file 'custom_interface_example.egg-info/SOURCES.txt'
+[1.373s] writing manifest file 'custom_interface_example.egg-info/SOURCES.txt'
+[1.375s] running build_ext
+[1.375s] Creating /home/ssfa/ros2_ws/install/custom_interface_example/lib/python3.10/site-packages/custom-interface-example.egg-link (link to .)
+[1.376s] Installing example script to /home/ssfa/ros2_ws/install/custom_interface_example/lib/custom_interface_example
+[1.376s] 
+[1.376s] Installed /home/ssfa/ros2_ws/build/custom_interface_example
+[1.376s] running symlink_data
+[1.410s] Invoked command in '/home/ssfa/ros2_ws/build/custom_interface_example' returned '0': AMENT_PREFIX_PATH=/home/ssfa/ros2_ws/install/custom_interfaces:${AMENT_PREFIX_PATH} CMAKE_PREFIX_PATH=/home/ssfa/ros2_ws/install/custom_interfaces LD_LIBRARY_PATH=/home/ssfa/ros2_ws/install/custom_interfaces/lib:${LD_LIBRARY_PATH} PYTHONPATH=/home/ssfa/ros2_ws/build/custom_interface_example/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/ssfa/ros2_ws/install/custom_interface_example/lib/python3.10/site-packages:/home/ssfa/ros2_ws/install/custom_interfaces/local/lib/python3.10/dist-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated setup.py develop --editable --build-directory /home/ssfa/ros2_ws/build/custom_interface_example/build --no-deps symlink_data

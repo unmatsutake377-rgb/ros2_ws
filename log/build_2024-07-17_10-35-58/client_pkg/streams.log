@@ -1,0 +1,44 @@
+[3.020s] Invoking command in '/home/ssfa/ros2_ws/build/client_pkg': PYTHONPATH=/home/ssfa/ros2_ws/build/client_pkg/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/ssfa/ros2_ws/install/client_pkg/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated setup.py develop --uninstall --editable --build-directory /home/ssfa/ros2_ws/build/client_pkg/build
+[3.796s] running develop
+[3.797s] /usr/lib/python3/dist-packages/setuptools/command/easy_install.py:158: EasyInstallDeprecationWarning: easy_install command is deprecated. Use build and pip and other standards-based tools.
+[3.797s]   warnings.warn(
+[4.171s] Removing /home/ssfa/ros2_ws/install/client_pkg/lib/python3.10/site-packages/client-pkg.egg-link (link to .)
+[4.279s] Invoked command in '/home/ssfa/ros2_ws/build/client_pkg' returned '0': PYTHONPATH=/home/ssfa/ros2_ws/build/client_pkg/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/ssfa/ros2_ws/install/client_pkg/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated setup.py develop --uninstall --editable --build-directory /home/ssfa/ros2_ws/build/client_pkg/build
+[4.279s] Invoking command in '/home/ssfa/ros2_ws/src/client_pkg': PYTHONPATH=/home/ssfa/ros2_ws/build/client_pkg/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/ssfa/ros2_ws/install/client_pkg/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated setup.py egg_info --egg-base ../../build/client_pkg build --build-base /home/ssfa/ros2_ws/build/client_pkg/build install --record /home/ssfa/ros2_ws/build/client_pkg/install.log --single-version-externally-managed install_data --force
+[4.834s] running egg_info
+[4.836s] writing ../../build/client_pkg/client_pkg.egg-info/PKG-INFO
+[4.836s] writing dependency_links to ../../build/client_pkg/client_pkg.egg-info/dependency_links.txt
+[4.837s] writing entry points to ../../build/client_pkg/client_pkg.egg-info/entry_points.txt
+[4.837s] writing requirements to ../../build/client_pkg/client_pkg.egg-info/requires.txt
+[4.838s] writing top-level names to ../../build/client_pkg/client_pkg.egg-info/top_level.txt
+[4.842s] reading manifest file '../../build/client_pkg/client_pkg.egg-info/SOURCES.txt'
+[4.846s] writing manifest file '../../build/client_pkg/client_pkg.egg-info/SOURCES.txt'
+[4.847s] running build
+[4.847s] running build_py
+[4.847s] creating /home/ssfa/ros2_ws/build/client_pkg/build
+[4.848s] creating /home/ssfa/ros2_ws/build/client_pkg/build/lib
+[4.848s] creating /home/ssfa/ros2_ws/build/client_pkg/build/lib/client_pkg
+[4.848s] copying client_pkg/stop_client.py -> /home/ssfa/ros2_ws/build/client_pkg/build/lib/client_pkg
+[4.848s] copying client_pkg/__init__.py -> /home/ssfa/ros2_ws/build/client_pkg/build/lib/client_pkg
+[4.848s] copying client_pkg/service_client.py -> /home/ssfa/ros2_ws/build/client_pkg/build/lib/client_pkg
+[4.848s] running install
+[4.848s] running install_lib
+[4.851s] creating /home/ssfa/ros2_ws/install/client_pkg/lib/python3.10/site-packages/client_pkg
+[4.851s] copying /home/ssfa/ros2_ws/build/client_pkg/build/lib/client_pkg/stop_client.py -> /home/ssfa/ros2_ws/install/client_pkg/lib/python3.10/site-packages/client_pkg
+[4.851s] copying /home/ssfa/ros2_ws/build/client_pkg/build/lib/client_pkg/__init__.py -> /home/ssfa/ros2_ws/install/client_pkg/lib/python3.10/site-packages/client_pkg
+[4.851s] copying /home/ssfa/ros2_ws/build/client_pkg/build/lib/client_pkg/service_client.py -> /home/ssfa/ros2_ws/install/client_pkg/lib/python3.10/site-packages/client_pkg
+[4.853s] byte-compiling /home/ssfa/ros2_ws/install/client_pkg/lib/python3.10/site-packages/client_pkg/stop_client.py to stop_client.cpython-310.pyc
+[4.854s] byte-compiling /home/ssfa/ros2_ws/install/client_pkg/lib/python3.10/site-packages/client_pkg/__init__.py to __init__.cpython-310.pyc
+[4.854s] byte-compiling /home/ssfa/ros2_ws/install/client_pkg/lib/python3.10/site-packages/client_pkg/service_client.py to service_client.cpython-310.pyc
+[4.855s] running install_data
+[4.855s] copying resource/client_pkg -> /home/ssfa/ros2_ws/install/client_pkg/share/ament_index/resource_index/packages
+[4.855s] copying package.xml -> /home/ssfa/ros2_ws/install/client_pkg/share/client_pkg
+[4.855s] copying launch/stop_client_launch_file.launch.py -> /home/ssfa/ros2_ws/install/client_pkg/share/client_pkg
+[4.856s] copying launch/service_client_launch_file.launch.py -> /home/ssfa/ros2_ws/install/client_pkg/share/client_pkg
+[4.856s] running install_egg_info
+[4.864s] Copying ../../build/client_pkg/client_pkg.egg-info to /home/ssfa/ros2_ws/install/client_pkg/lib/python3.10/site-packages/client_pkg-0.0.0-py3.10.egg-info
+[4.864s] running install_scripts
+[4.971s] Installing service_client script to /home/ssfa/ros2_ws/install/client_pkg/lib/client_pkg
+[4.971s] Installing stop_client script to /home/ssfa/ros2_ws/install/client_pkg/lib/client_pkg
+[4.971s] writing list of installed files to '/home/ssfa/ros2_ws/build/client_pkg/install.log'
+[5.425s] Invoked command in '/home/ssfa/ros2_ws/src/client_pkg' returned '0': PYTHONPATH=/home/ssfa/ros2_ws/build/client_pkg/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/ssfa/ros2_ws/install/client_pkg/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated setup.py egg_info --egg-base ../../build/client_pkg build --build-base /home/ssfa/ros2_ws/build/client_pkg/build install --record /home/ssfa/ros2_ws/build/client_pkg/install.log --single-version-externally-managed install_data --force

@@ -1,0 +1,25 @@
+[2.501s] Invoking command in '/home/ssfa/ros2_ws/src/color_shape_detector': PYTHONPATH=/home/ssfa/ros2_ws/build/color_shape_detector/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/ssfa/ros2_ws/install/color_shape_detector/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated setup.py egg_info --egg-base ../../build/color_shape_detector build --build-base /home/ssfa/ros2_ws/build/color_shape_detector/build install --record /home/ssfa/ros2_ws/build/color_shape_detector/install.log --single-version-externally-managed install_data
+[2.911s] running egg_info
+[2.913s] writing ../../build/color_shape_detector/color_shape_detector.egg-info/PKG-INFO
+[2.913s] writing dependency_links to ../../build/color_shape_detector/color_shape_detector.egg-info/dependency_links.txt
+[2.913s] writing entry points to ../../build/color_shape_detector/color_shape_detector.egg-info/entry_points.txt
+[2.915s] writing requirements to ../../build/color_shape_detector/color_shape_detector.egg-info/requires.txt
+[2.915s] writing top-level names to ../../build/color_shape_detector/color_shape_detector.egg-info/top_level.txt
+[2.917s] reading manifest file '../../build/color_shape_detector/color_shape_detector.egg-info/SOURCES.txt'
+[2.918s] writing manifest file '../../build/color_shape_detector/color_shape_detector.egg-info/SOURCES.txt'
+[2.918s] running build
+[2.918s] running build_py
+[2.919s] copying color_shape_detector/basic_image_subscriber.py -> /home/ssfa/ros2_ws/build/color_shape_detector/build/lib/color_shape_detector
+[2.919s] running install
+[2.920s] running install_lib
+[2.921s] copying /home/ssfa/ros2_ws/build/color_shape_detector/build/lib/color_shape_detector/basic_image_subscriber.py -> /home/ssfa/ros2_ws/install/color_shape_detector/lib/python3.10/site-packages/color_shape_detector
+[2.922s] byte-compiling /home/ssfa/ros2_ws/install/color_shape_detector/lib/python3.10/site-packages/color_shape_detector/basic_image_subscriber.py to basic_image_subscriber.cpython-310.pyc
+[2.923s] running install_data
+[2.924s] running install_egg_info
+[2.927s] removing '/home/ssfa/ros2_ws/install/color_shape_detector/lib/python3.10/site-packages/color_shape_detector-0.0.0-py3.10.egg-info' (and everything under it)
+[2.927s] Copying ../../build/color_shape_detector/color_shape_detector.egg-info to /home/ssfa/ros2_ws/install/color_shape_detector/lib/python3.10/site-packages/color_shape_detector-0.0.0-py3.10.egg-info
+[2.928s] running install_scripts
+[2.958s] Installing img_publisher script to /home/ssfa/ros2_ws/install/color_shape_detector/lib/color_shape_detector
+[2.958s] Installing img_subscriber script to /home/ssfa/ros2_ws/install/color_shape_detector/lib/color_shape_detector
+[2.958s] writing list of installed files to '/home/ssfa/ros2_ws/build/color_shape_detector/install.log'
+[3.291s] Invoked command in '/home/ssfa/ros2_ws/src/color_shape_detector' returned '0': PYTHONPATH=/home/ssfa/ros2_ws/build/color_shape_detector/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/ssfa/ros2_ws/install/color_shape_detector/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated setup.py egg_info --egg-base ../../build/color_shape_detector build --build-base /home/ssfa/ros2_ws/build/color_shape_detector/build install --record /home/ssfa/ros2_ws/build/color_shape_detector/install.log --single-version-externally-managed install_data

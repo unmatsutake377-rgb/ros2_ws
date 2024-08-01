@@ -1,0 +1,35 @@
+running develop
+/usr/lib/python3/dist-packages/setuptools/command/easy_install.py:158: EasyInstallDeprecationWarning: easy_install command is deprecated. Use build and pip and other standards-based tools.
+  warnings.warn(
+Removing /home/ssfa/ros2_ws/install/topic_exercise/lib/python3.10/site-packages/topic-exercise.egg-link (link to .)
+running egg_info
+writing ../../build/topic_exercise/topic_exercise.egg-info/PKG-INFO
+writing dependency_links to ../../build/topic_exercise/topic_exercise.egg-info/dependency_links.txt
+writing entry points to ../../build/topic_exercise/topic_exercise.egg-info/entry_points.txt
+writing requirements to ../../build/topic_exercise/topic_exercise.egg-info/requires.txt
+writing top-level names to ../../build/topic_exercise/topic_exercise.egg-info/top_level.txt
+reading manifest file '../../build/topic_exercise/topic_exercise.egg-info/SOURCES.txt'
+writing manifest file '../../build/topic_exercise/topic_exercise.egg-info/SOURCES.txt'
+running build
+running build_py
+creating /home/ssfa/ros2_ws/build/topic_exercise/build
+creating /home/ssfa/ros2_ws/build/topic_exercise/build/lib
+creating /home/ssfa/ros2_ws/build/topic_exercise/build/lib/topic_exercise
+copying topic_exercise/exercise.py -> /home/ssfa/ros2_ws/build/topic_exercise/build/lib/topic_exercise
+copying topic_exercise/__init__.py -> /home/ssfa/ros2_ws/build/topic_exercise/build/lib/topic_exercise
+running install
+running install_lib
+creating /home/ssfa/ros2_ws/install/topic_exercise/lib/python3.10/site-packages/topic_exercise
+copying /home/ssfa/ros2_ws/build/topic_exercise/build/lib/topic_exercise/exercise.py -> /home/ssfa/ros2_ws/install/topic_exercise/lib/python3.10/site-packages/topic_exercise
+copying /home/ssfa/ros2_ws/build/topic_exercise/build/lib/topic_exercise/__init__.py -> /home/ssfa/ros2_ws/install/topic_exercise/lib/python3.10/site-packages/topic_exercise
+byte-compiling /home/ssfa/ros2_ws/install/topic_exercise/lib/python3.10/site-packages/topic_exercise/exercise.py to exercise.cpython-310.pyc
+byte-compiling /home/ssfa/ros2_ws/install/topic_exercise/lib/python3.10/site-packages/topic_exercise/__init__.py to __init__.cpython-310.pyc
+running install_data
+copying resource/topic_exercise -> /home/ssfa/ros2_ws/install/topic_exercise/share/ament_index/resource_index/packages
+copying package.xml -> /home/ssfa/ros2_ws/install/topic_exercise/share/topic_exercise
+copying launch/exercise.launch.py -> /home/ssfa/ros2_ws/install/topic_exercise/share/topic_exercise
+running install_egg_info
+Copying ../../build/topic_exercise/topic_exercise.egg-info to /home/ssfa/ros2_ws/install/topic_exercise/lib/python3.10/site-packages/topic_exercise-0.0.0-py3.10.egg-info
+running install_scripts
+Installing exercise script to /home/ssfa/ros2_ws/install/topic_exercise/lib/topic_exercise
+writing list of installed files to '/home/ssfa/ros2_ws/build/topic_exercise/install.log'

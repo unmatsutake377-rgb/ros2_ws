@@ -1,0 +1,27 @@
+[0.330s] Invoking command in '/home/ssfa/ros2_ws/build/custom_interface_example': PYTHONPATH=/home/ssfa/ros2_ws/build/custom_interface_example/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/ssfa/ros2_ws/install/custom_interface_example/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated setup.py develop --editable --build-directory /home/ssfa/ros2_ws/build/custom_interface_example/build --no-deps symlink_data
+[0.470s] running develop
+[0.471s] /usr/lib/python3/dist-packages/setuptools/command/easy_install.py:158: EasyInstallDeprecationWarning: easy_install command is deprecated. Use build and pip and other standards-based tools.
+[0.471s]   warnings.warn(
+[0.549s] running egg_info
+[0.549s] creating custom_interface_example.egg-info
+[0.549s] writing custom_interface_example.egg-info/PKG-INFO
+[0.549s] writing dependency_links to custom_interface_example.egg-info/dependency_links.txt
+[0.549s] writing entry points to custom_interface_example.egg-info/entry_points.txt
+[0.549s] writing requirements to custom_interface_example.egg-info/requires.txt
+[0.549s] writing top-level names to custom_interface_example.egg-info/top_level.txt
+[0.549s] writing manifest file 'custom_interface_example.egg-info/SOURCES.txt'
+[0.551s] reading manifest file 'custom_interface_example.egg-info/SOURCES.txt'
+[0.551s] writing manifest file 'custom_interface_example.egg-info/SOURCES.txt'
+[0.552s] running build_ext
+[0.552s] Creating /home/ssfa/ros2_ws/install/custom_interface_example/lib/python3.10/site-packages/custom-interface-example.egg-link (link to .)
+[0.552s] Installing example script to /home/ssfa/ros2_ws/install/custom_interface_example/lib/custom_interface_example
+[0.552s] 
+[0.552s] Installed /home/ssfa/ros2_ws/build/custom_interface_example
+[0.552s] running symlink_data
+[0.552s] creating /home/ssfa/ros2_ws/install/custom_interface_example/share/ament_index
+[0.552s] creating /home/ssfa/ros2_ws/install/custom_interface_example/share/ament_index/resource_index
+[0.552s] creating /home/ssfa/ros2_ws/install/custom_interface_example/share/ament_index/resource_index/packages
+[0.552s] symbolically linking /home/ssfa/ros2_ws/build/custom_interface_example/resource/custom_interface_example -> /home/ssfa/ros2_ws/install/custom_interface_example/share/ament_index/resource_index/packages
+[0.553s] symbolically linking /home/ssfa/ros2_ws/build/custom_interface_example/package.xml -> /home/ssfa/ros2_ws/install/custom_interface_example/share/custom_interface_example
+[0.553s] symbolically linking /home/ssfa/ros2_ws/build/custom_interface_example/launch/example.launch.py -> /home/ssfa/ros2_ws/install/custom_interface_example/share/custom_interface_example
+[0.570s] Invoked command in '/home/ssfa/ros2_ws/build/custom_interface_example' returned '0': PYTHONPATH=/home/ssfa/ros2_ws/build/custom_interface_example/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/ssfa/ros2_ws/install/custom_interface_example/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated setup.py develop --editable --build-directory /home/ssfa/ros2_ws/build/custom_interface_example/build --no-deps symlink_data

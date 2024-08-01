@@ -1,0 +1,25 @@
+[1.596s] Invoking command in '/home/ssfa/ros2_ws/build/visionsensor': PYTHONPATH=/home/ssfa/ros2_ws/build/visionsensor/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/ssfa/ros2_ws/install/visionsensor/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated setup.py develop --editable --build-directory /home/ssfa/ros2_ws/build/visionsensor/build --no-deps symlink_data
+[1.940s] running develop
+[1.940s] /usr/lib/python3/dist-packages/setuptools/command/easy_install.py:158: EasyInstallDeprecationWarning: easy_install command is deprecated. Use build and pip and other standards-based tools.
+[1.940s]   warnings.warn(
+[2.116s] running egg_info
+[2.116s] creating visionsensor.egg-info
+[2.117s] writing visionsensor.egg-info/PKG-INFO
+[2.117s] writing dependency_links to visionsensor.egg-info/dependency_links.txt
+[2.117s] writing entry points to visionsensor.egg-info/entry_points.txt
+[2.117s] writing requirements to visionsensor.egg-info/requires.txt
+[2.117s] writing top-level names to visionsensor.egg-info/top_level.txt
+[2.118s] writing manifest file 'visionsensor.egg-info/SOURCES.txt'
+[2.119s] reading manifest file 'visionsensor.egg-info/SOURCES.txt'
+[2.120s] writing manifest file 'visionsensor.egg-info/SOURCES.txt'
+[2.121s] running build_ext
+[2.122s] Creating /home/ssfa/ros2_ws/install/visionsensor/lib/python3.10/site-packages/visionsensor.egg-link (link to .)
+[2.123s] 
+[2.123s] Installed /home/ssfa/ros2_ws/build/visionsensor
+[2.123s] running symlink_data
+[2.123s] creating /home/ssfa/ros2_ws/install/visionsensor/share/ament_index
+[2.123s] creating /home/ssfa/ros2_ws/install/visionsensor/share/ament_index/resource_index
+[2.123s] creating /home/ssfa/ros2_ws/install/visionsensor/share/ament_index/resource_index/packages
+[2.123s] symbolically linking /home/ssfa/ros2_ws/build/visionsensor/resource/visionsensor -> /home/ssfa/ros2_ws/install/visionsensor/share/ament_index/resource_index/packages
+[2.123s] symbolically linking /home/ssfa/ros2_ws/build/visionsensor/package.xml -> /home/ssfa/ros2_ws/install/visionsensor/share/visionsensor
+[2.160s] Invoked command in '/home/ssfa/ros2_ws/build/visionsensor' returned '0': PYTHONPATH=/home/ssfa/ros2_ws/build/visionsensor/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/ssfa/ros2_ws/install/visionsensor/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated setup.py develop --editable --build-directory /home/ssfa/ros2_ws/build/visionsensor/build --no-deps symlink_data

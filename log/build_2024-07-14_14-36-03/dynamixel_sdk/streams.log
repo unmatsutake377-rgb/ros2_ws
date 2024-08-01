@@ -1,0 +1,40 @@
+[1.058s] Invoking command in '/home/ssfa/ros2_ws/build/dynamixel_sdk': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/home/ssfa/ros2_ws/install/visionsensor:/home/ssfa/ros2_ws/install/turtlebot3_teleop:/home/ssfa/ros2_ws/install/turtlebot3_example:/home/ssfa/ros2_ws/install/topic_exercise:/home/ssfa/ros2_ws/install/subscriber_pkg:/home/ssfa/ros2_ws/install/services_pkg:/home/ssfa/ros2_ws/install/publisher_pkg:/home/ssfa/ros2_ws/install/opencv_tools:/home/ssfa/ros2_ws/install/my_package:/home/ssfa/ros2_ws/install/movement_pkg:/home/ssfa/ros2_ws/install/exercise_pkg:/home/ssfa/ros2_ws/install/custom_interface_example:/home/ssfa/ros2_ws/install/client_pkg:/opt/ros/humble /usr/bin/cmake --build /home/ssfa/ros2_ws/build/dynamixel_sdk -- -j12 -l12
+[2.361s] [100%] Built target dynamixel_sdk
+[2.373s] Invoked command in '/home/ssfa/ros2_ws/build/dynamixel_sdk' returned '0': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/home/ssfa/ros2_ws/install/visionsensor:/home/ssfa/ros2_ws/install/turtlebot3_teleop:/home/ssfa/ros2_ws/install/turtlebot3_example:/home/ssfa/ros2_ws/install/topic_exercise:/home/ssfa/ros2_ws/install/subscriber_pkg:/home/ssfa/ros2_ws/install/services_pkg:/home/ssfa/ros2_ws/install/publisher_pkg:/home/ssfa/ros2_ws/install/opencv_tools:/home/ssfa/ros2_ws/install/my_package:/home/ssfa/ros2_ws/install/movement_pkg:/home/ssfa/ros2_ws/install/exercise_pkg:/home/ssfa/ros2_ws/install/custom_interface_example:/home/ssfa/ros2_ws/install/client_pkg:/opt/ros/humble /usr/bin/cmake --build /home/ssfa/ros2_ws/build/dynamixel_sdk -- -j12 -l12
+[2.467s] Invoking command in '/home/ssfa/ros2_ws/build/dynamixel_sdk': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/home/ssfa/ros2_ws/install/visionsensor:/home/ssfa/ros2_ws/install/turtlebot3_teleop:/home/ssfa/ros2_ws/install/turtlebot3_example:/home/ssfa/ros2_ws/install/topic_exercise:/home/ssfa/ros2_ws/install/subscriber_pkg:/home/ssfa/ros2_ws/install/services_pkg:/home/ssfa/ros2_ws/install/publisher_pkg:/home/ssfa/ros2_ws/install/opencv_tools:/home/ssfa/ros2_ws/install/my_package:/home/ssfa/ros2_ws/install/movement_pkg:/home/ssfa/ros2_ws/install/exercise_pkg:/home/ssfa/ros2_ws/install/custom_interface_example:/home/ssfa/ros2_ws/install/client_pkg:/opt/ros/humble /usr/bin/cmake --install /home/ssfa/ros2_ws/build/dynamixel_sdk
+[2.480s] -- Install configuration: ""
+[2.480s] -- Execute custom install script
+[2.482s] -- Up-to-date symlink: /home/ssfa/ros2_ws/install/dynamixel_sdk/include//dynamixel_sdk/dynamixel_sdk.h
+[2.482s] -- Up-to-date symlink: /home/ssfa/ros2_ws/install/dynamixel_sdk/include//dynamixel_sdk/group_bulk_read.h
+[2.483s] -- Up-to-date symlink: /home/ssfa/ros2_ws/install/dynamixel_sdk/include//dynamixel_sdk/group_bulk_write.h
+[2.483s] -- Up-to-date symlink: /home/ssfa/ros2_ws/install/dynamixel_sdk/include//dynamixel_sdk/group_sync_read.h
+[2.483s] -- Up-to-date symlink: /home/ssfa/ros2_ws/install/dynamixel_sdk/include//dynamixel_sdk/group_sync_write.h
+[2.483s] -- Up-to-date symlink: /home/ssfa/ros2_ws/install/dynamixel_sdk/include//dynamixel_sdk/packet_handler.h
+[2.484s] -- Up-to-date symlink: /home/ssfa/ros2_ws/install/dynamixel_sdk/include//dynamixel_sdk/port_handler.h
+[2.484s] -- Up-to-date symlink: /home/ssfa/ros2_ws/install/dynamixel_sdk/include//dynamixel_sdk/port_handler_arduino.h
+[2.484s] -- Up-to-date symlink: /home/ssfa/ros2_ws/install/dynamixel_sdk/include//dynamixel_sdk/port_handler_linux.h
+[2.486s] -- Up-to-date symlink: /home/ssfa/ros2_ws/install/dynamixel_sdk/include//dynamixel_sdk/port_handler_mac.h
+[2.487s] -- Up-to-date symlink: /home/ssfa/ros2_ws/install/dynamixel_sdk/include//dynamixel_sdk/port_handler_windows.h
+[2.487s] -- Up-to-date symlink: /home/ssfa/ros2_ws/install/dynamixel_sdk/include//dynamixel_sdk/protocol1_packet_handler.h
+[2.487s] -- Up-to-date symlink: /home/ssfa/ros2_ws/install/dynamixel_sdk/include//dynamixel_sdk/protocol2_packet_handler.h
+[2.489s] -- Up-to-date symlink: /home/ssfa/ros2_ws/install/dynamixel_sdk/lib/libdynamixel_sdk.so
+[2.490s] -- Up-to-date symlink: /home/ssfa/ros2_ws/install/dynamixel_sdk/share/dynamixel_sdk/environment/library_path.sh
+[2.490s] -- Up-to-date symlink: /home/ssfa/ros2_ws/install/dynamixel_sdk/share/dynamixel_sdk/environment/library_path.dsv
+[2.490s] -- Up-to-date symlink: /home/ssfa/ros2_ws/install/dynamixel_sdk/share/ament_index/resource_index/package_run_dependencies/dynamixel_sdk
+[2.490s] -- Up-to-date symlink: /home/ssfa/ros2_ws/install/dynamixel_sdk/share/ament_index/resource_index/parent_prefix_path/dynamixel_sdk
+[2.490s] -- Up-to-date symlink: /home/ssfa/ros2_ws/install/dynamixel_sdk/share/dynamixel_sdk/environment/ament_prefix_path.sh
+[2.490s] -- Up-to-date symlink: /home/ssfa/ros2_ws/install/dynamixel_sdk/share/dynamixel_sdk/environment/ament_prefix_path.dsv
+[2.491s] -- Up-to-date symlink: /home/ssfa/ros2_ws/install/dynamixel_sdk/share/dynamixel_sdk/environment/path.sh
+[2.495s] -- Up-to-date symlink: /home/ssfa/ros2_ws/install/dynamixel_sdk/share/dynamixel_sdk/environment/path.dsv
+[2.495s] -- Up-to-date symlink: /home/ssfa/ros2_ws/install/dynamixel_sdk/share/dynamixel_sdk/local_setup.bash
+[2.496s] -- Up-to-date symlink: /home/ssfa/ros2_ws/install/dynamixel_sdk/share/dynamixel_sdk/local_setup.sh
+[2.496s] -- Up-to-date symlink: /home/ssfa/ros2_ws/install/dynamixel_sdk/share/dynamixel_sdk/local_setup.zsh
+[2.496s] -- Up-to-date symlink: /home/ssfa/ros2_ws/install/dynamixel_sdk/share/dynamixel_sdk/local_setup.dsv
+[2.496s] -- Symlinking: /home/ssfa/ros2_ws/install/dynamixel_sdk/share/dynamixel_sdk/package.dsv
+[2.518s] -- Up-to-date symlink: /home/ssfa/ros2_ws/install/dynamixel_sdk/share/ament_index/resource_index/packages/dynamixel_sdk
+[2.518s] -- Up-to-date symlink: /home/ssfa/ros2_ws/install/dynamixel_sdk/share/dynamixel_sdk/cmake/ament_cmake_export_include_directories-extras.cmake
+[2.518s] -- Up-to-date symlink: /home/ssfa/ros2_ws/install/dynamixel_sdk/share/dynamixel_sdk/cmake/ament_cmake_export_libraries-extras.cmake
+[2.518s] -- Up-to-date symlink: /home/ssfa/ros2_ws/install/dynamixel_sdk/share/dynamixel_sdk/cmake/dynamixel_sdkConfig.cmake
+[2.519s] -- Up-to-date symlink: /home/ssfa/ros2_ws/install/dynamixel_sdk/share/dynamixel_sdk/cmake/dynamixel_sdkConfig-version.cmake
+[2.519s] -- Up-to-date symlink: /home/ssfa/ros2_ws/install/dynamixel_sdk/share/dynamixel_sdk/package.xml
+[2.547s] Invoked command in '/home/ssfa/ros2_ws/build/dynamixel_sdk' returned '0': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/home/ssfa/ros2_ws/install/visionsensor:/home/ssfa/ros2_ws/install/turtlebot3_teleop:/home/ssfa/ros2_ws/install/turtlebot3_example:/home/ssfa/ros2_ws/install/topic_exercise:/home/ssfa/ros2_ws/install/subscriber_pkg:/home/ssfa/ros2_ws/install/services_pkg:/home/ssfa/ros2_ws/install/publisher_pkg:/home/ssfa/ros2_ws/install/opencv_tools:/home/ssfa/ros2_ws/install/my_package:/home/ssfa/ros2_ws/install/movement_pkg:/home/ssfa/ros2_ws/install/exercise_pkg:/home/ssfa/ros2_ws/install/custom_interface_example:/home/ssfa/ros2_ws/install/client_pkg:/opt/ros/humble /usr/bin/cmake --install /home/ssfa/ros2_ws/build/dynamixel_sdk

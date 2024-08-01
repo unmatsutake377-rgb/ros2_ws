@@ -1,0 +1,3 @@
+[console_scripts]
+exercise = topic_exercise.exercise:main
+

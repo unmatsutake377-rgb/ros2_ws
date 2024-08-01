@@ -1,0 +1,23 @@
+[2.488s] Invoking command in '/home/ssfa/ros2_ws/src/t3/turtlebot3/turtlebot3/turtlebot3_teleop': PYTHONPATH=/home/ssfa/ros2_ws/build/turtlebot3_teleop/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/ssfa/ros2_ws/install/turtlebot3_teleop/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated setup.py egg_info --egg-base ../../../../../build/turtlebot3_teleop build --build-base /home/ssfa/ros2_ws/build/turtlebot3_teleop/build install --record /home/ssfa/ros2_ws/build/turtlebot3_teleop/install.log --install-scripts $base/lib/turtlebot3_teleop --single-version-externally-managed install_data
+[3.006s] /usr/lib/python3/dist-packages/setuptools/dist.py:723: UserWarning: Usage of dash-separated 'script-dir' will not be supported in future versions. Please use the underscore name 'script_dir' instead
+[3.007s]   warnings.warn(
+[3.019s] running egg_info
+[3.021s] writing ../../../../../build/turtlebot3_teleop/turtlebot3_teleop.egg-info/PKG-INFO
+[3.021s] writing dependency_links to ../../../../../build/turtlebot3_teleop/turtlebot3_teleop.egg-info/dependency_links.txt
+[3.021s] writing entry points to ../../../../../build/turtlebot3_teleop/turtlebot3_teleop.egg-info/entry_points.txt
+[3.022s] writing requirements to ../../../../../build/turtlebot3_teleop/turtlebot3_teleop.egg-info/requires.txt
+[3.022s] writing top-level names to ../../../../../build/turtlebot3_teleop/turtlebot3_teleop.egg-info/top_level.txt
+[3.025s] reading manifest file '../../../../../build/turtlebot3_teleop/turtlebot3_teleop.egg-info/SOURCES.txt'
+[3.026s] writing manifest file '../../../../../build/turtlebot3_teleop/turtlebot3_teleop.egg-info/SOURCES.txt'
+[3.026s] running build
+[3.026s] running build_py
+[3.027s] running install
+[3.027s] running install_lib
+[3.029s] running install_data
+[3.029s] running install_egg_info
+[3.032s] removing '/home/ssfa/ros2_ws/install/turtlebot3_teleop/lib/python3.10/site-packages/turtlebot3_teleop-2.0.1-py3.10.egg-info' (and everything under it)
+[3.032s] Copying ../../../../../build/turtlebot3_teleop/turtlebot3_teleop.egg-info to /home/ssfa/ros2_ws/install/turtlebot3_teleop/lib/python3.10/site-packages/turtlebot3_teleop-2.0.1-py3.10.egg-info
+[3.033s] running install_scripts
+[3.061s] Installing teleop_keyboard script to /home/ssfa/ros2_ws/install/turtlebot3_teleop/lib/turtlebot3_teleop
+[3.062s] writing list of installed files to '/home/ssfa/ros2_ws/build/turtlebot3_teleop/install.log'
+[3.308s] Invoked command in '/home/ssfa/ros2_ws/src/t3/turtlebot3/turtlebot3/turtlebot3_teleop' returned '0': PYTHONPATH=/home/ssfa/ros2_ws/build/turtlebot3_teleop/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/ssfa/ros2_ws/install/turtlebot3_teleop/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated setup.py egg_info --egg-base ../../../../../build/turtlebot3_teleop build --build-base /home/ssfa/ros2_ws/build/turtlebot3_teleop/build install --record /home/ssfa/ros2_ws/build/turtlebot3_teleop/install.log --install-scripts $base/lib/turtlebot3_teleop --single-version-externally-managed install_data

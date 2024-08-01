@@ -1,0 +1,19 @@
+[0.538s] Invoking command in '/home/ssfa/ros2_ws/build/my_package': PYTHONPATH=/home/ssfa/ros2_ws/build/my_package/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/ssfa/ros2_ws/install/my_package/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated setup.py develop --editable --build-directory /home/ssfa/ros2_ws/build/my_package/build --no-deps symlink_data
+[0.761s] running develop
+[0.761s] /usr/lib/python3/dist-packages/setuptools/command/easy_install.py:158: EasyInstallDeprecationWarning: easy_install command is deprecated. Use build and pip and other standards-based tools.
+[0.761s]   warnings.warn(
+[0.846s] running egg_info
+[0.846s] writing my_package.egg-info/PKG-INFO
+[0.846s] writing dependency_links to my_package.egg-info/dependency_links.txt
+[0.846s] writing entry points to my_package.egg-info/entry_points.txt
+[0.846s] writing requirements to my_package.egg-info/requires.txt
+[0.846s] writing top-level names to my_package.egg-info/top_level.txt
+[0.847s] reading manifest file 'my_package.egg-info/SOURCES.txt'
+[0.848s] writing manifest file 'my_package.egg-info/SOURCES.txt'
+[0.848s] running build_ext
+[0.848s] Creating /home/ssfa/ros2_ws/install/my_package/lib/python3.10/site-packages/my-package.egg-link (link to .)
+[0.849s] Installing simple_node script to /home/ssfa/ros2_ws/install/my_package/lib/my_package
+[0.849s] 
+[0.849s] Installed /home/ssfa/ros2_ws/build/my_package
+[0.849s] running symlink_data
+[0.881s] Invoked command in '/home/ssfa/ros2_ws/build/my_package' returned '0': PYTHONPATH=/home/ssfa/ros2_ws/build/my_package/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/ssfa/ros2_ws/install/my_package/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated setup.py develop --editable --build-directory /home/ssfa/ros2_ws/build/my_package/build --no-deps symlink_data

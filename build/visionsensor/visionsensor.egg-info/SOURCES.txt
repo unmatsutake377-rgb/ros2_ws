@@ -1,0 +1,12 @@
+package.xml
+setup.cfg
+setup.py
+resource/visionsensor
+visionsensor/__init__.py
+visionsensor.egg-info/PKG-INFO
+visionsensor.egg-info/SOURCES.txt
+visionsensor.egg-info/dependency_links.txt
+visionsensor.egg-info/entry_points.txt
+visionsensor.egg-info/requires.txt
+visionsensor.egg-info/top_level.txt
+visionsensor.egg-info/zip-safe

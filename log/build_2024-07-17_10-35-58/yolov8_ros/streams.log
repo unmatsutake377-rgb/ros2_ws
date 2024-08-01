@@ -1,0 +1,49 @@
+[0.846s] Invoking command in '/home/ssfa/ros2_ws/src/yolov8_ros/yolov8_ros': AMENT_PREFIX_PATH=/home/ssfa/ros2_ws/install/yolov8_msgs:${AMENT_PREFIX_PATH} CMAKE_PREFIX_PATH=/home/ssfa/ros2_ws/install/yolov8_msgs:${CMAKE_PREFIX_PATH} LD_LIBRARY_PATH=/home/ssfa/ros2_ws/install/yolov8_msgs/lib:${LD_LIBRARY_PATH} PYTHONPATH=/home/ssfa/ros2_ws/build/yolov8_ros/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/ssfa/ros2_ws/install/yolov8_ros/lib/python3.10/site-packages:/home/ssfa/ros2_ws/install/yolov8_msgs/local/lib/python3.10/dist-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated setup.py egg_info --egg-base ../../../build/yolov8_ros build --build-base /home/ssfa/ros2_ws/build/yolov8_ros/build install --record /home/ssfa/ros2_ws/build/yolov8_ros/install.log --single-version-externally-managed install_data
+[1.181s] running egg_info
+[1.181s] creating ../../../build/yolov8_ros/yolov8_ros.egg-info
+[1.182s] writing ../../../build/yolov8_ros/yolov8_ros.egg-info/PKG-INFO
+[1.182s] writing dependency_links to ../../../build/yolov8_ros/yolov8_ros.egg-info/dependency_links.txt
+[1.182s] writing entry points to ../../../build/yolov8_ros/yolov8_ros.egg-info/entry_points.txt
+[1.182s] writing requirements to ../../../build/yolov8_ros/yolov8_ros.egg-info/requires.txt
+[1.182s] writing top-level names to ../../../build/yolov8_ros/yolov8_ros.egg-info/top_level.txt
+[1.182s] writing manifest file '../../../build/yolov8_ros/yolov8_ros.egg-info/SOURCES.txt'
+[1.184s] reading manifest file '../../../build/yolov8_ros/yolov8_ros.egg-info/SOURCES.txt'
+[1.185s] writing manifest file '../../../build/yolov8_ros/yolov8_ros.egg-info/SOURCES.txt'
+[1.185s] running build
+[1.186s] running build_py
+[1.186s] creating /home/ssfa/ros2_ws/build/yolov8_ros/build
+[1.186s] creating /home/ssfa/ros2_ws/build/yolov8_ros/build/lib
+[1.186s] creating /home/ssfa/ros2_ws/build/yolov8_ros/build/lib/yolov8_ros
+[1.186s] copying yolov8_ros/tracking_node.py -> /home/ssfa/ros2_ws/build/yolov8_ros/build/lib/yolov8_ros
+[1.186s] copying yolov8_ros/debug_node.py -> /home/ssfa/ros2_ws/build/yolov8_ros/build/lib/yolov8_ros
+[1.187s] copying yolov8_ros/detect_3d_node.py -> /home/ssfa/ros2_ws/build/yolov8_ros/build/lib/yolov8_ros
+[1.187s] copying yolov8_ros/yolov8_node.py -> /home/ssfa/ros2_ws/build/yolov8_ros/build/lib/yolov8_ros
+[1.187s] copying yolov8_ros/__init__.py -> /home/ssfa/ros2_ws/build/yolov8_ros/build/lib/yolov8_ros
+[1.187s] running install
+[1.187s] running install_lib
+[1.189s] creating /home/ssfa/ros2_ws/install/yolov8_ros/lib/python3.10/site-packages/yolov8_ros
+[1.190s] copying /home/ssfa/ros2_ws/build/yolov8_ros/build/lib/yolov8_ros/tracking_node.py -> /home/ssfa/ros2_ws/install/yolov8_ros/lib/python3.10/site-packages/yolov8_ros
+[1.190s] copying /home/ssfa/ros2_ws/build/yolov8_ros/build/lib/yolov8_ros/debug_node.py -> /home/ssfa/ros2_ws/install/yolov8_ros/lib/python3.10/site-packages/yolov8_ros
+[1.190s] copying /home/ssfa/ros2_ws/build/yolov8_ros/build/lib/yolov8_ros/detect_3d_node.py -> /home/ssfa/ros2_ws/install/yolov8_ros/lib/python3.10/site-packages/yolov8_ros
+[1.190s] copying /home/ssfa/ros2_ws/build/yolov8_ros/build/lib/yolov8_ros/yolov8_node.py -> /home/ssfa/ros2_ws/install/yolov8_ros/lib/python3.10/site-packages/yolov8_ros
+[1.190s] copying /home/ssfa/ros2_ws/build/yolov8_ros/build/lib/yolov8_ros/__init__.py -> /home/ssfa/ros2_ws/install/yolov8_ros/lib/python3.10/site-packages/yolov8_ros
+[1.191s] byte-compiling /home/ssfa/ros2_ws/install/yolov8_ros/lib/python3.10/site-packages/yolov8_ros/tracking_node.py to tracking_node.cpython-310.pyc
+[1.193s] byte-compiling /home/ssfa/ros2_ws/install/yolov8_ros/lib/python3.10/site-packages/yolov8_ros/debug_node.py to debug_node.cpython-310.pyc
+[1.195s] byte-compiling /home/ssfa/ros2_ws/install/yolov8_ros/lib/python3.10/site-packages/yolov8_ros/detect_3d_node.py to detect_3d_node.cpython-310.pyc
+[1.198s] byte-compiling /home/ssfa/ros2_ws/install/yolov8_ros/lib/python3.10/site-packages/yolov8_ros/yolov8_node.py to yolov8_node.cpython-310.pyc
+[1.200s] byte-compiling /home/ssfa/ros2_ws/install/yolov8_ros/lib/python3.10/site-packages/yolov8_ros/__init__.py to __init__.cpython-310.pyc
+[1.200s] running install_data
+[1.201s] creating /home/ssfa/ros2_ws/install/yolov8_ros/share/ament_index
+[1.201s] creating /home/ssfa/ros2_ws/install/yolov8_ros/share/ament_index/resource_index
+[1.201s] creating /home/ssfa/ros2_ws/install/yolov8_ros/share/ament_index/resource_index/packages
+[1.201s] copying resource/yolov8_ros -> /home/ssfa/ros2_ws/install/yolov8_ros/share/ament_index/resource_index/packages
+[1.201s] copying package.xml -> /home/ssfa/ros2_ws/install/yolov8_ros/share/yolov8_ros
+[1.202s] running install_egg_info
+[1.205s] Copying ../../../build/yolov8_ros/yolov8_ros.egg-info to /home/ssfa/ros2_ws/install/yolov8_ros/lib/python3.10/site-packages/yolov8_ros-0.0.0-py3.10.egg-info
+[1.206s] running install_scripts
+[1.236s] Installing debug_node script to /home/ssfa/ros2_ws/install/yolov8_ros/lib/yolov8_ros
+[1.236s] Installing detect_3d_node script to /home/ssfa/ros2_ws/install/yolov8_ros/lib/yolov8_ros
+[1.237s] Installing tracking_node script to /home/ssfa/ros2_ws/install/yolov8_ros/lib/yolov8_ros
+[1.237s] Installing yolov8_node script to /home/ssfa/ros2_ws/install/yolov8_ros/lib/yolov8_ros
+[1.237s] writing list of installed files to '/home/ssfa/ros2_ws/build/yolov8_ros/install.log'
+[1.272s] Invoked command in '/home/ssfa/ros2_ws/src/yolov8_ros/yolov8_ros' returned '0': AMENT_PREFIX_PATH=/home/ssfa/ros2_ws/install/yolov8_msgs:${AMENT_PREFIX_PATH} CMAKE_PREFIX_PATH=/home/ssfa/ros2_ws/install/yolov8_msgs:${CMAKE_PREFIX_PATH} LD_LIBRARY_PATH=/home/ssfa/ros2_ws/install/yolov8_msgs/lib:${LD_LIBRARY_PATH} PYTHONPATH=/home/ssfa/ros2_ws/build/yolov8_ros/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/ssfa/ros2_ws/install/yolov8_ros/lib/python3.10/site-packages:/home/ssfa/ros2_ws/install/yolov8_msgs/local/lib/python3.10/dist-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated setup.py egg_info --egg-base ../../../build/yolov8_ros build --build-base /home/ssfa/ros2_ws/build/yolov8_ros/build install --record /home/ssfa/ros2_ws/build/yolov8_ros/install.log --single-version-externally-managed install_data

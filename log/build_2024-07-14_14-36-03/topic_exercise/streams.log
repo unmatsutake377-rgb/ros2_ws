@@ -1,0 +1,19 @@
+[2.304s] Invoking command in '/home/ssfa/ros2_ws/build/topic_exercise': PYTHONPATH=/home/ssfa/ros2_ws/build/topic_exercise/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/ssfa/ros2_ws/install/topic_exercise/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated setup.py develop --editable --build-directory /home/ssfa/ros2_ws/build/topic_exercise/build --no-deps symlink_data
+[2.938s] running develop
+[2.939s] /usr/lib/python3/dist-packages/setuptools/command/easy_install.py:158: EasyInstallDeprecationWarning: easy_install command is deprecated. Use build and pip and other standards-based tools.
+[2.939s]   warnings.warn(
+[3.148s] running egg_info
+[3.149s] writing topic_exercise.egg-info/PKG-INFO
+[3.149s] writing dependency_links to topic_exercise.egg-info/dependency_links.txt
+[3.149s] writing entry points to topic_exercise.egg-info/entry_points.txt
+[3.150s] writing requirements to topic_exercise.egg-info/requires.txt
+[3.150s] writing top-level names to topic_exercise.egg-info/top_level.txt
+[3.152s] reading manifest file 'topic_exercise.egg-info/SOURCES.txt'
+[3.153s] writing manifest file 'topic_exercise.egg-info/SOURCES.txt'
+[3.155s] running build_ext
+[3.156s] Creating /home/ssfa/ros2_ws/install/topic_exercise/lib/python3.10/site-packages/topic-exercise.egg-link (link to .)
+[3.157s] Installing exercise script to /home/ssfa/ros2_ws/install/topic_exercise/lib/topic_exercise
+[3.157s] 
+[3.157s] Installed /home/ssfa/ros2_ws/build/topic_exercise
+[3.157s] running symlink_data
+[3.217s] Invoked command in '/home/ssfa/ros2_ws/build/topic_exercise' returned '0': PYTHONPATH=/home/ssfa/ros2_ws/build/topic_exercise/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/ssfa/ros2_ws/install/topic_exercise/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated setup.py develop --editable --build-directory /home/ssfa/ros2_ws/build/topic_exercise/build --no-deps symlink_data

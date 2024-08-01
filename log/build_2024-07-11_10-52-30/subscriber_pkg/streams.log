@@ -1,0 +1,19 @@
+[2.500s] Invoking command in '/home/ssfa/ros2_ws/build/subscriber_pkg': PYTHONPATH=/home/ssfa/ros2_ws/build/subscriber_pkg/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/ssfa/ros2_ws/install/subscriber_pkg/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated setup.py develop --editable --build-directory /home/ssfa/ros2_ws/build/subscriber_pkg/build --no-deps symlink_data
+[3.066s] running develop
+[3.066s] /usr/lib/python3/dist-packages/setuptools/command/easy_install.py:158: EasyInstallDeprecationWarning: easy_install command is deprecated. Use build and pip and other standards-based tools.
+[3.066s]   warnings.warn(
+[3.297s] running egg_info
+[3.298s] writing subscriber_pkg.egg-info/PKG-INFO
+[3.298s] writing dependency_links to subscriber_pkg.egg-info/dependency_links.txt
+[3.298s] writing entry points to subscriber_pkg.egg-info/entry_points.txt
+[3.299s] writing requirements to subscriber_pkg.egg-info/requires.txt
+[3.299s] writing top-level names to subscriber_pkg.egg-info/top_level.txt
+[3.299s] reading manifest file 'subscriber_pkg.egg-info/SOURCES.txt'
+[3.300s] writing manifest file 'subscriber_pkg.egg-info/SOURCES.txt'
+[3.303s] running build_ext
+[3.305s] Creating /home/ssfa/ros2_ws/install/subscriber_pkg/lib/python3.10/site-packages/subscriber-pkg.egg-link (link to .)
+[3.306s] Installing simple_subscriber script to /home/ssfa/ros2_ws/install/subscriber_pkg/lib/subscriber_pkg
+[3.306s] 
+[3.307s] Installed /home/ssfa/ros2_ws/build/subscriber_pkg
+[3.307s] running symlink_data
+[3.375s] Invoked command in '/home/ssfa/ros2_ws/build/subscriber_pkg' returned '0': PYTHONPATH=/home/ssfa/ros2_ws/build/subscriber_pkg/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/ssfa/ros2_ws/install/subscriber_pkg/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated setup.py develop --editable --build-directory /home/ssfa/ros2_ws/build/subscriber_pkg/build --no-deps symlink_data

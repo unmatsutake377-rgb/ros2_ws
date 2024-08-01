@@ -1,0 +1,34 @@
+[1.600s] Invoking command in '/home/ssfa/ros2_ws/build/subscriber_pkg': PYTHONPATH=/home/ssfa/ros2_ws/build/subscriber_pkg/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/ssfa/ros2_ws/install/subscriber_pkg/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated setup.py develop --uninstall --editable --build-directory /home/ssfa/ros2_ws/build/subscriber_pkg/build
+[2.135s] running develop
+[2.136s] /usr/lib/python3/dist-packages/setuptools/command/easy_install.py:158: EasyInstallDeprecationWarning: easy_install command is deprecated. Use build and pip and other standards-based tools.
+[2.136s]   warnings.warn(
+[2.594s] Removing /home/ssfa/ros2_ws/install/subscriber_pkg/lib/python3.10/site-packages/subscriber-pkg.egg-link (link to .)
+[2.683s] Invoked command in '/home/ssfa/ros2_ws/build/subscriber_pkg' returned '0': PYTHONPATH=/home/ssfa/ros2_ws/build/subscriber_pkg/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/ssfa/ros2_ws/install/subscriber_pkg/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated setup.py develop --uninstall --editable --build-directory /home/ssfa/ros2_ws/build/subscriber_pkg/build
+[2.694s] Invoking command in '/home/ssfa/ros2_ws/src/subscriber_pkg': PYTHONPATH=/home/ssfa/ros2_ws/build/subscriber_pkg/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/ssfa/ros2_ws/install/subscriber_pkg/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated setup.py egg_info --egg-base ../../build/subscriber_pkg build --build-base /home/ssfa/ros2_ws/build/subscriber_pkg/build install --record /home/ssfa/ros2_ws/build/subscriber_pkg/install.log --single-version-externally-managed install_data --force
+[3.409s] running egg_info
+[3.414s] writing ../../build/subscriber_pkg/subscriber_pkg.egg-info/PKG-INFO
+[3.415s] writing dependency_links to ../../build/subscriber_pkg/subscriber_pkg.egg-info/dependency_links.txt
+[3.415s] writing entry points to ../../build/subscriber_pkg/subscriber_pkg.egg-info/entry_points.txt
+[3.416s] writing requirements to ../../build/subscriber_pkg/subscriber_pkg.egg-info/requires.txt
+[3.416s] writing top-level names to ../../build/subscriber_pkg/subscriber_pkg.egg-info/top_level.txt
+[3.419s] reading manifest file '../../build/subscriber_pkg/subscriber_pkg.egg-info/SOURCES.txt'
+[3.421s] writing manifest file '../../build/subscriber_pkg/subscriber_pkg.egg-info/SOURCES.txt'
+[3.421s] running build
+[3.422s] running build_py
+[3.422s] running install
+[3.423s] running install_lib
+[3.424s] creating /home/ssfa/ros2_ws/install/subscriber_pkg/lib/python3.10/site-packages/subscriber_pkg
+[3.424s] copying /home/ssfa/ros2_ws/build/subscriber_pkg/build/lib/subscriber_pkg/simple_subscriber.py -> /home/ssfa/ros2_ws/install/subscriber_pkg/lib/python3.10/site-packages/subscriber_pkg
+[3.425s] copying /home/ssfa/ros2_ws/build/subscriber_pkg/build/lib/subscriber_pkg/__init__.py -> /home/ssfa/ros2_ws/install/subscriber_pkg/lib/python3.10/site-packages/subscriber_pkg
+[3.426s] byte-compiling /home/ssfa/ros2_ws/install/subscriber_pkg/lib/python3.10/site-packages/subscriber_pkg/simple_subscriber.py to simple_subscriber.cpython-310.pyc
+[3.427s] byte-compiling /home/ssfa/ros2_ws/install/subscriber_pkg/lib/python3.10/site-packages/subscriber_pkg/__init__.py to __init__.cpython-310.pyc
+[3.428s] running install_data
+[3.428s] copying resource/subscriber_pkg -> /home/ssfa/ros2_ws/install/subscriber_pkg/share/ament_index/resource_index/packages
+[3.428s] copying package.xml -> /home/ssfa/ros2_ws/install/subscriber_pkg/share/subscriber_pkg
+[3.428s] copying launch/subscriber_pkg_launch_file.launch.py -> /home/ssfa/ros2_ws/install/subscriber_pkg/share/subscriber_pkg
+[3.429s] running install_egg_info
+[3.432s] Copying ../../build/subscriber_pkg/subscriber_pkg.egg-info to /home/ssfa/ros2_ws/install/subscriber_pkg/lib/python3.10/site-packages/subscriber_pkg-0.0.0-py3.10.egg-info
+[3.433s] running install_scripts
+[3.473s] Installing simple_subscriber script to /home/ssfa/ros2_ws/install/subscriber_pkg/lib/subscriber_pkg
+[3.474s] writing list of installed files to '/home/ssfa/ros2_ws/build/subscriber_pkg/install.log'
+[3.521s] Invoked command in '/home/ssfa/ros2_ws/src/subscriber_pkg' returned '0': PYTHONPATH=/home/ssfa/ros2_ws/build/subscriber_pkg/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/ssfa/ros2_ws/install/subscriber_pkg/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated setup.py egg_info --egg-base ../../build/subscriber_pkg build --build-base /home/ssfa/ros2_ws/build/subscriber_pkg/build install --record /home/ssfa/ros2_ws/build/subscriber_pkg/install.log --single-version-externally-managed install_data --force

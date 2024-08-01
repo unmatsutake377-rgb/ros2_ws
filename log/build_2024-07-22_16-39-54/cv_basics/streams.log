@@ -1,0 +1,22 @@
+[1.629s] Invoking command in '/home/ssfa/ros2_ws/src/cv_basics': PYTHONPATH=/home/ssfa/ros2_ws/build/cv_basics/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/ssfa/ros2_ws/install/cv_basics/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated setup.py egg_info --egg-base ../../build/cv_basics build --build-base /home/ssfa/ros2_ws/build/cv_basics/build install --record /home/ssfa/ros2_ws/build/cv_basics/install.log --single-version-externally-managed install_data
+[1.961s] running egg_info
+[1.961s] writing ../../build/cv_basics/cv_basics.egg-info/PKG-INFO
+[1.962s] writing dependency_links to ../../build/cv_basics/cv_basics.egg-info/dependency_links.txt
+[1.962s] writing entry points to ../../build/cv_basics/cv_basics.egg-info/entry_points.txt
+[1.962s] writing requirements to ../../build/cv_basics/cv_basics.egg-info/requires.txt
+[1.962s] writing top-level names to ../../build/cv_basics/cv_basics.egg-info/top_level.txt
+[1.963s] reading manifest file '../../build/cv_basics/cv_basics.egg-info/SOURCES.txt'
+[1.964s] writing manifest file '../../build/cv_basics/cv_basics.egg-info/SOURCES.txt'
+[1.964s] running build
+[1.964s] running build_py
+[1.964s] running install
+[1.965s] running install_lib
+[1.966s] running install_data
+[1.966s] running install_egg_info
+[1.968s] removing '/home/ssfa/ros2_ws/install/cv_basics/lib/python3.10/site-packages/cv_basics-0.0.0-py3.10.egg-info' (and everything under it)
+[1.968s] Copying ../../build/cv_basics/cv_basics.egg-info to /home/ssfa/ros2_ws/install/cv_basics/lib/python3.10/site-packages/cv_basics-0.0.0-py3.10.egg-info
+[1.969s] running install_scripts
+[1.989s] Installing img_publisher script to /home/ssfa/ros2_ws/install/cv_basics/lib/cv_basics
+[1.989s] Installing img_subscriber script to /home/ssfa/ros2_ws/install/cv_basics/lib/cv_basics
+[1.989s] writing list of installed files to '/home/ssfa/ros2_ws/build/cv_basics/install.log'
+[2.318s] Invoked command in '/home/ssfa/ros2_ws/src/cv_basics' returned '0': PYTHONPATH=/home/ssfa/ros2_ws/build/cv_basics/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/ssfa/ros2_ws/install/cv_basics/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated setup.py egg_info --egg-base ../../build/cv_basics build --build-base /home/ssfa/ros2_ws/build/cv_basics/build install --record /home/ssfa/ros2_ws/build/cv_basics/install.log --single-version-externally-managed install_data

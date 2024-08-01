@@ -1,0 +1,21 @@
+running develop
+running egg_info
+creating visionsensor.egg-info
+writing visionsensor.egg-info/PKG-INFO
+writing dependency_links to visionsensor.egg-info/dependency_links.txt
+writing entry points to visionsensor.egg-info/entry_points.txt
+writing requirements to visionsensor.egg-info/requires.txt
+writing top-level names to visionsensor.egg-info/top_level.txt
+writing manifest file 'visionsensor.egg-info/SOURCES.txt'
+reading manifest file 'visionsensor.egg-info/SOURCES.txt'
+writing manifest file 'visionsensor.egg-info/SOURCES.txt'
+running build_ext
+Creating /home/ssfa/ros2_ws/install/visionsensor/lib/python3.10/site-packages/visionsensor.egg-link (link to .)
+
+Installed /home/ssfa/ros2_ws/build/visionsensor
+running symlink_data
+creating /home/ssfa/ros2_ws/install/visionsensor/share/ament_index
+creating /home/ssfa/ros2_ws/install/visionsensor/share/ament_index/resource_index
+creating /home/ssfa/ros2_ws/install/visionsensor/share/ament_index/resource_index/packages
+symbolically linking /home/ssfa/ros2_ws/build/visionsensor/resource/visionsensor -> /home/ssfa/ros2_ws/install/visionsensor/share/ament_index/resource_index/packages
+symbolically linking /home/ssfa/ros2_ws/build/visionsensor/package.xml -> /home/ssfa/ros2_ws/install/visionsensor/share/visionsensor

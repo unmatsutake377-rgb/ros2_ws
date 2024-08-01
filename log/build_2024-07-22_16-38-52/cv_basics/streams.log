@@ -1,0 +1,41 @@
+[1.546s] Invoking command in '/home/ssfa/ros2_ws/build/cv_basics': PYTHONPATH=/home/ssfa/ros2_ws/build/cv_basics/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/ssfa/ros2_ws/install/cv_basics/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated setup.py develop --uninstall --editable --build-directory /home/ssfa/ros2_ws/build/cv_basics/build
+[1.901s] running develop
+[1.902s] /usr/lib/python3/dist-packages/setuptools/command/easy_install.py:158: EasyInstallDeprecationWarning: easy_install command is deprecated. Use build and pip and other standards-based tools.
+[1.902s]   warnings.warn(
+[2.116s] Removing /home/ssfa/ros2_ws/install/cv_basics/lib/python3.10/site-packages/cv-basics.egg-link (link to .)
+[2.260s] Invoked command in '/home/ssfa/ros2_ws/build/cv_basics' returned '0': PYTHONPATH=/home/ssfa/ros2_ws/build/cv_basics/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/ssfa/ros2_ws/install/cv_basics/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated setup.py develop --uninstall --editable --build-directory /home/ssfa/ros2_ws/build/cv_basics/build
+[2.261s] Invoking command in '/home/ssfa/ros2_ws/src/cv_basics': PYTHONPATH=/home/ssfa/ros2_ws/build/cv_basics/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/ssfa/ros2_ws/install/cv_basics/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated setup.py egg_info --egg-base ../../build/cv_basics build --build-base /home/ssfa/ros2_ws/build/cv_basics/build install --record /home/ssfa/ros2_ws/build/cv_basics/install.log --single-version-externally-managed install_data --force
+[2.500s] running egg_info
+[2.500s] writing ../../build/cv_basics/cv_basics.egg-info/PKG-INFO
+[2.500s] writing dependency_links to ../../build/cv_basics/cv_basics.egg-info/dependency_links.txt
+[2.501s] writing entry points to ../../build/cv_basics/cv_basics.egg-info/entry_points.txt
+[2.501s] writing requirements to ../../build/cv_basics/cv_basics.egg-info/requires.txt
+[2.501s] writing top-level names to ../../build/cv_basics/cv_basics.egg-info/top_level.txt
+[2.502s] reading manifest file '../../build/cv_basics/cv_basics.egg-info/SOURCES.txt'
+[2.503s] writing manifest file '../../build/cv_basics/cv_basics.egg-info/SOURCES.txt'
+[2.503s] running build
+[2.503s] running build_py
+[2.504s] creating /home/ssfa/ros2_ws/build/cv_basics/build
+[2.504s] creating /home/ssfa/ros2_ws/build/cv_basics/build/lib
+[2.504s] creating /home/ssfa/ros2_ws/build/cv_basics/build/lib/cv_basics
+[2.504s] copying cv_basics/webcam_pub.py -> /home/ssfa/ros2_ws/build/cv_basics/build/lib/cv_basics
+[2.504s] copying cv_basics/webcam_sub.py -> /home/ssfa/ros2_ws/build/cv_basics/build/lib/cv_basics
+[2.504s] copying cv_basics/__init__.py -> /home/ssfa/ros2_ws/build/cv_basics/build/lib/cv_basics
+[2.504s] running install
+[2.504s] running install_lib
+[2.505s] creating /home/ssfa/ros2_ws/install/cv_basics/lib/python3.10/site-packages/cv_basics
+[2.505s] copying /home/ssfa/ros2_ws/build/cv_basics/build/lib/cv_basics/webcam_pub.py -> /home/ssfa/ros2_ws/install/cv_basics/lib/python3.10/site-packages/cv_basics
+[2.505s] copying /home/ssfa/ros2_ws/build/cv_basics/build/lib/cv_basics/webcam_sub.py -> /home/ssfa/ros2_ws/install/cv_basics/lib/python3.10/site-packages/cv_basics
+[2.506s] copying /home/ssfa/ros2_ws/build/cv_basics/build/lib/cv_basics/__init__.py -> /home/ssfa/ros2_ws/install/cv_basics/lib/python3.10/site-packages/cv_basics
+[2.507s] byte-compiling /home/ssfa/ros2_ws/install/cv_basics/lib/python3.10/site-packages/cv_basics/webcam_pub.py to webcam_pub.cpython-310.pyc
+[2.507s] byte-compiling /home/ssfa/ros2_ws/install/cv_basics/lib/python3.10/site-packages/cv_basics/webcam_sub.py to webcam_sub.cpython-310.pyc
+[2.508s] byte-compiling /home/ssfa/ros2_ws/install/cv_basics/lib/python3.10/site-packages/cv_basics/__init__.py to __init__.cpython-310.pyc
+[2.508s] running install_data
+[2.508s] copying resource/cv_basics -> /home/ssfa/ros2_ws/install/cv_basics/share/ament_index/resource_index/packages
+[2.508s] copying package.xml -> /home/ssfa/ros2_ws/install/cv_basics/share/cv_basics
+[2.508s] running install_egg_info
+[2.510s] Copying ../../build/cv_basics/cv_basics.egg-info to /home/ssfa/ros2_ws/install/cv_basics/lib/python3.10/site-packages/cv_basics-0.0.0-py3.10.egg-info
+[2.511s] running install_scripts
+[2.530s] Installing img_publisher script to /home/ssfa/ros2_ws/install/cv_basics/lib/cv_basics
+[2.530s] Installing img_subscriber script to /home/ssfa/ros2_ws/install/cv_basics/lib/cv_basics
+[2.530s] writing list of installed files to '/home/ssfa/ros2_ws/build/cv_basics/install.log'
