@@ -77,18 +77,49 @@ class ImageSubscriber(Node):
 
         detected_shapes = []
 
-        contours, _ = cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+        """
+        Process the image to detect colors and shapes.
+        """
+        # Convert image to grayscale
+        gray = cv2.cvtColor(cv_image, cv2.COLOR_BGR2GRAY)
+
+        # Apply Gaussian Blur
+        blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+
+        # Detect edges using Canny
+        edged = cv2.Canny(blurred, 50, 150)
+
+        # Find contours
+        contours, _ = cv2.findContours(edged, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
         for contour in contours:
-            approx = cv2.approxPolyDP(contour, 0.02 * cv2.arcLength(contour, True), True)
-            cv2.drawContours(cv_image, [approx], 0, (0, 255, 0), 5)
-            x = approx.ravel()[0]
-            y = approx.ravel()[1] - 10
+            # Approximate the contour
+            approx = cv2.approxPolyDP(contour, 0.04 * cv2.arcLength(contour, True), True)
+
+            # Determine the shape
+            shape = ""
             if len(approx) == 3:
-                detected_shapes.append("triangle")
+                shape = "Triangle"
+                detected_shapes.append(shape)
             elif len(approx) == 4:
-                detected_shapes.append("Ractangle")
+                (x, y, w, h) = cv2.boundingRect(approx)
+                aspect_ratio = w / float(h)
+                shape = "Square" if 0.95 <= aspect_ratio <= 1.05 else "Rectangle"
+                detected_shapes.append(shape)
+            elif len(approx) == 5:
+                shape = "Pentagon"
+                detected_shapes.append(shape)
             elif len(approx) > 12:
-                detected_shapes.append("Circle")
+                shape = "Circle"
+                detected_shapes.append(shape)
+
+            # Draw the contours and the shape name on the image
+            cv2.drawContours(cv_image, [approx], -1, (0, 255, 0), 2)
+            M = cv2.moments(contour)
+            if M["m00"] != 0:
+                cX = int(M["m10"] / M["m00"])
+                cY = int(M["m01"] / M["m00"])
+                cv2.putText(cv_image, shape, (cX, cY), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
 
         if len(detected_shapes) > 0:
             print(detected_shapes[0])

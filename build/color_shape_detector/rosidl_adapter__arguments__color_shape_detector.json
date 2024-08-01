@@ -1,0 +1,6 @@
+{
+  "package_name": "color_shape_detector",
+  "non_idl_tuples": [
+    "/home/ssfa/ros2_ws/src/color_shape_detector:srv/ProcessImage.srv"
+  ]
+}

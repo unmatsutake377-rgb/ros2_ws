@@ -1,0 +1,22 @@
+running egg_info
+writing ../../build/shape_detector/shape_detector.egg-info/PKG-INFO
+writing dependency_links to ../../build/shape_detector/shape_detector.egg-info/dependency_links.txt
+writing entry points to ../../build/shape_detector/shape_detector.egg-info/entry_points.txt
+writing requirements to ../../build/shape_detector/shape_detector.egg-info/requires.txt
+writing top-level names to ../../build/shape_detector/shape_detector.egg-info/top_level.txt
+reading manifest file '../../build/shape_detector/shape_detector.egg-info/SOURCES.txt'
+writing manifest file '../../build/shape_detector/shape_detector.egg-info/SOURCES.txt'
+running build
+running build_py
+copying shape_detector/shape_detector.py -> /home/ssfa/ros2_ws/build/shape_detector/build/lib/shape_detector
+running install
+running install_lib
+copying /home/ssfa/ros2_ws/build/shape_detector/build/lib/shape_detector/shape_detector.py -> /home/ssfa/ros2_ws/install/shape_detector/lib/python3.10/site-packages/shape_detector
+byte-compiling /home/ssfa/ros2_ws/install/shape_detector/lib/python3.10/site-packages/shape_detector/shape_detector.py to shape_detector.cpython-310.pyc
+running install_data
+running install_egg_info
+removing '/home/ssfa/ros2_ws/install/shape_detector/lib/python3.10/site-packages/shape_detector-0.0.0-py3.10.egg-info' (and everything under it)
+Copying ../../build/shape_detector/shape_detector.egg-info to /home/ssfa/ros2_ws/install/shape_detector/lib/python3.10/site-packages/shape_detector-0.0.0-py3.10.egg-info
+running install_scripts
+Installing shape_detector script to /home/ssfa/ros2_ws/install/shape_detector/lib/shape_detector
+writing list of installed files to '/home/ssfa/ros2_ws/build/shape_detector/install.log'

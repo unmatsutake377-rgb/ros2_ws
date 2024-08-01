@@ -44,5 +44,6 @@
         "/home/ssfa/ros2_ws/install/client_pkg/lib/python3.10/site-packages",
         "/opt/ros/humble/lib/python3.10/site-packages",
         "/opt/ros/humble/local/lib/python3.10/dist-packages"
-    ]
+    ],
+    "cmake.sourceDirectory": "/home/ssfa/ros2_ws/src/usb_cam"
 }

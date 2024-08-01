@@ -1,0 +1,53 @@
+[0.008s] Invoking command in '/home/ssfa/ros2_ws/build/color_shape_detector': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/home/ssfa/ros2_ws/install/yolov8_ros:/home/ssfa/ros2_ws/install/turtlebot3_teleop:/home/ssfa/ros2_ws/install/turtlebot3_example:/home/ssfa/ros2_ws/install/shape_detector:/home/ssfa/ros2_ws/install/services_pkg:/home/ssfa/ros2_ws/install/cv_basics:/home/ssfa/ros2_ws/install/color_shape_detector:/opt/ros/humble /usr/bin/cmake /home/ssfa/ros2_ws/src/color_shape_detector -DCMAKE_INSTALL_PREFIX=/home/ssfa/ros2_ws/install/color_shape_detector
+[0.063s] -- The C compiler identification is GNU 11.4.0
+[0.108s] -- The CXX compiler identification is GNU 11.4.0
+[0.114s] -- Detecting C compiler ABI info
+[0.160s] -- Detecting C compiler ABI info - done
+[0.164s] -- Check for working C compiler: /usr/bin/cc - skipped
+[0.164s] -- Detecting C compile features
+[0.165s] -- Detecting C compile features - done
+[0.167s] -- Detecting CXX compiler ABI info
+[0.215s] -- Detecting CXX compiler ABI info - done
+[0.222s] -- Check for working CXX compiler: /usr/bin/c++ - skipped
+[0.222s] -- Detecting CXX compile features
+[0.223s] -- Detecting CXX compile features - done
+[0.228s] -- Found ament_cmake: 1.3.9 (/opt/ros/humble/share/ament_cmake/cmake)
+[0.331s] -- Found Python3: /usr/bin/python3 (found version "3.10.12") found components: Interpreter 
+[0.406s] -- Found rclpy: 3.3.13 (/opt/ros/humble/share/rclpy/cmake)
+[0.408s] -- Found image_transport: 3.1.9 (/opt/ros/humble/share/image_transport/cmake)
+[0.456s] -- Found rosidl_generator_c: 3.1.5 (/opt/ros/humble/share/rosidl_generator_c/cmake)
+[0.461s] -- Found rosidl_adapter: 3.1.5 (/opt/ros/humble/share/rosidl_adapter/cmake)
+[0.469s] -- Found rosidl_generator_cpp: 3.1.5 (/opt/ros/humble/share/rosidl_generator_cpp/cmake)
+[0.481s] -- Using all available rosidl_typesupport_c: rosidl_typesupport_fastrtps_c;rosidl_typesupport_introspection_c
+[0.497s] -- Using all available rosidl_typesupport_cpp: rosidl_typesupport_fastrtps_cpp;rosidl_typesupport_introspection_cpp
+[0.550s] -- Found rmw_implementation_cmake: 6.1.2 (/opt/ros/humble/share/rmw_implementation_cmake/cmake)
+[0.554s] -- Found rmw_fastrtps_cpp: 6.2.6 (/opt/ros/humble/share/rmw_fastrtps_cpp/cmake)
+[0.623s] -- Found OpenSSL: /usr/lib/x86_64-linux-gnu/libcrypto.so (found version "3.0.2")  
+[0.642s] -- Found FastRTPS: /opt/ros/humble/include  
+[0.672s] -- Using RMW implementation 'rmw_fastrtps_cpp' as default
+[0.681s] -- Looking for pthread.h
+[0.727s] -- Looking for pthread.h - found
+[0.728s] -- Performing Test CMAKE_HAVE_LIBC_PTHREAD
+[0.772s] -- Performing Test CMAKE_HAVE_LIBC_PTHREAD - Success
+[0.773s] -- Found Threads: TRUE  
+[0.991s] -- Found cv_bridge: 3.2.1 (/opt/ros/humble/share/cv_bridge/cmake)
+[1.008s] [31mCMake Error at CMakeLists.txt:15 (find_package):
+[1.008s]   By not providing "Findopencv-python.cmake" in CMAKE_MODULE_PATH this
+[1.008s]   project has asked CMake to find a package configuration file provided by
+[1.008s]   "opencv-python", but CMake did not find one.
+[1.008s] 
+[1.008s]   Could not find a package configuration file provided by "opencv-python"
+[1.008s]   with any of the following names:
+[1.008s] 
+[1.008s]     opencv-pythonConfig.cmake
+[1.008s]     opencv-python-config.cmake
+[1.008s] 
+[1.008s]   Add the installation prefix of "opencv-python" to CMAKE_PREFIX_PATH or set
+[1.009s]   "opencv-python_DIR" to a directory containing one of the above files.  If
+[1.009s]   "opencv-python" provides a separate development package or SDK, be sure it
+[1.009s]   has been installed.
+[1.009s] 
+[1.009s] [0m
+[1.009s] -- Configuring incomplete, errors occurred!
+[1.009s] See also "/home/ssfa/ros2_ws/build/color_shape_detector/CMakeFiles/CMakeOutput.log".
+[1.015s] Invoked command in '/home/ssfa/ros2_ws/build/color_shape_detector' returned '1': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/home/ssfa/ros2_ws/install/yolov8_ros:/home/ssfa/ros2_ws/install/turtlebot3_teleop:/home/ssfa/ros2_ws/install/turtlebot3_example:/home/ssfa/ros2_ws/install/shape_detector:/home/ssfa/ros2_ws/install/services_pkg:/home/ssfa/ros2_ws/install/cv_basics:/home/ssfa/ros2_ws/install/color_shape_detector:/opt/ros/humble /usr/bin/cmake /home/ssfa/ros2_ws/src/color_shape_detector -DCMAKE_INSTALL_PREFIX=/home/ssfa/ros2_ws/install/color_shape_detector

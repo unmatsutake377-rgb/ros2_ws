@@ -1,0 +1,15 @@
+// generated from rosidl_adapter/resource/srv.idl.em
+// with input from color_shape_detector/srv/ProcessImage.srv
+// generated code does not contain a copyright notice
+
+
+module color_shape_detector {
+  module srv {
+    struct ProcessImage_Request {
+      int32 request;
+    };
+    struct ProcessImage_Response {
+      int32 response;
+    };
+  };
+};

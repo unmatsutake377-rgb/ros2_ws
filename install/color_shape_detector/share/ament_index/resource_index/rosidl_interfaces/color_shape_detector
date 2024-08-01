@@ -1,0 +1,4 @@
+srv/ProcessImage.idl
+srv/ProcessImage.srv
+srv/ProcessImage_Request.msg
+srv/ProcessImage_Response.msg
