@@ -1,0 +1,30 @@
+# ship_direction 파라미터 (하드코딩 금지, CLAUDE.md 1-4)
+/ship_direction:
+  ros__parameters:
+    # ---- 제어 루프 (스캔 유무와 무관하게 항상 발행) ----
+    control_period_sec: 0.1    # 10Hz. 작년엔 scan_cb 안에서만 발행 → LiDAR 끊기면 발행 0회(완전 침묵)
+    watchdog_period_sec: 0.1   # 페일세이프 평가(독립 타이머 — scan_cb 에서 평가하면 영원히 평가 안 됨)
+
+    # ---- 페일세이프 임계: /scan 이 묵은 시간(초) ----
+    #   L0 계산각도/100%  L1 계산각도/70%  L2 마지막각도freeze/50%  L3 STOP_HOLD/정지
+    #   ★ 각도를 덮어쓰는 건 L3 뿐. L1 에서 직진 강제 같은 걸 하면 회피 중 핸들을 놓는 셈이다.
+    failsafe_l1_sec: 0.7       # CLAUDE.md §5 warn
+    failsafe_l2_sec: 1.5       # ⚠️ 미지정이라 잠정값 — freeze 시작 지점
+    failsafe_l3_sec: 3.0       # CLAUDE.md §5 stop (LiDAR 10Hz 기준 30스캔 연속 누락)
+    failsafe_confirm_n: 3      # 올릴 땐 연속 N회 확인(지터 방지). 내릴 땐 즉시(자동 복구)
+
+    # ---- 회피 튜닝 ----
+    # ⚠️ 아래는 작년 코드 값 그대로다. CLAUDE.md §6 시뮬 최적값과 다르다:
+    #    clearance 0.15→0.25 / detection 1.8→3.0(게이트 2.0) / min_obstacle_cells 3→1 /
+    #    rear_obstacle_ignore_margin 은 §6 에서 '제거' 판정.
+    #    구조 변경(루프분리+페일세이프)과 값 튜닝을 섞으면 하네스가 효과를 귀속시킬 수 없으므로
+    #    값 변경은 별도 커밋에서 측정하며 진행한다.
+    base_detection_distance: 1.8
+    mode2_detection_distance: 1.8
+    half_width: 0.45
+    clearance: 0.15
+    border_margin: 2
+    max_spike_ratio: 0.01
+    rear_obstacle_ignore_margin: 1.0
+    min_obstacle_cells: 3
+    reverse_cooldown_sec: 3.0

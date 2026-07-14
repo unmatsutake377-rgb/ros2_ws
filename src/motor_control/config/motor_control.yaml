@@ -15,6 +15,13 @@
     spin_diff: 100          # SPIN 좌우 차동 크기 (방향은 5000/6000 이 결정)
     steer_invert: false     # ⚠️ 물 위 첫 시험서 확정 — 모터 배선 반대면 true. 조향·SPIN 함께 뒤집음
                             #    (CLAUDE.md §8 "조향 좌/우 부호 = 가장 흔한 사고". 지금 추측 금지)
+    # ---- 페일세이프 속도 상한 (/failsafe_level 구독, ship_direction 발행) ----
+    # /desired_angle 은 '각도'라 속도를 담을 수 없다 → 속도는 여기서 건다.
+    #   L0 100% / L1 70% / L2 50% / L3 는 STOP_HOLD 가 각도로 오므로 분기(1)이 처리.
+    # ⚠️ L1/L2 감속의 효과는 아직 미측정(3단계 전엔 발행이 0회라 잴 수 없었다).
+    #    효과 없으면 뺀다(TTC 때처럼). 끄려면 1.0 으로.
+    failsafe_l1_speed: 0.7
+    failsafe_l2_speed: 0.5
     # ---- 명령 워치독 ----
     cmd_timeout_sec: 3.5   # /desired_angle 이 이보다 끊기면 중립(1500/1500)
                            # 3.5>3.0: ship_direction 이 scan_cb 에서만 발행해 LiDAR 끊김 시

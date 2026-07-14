@@ -250,7 +250,7 @@ super().__init__('ship_turn')   # ← 복붙 실수. 파일은 ship_back 인데 
 | 토픽 | 타입 | 발행자 | 신설 단계 | 구독자 |
 |---|---|---|---|---|
 | `/health_ok` | `Bool` | `healthcheck` | **0단계** | (사람이 봄) |
-| `/failsafe_level` | `Int32` | `ship_direction` | **3단계** | `blackbox` |
+| `/failsafe_level` | `Int32` | `ship_direction` | **3단계** | `blackbox`, **`motor_control`**(속도 상한) |
 | `/gates_passed` | `Int32` | `ship_gate` | **5단계** | `blackbox` |
 | `/geofence_state` | `Float32MultiArray` | `north_goal_angle` | **6단계** | `ship_direction` |
 

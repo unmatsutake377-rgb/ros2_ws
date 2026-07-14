@@ -11,6 +11,7 @@ setup(
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
         ('share/' + package_name + '/launch', ['launch/ship_direction_launch.py']),  # 추가된 부분
+        ('share/' + package_name + '/config', ['config/ship_direction.yaml']),
     ],
     install_requires=['setuptools'],
     zip_safe=True,

@@ -43,6 +43,13 @@ class MotorController(Node):
         # ⚠️ 3단계에서 ship_direction 제어루프를 고정주기 타이머로 분리하면 0.5 로 조인다.
         self.cmd_timeout_sec = float(self.declare_parameter("cmd_timeout_sec", 3.5).value)
 
+        # ---- 페일세이프 속도 상한 (/failsafe_level 구독, ship_direction 이 발행) ----
+        # /desired_angle 은 '각도'라 속도를 담을 수 없다 → 속도는 여기서 건다.
+        #   L0 100% / L1 70% / L2 50% / L3 는 STOP_HOLD 가 각도로 오므로 분기 (1) 이 처리.
+        # ⚠️ L1/L2 감속의 효과는 아직 미측정(발행이 0회라 잴 수 없었다). 1.0 으로 두면 꺼진다.
+        self.fs_l1_speed = float(self.declare_parameter("failsafe_l1_speed", 0.7).value)
+        self.fs_l2_speed = float(self.declare_parameter("failsafe_l2_speed", 0.5).value)
+
         # ---- 조향/추력 파라미터 (배 2척 A/B 크기·추력 다름 → config, CLAUDE.md 1-4) ----
         self.base_pwm = int(self.declare_parameter("base_pwm", 1360).value)         # ⚠️ 실측 필요(순항 추력)
         self.max_diff = int(self.declare_parameter("max_diff", 100).value)          # ⚠️ 실측 필요(최대 차동)
@@ -61,12 +68,15 @@ class MotorController(Node):
         self.sub_angle = self.create_subscription(Float32, "/desired_angle", self.angle_callback, 2)
         self.sub_obstacle = self.create_subscription(
             Float32MultiArray, "/obstacle_distance_array", self.obstacle_callback, 10)
+        self.sub_failsafe = self.create_subscription(
+            Int32, "/failsafe_level", self.failsafe_callback, 10)
         self.pub_motor = self.create_publisher(Int32, "Motor_run", 2)
 
         # ---- 상태 ----
         self.desired_angle = None          # 부팅 중립: 첫 명령 전엔 None → 전진 안 함
         self.last_cmd_t = None             # /desired_angle 마지막 수신 시각(monotonic, CLAUDE.md 1-5)
         self.nearest_dist = float("inf")   # 전방 최근접 장애물 거리(없으면 inf → 감속 안 함)
+        self.failsafe_level = 0            # ship_direction 이 발행. 못 받으면 0(상한 없음)
 
         self.timer = self.create_timer(0.05, self.timer_callback)
 
@@ -91,6 +101,9 @@ class MotorController(Node):
         else:
             self.nearest_dist = float("inf")
 
+    def failsafe_callback(self, msg):
+        self.failsafe_level = int(msg.data)
+
     # ───────────────────────── 보조 ─────────────────────────
     def linear_diff(self, offset):
         off = max(-self.max_angle, min(self.max_angle, offset))
@@ -112,6 +125,14 @@ class MotorController(Node):
             return 1.0
         frac = max(0.0, d) / self.slow_start_dist
         return self.min_speed_ratio + (1.0 - self.min_speed_ratio) * frac
+
+    def failsafe_speed_cap(self):
+        """페일세이프 레벨 → 속도 상한. L3 는 STOP_HOLD 가 각도로 오므로 여기선 다루지 않는다."""
+        if self.failsafe_level >= 2:
+            return self.fs_l2_speed
+        if self.failsafe_level == 1:
+            return self.fs_l1_speed
+        return 1.0
 
     def apply_slow(self, pwm, ratio):
         """PWM 을 중립(1500) 쪽으로 ratio 만큼 당긴다.
@@ -184,10 +205,12 @@ class MotorController(Node):
             pwm_l = self.base_pwm
             slow_ok = True
 
-        # (감속 복구) '전진 명령'일 때만, 장애물 근접 시 중립 쪽으로 당겨 감속.
-        #   '전진 성분(pwm<1500)'이 아니라 '전진 명령' 기준 — 제자리 선회(3)는 다가가지 않으니
-        #   감속 대상이 아니다(전진 쪽만 깎이면 뒤로 밀리며 돈다). 후진 제외와 같은 이유.
-        ratio = self.speed_ratio()
+        # (감속) '전진 명령'일 때만. 두 가지 이유로 느려진다 — 더 보수적인 쪽(min)을 쓴다:
+        #   ① 장애물 근접 (speed_ratio)
+        #   ② 페일세이프 레벨 (failsafe_speed_cap) — 센서가 묵었으니 속도를 줄여 오차를 줄인다
+        # ★ 반드시 slow_ok 뒤에 둔다. SPIN(제자리 1400/1600)에 감속이 걸리면 전진 쪽만 깎여
+        #   배가 뒤로 밀리며 돈다(이미 겪은 버그). 후진·STOP 도 같은 이유로 제외.
+        ratio = min(self.speed_ratio(), self.failsafe_speed_cap())
         if slow_ok and ratio < 1.0:
             pwm_r = self.apply_slow(pwm_r, ratio)
             pwm_l = self.apply_slow(pwm_l, ratio)
