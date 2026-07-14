@@ -53,6 +53,18 @@ class ShipDirection(Node):
         마스크에서 지웠다 (17셀 → 0셀).
 
     [D] time.time() → time.monotonic() 전부 교체.
+
+    [E] 워치독이 /scan 과 /yaw_error 를 **둘 다** 감시한다 (센서별 dict, 가장 나쁜 센서가 레벨을 정함).
+        /scan 만 보면 IMU 사망을 놓친다. 1단계에서 만든 사슬은
+          IMU 사망 → ship_goal_angle 이 /yaw_error 를 끊는다 → ship_direction 이 감지해 정지
+        인데, 세 번째 화살표(침묵을 들을 귀)가 없으면 마지막 yaw_error 를 영원히 붙들고 조향한다.
+        (측정: IMU 사망 시 정지율 0%, 접촉 3회, 14.8m 계속 주행)
+        센서별로 첫 데이터를 받은 뒤에만 감시(ARMED) — 부팅 오발동 방지.
+
+    [F] angle_increment == 0 가드. min_index/max_index 계산에서 이 값으로 나눈다 →
+        LiDAR 가 이상 스캔을 보내면 ZeroDivisionError 로 노드가 통째로 죽는다
+        (작년 코드에도 방어가 없었다). 이상 스캔은 scan_callback 에서 버리고 즉시 정지.
+        하드 폴트라 확인 N회 없이 바로 레벨 2. 정상 스캔이 오면 스스로 풀린다.
     """
 
     def __init__(self):
@@ -116,7 +128,13 @@ class ShipDirection(Node):
         self.candidate_angle = CANDIDATE_INVALID
 
         self.latest_scan = None       # scan_cb 는 저장만 한다
-        self.last_scan_t = None       # monotonic. None = ARMED 전(스캔 한 번도 못 받음)
+        self.bad_scan = False         # angle_increment 이상 스캔 래치 (아래 [F])
+
+        # 센서별 마지막 수신 시각(monotonic). None = ARMED 전(그 센서는 아직 감시 안 함).
+        # ★ /scan 만 보면 안 된다. IMU 가 죽으면 ship_goal_angle 이 /yaw_error 를 끊는데,
+        #   그 침묵을 들을 귀가 없으면 마지막 yaw_error 를 영원히 붙들고 조향한다. (아래 [E])
+        self.last_seen = {'scan': None, 'yaw_error': None}
+
         self.last_reverse_time = time.monotonic()
 
         self.failsafe_level = 0
@@ -140,14 +158,30 @@ class ShipDirection(Node):
     # =====================================================
     def scan_callback(self, msg: LaserScan):
         """저장만. 계산·발행은 control_cb 가 고정 주기로 한다.
-        (작년엔 여기서 다 했다 → LiDAR 가 죽으면 콜백이 안 와서 아무도 발행하지 않았다)"""
+        (작년엔 여기서 다 했다 → LiDAR 가 죽으면 콜백이 안 와서 아무도 발행하지 않았다)
+
+        [F] angle_increment 가드: 0/음수/NaN 이면 min_index 계산에서 ZeroDivisionError 로
+        노드가 통째로 죽는다(작년 코드에도 방어가 없었다). 이상 스캔은 문 앞에서 버리고
+        bad_scan 을 세워 즉시 정지시킨다. 정상 스캔이 오면 스스로 풀린다."""
+        inc = math.degrees(msg.angle_increment)
+        if not math.isfinite(inc) or inc <= 0.0:
+            self.get_logger().error(
+                f"스캔 angle_increment 이상({msg.angle_increment}) → 이 스캔 폐기, 정지",
+                throttle_duration_sec=1.0,
+            )
+            with self.lock:
+                self.bad_scan = True
+            return
+
         with self.lock:
+            self.bad_scan = False
             self.latest_scan = msg
-            self.last_scan_t = time.monotonic()
+            self.last_seen['scan'] = time.monotonic()
 
     def yaw_error_callback(self, msg):
         with self.lock:
             self.yaw_error = (360.0 - msg.data) % 360.0
+            self.last_seen['yaw_error'] = time.monotonic()   # [E] IMU 체인 생존 신호
 
     def candidate_callback(self, msg):
         val = msg.data
@@ -180,41 +214,59 @@ class ShipDirection(Node):
     def watchdog_cb(self):
         """페일세이프를 독립 타이머로 평가한다.
         scan_cb 안에서 평가하면 LiDAR 가 완전히 죽었을 때 콜백이 아예 안 와서
-        페일세이프가 영원히 평가되지 않는다 (§5 에 기록된 실제 버그)."""
+        페일세이프가 영원히 평가되지 않는다 (§5 에 기록된 실제 버그).
+
+        [E] 감시 대상은 /scan 과 /yaw_error **둘 다**. 가장 나쁜 센서로 레벨을 정한다.
+            /scan 만 보면 IMU 사망을 놓친다: IMU 가 죽으면 ship_goal_angle 이 /yaw_error 를
+            끊어주는데(1단계 설계), 그 침묵을 들을 귀가 없으면 ship_direction 은 마지막
+            yaw_error 를 영원히 붙들고 조향한다. (측정: 정지율 0%, 접촉 3회, 14.8m 계속 주행)
+            센서별로 첫 데이터를 받은 뒤에만 감시(ARMED) — 부팅 오발동 방지."""
         now = time.monotonic()
         with self.lock:
-            last = self.last_scan_t
+            seen = dict(self.last_seen)
+            bad = self.bad_scan
 
-        if last is None:
-            # ARMED 전: 스캔을 한 번도 못 받음(부팅 중) → 발동 안 함 (부팅 오발동 방지)
-            level = 0
-            self._raise_count = 0
+        if bad:
+            # [F] 이상 스캔은 하드 폴트 — 지터가 아니므로 확인 N회 없이 즉시 정지
+            raw = 2
+            worst = 'scan(angle_increment 이상)'
         else:
-            age = now - last
-            if age > self.fs_stop_sec:
-                raw = 2      # 정지
-            elif age > self.fs_warn_sec:
-                raw = 1      # 경고(감속)
-            else:
-                raw = 0      # 정상
+            raw = 0
+            worst = None
+            for name, t in seen.items():
+                if t is None:
+                    continue          # ARMED 전 — 이 센서는 아직 감시하지 않는다
+                age = now - t
+                if age > self.fs_stop_sec:
+                    lvl = 2
+                elif age > self.fs_warn_sec:
+                    lvl = 1
+                else:
+                    lvl = 0
+                if lvl > raw:         # 가장 나쁜 센서가 레벨을 정한다
+                    raw, worst = lvl, f"{name}({age:.1f}s)"
 
-            level = self.failsafe_level
-            if raw > level:
-                # 올릴 땐 연속 N회 확인 — 순간 지터로 레벨 안 올림
-                self._raise_count += 1
-                if self._raise_count >= self.fs_confirm_n:
-                    level = raw
-                    self._raise_count = 0
-            elif raw < level:
-                # 자동 복구: 신선한 스캔이 왔다는 뜻 → 즉시 해제 (히스테리시스: 올릴 땐 느리게, 풀 땐 빠르게)
+        level = self.failsafe_level
+        if bad:
+            level = raw
+            self._raise_count = 0
+        elif raw > level:
+            # 올릴 땐 연속 N회 확인 — 순간 지터로 레벨 안 올림
+            self._raise_count += 1
+            if self._raise_count >= self.fs_confirm_n:
                 level = raw
                 self._raise_count = 0
-            else:
-                self._raise_count = 0
+        elif raw < level:
+            # 자동 복구: 센서가 돌아왔다는 뜻 → 즉시 해제 (올릴 땐 느리게, 풀 땐 빠르게)
+            level = raw
+            self._raise_count = 0
+        else:
+            self._raise_count = 0
 
         if level != self.failsafe_level:
             log = self.get_logger().warn if level > self.failsafe_level else self.get_logger().info
-            log(f"페일세이프 L{self.failsafe_level} → L{level}")
+            log(f"페일세이프 L{self.failsafe_level} → L{level}"
+                + (f"  (원인: {worst})" if worst else "  (복구)"))
 
         self.failsafe_level = level
         self.pub_failsafe.publish(Int32(data=int(level)))
@@ -227,13 +279,15 @@ class ShipDirection(Node):
 
         with self.lock:
             scan = self.latest_scan
+            bad = self.bad_scan
             wp4_enter_time = self.wp4_enter_time
             candidate_angle = self.candidate_angle
             yaw_error = self.yaw_error
             detection_distance = self.detection_distance
 
-        # ---- 레벨 2(정지): 각도를 STOP_HOLD 로 override. 각도를 덮어쓰는 건 여기뿐. ----
-        if level >= 2:
+        # ---- 레벨 2(정지) 또는 이상 스캔: STOP_HOLD 로 override. 각도를 덮어쓰는 건 여기뿐. ----
+        # bad 를 여기서도 보는 이유: 워치독 틱(0.1s)을 기다리지 않고 즉시 멈추기 위해서다.
+        if level >= 2 or bad:
             self.pub_obstacle_distance.publish(self._closest_obstacle(scan))
             self.pub_desired_angle.publish(Float32(data=STOP_HOLD))
             return
@@ -265,6 +319,11 @@ class ShipDirection(Node):
         angle_min = math.degrees(msg.angle_min)
         angle_increment_deg = math.degrees(msg.angle_increment)
         ranges = msg.ranges
+
+        # [F] 0 나눗셈 방어 (scan_callback 이 이미 걸러내지만, 여기도 막아둔다)
+        if not math.isfinite(angle_increment_deg) or angle_increment_deg <= 0.0:
+            obst.data = [float('inf'), float('nan')]
+            return obst
 
         min_index = int((0 - angle_min) / angle_increment_deg)
         max_index = int((160 - angle_min) / angle_increment_deg)
@@ -309,6 +368,11 @@ class ShipDirection(Node):
         angle_increment_deg = math.degrees(msg.angle_increment)
         angle_increment_rad = msg.angle_increment
         ranges = list(msg.ranges)
+
+        # [F] 0 나눗셈 방어 (scan_callback 이 이미 걸러내지만, 여기도 막아둔다)
+        if not math.isfinite(angle_increment_deg) or angle_increment_deg <= 0.0:
+            self.get_logger().error("angle_increment 이상 → 정지", throttle_duration_sec=1.0)
+            return STOP_HOLD, obst
 
         min_index = int((0 - angle_min) / angle_increment_deg)
         max_index = int((160 - angle_min) / angle_increment_deg)
