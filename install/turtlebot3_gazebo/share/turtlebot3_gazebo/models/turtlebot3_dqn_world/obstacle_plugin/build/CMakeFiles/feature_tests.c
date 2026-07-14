@@ -1,1 +1,0 @@
-/home/ssfa/ros2_ws/src/t3/turtlebot3_simulations/turtlebot3_gazebo/models/turtlebot3_dqn_world/obstacle_plugin/build/CMakeFiles/feature_tests.c

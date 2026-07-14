@@ -1,1 +1,0 @@
-/home/ssfa/ros2_ws/src/custom_interface_example/launch/example.launch.py

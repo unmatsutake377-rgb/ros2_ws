@@ -6,7 +6,23 @@
         "limitSymbolsToIncludedHeaders": false
       },
       "includePath": [
+        "/home/ssfa/ros2_ws/install/ublox_gps/include/**",
+        "/home/ssfa/ros2_ws/install/ublox_msgs/include/**",
+        "/home/ssfa/ros2_ws/install/ublox_serialization/include/**",
+        "/home/ssfa/ros2_ws/install/ssf_interfaces/include/**",
+        "/home/ssfa/ros2_ws/install/rtcm_msgs/include/**",
+        "/home/ssfa/ros2_ws/install/razor_imu_ros2/include/**",
+        "/home/ssfa/ros2_ws/install/nmea_msgs/include/**",
+        "/home/ssfa/ros2_ws/install/micro_ros_agent/include/**",
+        "/home/ssfa/ros2_ws/install/micro_ros_msgs/include/**",
         "/opt/ros/humble/include/**",
+        "/home/ssfa/ros2_ws/src/razor-imu-ros2/razor_imu_ros2/include/**",
+        "/home/ssfa/ros2_ws/src/rplidar_ros/include/**",
+        "/home/ssfa/ros2_ws/src/ssf_interfaces/include/**",
+        "/home/ssfa/ros2_ws/src/ublox/ublox_gps/include/**",
+        "/home/ssfa/ros2_ws/src/ublox/ublox_msgs/include/**",
+        "/home/ssfa/ros2_ws/src/ublox/ublox_serialization/include/**",
+        "/home/ssfa/ros2_ws/src/uros/micro-ROS-Agent/micro_ros_agent/include/**",
         "/usr/include/**"
       ],
       "name": "ROS",

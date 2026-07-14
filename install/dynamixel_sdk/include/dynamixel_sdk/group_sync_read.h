@@ -1,1 +1,0 @@
-/home/ssfa/ros2_ws/src/t3/DynamixelSDK/dynamixel_sdk/include/dynamixel_sdk/group_sync_read.h

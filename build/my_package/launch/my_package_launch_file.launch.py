@@ -1,1 +1,0 @@
-/home/ssfa/ros2_ws/src/my_package/launch/my_package_launch_file.launch.py

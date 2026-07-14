@@ -1,0 +1,24 @@
+# ROS2 build artifacts
+build/
+install/
+log/
+
+# Backup archives
+*.zip
+
+# macOS
+.DS_Store
+
+# Stray files (accidental shell redirects)
+imu_data_msg.linear_acceleration.x
+imu_data_msg.linear_acceleration.y
+imu_data_msg.linear_acceleration.z
+transformStamped.child_frame_id
+transformStamped.header.frame_id
+transformStamped.transform.translation.x
+transformStamped.transform.translation.y
+transformStamped.transform.translation.z
+
+# Python cache
+__pycache__/
+*.pyc

@@ -1,6 +1,0 @@
-setup.py
-color_shape_detector/__init__.py
-color_shape_detector.egg-info/PKG-INFO
-color_shape_detector.egg-info/SOURCES.txt
-color_shape_detector.egg-info/dependency_links.txt
-color_shape_detector.egg-info/top_level.txt

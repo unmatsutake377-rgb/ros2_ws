@@ -1,1 +1,0 @@
-/home/ssfa/ros2_ws/src/exercise_pkg/launch/exercise1.launch.py

@@ -1,6 +1,0 @@
-Invoking command in '/home/ssfa/ros2_ws/build/t3_action_msg': CMAKE_PREFIX_PATH=/opt/ros/humble /usr/bin/cmake /home/ssfa/ros2_ws/src/t3/t3_action_msg -DAMENT_CMAKE_SYMLINK_INSTALL=1 -DCMAKE_INSTALL_PREFIX=/home/ssfa/ros2_ws/install/t3_action_msg
-Invoked command in '/home/ssfa/ros2_ws/build/t3_action_msg' returned '0': CMAKE_PREFIX_PATH=/opt/ros/humble /usr/bin/cmake /home/ssfa/ros2_ws/src/t3/t3_action_msg -DAMENT_CMAKE_SYMLINK_INSTALL=1 -DCMAKE_INSTALL_PREFIX=/home/ssfa/ros2_ws/install/t3_action_msg
-Invoking command in '/home/ssfa/ros2_ws/build/t3_action_msg': CMAKE_PREFIX_PATH=/opt/ros/humble /usr/bin/cmake --build /home/ssfa/ros2_ws/build/t3_action_msg -- -j12 -l12
-Invoked command in '/home/ssfa/ros2_ws/build/t3_action_msg' returned '0': CMAKE_PREFIX_PATH=/opt/ros/humble /usr/bin/cmake --build /home/ssfa/ros2_ws/build/t3_action_msg -- -j12 -l12
-Invoking command in '/home/ssfa/ros2_ws/build/t3_action_msg': CMAKE_PREFIX_PATH=/opt/ros/humble /usr/bin/cmake --install /home/ssfa/ros2_ws/build/t3_action_msg
-Invoked command in '/home/ssfa/ros2_ws/build/t3_action_msg' returned '0': CMAKE_PREFIX_PATH=/opt/ros/humble /usr/bin/cmake --install /home/ssfa/ros2_ws/build/t3_action_msg

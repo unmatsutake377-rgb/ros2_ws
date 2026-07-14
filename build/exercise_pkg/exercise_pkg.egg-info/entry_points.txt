@@ -1,5 +1,0 @@
-[console_scripts]
-exercise1 = exercise_pkg.exercise1:main
-exercise2 = exercise_pkg.exercise2:main
-exercise3 = exercise_pkg.exercise3:main
-

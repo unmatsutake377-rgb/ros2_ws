@@ -1,1 +1,0 @@
-/home/ssfa/ros2_ws/src/publisher_pkg/launch/publisher_pkg_launch_file.launch.py

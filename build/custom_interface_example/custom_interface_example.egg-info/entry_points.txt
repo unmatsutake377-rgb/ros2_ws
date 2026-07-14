@@ -1,3 +1,0 @@
-[console_scripts]
-example = custom_interface_example.example:main
-

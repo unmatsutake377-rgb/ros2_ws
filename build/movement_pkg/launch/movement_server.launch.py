@@ -1,1 +1,0 @@
-/home/ssfa/ros2_ws/src/movement_pkg/launch/movement_server.launch.py

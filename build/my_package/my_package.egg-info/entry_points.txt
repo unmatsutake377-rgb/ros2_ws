@@ -1,3 +1,0 @@
-[console_scripts]
-simple_node = my_package.simple:main
-
