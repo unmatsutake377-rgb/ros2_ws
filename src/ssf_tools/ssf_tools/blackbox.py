@@ -14,6 +14,7 @@ blackbox — 비행기 블랙박스처럼, 배가 도는 동안 모든 핵심 �
 """
 
 import csv
+import math
 import os
 import time
 import datetime
@@ -123,8 +124,13 @@ class BlackBox(Node):
         self.latest["pwm_l"] = v % 10000
 
     def _cb_obstacle(self, msg):
-        vals = [d for d in msg.data if d is not None and d > 0.0]
-        self.latest["obstacle_min_dist"] = min(vals) if vals else None
+        # ship_direction 계약: data = [closest_distance(m), closest_angle(deg)] 또는 [inf, nan].
+        # data[1] 은 '각도'지 거리가 아니다 → min() 을 쓰면 각도를 거리로 오기록한다(버그).
+        # 거리는 data[0] 하나뿐. inf/nan(장애물 없음)은 빈칸으로.
+        if len(msg.data) >= 1 and math.isfinite(msg.data[0]):
+            self.latest["obstacle_min_dist"] = msg.data[0]
+        else:
+            self.latest["obstacle_min_dist"] = None
 
     def _cb_failsafe(self, msg): self.latest["failsafe_level"] = msg.data
     def _cb_gate_count(self, msg): self.latest["gate_pass_count"] = msg.data
