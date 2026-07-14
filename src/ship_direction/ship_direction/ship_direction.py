@@ -30,21 +30,27 @@ class ShipDirection(Node):
               → ship_direction 이 살아있는 한 /desired_angle 은 흐른다.
                 침묵 = ship_direction 사망 → motor_control 이 cmd_timeout 으로 잡는다(0.5s 로 조일 수 있게 됨).
 
-    [B] 페일세이프(독립 watchdog 타이머). scan 이 묵은 정도로 레벨을 매긴다.
-        L0 : 계산한 각도        / 속도 100%
-        L1 : 계산한 각도 그대로 / 속도 70%    ← 각도 안 건드림
-        L2 : 마지막 각도 freeze / 속도 50%
-        L3 : STOP_HOLD override / 정지        ← 각도를 덮어쓰는 건 여기뿐
+    [B] 페일세이프(독립 watchdog 타이머). scan 이 묵은 정도로 레벨을 매긴다. **3상태·2임계.**
+        0 정상        : 계산한 각도        / 속도 100%
+        1 경고(0.7s)  : 계산한 각도 그대로 / 속도 70%    ← 각도 안 건드림
+        2 정지(3.0s)  : STOP_HOLD override / 정지        ← 각도를 덮어쓰는 건 여기뿐
 
-        ★ L1 에서 '직진 강제' 같은 걸 하면 회피 기동 중간에 핸들을 놓는 셈이다.
+        ★ 임계가 적을수록 틀릴 곳이 적다. 중간에 'freeze' 레벨을 뒀다가 뺐다 —
+          새 스캔이 없는데 재계산하면 같은 스캔으로 같은 답이 나온다.
+          즉 '재계산'과 'freeze'는 애초에 같은 동작이라 레벨을 나눌 이유가 없었다.
+        ★ 경고에서 '직진 강제' 같은 걸 하면 회피 기동 중간에 핸들을 놓는 셈이다.
           부표를 피하던 중 직진하면 그대로 박는다. 0.7초 묵었다고 조향을 포기하는 건 과잉반응이다.
           묵은 데이터라도 없는 것보다 낫다 — 대신 속도를 줄여 오차를 줄인다.
 
-        속도는 /desired_angle(각도)에 담을 수 없다 → **motor_control 이 /failsafe_level 을 구독해
-        속도 상한을 건다.** (L3 는 STOP_HOLD 가 각도로 오므로 motor_control 분기 (1) 이 이미 처리)
+        속도는 /desired_angle(각도)에 담을 수 없다 → motor_control 이 /failsafe_level 을 구독해
+        속도 상한을 건다. (레벨 2 는 STOP_HOLD 가 각도로 오므로 motor_control 분기 (1) 이 처리)
 
         오탐 방지(CLAUDE.md §5): ARMED(스캔 한 번은 받아야 평가 시작) + 올릴 땐 연속 N회 확인 +
         내릴 땐 즉시(자동 복구) + time.monotonic().
+
+    [C] rear_obstacle_ignore_margin 제거 — 튜닝값이 아니라 증명된 결함이다.
+        물보라 반사 0.3m 하나가 front_min_distance 를 끌어내려, 실제 1.6m 부표를 통째로
+        마스크에서 지웠다 (17셀 → 0셀).
 
     [D] time.time() → time.monotonic() 전부 교체.
     """
@@ -60,10 +66,9 @@ class ShipDirection(Node):
         self.control_period = float(self.declare_parameter('control_period_sec', 0.1).value)    # 10Hz
         self.watchdog_period = float(self.declare_parameter('watchdog_period_sec', 0.1).value)
 
-        # 페일세이프 임계(스캔이 묵은 시간). CLAUDE.md §5: warn 0.7 / stop 3.0
-        self.fs_l1_sec = float(self.declare_parameter('failsafe_l1_sec', 0.7).value)
-        self.fs_l2_sec = float(self.declare_parameter('failsafe_l2_sec', 1.5).value)
-        self.fs_l3_sec = float(self.declare_parameter('failsafe_l3_sec', 3.0).value)
+        # 페일세이프 임계(스캔이 묵은 시간). 3상태·2임계 (CLAUDE.md §5)
+        self.fs_warn_sec = float(self.declare_parameter('failsafe_warn_sec', 0.7).value)   # → 레벨 1
+        self.fs_stop_sec = float(self.declare_parameter('failsafe_stop_sec', 3.0).value)   # → 레벨 2
         self.fs_confirm_n = int(self.declare_parameter('failsafe_confirm_n', 3).value)
 
         # 회피 튜닝 — 값은 작년 그대로 유지(§6 시뮬값 반영은 별도 커밋에서 측정하며 진행)
@@ -73,8 +78,7 @@ class ShipDirection(Node):
         self.clearance = float(self.declare_parameter('clearance', 0.15).value)
         self.border_margin = int(self.declare_parameter('border_margin', 2).value)
         self.max_spike_ratio = float(self.declare_parameter('max_spike_ratio', 0.01).value)
-        self.rear_obstacle_ignore_margin = float(
-            self.declare_parameter('rear_obstacle_ignore_margin', 1.0).value)
+        # ※ rear_obstacle_ignore_margin 은 제거했다 (파라미터 자체를 없앰). 위 [C] 참고.
         self.min_obstacle_cells = int(self.declare_parameter('min_obstacle_cells', 3).value)
         self.reverse_cooldown = float(self.declare_parameter('reverse_cooldown_sec', 3.0).value)
 
@@ -109,7 +113,6 @@ class ShipDirection(Node):
 
         self.failsafe_level = 0
         self._raise_count = 0
-        self.last_desired_angle = None   # L2 freeze 용
 
         # ----------------------
         #  타이머: 제어 / 워치독 (서로 독립)
@@ -120,8 +123,8 @@ class ShipDirection(Node):
         self.get_logger().info(
             f"ship_direction 시작: 제어 {1.0 / self.control_period:.0f}Hz (스캔 유무 무관 항상 발행), "
             f"워치독 {1.0 / self.watchdog_period:.0f}Hz.\n"
-            f"   페일세이프 L1={self.fs_l1_sec}s L2={self.fs_l2_sec}s L3={self.fs_l3_sec}s, "
-            f"확인 {self.fs_confirm_n}회. 각도 override 는 L3 뿐."
+            f"   페일세이프 경고={self.fs_warn_sec}s(레벨1) 정지={self.fs_stop_sec}s(레벨2), "
+            f"확인 {self.fs_confirm_n}회. 각도 override 는 레벨2 뿐."
         )
 
     # =====================================================
@@ -177,14 +180,12 @@ class ShipDirection(Node):
             self._raise_count = 0
         else:
             age = now - last
-            if age > self.fs_l3_sec:
-                raw = 3
-            elif age > self.fs_l2_sec:
-                raw = 2
-            elif age > self.fs_l1_sec:
-                raw = 1
+            if age > self.fs_stop_sec:
+                raw = 2      # 정지
+            elif age > self.fs_warn_sec:
+                raw = 1      # 경고(감속)
             else:
-                raw = 0
+                raw = 0      # 정상
 
             level = self.failsafe_level
             if raw > level:
@@ -220,8 +221,8 @@ class ShipDirection(Node):
             yaw_error = self.yaw_error
             detection_distance = self.detection_distance
 
-        # ---- L3: 각도를 STOP_HOLD 로 override. 각도를 덮어쓰는 건 여기뿐. ----
-        if level >= 3:
+        # ---- 레벨 2(정지): 각도를 STOP_HOLD 로 override. 각도를 덮어쓰는 건 여기뿐. ----
+        if level >= 2:
             self.pub_obstacle_distance.publish(self._closest_obstacle(scan))
             self.pub_desired_angle.publish(Float32(data=STOP_HOLD))
             return
@@ -231,16 +232,11 @@ class ShipDirection(Node):
         if scan is None:
             return
 
+        # ---- 레벨 0·1: 계산한 각도를 그대로 낸다. ----
+        # 레벨 1(경고)에서도 각도는 안 건드린다. 속도만 줄인다
+        # → motor_control 이 /failsafe_level 을 보고 상한(70%)을 건다.
         angle, obst = self._compute(scan, wp4_enter_time, candidate_angle,
                                     yaw_error, detection_distance)
-
-        # ---- L2: 마지막 각도 freeze (묵은 데이터로 새 조향을 만들지 않음) ----
-        if level >= 2 and self.last_desired_angle is not None:
-            angle = self.last_desired_angle
-        else:
-            self.last_desired_angle = angle
-
-        # ---- L1: 각도 그대로. 속도만 줄인다 → motor_control 이 /failsafe_level 보고 상한을 건다. ----
 
         self.pub_obstacle_distance.publish(obst)
         self.pub_desired_angle.publish(Float32(data=angle))
@@ -309,24 +305,22 @@ class ShipDirection(Node):
 
         angle_array = []
         distance_array = []
-        front_min_distance = float('inf')
 
         for i, r in enumerate(sub_ranges):
             angle_array.append(angle_min + (min_index + i) * angle_increment_deg)
             distance_array.append(r)
-            if not math.isinf(r) and not math.isnan(r):
-                front_min_distance = min(front_min_distance, r)
 
         # ---- Binary obstacle mask ----
+        # ※ rear_obstacle_ignore_margin 제거됨. 작년엔 여기서
+        #      if abs(r - front_min_distance) > rear_obstacle_ignore_margin: binary.append(0)
+        #    로 '최근접점에서 먼 셀'을 지웠는데, 물보라 반사 0.3m 하나가 front_min_distance 를
+        #    끌어내리면 실제 1.6m 부표가 통째로 지워졌다 (17셀 → 0셀). 튜닝값이 아니라 결함이었다.
         binary = []
         for r in distance_array:
             if math.isinf(r) or math.isnan(r):
                 binary.append(0)
             elif r < detection_distance:
-                if abs(r - front_min_distance) > self.rear_obstacle_ignore_margin:
-                    binary.append(0)
-                else:
-                    binary.append(1)
+                binary.append(1)
             else:
                 binary.append(0)
 

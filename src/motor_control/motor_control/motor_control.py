@@ -45,10 +45,9 @@ class MotorController(Node):
 
         # ---- 페일세이프 속도 상한 (/failsafe_level 구독, ship_direction 이 발행) ----
         # /desired_angle 은 '각도'라 속도를 담을 수 없다 → 속도는 여기서 건다.
-        #   L0 100% / L1 70% / L2 50% / L3 는 STOP_HOLD 가 각도로 오므로 분기 (1) 이 처리.
-        # ⚠️ L1/L2 감속의 효과는 아직 미측정(발행이 0회라 잴 수 없었다). 1.0 으로 두면 꺼진다.
+        #   레벨0 100% / 레벨1(경고) 70% / 레벨2(정지)는 STOP_HOLD 가 각도로 오므로 분기 (1) 이 처리.
+        # ⚠️ 경고 감속의 효과는 아직 미측정. 1.0 으로 두면 꺼진다(효과 없으면 뺀다, TTC 때처럼).
         self.fs_l1_speed = float(self.declare_parameter("failsafe_l1_speed", 0.7).value)
-        self.fs_l2_speed = float(self.declare_parameter("failsafe_l2_speed", 0.5).value)
 
         # ---- 조향/추력 파라미터 (배 2척 A/B 크기·추력 다름 → config, CLAUDE.md 1-4) ----
         self.base_pwm = int(self.declare_parameter("base_pwm", 1360).value)         # ⚠️ 실측 필요(순항 추력)
@@ -127,9 +126,8 @@ class MotorController(Node):
         return self.min_speed_ratio + (1.0 - self.min_speed_ratio) * frac
 
     def failsafe_speed_cap(self):
-        """페일세이프 레벨 → 속도 상한. L3 는 STOP_HOLD 가 각도로 오므로 여기선 다루지 않는다."""
-        if self.failsafe_level >= 2:
-            return self.fs_l2_speed
+        """페일세이프 레벨 → 속도 상한.
+        레벨2(정지)는 ship_direction 이 STOP_HOLD 를 각도로 보내므로 분기 (1) 이 처리한다."""
         if self.failsafe_level == 1:
             return self.fs_l1_speed
         return 1.0
