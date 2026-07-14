@@ -23,7 +23,6 @@ setup(
     entry_points={
         'console_scripts': [
             'ship_goal_angle_node = ship_goal_angle.ship_goal_angle:main',  # ship_goal_angle_node entry point
-            'ship_direction_node = ship_goal_angle.ship_direction:main',    # ship_direction_node entry point
         ],
     },
 )

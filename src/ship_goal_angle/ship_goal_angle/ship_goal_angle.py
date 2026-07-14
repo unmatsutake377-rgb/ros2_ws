@@ -19,7 +19,8 @@ class ShipGoalAngle(Node):
       [1] 2Hz → period_sec(기본 0.05=20Hz). 작년엔 yaw_error 만 느려 제어 체인 병목.
       [2] current_yaw/goal_yaw 를 0.0 이 아니라 None 으로 시작. 둘 다 도착 전엔 발행 안 함
           (부팅 직후 yaw_error=0.0 을 발행해 ship_direction 이 '완벽 정렬, 직진' 오인하던 버그).
-      [3] IMU 가 stale 하면 발행 중단 (아래 참고).
+      [3] 입력이 stale 하면 발행 중단 (아래 참고). IMU 와 목표각을 각각 다른 한계로 감시:
+          IMU 는 stale_sec(0.5s), 목표각은 goal_stale_sec(2.0s=발행주기 4배).
     토픽/타입은 그대로: /imu/yaw(Float64), /north_goal_angle_tp(Float32) → /yaw_error(Float32).
     """
 
@@ -27,8 +28,13 @@ class ShipGoalAngle(Node):
         super().__init__('ship_goal_angle')
 
         # ---- 파라미터 (config/ship_goal_angle.yaml) ----
-        self.period_sec = float(self.declare_parameter('period_sec', 0.05).value)  # [1] 20Hz
-        self.stale_sec = float(self.declare_parameter('stale_sec', 0.5).value)     # [3] IMU 신선도 한계
+        self.period_sec = float(self.declare_parameter('period_sec', 0.05).value)      # [1] 20Hz
+        self.stale_sec = float(self.declare_parameter('stale_sec', 0.5).value)         # [3] IMU 신선도 한계
+        # [3b] 목표각(/north_goal_angle_tp) 신선도 한계. 발행 주기 0.5s 의 4배.
+        #      IMU 처럼 0.5s 로 걸면 2Hz 발행자라 거짓 정지가 나므로 넉넉히.
+        #      north_goal_angle 이 통째로 죽으면 목표각이 얼어붙어 배가 고정 방위로 영원히
+        #      직진(경기장 이탈)한다 → 이 값으로 '진짜 죽음' 을 잡는다.
+        self.goal_stale_sec = float(self.declare_parameter('goal_stale_sec', 2.0).value)
 
         qos = QoSProfile(depth=2, reliability=ReliabilityPolicy.RELIABLE)
 
@@ -48,8 +54,9 @@ class ShipGoalAngle(Node):
 
         self.get_logger().info(
             f"ship_goal_angle 시작: {1.0 / self.period_sec:.0f}Hz "
-            f"(period={self.period_sec}s), stale={self.stale_sec}s.\n"
-            f"   IMU 가 stale 하면 /yaw_error 발행을 멈춘다(설계) → ship_direction 이 감속/정지."
+            f"(period={self.period_sec}s), IMU stale={self.stale_sec}s, "
+            f"목표각 stale={self.goal_stale_sec}s.\n"
+            f"   입력이 stale 하면 /yaw_error 발행을 멈춘다(설계) → ship_direction 이 감속/정지."
         )
 
     # ───────────────────────── 콜백 ─────────────────────────
@@ -74,15 +81,27 @@ class ShipGoalAngle(Node):
         if self.current_yaw is None or self.goal_yaw is None:
             return
 
-        # [3] IMU 가 stale 하면 발행을 멈춘다.
-        #     마지막 값으로 계속 발행하면 IMU 가 죽어도 ship_direction 이 살아있다고 착각한다
+        # [3] 입력이 stale 하면 발행을 멈춘다.
+        #     마지막 값으로 계속 발행하면 소스가 죽어도 ship_direction 이 살아있다고 착각한다
         #     (페일세이프가 눈이 먼다). 멈추면 ship_direction 이 /yaw_error 두절을 감지해 감속/정지.
-        #     stale 은 IMU 에만 건다: 목표각(/north_goal_angle_tp)은 2Hz 라 0.5s 한계에 걸면
-        #     매 주기 경계에서 거짓 정지가 난다(팀 최우선 우려). IMU 가 [3]의 생존 신호원이다.
+        #     IMU 와 목표각은 발행 주기가 달라 stale 한계를 따로 둔다:
+        #       - IMU(/imu/yaw)          : 빠른 센서 → stale_sec(기본 0.5s)
+        #       - 목표각(/north_goal_angle_tp): 2Hz(0.5s) 발행 → goal_stale_sec(기본 2.0s=4배).
+        #         짧게 걸면 매 주기 경계에서 거짓 정지가 난다(팀 최우선 우려). 넉넉히 걸어
+        #         north_goal_angle 이 '통째로 죽은' 경우만 잡는다(목표각 얼어붙어 고정 방위 직진 → 이탈).
         imu_age = now - self.last_yaw_t
         if imu_age > self.stale_sec:
             self.get_logger().warn(
                 f"IMU stale ({imu_age:.2f}s > {self.stale_sec}s) → /yaw_error 발행 중단",
+                throttle_duration_sec=1.0,
+            )
+            return
+
+        goal_age = now - self.last_goal_t
+        if goal_age > self.goal_stale_sec:
+            self.get_logger().warn(
+                f"목표각 stale ({goal_age:.2f}s > {self.goal_stale_sec}s) → /yaw_error 발행 중단 "
+                f"(north_goal_angle 두절 의심)",
                 throttle_duration_sec=1.0,
             )
             return

@@ -5,3 +5,6 @@
                         #     (LiDAR/ship_direction 은 10Hz 인데 yaw_error 만 2Hz → 최대 0.5s 묵은 방위)
     stale_sec: 0.5      # [3] IMU(/imu/yaw) 입력이 이보다 묵으면 /yaw_error 발행을 멈춘다
                         #     → ship_direction 이 두절을 감지해 감속/정지 (IMU 실명 방지)
+    goal_stale_sec: 2.0 # [3b] 목표각(/north_goal_angle_tp) 신선도 한계. 발행주기 0.5s 의 4배.
+                        #      north_goal_angle 이 죽으면 목표각이 얼어붙어 고정 방위로 직진→이탈.
+                        #      0.5s 로 걸면 2Hz 발행자라 거짓 정지. 2.0s 면 거짓정지 없이 진짜 죽음만 잡음
