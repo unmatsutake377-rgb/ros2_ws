@@ -78,6 +78,12 @@ class NorthGoalAngle(Node):
         # 구독자 0 경고를 시작할 시각
         self.geofence_check_after_sec = float(
             self.declare_parameter('geofence_check_after_sec', 5.0).value)
+        # 🚨 IMU 신선도. geofence 상대방위는 /imu/yaw 로 계산하므로 IMU 에 의존한다.
+        #    IMU 가 죽으면 yaw 가 얼어붙고 → 경계 방위가 엉뚱해지고 → ship_direction 이
+        #    '없는 벽'을 칠한다 → 배가 갇힌다.
+        #    → 묵으면 geofence 도 [inf, nan] 을 낸다. (1단계 ship_goal_angle 과 같은 원칙:
+        #      **모르면 입을 다문다.** 틀린 값을 내느니 안 내는 게 낫다.)
+        self.imu_stale_sec = float(self.declare_parameter('imu_stale_sec', 0.5).value)
 
         # ---- 발행 (토픽 이름 불변 + /geofence_state 신규, CLAUDE.md 3-9) ----
         self.pub_dist = self.create_publisher(Float32, '/goal_distance', qos)
@@ -95,6 +101,7 @@ class NorthGoalAngle(Node):
         self.lat, self.lon = 0.0, 0.0
         self.have_fix = False
         self.yaw = None
+        self.last_yaw_t = None          # /imu/yaw 마지막 수신 (monotonic)
         self.wp_idx = 0
         self.t_start = None
         self.wp_enter_time = None
@@ -116,6 +123,7 @@ class NorthGoalAngle(Node):
 
     def yaw_cb(self, msg):
         self.yaw = float(msg.data)
+        self.last_yaw_t = time.monotonic()
 
     # ───────────────────────── Geofence ─────────────────────────
     def _local_xy(self, lat, lon):
@@ -154,9 +162,18 @@ class NorthGoalAngle(Node):
         if best_d > self.geofence_report_dist_m:
             return None                              # 멀다 → [inf, nan]
 
-        if self.yaw is None:
+        # 🚨 IMU 신선도 검사 — 모르면 입을 다문다.
+        #    yaw 가 얼어붙은 채로 상대방위를 내면 ship_direction 이 '없는 벽'을 칠해 배가 갇힌다.
+        if self.yaw is None or self.last_yaw_t is None:
             self.get_logger().warn(
-                "/imu/yaw 없음 → 경계 상대방위를 계산할 수 없다", throttle_duration_sec=5.0)
+                "/imu/yaw 없음 → geofence 침묵([inf,nan])", throttle_duration_sec=5.0)
+            return None
+        yaw_age = time.monotonic() - self.last_yaw_t
+        if yaw_age > self.imu_stale_sec:
+            self.get_logger().warn(
+                f"/imu/yaw stale ({yaw_age:.2f}s > {self.imu_stale_sec}s) → geofence 침묵"
+                f"([inf,nan]). 틀린 경계 방위로 '없는 벽'을 칠하느니 안 내는 게 낫다.",
+                throttle_duration_sec=2.0)
             return None
 
         east, north = best_p

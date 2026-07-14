@@ -9,6 +9,10 @@
     geofence_polygon: []
     geofence_report_dist_m: 10.0   # 이보다 멀면 [inf, nan] (가까울 때만 의미가 있다)
     geofence_check_after_sec: 5.0  # 부팅 후 이 시간이 지나면 구독자 0 검사를 시작한다
+    imu_stale_sec: 0.5             # 🚨 /imu/yaw 가 이보다 묵으면 geofence 도 [inf,nan] 을 낸다.
+                                   # 경계 상대방위는 yaw 로 계산하므로 IMU 에 의존한다. yaw 가
+                                   # 얼어붙으면 방위가 엉뚱해지고 → ship_direction 이 '없는 벽'을
+                                   # 칠해 배가 갇힌다. 모르면 입을 다문다(1단계와 같은 원칙).
 
     # 🚨 /geofence_state 는 6a 에서 '발행만' 한다. 구독자(ship_direction)는 6a-2 에서 붙인다.
     #    발행자만 있는 토픽은 무해하지만, '넣었다'고 믿고 잊으면 도킹이 1년간 침묵한 것과

@@ -80,6 +80,16 @@ class ShipDirection(Node):
         ★ 켤 때는 반드시 dilate 전, 원본 마스크에 건다
           (팽창 후에 걸면 진짜 부표의 팽창 영역까지 표가 갈려 부표가 얇아진다).
 
+    [H] Geofence (6a-2). 경기장 밖으로 나가면 실격인데 방어가 0 이었다.
+        /geofence_state = [경계까지 거리(m), 경계 상대방위(deg)] 를 구독해,
+        경계가 geofence_margin_m(2.0) 안이면 그 방위 ±half_block(40°) 을 이진 마스크에
+        1(장애물)로 칠한다. → **기존 갭-팔로잉이 알아서 피한다.**
+        ★ 별도 상태기계도 새 제어기도 만들지 않는다. 경계선을 그냥 '벽'으로 취급하는 것이다.
+        ★ dilate '전'에 칠한다 → 팽창이 배 폭만큼 여유를 더해준다.
+        ★ [inf,nan]/stale 이면 아무것도 안 한다 — 묵은 '없는 벽'은 배를 가둔다.
+        ⚠️ 코너 함정: 모서리에서 두 경계가 동시에 잡히면 80°+80° 가 막혀 갈 곳이 없어질 수 있다.
+           half_block 을 파라미터로 뺀 이유다. 미션 시뮬로 확인 필요.
+
     ※ 판정 로직(SensorWatch, TemporalVote)은 **ROS 비의존 모듈** ship_direction/failsafe.py 에 있다.
       워치독을 노드 안에 인라인하면 단위 테스트가 불가능해진다. rclpy 없이 임포트 가능:
           from ship_direction.failsafe import SensorWatch, TemporalVote   # ← ROS 불필요(권장)
@@ -101,6 +111,16 @@ class ShipDirection(Node):
         self.fs_warn_sec = float(self.declare_parameter('failsafe_warn_sec', 0.7).value)   # → 레벨 1
         self.fs_stop_sec = float(self.declare_parameter('failsafe_stop_sec', 3.0).value)   # → 레벨 2
         self.fs_confirm_n = int(self.declare_parameter('failsafe_confirm_n', 3).value)
+
+        # ---- Geofence (경계 이탈 = 실격). 6a-2 ----
+        # 별도 상태기계/제어기를 만들지 않는다. 경계를 그냥 '벽'으로 취급해 이진 마스크에 칠하면
+        # 기존 갭-팔로잉이 알아서 피한다.
+        self.geofence_margin_m = float(self.declare_parameter('geofence_margin_m', 2.0).value)
+        self.geofence_half_block_deg = float(
+            self.declare_parameter('geofence_half_block_deg', 40.0).value)
+        # 🚨 geofence 가 묵으면 칠하지 않는다. 묵은 '없는 벽'은 배를 가둔다.
+        #    (north_goal_angle 이 0.5s 주기라 4배 여유)
+        self.geofence_stale_sec = float(self.declare_parameter('geofence_stale_sec', 2.0).value)
 
         # 시간 투표 필터 — **기본 OFF(frames=1)**. 시드 20개로 재보니 효과가 없었다(아래 [G]).
         # 무해하지만 무익하다. 실제 물보라의 시간 특성이 시뮬과 다를 수 있으니 코드는 남겨두고
@@ -136,6 +156,7 @@ class ShipDirection(Node):
         self.create_subscription(Float32, '/yaw_error', self.yaw_error_callback, 10)
         self.create_subscription(Float32, '/candidate_angle', self.candidate_callback, 10)
         self.create_subscription(Int32, '/wp_mode', self.wp_mode_cb, 10)
+        self.create_subscription(Float32MultiArray, '/geofence_state', self.geofence_cb, 10)
 
         # ----------------------
         #       Publishers  (토픽/타입 불변 + /failsafe_level 신규, CLAUDE.md 3-9)
@@ -154,6 +175,10 @@ class ShipDirection(Node):
 
         self.latest_scan = None       # scan_cb 는 저장만 한다
         self.last_reverse_time = time.monotonic()
+
+        # geofence: (거리 m, 상대방위 deg) 또는 None. north 가 [inf,nan] 을 내면 None.
+        self.geofence = None
+        self.last_geofence_t = None
 
         # 페일세이프 감시 — /scan 과 /yaw_error 를 둘 다 본다.
         # ★ /scan 만 보면 IMU 사망을 놓친다. IMU 가 죽으면 ship_goal_angle 이 /yaw_error 를
@@ -213,6 +238,16 @@ class ShipDirection(Node):
         with self.lock:
             self.yaw_error = (360.0 - msg.data) % 360.0
             self.watch.feed('yaw_error', time.monotonic())   # [E] IMU 체인 생존 신호
+
+    def geofence_cb(self, msg):
+        """/geofence_state = [경계까지 거리(m), 경계 상대방위(deg)]. 멀거나 모르면 [inf, nan].
+        north_goal_angle 이 '모르면 입을 다무는' 계약이라, [inf,nan] = 칠할 게 없다는 뜻이다."""
+        with self.lock:
+            if len(msg.data) >= 2 and math.isfinite(msg.data[0]) and math.isfinite(msg.data[1]):
+                self.geofence = (float(msg.data[0]), float(msg.data[1]))
+            else:
+                self.geofence = None
+            self.last_geofence_t = time.monotonic()
 
     def candidate_callback(self, msg):
         val = msg.data
@@ -340,6 +375,51 @@ class ShipDirection(Node):
                      if not math.isinf(closest_distance) else [float('inf'), float('nan')])
         return obst
 
+    def _paint_geofence(self, binary, angle_array):
+        """경계가 margin 안이면 그 방위 ±half_block 을 마스크에 1(장애물)로 칠한다.
+
+        별도의 '경계 복귀 로직'을 만들지 않는다. 경계선을 그냥 **벽**으로 취급하면
+        기존 갭-팔로잉이 알아서 피한다. 새 상태기계도 새 제어기도 필요 없다.
+
+        칠하지 않는 경우 (전부 '모르면 입을 다문다'):
+          · geofence 가 None       → north 가 [inf,nan] (멀다 / 미설정 / 이미 이탈 / IMU stale)
+          · geofence 가 stale      → 묵은 '없는 벽'은 배를 가둔다
+          · 경계가 margin 밖       → 아직 칠할 이유가 없다
+        """
+        with self.lock:
+            gf = self.geofence
+            gf_t = self.last_geofence_t
+
+        if gf is None or gf_t is None:
+            return binary
+        if (time.monotonic() - gf_t) > self.geofence_stale_sec:
+            self.get_logger().warn(
+                "geofence stale → 칠하지 않음 (묵은 '없는 벽'은 배를 가둔다)",
+                throttle_duration_sec=5.0)
+            return binary
+
+        dist, rel = gf
+        if dist > self.geofence_margin_m:
+            return binary                     # 아직 멀다
+
+        # 상대방위(0=정면) → LiDAR 프레임 각도 (80=정면). /candidate_angle 과 같은 매핑.
+        r = rel % 360.0
+        gf_lidar_deg = (80.0 + r) if r <= 180.0 else (80.0 - (360.0 - r))
+
+        out = binary[:]
+        half = self.geofence_half_block_deg
+        painted = 0
+        for i, a in enumerate(angle_array):
+            if abs(a - gf_lidar_deg) <= half:
+                out[i] = 1
+                painted += 1
+
+        if painted:
+            self.get_logger().warn(
+                f"🚧 경계 {dist:.1f}m (상대 {rel:.0f}°) → ±{half:.0f}° 를 벽으로 칠함({painted}셀)",
+                throttle_duration_sec=2.0)
+        return out
+
     def _compute(self, msg, wp4_enter_time, candidate_angle, yaw_error, detection_distance):
         """(desired_angle, obstacle_array) 를 만든다. 작년 scan_callback 의 로직 그대로."""
         now = time.monotonic()
@@ -404,6 +484,13 @@ class ShipDirection(Node):
 
         binary = self.smooth_spikes(binary)
         binary = self.suppress_spike_edges(binary)
+
+        # ---- [H] Geofence: 경계를 '벽'으로 칠한다 (6a-2) ----
+        # ★ dilate '전'에 칠한다 → 팽창이 배 폭(half_width+clearance)만큼 여유를 더해준다.
+        #   노이즈 억제(temporal/smooth/suppress) '뒤'에 칠하는 이유: geofence 는 센서 노이즈가
+        #   아니라 합성된 벽이다. 노이즈 필터에 깎이면 안 된다.
+        binary = self._paint_geofence(binary, angle_array)
+
         binary = self.dilate_obstacles(binary, distance_array, angle_increment_deg)
 
         # ---- safe zone 탐색 ----

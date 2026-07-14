@@ -267,7 +267,21 @@ super().__init__('ship_turn')   # ← 복붙 실수. 파일은 ship_back 인데 
 
 **🚨 발행자만 있고 구독자가 0 인 상태 = 경계 방어가 통째로 없는 것.** 도킹이 1년간 침묵한 것과 같은 사고다.
 → **이중 방어:** ① `north_goal_angle` 이 부팅 5초 뒤 구독자 0 이면 ERROR 를 계속 찍는다.
-② `healthcheck` 가 출발 전에 검사해 `/health_ok = false` 로 만든다. **6a-2 전까지는 일부러 계속 실패한다.**
+② `healthcheck` 가 출발 전에 검사해 `/health_ok = false` 로 만든다.
+**✅ 6a-2 에서 `ship_direction` 이 구독을 붙여 빨간불을 껐다.** (빨간불은 하루도 켜두지 않는다 —
+켜둔 채로 며칠 지나면 팀이 "저건 원래 빨간 거야"를 배운다. 출발 전 진단을 무시하는 습관이 최악이다.)
+
+**소비 방식 (6a-2, `ship_direction`):** 경계가 `geofence_margin_m`(2.0) 안이면 그 방위 **±`geofence_half_block_deg`(40°)**
+를 이진 마스크에 **1(장애물)로 칠한다** → 기존 갭-팔로잉이 알아서 피한다.
+**별도 상태기계도 새 제어기도 만들지 않는다. 경계선을 그냥 '벽'으로 취급하는 것이다.**
+`dilate` **전**에 칠해 팽창이 배 폭만큼 여유를 더한다.
+⚠️ **코너 함정:** 모서리에서 두 경계가 동시에 잡히면 80°+80° 가 막혀 갈 곳이 없어질 수 있다 → 미션 시뮬 확인 필요.
+
+**🚨 '모르면 입을 다문다' 가 3중으로 걸려 있다** (틀린 벽은 배를 가둔다):
+- `north_goal_angle`: `/imu/yaw` 가 `imu_stale_sec`(0.5s) 넘게 묵으면 → `[inf, nan]`.
+  (경계 상대방위는 yaw 로 계산한다. yaw 가 얼면 방위가 엉뚱해져 **'없는 벽'** 을 칠하게 된다.)
+- `north_goal_angle`: 이미 경기장 **밖**이면 → `[inf, nan]` (칠하면 돌아갈 길을 막는다).
+- `ship_direction`: `/geofence_state` 가 `geofence_stale_sec`(2.0s) 넘게 묵으면 → 칠하지 않는다.
 
 **🚨 게이트 통과 수는 `/gates_passed` 다 (`/gate_pass_count` 아님).**
 0단계 blackbox 가 처음엔 `/gate_pass_count` 로 구독했는데, 5단계 `ship_gate` 는 `/gates_passed` 로 발행할 예정이라
