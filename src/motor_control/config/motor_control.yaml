@@ -1,0 +1,12 @@
+# motor_control 파라미터 (하드코딩 금지, CLAUDE.md 1-4)
+/motor_control:
+  ros__parameters:
+    # ---- 감속 복구 (시뮬 최적값, CLAUDE.md 3-2) ----
+    slow_start_dist: 1.2   # 전방 최근접 장애물이 이보다 가까우면 감속 시작(m)
+    min_speed_ratio: 0.7   # 최저 속도비(전진 성분을 중립 쪽으로 당김). dist=0 에서 0.7
+    # ---- 명령 워치독 ----
+    cmd_timeout_sec: 3.5   # /desired_angle 이 이보다 끊기면 중립(1500/1500)
+                           # 3.5>3.0: ship_direction 이 scan_cb 에서만 발행해 LiDAR 끊김 시
+                           # /desired_angle 도 멈추므로, 짧게 잡으면 ship_direction 자체
+                           # 페일세이프(0.7s 감속/3.0s 정지)를 덮어써 배를 죽인다.
+                           # ⚠️ TODO(3단계): ship_direction 을 고정주기 타이머로 분리한 뒤 0.5 로 조일 것.

@@ -97,8 +97,20 @@ self.sub_angle = self.create_subscription(Float32, "/desired_angle", self.angle_
 
 **장애물이 코앞이어도 감속하지 않았다.** (`/obstacle_distance_array` 는 `ship_turn`·`ship_back` 만 받음)
 
-**고칠 것:** `motor_control` 이 `/obstacle_distance_array` 를 구독하고 근접 시 감속.
-시뮬 최적값: `slow_start_dist=1.2`, `min_speed_ratio=0.7`.
+**고친 것 (2단계 완료):** `motor_control` 이 `/obstacle_distance_array`(=`[거리(m), 각도(deg)]`, 없으면 `[inf,nan]`)를
+구독하고 근접 시 감속. `slow_start_dist=1.2`, `min_speed_ratio=0.7`. 전진 성분(pwm<1500)만 중립 쪽으로 당김
+(후진은 안 건드림). + 명령 워치독: `/desired_angle` 이 `cmd_timeout_sec` 넘게 끊기면 중립. 부팅 중립.
+
+**⚠️ 명령 워치독은 3.5s 다 (0.5s 아님).** 지금 `ship_direction` 은 `scan_cb` 에서만 `/desired_angle` 을 발행해서,
+LiDAR 가 잠깐만 끊겨도 `/desired_angle` 이 멈춘다. 0.5s 로 잡으면 `ship_direction` 자체 페일세이프(0.7s 감속/3.0s 정지)를
+덮어써 배를 죽인다(시뮬: LiDAR 1s 끊김→0.6s 정지). 3.5>3.0 이라 안 건드림.
+**TODO(3단계):** `ship_direction` 제어루프를 `scan_cb` → **고정주기 타이머**로 분리 → 그러면 `ship_direction` 이
+살아있는 한 항상 발행하므로 `/desired_angle` 침묵 = ship_direction 사망. 그때 `cmd_timeout_sec` 을 **0.5** 로 조인다.
+
+**🚫 TTC 비상제동은 폐기했다.** `/obstacle_distance_array` 최소거리는 시간필터 없는 생값이라, 미분(접근속도)이
+노이즈를 증폭한다. 물보라 반사 하나가 0.4m 로 튀면 접근속도 26m/s → TTC 0.015s → 급정지.
+시뮬(물보라 10%, 6회): TTC OFF=접촉0·34.4m·급정지0 / TTC ON=접촉0·8.5m·급정지6.5·35초중 28초 정지. **이득 0, 위험 막대.**
+감속(점진적)은 노이즈에 강해 유지, TTC(이진 급정지)만 버린다.
 
 ### 3-3. 🚨 카메라를 OAK-1 으로 바꾸면 미션 노드 4개가 죽는다
 
@@ -243,7 +255,7 @@ super().__init__('ship_turn')   # ← 복붙 실수. 파일은 ship_back 인데 
 |---|---|---|
 | **0** | `ssf_tools` (blackbox + healthcheck) **신규** | **구독만 하고 발행 안 함 → 아무것도 못 깨뜨림.** 그런데 이후 모든 단계의 **검증 도구**가 된다. 먼저 눈을 확보한다. |
 | **1** | `ship_goal_angle` | 변경이 가장 작다 (0.5초 → 0.05초 주기). 토픽 계약 불변. |
-| **2** | `motor_control` | 체인의 **끝단**. 감속 복구 + 명령 타임아웃 워치독 + TTC 비상제동. |
+| **2** | `motor_control` | 체인의 **끝단**. 감속 복구 + 명령 타임아웃 워치독. (TTC 비상제동은 폐기 — 3-2 참고) |
 | **3** | `ship_direction` | 회피·페일세이프. **가장 큰 이득** (접촉 3.0 → 0.2회). |
 | **4** | `iahrs_driver` + Arduino 펌웨어 | **가장 위험.** 시뮬로 못 잡는다. **벤치 확인 필수.** |
 | **5** | 비전 묶음 ⚛ (`marker_detector`+`marker_selector`+`tracker`+`ship_gate`) | **원자적.** 쪼개면 깨진다. `basic_image_*.py` 전부 삭제. |
