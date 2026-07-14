@@ -42,10 +42,15 @@ class MotorController(Node):
         # ⚠️ 3단계에서 ship_direction 제어루프를 고정주기 타이머로 분리하면 0.5 로 조인다.
         self.cmd_timeout_sec = float(self.declare_parameter("cmd_timeout_sec", 3.5).value)
 
-        # ---- 조향 파라미터 (배 2척 A/B 크기·추력 다름 → config, CLAUDE.md 1-4) ----
-        self.base_pwm = int(self.declare_parameter("base_pwm", 1360).value)      # ⚠️ 실측 필요(순항 추력)
-        self.max_diff = int(self.declare_parameter("max_diff", 100).value)       # ⚠️ 실측 필요(최대 차동)
-        self.turn_offset = int(self.declare_parameter("turn_offset", -60).value)  # SPIN 크기(부호 무의미)
+        # ---- 조향/추력 파라미터 (배 2척 A/B 크기·추력 다름 → config, CLAUDE.md 1-4) ----
+        self.base_pwm = int(self.declare_parameter("base_pwm", 1360).value)         # ⚠️ 실측 필요(순항 추력)
+        self.max_diff = int(self.declare_parameter("max_diff", 100).value)          # ⚠️ 실측 필요(최대 차동)
+        self.reverse_pwm = int(self.declare_parameter("reverse_pwm", 1590).value)   # ⚠️ 실측 필요(후진 추력)
+        # SPIN(제자리 선회): 중심 PWM 과 차동을 따로 둔다.
+        #   spin_forward_pwm=1500 → 1400/1600 = 순 추력 0 = 진짜 제자리 선회.
+        #   =1360 이면 1260/1460 = 작년 방식(순항 속도로 원, 반경 2.1m → 도크에 부딪힘). 되돌릴 수 있는 노브.
+        self.spin_forward_pwm = int(self.declare_parameter("spin_forward_pwm", 1500).value)
+        self.spin_diff = int(self.declare_parameter("spin_diff", 100).value)
         # 조향 좌/우 반전 노브: 모터 배선이 반대면 조향(4)·SPIN(3)이 함께 반대로 나온다(원인 하나).
         # ★ 물 위 첫 시험에서 확정. 지금 추측 금지(배가 아직 없음). CLAUDE.md §8 "가장 흔한 사고".
         self.steer_invert = bool(self.declare_parameter("steer_invert", False).value)
@@ -68,7 +73,8 @@ class MotorController(Node):
             f"motor_control 시작: 20Hz. 감속 slow_start={self.slow_start_dist}m/"
             f"min_ratio={self.min_speed_ratio}, 명령 워치독={self.cmd_timeout_sec}s, "
             f"steer_invert={self.steer_invert}.\n"
-            f"   SPIN: 5000=우선회 6000=좌선회. 첫 명령 전/끊김 시 중립. PWM: <1500 전진, >1500 후진."
+            f"   SPIN(5000=우/6000=좌) 중심={self.spin_forward_pwm}(1500=제자리). "
+            f"첫 명령 전/끊김 시 중립. PWM: <1500 전진, >1500 후진."
         )
 
     # ───────────────────────── 콜백 ─────────────────────────
@@ -90,11 +96,13 @@ class MotorController(Node):
         diff = (abs(off) / self.max_angle) * self.max_diff
         return int(diff)
 
-    def apply_steer(self, signed_diff):
-        """base_pwm 중심 좌우 차동. signed_diff>0 = '왼쪽 패턴'(오른쪽 모터가 더 전진).
+    def apply_steer(self, signed_diff, center=None):
+        """center 중심 좌우 차동. signed_diff>0 = '왼쪽 패턴'(오른쪽 모터가 더 전진).
+        center 기본은 base_pwm(전진 조향), SPIN 은 spin_forward_pwm 을 넘긴다.
         steer_invert=True 면 좌/우를 통째로 뒤집는다 — 조향(4)·SPIN(3) 공통(배선 반대 대비)."""
+        c = self.base_pwm if center is None else center
         s = -signed_diff if self.steer_invert else signed_diff
-        return self.base_pwm - s, self.base_pwm + s
+        return c - s, c + s
 
     def speed_ratio(self):
         """전방 최근접 거리 → 속도비 [min_speed_ratio, 1.0]. dist>=slow_start_dist 면 1.0."""
@@ -145,15 +153,14 @@ class MotorController(Node):
             pwm_r = self.base_pwm
             pwm_l = self.base_pwm
 
-        # (3a) SPIN_RIGHT(5000) → 우선회. 작년 버그: 이 값을 왼쪽으로 돌렸다(이름과 반대).
+        # (3a) SPIN_RIGHT(5000) → 우선회 (제자리, 중심=spin_forward_pwm).
+        #      작년 버그 2개: ① 왼쪽으로 돌았고 ② base_pwm 중심이라 순항 속도로 원을 그려 도크에 부딪혔다.
         elif SPIN_RIGHT <= angle < SPIN_LEFT:
-            spin = self.linear_diff(self.turn_offset)
-            pwm_r, pwm_l = self.apply_steer(-spin)   # 오른쪽 패턴
+            pwm_r, pwm_l = self.apply_steer(-self.spin_diff, center=self.spin_forward_pwm)  # 오른쪽 패턴
 
-        # (3b) SPIN_LEFT(6000) → 좌선회
+        # (3b) SPIN_LEFT(6000) → 좌선회 (제자리)
         elif SPIN_LEFT <= angle < CANDIDATE_INVALID:
-            spin = self.linear_diff(self.turn_offset)
-            pwm_r, pwm_l = self.apply_steer(+spin)   # 왼쪽 패턴
+            pwm_r, pwm_l = self.apply_steer(+self.spin_diff, center=self.spin_forward_pwm)  # 왼쪽 패턴
 
         # (4) 정상 조향 구간
         elif -1.0 <= angle <= 161.0:
@@ -164,8 +171,8 @@ class MotorController(Node):
 
         # (5) 후진 구간
         elif 161.0 < angle < SPIN_RIGHT:
-            pwm_r = 1590
-            pwm_l = 1590
+            pwm_r = self.reverse_pwm
+            pwm_l = self.reverse_pwm
 
         # (6) 기본값: 직진 유지
         else:
