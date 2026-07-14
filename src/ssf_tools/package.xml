@@ -1,0 +1,19 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>ssf_tools</name>
+  <version>0.1.0</version>
+  <description>SSF 검증 도구: blackbox(10Hz CSV 로깅) + healthcheck(센서 생존/매핑표 검사). 둘 다 구독 전용.</description>
+
+  <maintainer email="you@example.com">SSF</maintainer>
+  <license>MIT</license>
+
+  <buildtool_depend>ament_python</buildtool_depend>
+
+  <depend>rclpy</depend>
+  <depend>std_msgs</depend>
+  <depend>sensor_msgs</depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

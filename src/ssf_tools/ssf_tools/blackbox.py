@@ -1,0 +1,174 @@
+#!/usr/bin/env python3
+"""
+blackbox — 비행기 블랙박스처럼, 배가 도는 동안 모든 핵심 신호를 10Hz CSV 로 남긴다.
+
+원칙 (CLAUDE.md 0단계):
+  * 구독만 한다. 기존 토픽에 절대 발행하지 않는다. → 아무것도 못 깨뜨린다.
+  * 이후 모든 단계의 개선을 '측정' 하는 눈이 된다. (규정: 종합임무 5회, 최고점 채택
+    → 왜 실패했는지 알아야 다음 회차에서 고친다.)
+
+컬럼:
+  t_wall(ROS시계), t_mono(단조시계 경과s), wp_mode, gps_lat, gps_lon, gps_status,
+  imu_yaw, yaw_error, candidate_angle, desired_angle, pwm_r, pwm_l,
+  obstacle_min_dist, failsafe_level, gate_pass_count
+"""
+
+import csv
+import os
+import time
+import datetime
+
+import rclpy
+from rclpy.node import Node
+from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy, HistoryPolicy
+
+from std_msgs.msg import Int32, Float32, Float64, Float32MultiArray
+from sensor_msgs.msg import NavSatFix
+
+
+# 관찰자 QoS: BEST_EFFORT + VOLATILE.
+# best_effort 구독자는 reliable/best_effort 발행자 모두와 호환된다(라이브 수신 보장).
+# 발행자 QoS 를 모른 채로도 데이터가 조용히 사라지지 않게 하는 가장 안전한 선택.
+OBSERVER_QOS = QoSProfile(
+    reliability=ReliabilityPolicy.BEST_EFFORT,
+    durability=DurabilityPolicy.VOLATILE,
+    history=HistoryPolicy.KEEP_LAST,
+    depth=10,
+)
+
+CSV_HEADER = [
+    "t_wall", "t_mono", "wp_mode",
+    "gps_lat", "gps_lon", "gps_status",
+    "imu_yaw", "yaw_error", "candidate_angle", "desired_angle",
+    "pwm_r", "pwm_l", "obstacle_min_dist",
+    "failsafe_level", "gate_pass_count",
+]
+
+
+class BlackBox(Node):
+    def __init__(self):
+        super().__init__("blackbox")
+
+        # ---- 파라미터 ----
+        self.rate_hz = float(self.declare_parameter("rate_hz", 10.0).value)
+        log_dir = str(self.declare_parameter("log_dir", "").value)
+        self.flush_every_n = int(self.declare_parameter("flush_every_n", 10).value)
+
+        wp_mode_topic = self.declare_parameter("wp_mode_topic", "/wp_mode").value
+        gps_topic = self.declare_parameter("gps_topic", "/ublox_gps_node/fix").value
+        imu_yaw_topic = self.declare_parameter("imu_yaw_topic", "/imu/yaw").value
+        yaw_error_topic = self.declare_parameter("yaw_error_topic", "/yaw_error").value
+        candidate_topic = self.declare_parameter("candidate_topic", "/candidate_angle").value
+        desired_angle_topic = self.declare_parameter("desired_angle_topic", "/desired_angle").value
+        motor_topic = self.declare_parameter("motor_topic", "Motor_run").value
+        obstacle_topic = self.declare_parameter("obstacle_topic", "/obstacle_distance_array").value
+        failsafe_topic = self.declare_parameter("failsafe_topic", "/failsafe_level").value
+        gate_count_topic = self.declare_parameter("gate_count_topic", "/gate_pass_count").value
+
+        # ---- 최신값 저장소 (콜백이 갱신, 타이머가 읽어 기록) ----
+        self.latest = {k: None for k in CSV_HEADER}
+
+        # ---- 로그 파일 준비 ----
+        if not log_dir:
+            log_dir = os.path.join(os.path.expanduser("~"), "ros2_ws", "result", "blackbox")
+        os.makedirs(log_dir, exist_ok=True)
+        # 파일명에만 벽시계 사용(가독성 목적, 제어 타이밍 아님 → CLAUDE.md 1-5 규칙 무관)
+        stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        self.log_path = os.path.join(log_dir, f"blackbox_{stamp}.csv")
+        self._fh = open(self.log_path, "w", newline="")
+        self._writer = csv.writer(self._fh)
+        self._writer.writerow(CSV_HEADER)
+        self._fh.flush()
+        self._rows = 0
+        self._t0 = time.monotonic()
+
+        # ---- 구독 (전부 관찰 전용) ----
+        self.create_subscription(Int32, wp_mode_topic, self._cb_wp_mode, OBSERVER_QOS)
+        self.create_subscription(NavSatFix, gps_topic, self._cb_gps, OBSERVER_QOS)
+        self.create_subscription(Float64, imu_yaw_topic, self._cb_imu_yaw, OBSERVER_QOS)
+        self.create_subscription(Float32, yaw_error_topic, self._cb_yaw_error, OBSERVER_QOS)
+        self.create_subscription(Float32, candidate_topic, self._cb_candidate, OBSERVER_QOS)
+        self.create_subscription(Float32, desired_angle_topic, self._cb_desired, OBSERVER_QOS)
+        self.create_subscription(Int32, motor_topic, self._cb_motor, OBSERVER_QOS)
+        self.create_subscription(Float32MultiArray, obstacle_topic, self._cb_obstacle, OBSERVER_QOS)
+        self.create_subscription(Int32, failsafe_topic, self._cb_failsafe, OBSERVER_QOS)
+        self.create_subscription(Int32, gate_count_topic, self._cb_gate_count, OBSERVER_QOS)
+
+        # ---- 기록 타이머 ----
+        period = 1.0 / self.rate_hz if self.rate_hz > 0 else 0.1
+        self.timer = self.create_timer(period, self._on_timer)
+
+        self.get_logger().info(
+            f"📼 blackbox 시작: {self.rate_hz:.0f}Hz → {self.log_path}\n"
+            f"   구독만 함 (발행 없음). 미존재 토픽(failsafe/gate)은 빈칸으로 남습니다."
+        )
+
+    # ---- 콜백들: 최신값만 갱신 ----
+    def _cb_wp_mode(self, msg): self.latest["wp_mode"] = msg.data
+
+    def _cb_gps(self, msg):
+        self.latest["gps_lat"] = msg.latitude
+        self.latest["gps_lon"] = msg.longitude
+        self.latest["gps_status"] = msg.status.status  # -1=NO_FIX, 0=FIX, 1=SBAS, 2=GBAS
+
+    def _cb_imu_yaw(self, msg): self.latest["imu_yaw"] = msg.data
+    def _cb_yaw_error(self, msg): self.latest["yaw_error"] = msg.data
+    def _cb_candidate(self, msg): self.latest["candidate_angle"] = msg.data
+    def _cb_desired(self, msg): self.latest["desired_angle"] = msg.data
+
+    def _cb_motor(self, msg):
+        # Motor_run = pwm_r*10000 + pwm_l (1500 = 중립)
+        v = int(msg.data)
+        self.latest["pwm_r"] = v // 10000
+        self.latest["pwm_l"] = v % 10000
+
+    def _cb_obstacle(self, msg):
+        vals = [d for d in msg.data if d is not None and d > 0.0]
+        self.latest["obstacle_min_dist"] = min(vals) if vals else None
+
+    def _cb_failsafe(self, msg): self.latest["failsafe_level"] = msg.data
+    def _cb_gate_count(self, msg): self.latest["gate_pass_count"] = msg.data
+
+    # ---- 10Hz 기록 ----
+    def _on_timer(self):
+        now = self.get_clock().now()
+        t_wall = now.nanoseconds * 1e-9              # ROS 시계 (기록용 절대시각)
+        t_mono = time.monotonic() - self._t0         # 단조 경과초 (CLAUDE.md 1-5)
+        self.latest["t_wall"] = f"{t_wall:.3f}"
+        self.latest["t_mono"] = f"{t_mono:.3f}"
+
+        row = []
+        for k in CSV_HEADER:
+            v = self.latest.get(k)
+            row.append("" if v is None else v)
+        self._writer.writerow(row)
+
+        self._rows += 1
+        if self._rows % max(1, self.flush_every_n) == 0:
+            self._fh.flush()
+
+    def destroy_node(self):
+        try:
+            self._fh.flush()
+            self._fh.close()
+            self.get_logger().info(f"📼 blackbox 종료: {self._rows}행 저장 → {self.log_path}")
+        except Exception:
+            pass
+        super().destroy_node()
+
+
+def main(args=None):
+    rclpy.init(args=args)
+    node = BlackBox()
+    try:
+        rclpy.spin(node)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        node.destroy_node()
+        if rclpy.ok():
+            rclpy.shutdown()
+
+
+if __name__ == "__main__":
+    main()
