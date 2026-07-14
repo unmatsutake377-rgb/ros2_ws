@@ -19,6 +19,7 @@ CANDIDATE_INVALID = 20000.0  # 미션 없음 → yaw_error 기반 자율 회피
 STOP_HOLD = 50000.0          # 정지/대기
 
 REVERSE_ANGLE = 260.0        # 회피 경로 없음 → 후진
+LIDAR_FORWARD_DEG = 80.0     # LiDAR 프레임에서 정면 (상대방위 0 에 대응)
 
 
 class ShipDirection(Node):
@@ -81,14 +82,23 @@ class ShipDirection(Node):
           (팽창 후에 걸면 진짜 부표의 팽창 영역까지 표가 갈려 부표가 얇아진다).
 
     [H] Geofence (6a-2). 경기장 밖으로 나가면 실격인데 방어가 0 이었다.
-        /geofence_state = [경계까지 거리(m), 경계 상대방위(deg)] 를 구독해,
-        경계가 geofence_margin_m(2.0) 안이면 그 방위 ±half_block(40°) 을 이진 마스크에
-        1(장애물)로 칠한다. → **기존 갭-팔로잉이 알아서 피한다.**
-        ★ 별도 상태기계도 새 제어기도 만들지 않는다. 경계선을 그냥 '벽'으로 취급하는 것이다.
-        ★ dilate '전'에 칠한다 → 팽창이 배 폭만큼 여유를 더해준다.
-        ★ [inf,nan]/stale 이면 아무것도 안 한다 — 묵은 '없는 벽'은 배를 가둔다.
-        ⚠️ 코너 함정: 모서리에서 두 경계가 동시에 잡히면 80°+80° 가 막혀 갈 곳이 없어질 수 있다.
-           half_block 을 파라미터로 뺀 이유다. 미션 시뮬로 확인 필요.
+        north 가 경계를 **'가짜 LiDAR'** 로 쏴서 보낸다:
+          /geofence_state = [angle_min_deg, angle_inc_deg, r0, r1, ...] (상대방위, 멀면 inf)
+        여기서 하는 일은 **스캔 병합 한 줄**이 전부다:
+          ranges[i] = min(real_ranges[i], geofence_ranges[i])
+        그 뒤는 기존 파이프라인이 알아서 한다 — detection_distance 로 마스크가 되고,
+        dilate 가 배 폭 여유를 더하고, 갭-팔로잉이 피한다.
+        **특수 로직도, 새 상태기계도, 튜닝 파라미터(half_block)도 없다.**
+
+        ★ 왜 '원뿔 칠하기'를 버렸나: **벽은 '점'이 아니라 '선'이다.**
+          최근접점 한 방향으로 ±각도를 막는 건 기하학적으로 틀렸다. 40×40 모서리에서
+          배가 대각선(45°)을 보면 북벽 최근접점 -45°, 동벽 +45° 인데 **탈출구(모서리)는 정면 0°**.
+          half_block=40° 면 [-85,-5]·[5,85] 만 막혀 **정면 0° 가 '틈'으로 열린다** → 대각선 탈출, 실격.
+          광선으로 쏘면 정면 경계 거리(2.12m)가 그대로 벽이 된다. 경기장이 사각형이 아니어도 맞다.
+
+        ★ 빈 배열/stale 이면 병합하지 않는다 — 묵은 '없는 벽'은 배를 가둔다.
+        ⚠️ 이 병합은 **(C) 자율 회피 구간에서만** 일어난다. 미션 노드가 각도를 직접 지시하는
+           구간((A) SPIN, (B) candidate)에서는 마스크를 만들지 않으므로 geofence 가 걸리지 않는다.
 
     ※ 판정 로직(SensorWatch, TemporalVote)은 **ROS 비의존 모듈** ship_direction/failsafe.py 에 있다.
       워치독을 노드 안에 인라인하면 단위 테스트가 불가능해진다. rclpy 없이 임포트 가능:
@@ -113,13 +123,9 @@ class ShipDirection(Node):
         self.fs_confirm_n = int(self.declare_parameter('failsafe_confirm_n', 3).value)
 
         # ---- Geofence (경계 이탈 = 실격). 6a-2 ----
-        # 별도 상태기계/제어기를 만들지 않는다. 경계를 그냥 '벽'으로 취급해 이진 마스크에 칠하면
-        # 기존 갭-팔로잉이 알아서 피한다.
-        self.geofence_margin_m = float(self.declare_parameter('geofence_margin_m', 2.0).value)
-        self.geofence_half_block_deg = float(
-            self.declare_parameter('geofence_half_block_deg', 40.0).value)
-        # 🚨 geofence 가 묵으면 칠하지 않는다. 묵은 '없는 벽'은 배를 가둔다.
-        #    (north_goal_angle 이 0.5s 주기라 4배 여유)
+        # north 가 경계를 '가짜 LiDAR'로 쏴서 보낸다 → 실제 스캔과 min() 병합만 하면 끝이다.
+        # 특수 로직도, 튜닝 파라미터(half_block)도 없다. 아래 [H] 참고.
+        # 🚨 묵으면 병합하지 않는다. 묵은 '없는 벽'은 배를 가둔다. (north 주기 0.5s 의 4배)
         self.geofence_stale_sec = float(self.declare_parameter('geofence_stale_sec', 2.0).value)
 
         # 시간 투표 필터 — **기본 OFF(frames=1)**. 시드 20개로 재보니 효과가 없었다(아래 [G]).
@@ -240,11 +246,13 @@ class ShipDirection(Node):
             self.watch.feed('yaw_error', time.monotonic())   # [E] IMU 체인 생존 신호
 
     def geofence_cb(self, msg):
-        """/geofence_state = [경계까지 거리(m), 경계 상대방위(deg)]. 멀거나 모르면 [inf, nan].
-        north_goal_angle 이 '모르면 입을 다무는' 계약이라, [inf,nan] = 칠할 게 없다는 뜻이다."""
+        """/geofence_state = [angle_min_deg, angle_inc_deg, r0, r1, ...] (상대방위, 멀면 inf).
+        경계를 '가짜 LiDAR'로 쏜 것이다. **빈 배열 = 경계 정보 없음**
+        (north 가 '모르면 입을 다무는' 계약: 폴리곤 미설정 / IMU stale / 이미 이탈)."""
+        d = msg.data
         with self.lock:
-            if len(msg.data) >= 2 and math.isfinite(msg.data[0]) and math.isfinite(msg.data[1]):
-                self.geofence = (float(msg.data[0]), float(msg.data[1]))
+            if len(d) >= 3 and math.isfinite(d[1]) and d[1] > 0.0:
+                self.geofence = (float(d[0]), float(d[1]), [float(x) for x in d[2:]])
             else:
                 self.geofence = None
             self.last_geofence_t = time.monotonic()
@@ -375,48 +383,55 @@ class ShipDirection(Node):
                      if not math.isinf(closest_distance) else [float('inf'), float('nan')])
         return obst
 
-    def _paint_geofence(self, binary, angle_array):
-        """경계가 margin 안이면 그 방위 ±half_block 을 마스크에 1(장애물)로 칠한다.
+    def _merge_geofence(self, distance_array, angle_array):
+        """경계 '가짜 LiDAR'를 실제 스캔과 병합한다 — **한 줄이 전부다**:
+              ranges[i] = min(real_ranges[i], geofence_ranges[i])
 
-        별도의 '경계 복귀 로직'을 만들지 않는다. 경계선을 그냥 **벽**으로 취급하면
-        기존 갭-팔로잉이 알아서 피한다. 새 상태기계도 새 제어기도 필요 없다.
+        이후는 기존 파이프라인이 알아서 한다: detection_distance 로 이진 마스크가 되고,
+        dilate 가 배 폭(half_width+clearance) 여유를 더하고, 갭-팔로잉이 피한다.
+        특수 로직도, 새 상태기계도, 튜닝 파라미터(half_block)도 없다.
 
-        칠하지 않는 경우 (전부 '모르면 입을 다문다'):
-          · geofence 가 None       → north 가 [inf,nan] (멀다 / 미설정 / 이미 이탈 / IMU stale)
-          · geofence 가 stale      → 묵은 '없는 벽'은 배를 가둔다
-          · 경계가 margin 밖       → 아직 칠할 이유가 없다
+        병합하지 않는 경우 (전부 '모르면 입을 다문다'):
+          · geofence 가 None  → north 가 빈 배열 (미설정 / IMU stale / 이미 이탈)
+          · geofence 가 stale → 묵은 '없는 벽'은 배를 가둔다
         """
         with self.lock:
             gf = self.geofence
             gf_t = self.last_geofence_t
 
         if gf is None or gf_t is None:
-            return binary
+            return distance_array
         if (time.monotonic() - gf_t) > self.geofence_stale_sec:
             self.get_logger().warn(
-                "geofence stale → 칠하지 않음 (묵은 '없는 벽'은 배를 가둔다)",
+                "geofence stale → 병합 안 함 (묵은 '없는 벽'은 배를 가둔다)",
                 throttle_duration_sec=5.0)
-            return binary
+            return distance_array
 
-        dist, rel = gf
-        if dist > self.geofence_margin_m:
-            return binary                     # 아직 멀다
+        a0, inc, gr = gf
+        n = len(gr)
+        if n == 0 or inc <= 0.0:
+            return distance_array
 
-        # 상대방위(0=정면) → LiDAR 프레임 각도 (80=정면). /candidate_angle 과 같은 매핑.
-        r = rel % 360.0
-        gf_lidar_deg = (80.0 + r) if r <= 180.0 else (80.0 - (360.0 - r))
-
-        out = binary[:]
-        half = self.geofence_half_block_deg
-        painted = 0
+        out = list(distance_array)
+        hits = 0
+        nearest = float('inf')
         for i, a in enumerate(angle_array):
-            if abs(a - gf_lidar_deg) <= half:
-                out[i] = 1
-                painted += 1
+            rel = a - LIDAR_FORWARD_DEG          # LiDAR 프레임(80=정면) → 상대방위(0=정면)
+            k = int(round((rel - a0) / inc))
+            if not (0 <= k < n):
+                continue
+            g = gr[k]
+            if not math.isfinite(g):
+                continue
+            cur = out[i]
+            if (not math.isfinite(cur)) or g < cur:
+                out[i] = g                        # ★ min(실제, 경계)
+                hits += 1
+                nearest = min(nearest, g)
 
-        if painted:
+        if hits:
             self.get_logger().warn(
-                f"🚧 경계 {dist:.1f}m (상대 {rel:.0f}°) → ±{half:.0f}° 를 벽으로 칠함({painted}셀)",
+                f"🚧 경계가 스캔에 병합됨 ({hits}셀, 최근접 {nearest:.1f}m)",
                 throttle_duration_sec=2.0)
         return out
 
@@ -463,6 +478,11 @@ class ShipDirection(Node):
             angle_array.append(angle_min + (min_index + i) * angle_increment_deg)
             distance_array.append(r)
 
+        # ---- [H] Geofence 병합 (6a-2). 이게 전부다: ranges[i] = min(실제, 경계) ----
+        # 경계는 north 가 '가짜 LiDAR'로 쏴서 보낸다. 여기서 스캔에 섞어버리면
+        # 아래 파이프라인(마스크 → dilate → 갭-팔로잉)이 경계를 그냥 '벽'으로 취급한다.
+        distance_array = self._merge_geofence(distance_array, angle_array)
+
         # ---- Binary obstacle mask ----
         # ※ rear_obstacle_ignore_margin 제거됨. 작년엔 여기서
         #      if abs(r - front_min_distance) > rear_obstacle_ignore_margin: binary.append(0)
@@ -484,13 +504,6 @@ class ShipDirection(Node):
 
         binary = self.smooth_spikes(binary)
         binary = self.suppress_spike_edges(binary)
-
-        # ---- [H] Geofence: 경계를 '벽'으로 칠한다 (6a-2) ----
-        # ★ dilate '전'에 칠한다 → 팽창이 배 폭(half_width+clearance)만큼 여유를 더해준다.
-        #   노이즈 억제(temporal/smooth/suppress) '뒤'에 칠하는 이유: geofence 는 센서 노이즈가
-        #   아니라 합성된 벽이다. 노이즈 필터에 깎이면 안 된다.
-        binary = self._paint_geofence(binary, angle_array)
-
         binary = self.dilate_obstacles(binary, distance_array, angle_increment_deg)
 
         # ---- safe zone 탐색 ----

@@ -5,14 +5,21 @@
 
     # ---- Geofence (경계 이탈 = 실격) ----
     # 경기장 폴리곤: [lat1, lon1, lat2, lon2, ...] 평탄 배열. 최소 3점(=6개 수).
-    # ⚠️ 실측 필요 — 대회장 경계 좌표를 아직 모른다. 비어 있으면 geofence 는 꺼진다(=[inf,nan]).
+    # ⚠️ 실측 필요 — 대회장 경계 좌표를 아직 모른다. 비어 있으면 geofence 는 꺼진다(=빈 배열).
     geofence_polygon: []
-    geofence_report_dist_m: 10.0   # 이보다 멀면 [inf, nan] (가까울 때만 의미가 있다)
+    # 경계를 '가짜 LiDAR'로 쏘는 각도 격자 (상대방위, 0=정면)
+    # ★ 원뿔(half_block) 방식은 폐기했다: 벽은 '점'이 아니라 '선'이다. 최근접점 한 방향으로
+    #   ±각도를 막으면 40x40 모서리에서 탈출구(정면 0°)가 원뿔 사이 '틈'으로 열려 배가
+    #   대각선으로 빠져나간다(실격). 광선으로 쏘면 정면 경계 거리가 그대로 벽이 된다.
+    geofence_ray_min_deg: -80.0
+    geofence_ray_max_deg: 80.0
+    geofence_ray_inc_deg: 1.0      # 161방향 x 변 개수 @2Hz — 무시할 수준
+    geofence_max_range_m: 30.0     # 이보다 멀면 그 방향은 inf
     geofence_check_after_sec: 5.0  # 부팅 후 이 시간이 지나면 구독자 0 검사를 시작한다
-    imu_stale_sec: 0.5             # 🚨 /imu/yaw 가 이보다 묵으면 geofence 도 [inf,nan] 을 낸다.
-                                   # 경계 상대방위는 yaw 로 계산하므로 IMU 에 의존한다. yaw 가
-                                   # 얼어붙으면 방위가 엉뚱해지고 → ship_direction 이 '없는 벽'을
-                                   # 칠해 배가 갇힌다. 모르면 입을 다문다(1단계와 같은 원칙).
+    imu_stale_sec: 0.5             # 🚨 /imu/yaw 가 이보다 묵으면 geofence 는 빈 배열을 낸다.
+                                   # 광선 '방향'이 yaw 에 통째로 의존한다. yaw 가 얼면 벽 전체가
+                                   # 엉뚱한 곳에 서고 → 배가 '없는 벽'에 갇힌다.
+                                   # 모르면 입을 다문다(1단계와 같은 원칙).
 
     # 🚨 /geofence_state 는 6a 에서 '발행만' 한다. 구독자(ship_direction)는 6a-2 에서 붙인다.
     #    발행자만 있는 토픽은 무해하지만, '넣었다'고 믿고 잊으면 도킹이 1년간 침묵한 것과

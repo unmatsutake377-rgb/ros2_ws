@@ -21,14 +21,12 @@
     failsafe_confirm_n: 3      # 올릴 땐 연속 N회 확인(지터 방지). 내릴 땐 즉시(자동 복구)
 
     # ---- Geofence (경계 이탈 = 실격). 6a-2 ----
-    # north_goal_angle 의 /geofence_state = [거리(m), 상대방위(deg)] 를 구독.
-    # 경계가 margin 안이면 그 방위 ±half_block 을 이진 마스크에 '벽'으로 칠한다.
-    # → 기존 갭-팔로잉이 알아서 피한다. 별도 상태기계·제어기 없음.
-    geofence_margin_m: 2.0        # 이보다 가까우면 칠하기 시작
-    geofence_half_block_deg: 40.0 # 경계 방위 ±이만큼을 벽으로
-                                  # ⚠️ 코너 함정: 모서리에서 두 경계가 잡히면 80°+80° 가 막혀
-                                  #    갈 곳이 없어질 수 있다. 미션 시뮬로 확인 필요.
-    geofence_stale_sec: 2.0       # 🚨 묵으면 칠하지 않는다 (north 주기 0.5s 의 4배).
+    # north 가 경계를 '가짜 LiDAR'로 쏴서 보낸다 → 여기선 스캔과 min() 병합만 한다.
+    # /geofence_state = [angle_min_deg, angle_inc_deg, r0, r1, ...] (상대방위, 멀면 inf).
+    #   ranges[i] = min(real_ranges[i], geofence_ranges[i])
+    # 그 뒤는 기존 파이프라인(마스크→dilate→갭팔로잉)이 알아서 한다.
+    # ★ 튜닝 파라미터가 없다. 원뿔 방식(half_block)은 모서리에서 정면이 '틈'으로 열려 폐기했다.
+    geofence_stale_sec: 2.0       # 🚨 묵으면 병합하지 않는다 (north 주기 0.5s 의 4배).
                                   #    묵은 '없는 벽'은 배를 가둔다. 모르면 입을 다문다.
 
     # ---- 시간 투표 필터 — 기본 OFF (frames=1). 코드는 남겨둠 ----

@@ -9,18 +9,32 @@
       도킹 중 조향이 GPS 방위로 튄다 (접안 직전 60초에 35° 스파이크 20번).
       → 폴백은 **담당 노드가 없는 모드에만** 남긴다: mode 5(회피), 8(토너먼트 회피).
 
-  [6] Geofence 발행. 경기장 밖으로 나가면 실격인데 방어가 0 이었다.
-      /geofence_state (Float32MultiArray) = [경계까지 거리(m), 경계 상대방위(deg)]
-      멀거나 미설정이면 [inf, nan].
+  [6] Geofence 발행 — 경계를 **'가짜 LiDAR'** 로 낸다. 경기장 밖으로 나가면 실격인데 방어가 0 이었다.
 
-      ⚠️ 구독자는 6a-2 에서 ship_direction 이 붙인다. 그때까지는 아무도 안 듣는다.
-         '발행했으니 됐다'고 잊으면 도킹이 1년간 침묵한 것과 똑같은 사고가 된다.
-         → 부팅 5초 뒤 구독자가 0 이면 **ERROR 를 계속 찍는다.** (healthcheck 도 검사한다)
+      /geofence_state (Float32MultiArray)
+        = [angle_min_deg, angle_inc_deg, r0, r1, r2, ...]   (상대방위 기준, 멀면 inf)
+        정보 없으면 **빈 배열**.
 
-프레임 규약: 경계 방위는 **상대 방위**(0=정면)로 낸다 — /candidate_angle 과 같은 규약.
-  소비자(ship_direction)가 LiDAR 이진 마스크(정면=80°)에 그대로 칠할 수 있게.
-  ⚠️ 이 변환은 /imu/yaw 를 쓰므로, 4단계의 'IMU 절대방위' 수정에 의존한다
-     (지금 yaw 는 부팅 0점화라 상대각 — CLAUDE.md 3-5. 4단계에서 고쳐진다).
+      ★ 왜 '광선'인가 (원뿔 방식을 버린 이유):
+        **벽은 '점'이 아니라 '선'이다.** 최근접점 한 방향으로 ±각도 원뿔을 막는 건 기하학적으로
+        틀렸다. 40×40 경기장 (40,40) 모서리에서 배가 대각선(45°)을 향하면:
+            북벽 최근접점 → 상대 -45°   /   동벽 최근접점 → 상대 +45°
+            그런데 **탈출구(모서리)는 상대 0° — 배 정면이다.**
+        half_block=40° 면 차단 구역이 [-85,-5] 와 [5,85] → **정면 0° 가 정확히 '틈'으로 열린다.**
+        배가 대각선으로 탈출한다. 실격. (경기장이 사각형이 아니면 또 뚫린다.)
+        광선으로 쏘면 정면 방향 경계 거리(2.12m)가 그대로 잡혀 벽이 된다. **튜닝 파라미터가 없다.**
+
+      ★ 소비자(ship_direction)는 **스캔 병합 한 줄**이면 끝이다:
+            ranges[i] = min(real_ranges[i], geofence_ranges[i])
+        기존 dilate 가 배 폭 여유를 자동으로 더하고, 기존 갭-팔로잉이 알아서 피한다.
+        특수 로직도 새 상태기계도 없다. "경계선을 그냥 벽으로 취급한다"를 끝까지 밀어붙인 것.
+
+      계산량: 161방향 × 변 개수 @ 2Hz — 무시할 수준.
+
+프레임 규약: 광선 각도는 **상대 방위**(0=정면)다 — /candidate_angle 과 같은 규약.
+  ⚠️ 광선 방향이 /imu/yaw 에 통째로 의존한다 → 4단계의 'IMU 절대방위' 수정에 의존
+     (지금 yaw 는 부팅 0점화라 상대각 — CLAUDE.md 3-5).
+     IMU 가 묵으면 **빈 배열**을 낸다. 틀린 방향으로 '없는 벽'을 세우느니 안 내는 게 낫다.
 """
 
 import math
@@ -72,9 +86,16 @@ class NorthGoalAngle(Node):
         # ⚠️ 실측 필요 — 대회장 경계 좌표를 아직 모른다. 비어 있으면 geofence 는 꺼진다.
         self.geofence_polygon = list(
             self.declare_parameter('geofence_polygon', []).value or [])
-        # 이보다 멀면 [inf, nan] 을 낸다 (가까울 때만 의미가 있다)
-        self.geofence_report_dist_m = float(
-            self.declare_parameter('geofence_report_dist_m', 10.0).value)
+        # 경계를 '가짜 LiDAR'로 쏜다 — 스캔과 같은 각도 격자(상대방위).
+        # ★ 왜 광선인가: 벽은 '점'이 아니라 '선'이다. 최근접점 한 방향으로 ±각도 원뿔을 막는 건
+        #   기하학적으로 틀렸다. 40x40 모서리에서 배가 대각선(45°)을 보면 북벽 최근접점은 -45°,
+        #   동벽은 +45° 인데 **탈출구(모서리)는 정면 0°** 라 원뿔 사이 '틈'으로 그대로 빠져나간다.
+        #   광선으로 쏘면 정면 방향의 경계 거리(2.12m)가 그대로 잡혀 벽이 된다. 튜닝도 필요 없다.
+        self.ray_min_deg = float(self.declare_parameter('geofence_ray_min_deg', -80.0).value)
+        self.ray_max_deg = float(self.declare_parameter('geofence_ray_max_deg', 80.0).value)
+        self.ray_inc_deg = float(self.declare_parameter('geofence_ray_inc_deg', 1.0).value)
+        self.geofence_max_range_m = float(
+            self.declare_parameter('geofence_max_range_m', 30.0).value)   # 이보다 멀면 inf
         # 구독자 0 경고를 시작할 시각
         self.geofence_check_after_sec = float(
             self.declare_parameter('geofence_check_after_sec', 5.0).value)
@@ -131,60 +152,67 @@ class NorthGoalAngle(Node):
         kx = math.cos(math.radians(self.lat)) * M_PER_DEG_LON_EQ
         return ((lon - self.lon) * kx, (lat - self.lat) * M_PER_DEG_LAT)
 
-    def _geofence_state(self):
-        """→ (거리 m, 상대방위 deg) 또는 None(미설정/멀다/이탈)."""
+    def _geofence_ranges(self):
+        """경계를 '가짜 LiDAR'로 쏜다 → (angle_min_deg, angle_inc_deg, [r0, r1, ...]) 또는 None.
+
+        각 상대방위마다 '이 방향으로 몇 m 가면 경계 밖인가'를 구한다. 멀면 inf.
+        소비자(ship_direction)는 이걸 실제 스캔과 min() 으로 병합하기만 하면 된다 —
+        특수 로직이 아예 없어진다. 기존 dilate 가 배 폭 여유를 더하고, 갭-팔로잉이 알아서 피한다.
+
+        None(=빈 배열) 을 내는 경우 — 전부 '모르면 입을 다문다':
+          · 폴리곤 미설정 / GPS fix 없음
+          · IMU stale     → yaw 가 얼면 광선 방향이 통째로 틀어져 '없는 벽'을 만든다
+          · 이미 경기장 밖 → 경계를 벽으로 세우면 돌아갈 길을 막는다
+        """
         poly = self.geofence_polygon
         if len(poly) < 6 or not self.have_fix:      # 최소 3점(=6수)
             return None
 
-        pts = [self._local_xy(poly[i], poly[i + 1]) for i in range(0, len(poly) - 1, 2)]
-
-        best_d, best_p = float('inf'), None
-        n = len(pts)
-        for i in range(n):
-            d, p = _point_seg_dist((0.0, 0.0), pts[i], pts[(i + 1) % n])
-            if d < best_d:
-                best_d, best_p = d, p
-
-        if best_p is None or not math.isfinite(best_d):
+        # 🚨 IMU 신선도 — 광선 방향이 yaw 에 통째로 의존한다. 얼면 벽 전체가 엉뚱해진다.
+        if self.yaw is None or self.last_yaw_t is None:
+            self.get_logger().warn(
+                "/imu/yaw 없음 → geofence 침묵(빈 배열)", throttle_duration_sec=5.0)
+            return None
+        yaw_age = time.monotonic() - self.last_yaw_t
+        if yaw_age > self.imu_stale_sec:
+            self.get_logger().warn(
+                f"/imu/yaw stale ({yaw_age:.2f}s > {self.imu_stale_sec}s) → geofence 침묵. "
+                f"틀린 방향으로 '없는 벽'을 세우느니 안 내는 게 낫다.",
+                throttle_duration_sec=2.0)
             return None
 
-        inside = _point_in_polygon((0.0, 0.0), pts)
-        if not inside:
-            # 🚨 이미 경기장 밖이다. 이때 경계를 '장애물'로 칠하면 돌아갈 길을 막는다.
-            #    → 아무것도 내지 않고(=[inf,nan]) GPS 웨이포인트가 안으로 끌어당기게 둔다.
-            #    (6a-2 에서 ship_direction 의 처리를 확정할 것)
+        pts = [self._local_xy(poly[i], poly[i + 1]) for i in range(0, len(poly) - 1, 2)]
+
+        if not _point_in_polygon((0.0, 0.0), pts):
+            # 🚨 이미 밖이다. 경계를 벽으로 세우면 복귀로를 막는다 → 아무것도 내지 않는다.
             self.get_logger().error(
                 "🚨 경기장 경계 밖이다 (실격 위험). GPS 웨이포인트로 복귀 중.",
                 throttle_duration_sec=2.0)
             return None
 
-        if best_d > self.geofence_report_dist_m:
-            return None                              # 멀다 → [inf, nan]
-
-        # 🚨 IMU 신선도 검사 — 모르면 입을 다문다.
-        #    yaw 가 얼어붙은 채로 상대방위를 내면 ship_direction 이 '없는 벽'을 칠해 배가 갇힌다.
-        if self.yaw is None or self.last_yaw_t is None:
-            self.get_logger().warn(
-                "/imu/yaw 없음 → geofence 침묵([inf,nan])", throttle_duration_sec=5.0)
-            return None
-        yaw_age = time.monotonic() - self.last_yaw_t
-        if yaw_age > self.imu_stale_sec:
-            self.get_logger().warn(
-                f"/imu/yaw stale ({yaw_age:.2f}s > {self.imu_stale_sec}s) → geofence 침묵"
-                f"([inf,nan]). 틀린 경계 방위로 '없는 벽'을 칠하느니 안 내는 게 낫다.",
-                throttle_duration_sec=2.0)
+        if self.ray_inc_deg <= 0.0 or self.ray_max_deg < self.ray_min_deg:
             return None
 
-        east, north = best_p
-        compass = (math.degrees(math.atan2(east, north)) + 360.0) % 360.0
-        rel = (compass - self.yaw) % 360.0           # 상대방위 (0 = 정면)
-        return best_d, rel
+        n = int(round((self.ray_max_deg - self.ray_min_deg) / self.ray_inc_deg)) + 1
+        ranges = []
+        for k in range(n):
+            rel = self.ray_min_deg + k * self.ray_inc_deg
+            th = math.radians((self.yaw + rel) % 360.0)      # 절대 방위(compass)
+            d = (math.sin(th), math.cos(th))                 # (east, north) 단위벡터
+            t = _ray_polygon_dist((0.0, 0.0), d, pts)
+            ranges.append(float(t) if (t is not None and t <= self.geofence_max_range_m)
+                          else float('inf'))
+
+        return self.ray_min_deg, self.ray_inc_deg, ranges
 
     def _publish_geofence(self):
         msg = Float32MultiArray()
-        gs = self._geofence_state()
-        msg.data = [float('inf'), float('nan')] if gs is None else [float(gs[0]), float(gs[1])]
+        gs = self._geofence_ranges()
+        if gs is None:
+            msg.data = []                                    # 빈 배열 = 경계 정보 없음
+        else:
+            a0, inc, ranges = gs
+            msg.data = [float(a0), float(inc)] + [float(r) for r in ranges]
         self.pub_geofence.publish(msg)
 
         # 🚨 '잊으면 최악' 방어: 구독자가 0 이면 경계 방어가 통째로 없는 것이다.
@@ -254,19 +282,33 @@ class NorthGoalAngle(Node):
 
 
 # ───────────────────────── 순수 기하 (테스트 가능) ─────────────────────────
-def _point_seg_dist(p, a, b):
-    """점 p 에서 선분 ab 까지의 거리와 최근접점. → (거리, 최근접점)"""
-    px, py = p
-    ax, ay = a
-    bx, by = b
-    dx, dy = bx - ax, by - ay
-    seg2 = dx * dx + dy * dy
-    if seg2 <= 1e-12:
-        return math.hypot(px - ax, py - ay), (ax, ay)
-    t = ((px - ax) * dx + (py - ay) * dy) / seg2
-    t = max(0.0, min(1.0, t))
-    qx, qy = ax + t * dx, ay + t * dy
-    return math.hypot(px - qx, py - qy), (qx, qy)
+def _ray_polygon_dist(o, d, pts):
+    """원점 o 에서 방향 d 로 쏜 광선이 폴리곤 변에 처음 닿는 거리. 안 닿으면 None.
+
+    ★ 이게 '벽은 선이다'를 정직하게 푸는 방법이다. 최근접점 한 방향으로 원뿔을 막으면
+      모서리에서 정면(탈출구)이 원뿔 사이 '틈'으로 열려 배가 대각선으로 빠져나간다.
+    """
+    ox, oy = o
+    dx, dy = d
+    best = None
+    n = len(pts)
+    for i in range(n):
+        ax, ay = pts[i]
+        bx, by = pts[(i + 1) % n]
+        ex, ey = bx - ax, by - ay
+
+        denom = dx * ey - dy * ex
+        if abs(denom) < 1e-12:
+            continue                       # 광선과 변이 평행
+
+        rx, ry = ax - ox, ay - oy
+        t = (rx * ey - ry * ex) / denom    # 광선 위 거리
+        s = (rx * dy - ry * dx) / denom    # 변 위 위치 (0~1 이어야 선분 안)
+
+        if t >= 0.0 and 0.0 <= s <= 1.0:
+            if best is None or t < best:
+                best = t
+    return best
 
 
 def _point_in_polygon(p, pts):
