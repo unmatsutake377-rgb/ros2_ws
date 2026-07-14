@@ -151,15 +151,37 @@ os.killpg(os.getpgid(self._child.pid), signal.SIGINT)
 그런데 `active_wp_mode` 가 **6개 파일에 흩어져** 있어서 아무도 전체 표를 못 본다. → 3-1 사고의 원인.
 
 **고칠 것 (구조는 그대로, 검사만 추가):**
-- `wp_mode → 담당 노드` 매핑표를 **yaml 한 곳**에 모은다
-- `healthcheck` 가 부팅 시 검사: **빠진 모드 / 중복 모드 / 침묵하는 노드**
+- `wp_mode → 담당 노드` 매핑표를 **yaml 한 곳**에 모은다 (`ssf_tools/config/ssf_tools.yaml`)
+- `healthcheck` 가 검사: **빠진 모드 / 중복 모드 / 침묵하는 노드**
 
-```
-🩺 wp_mode 매핑 검사
-   mode 0,1 → ship_gate  ✅   mode 2 → ship_back  ✅
-   mode 3   → ship_turn  ✅   mode 7 → ship_dock  ✅
-   ❌ 웨이포인트에 mode 7 이 있는데 담당 노드가 침묵합니다
-```
+#### 실제 웨이포인트 표 (`north_goal_angle.py` 에서 직접 발췌 — 이게 정답)
+
+> ⚠️ **이전 판의 `mode 0,1 → ship_gate` 는 오류였다.** 코드를 읽어보니 `mode 0 → ship_last`, `mode 1 → ship_gate` 다. 아래가 실제다.
+
+| WP | mode | 내용 | 담당 노드 (작년 선언값) | 상태 |
+|---|---|---|---|---|
+| 0 | **0** | 게이트 시작 | `ship_last` (0) | ⚠️ 게이트인데 비전을 안 쓴다 (GPS 로만 접근) |
+| 1 | **1** | 게이트 끝 | `ship_gate` (1) | ✅ |
+| 2 | **2** | 위치유지 | `ship_back` (2) | ✅ |
+| 3,4,5 | **3** | 초록·빨강·하양 부표 | `ship_turn` (3) | ✅ |
+| 6,7 | **5** | 회피 구간 (50초) | **없음 — 정상** | ✅ `ship_direction` 순수 회피 |
+| 8,9 | **7** | 도킹 (60초) | `ship_dock` 은 **9** 로 선언 | 🚨 **침묵** (3-1) |
+| 10 | **8** | 토너먼트 회피 | **없음 — 정상** | ✅ |
+
+실제 `/wp_mode` 로 나오는 값은 **`{0,1,2,3,5,7,8}`** 뿐이다.
+
+#### ⚠️ `mode 5`, `mode 8` 은 담당 노드가 없는 것이 **정상**이다
+
+순수 장애물 회피 구간이라 `ship_direction` 이 GPS 방위로만 간다.
+**healthcheck 가 이걸 '누락' 으로 경고하면 매 실행마다 늑대소년(거짓 경보)이 된다.** — 팀이 가장 두려워하는 것.
+매핑표에 **`none`** 으로 명시하고 예외 처리한다. (`ssf_tools.yaml` 에 반영됨)
+
+#### 미션 노드 교체 시 함께 고칠 것 (5·6단계)
+
+- **`ship_dock` 의 `active_wp_mode` 를 9 → 7** (도킹 부활, 3-1)
+- **`mode 0` 을 `ship_gate` 가 맡게** 한다 — 게이트 접근 구간부터 비전을 쓰면 정렬 시간을 번다.
+  작년엔 `ship_last` 가 mode 0 을 잡고 GPS 폴백만 냈다. → **`ship_last` 제거**, 새 `ship_gate` 는 **`active_wp_modes: [0, 1]`**
+  (이때 `ssf_tools.yaml` 의 매핑표도 `0 → ship_gate` 로 함께 갱신한다.)
 
 ### 3-7. 🚨 `ship_back` 이 자기를 `ship_turn` 이라고 등록한다 (이름 충돌 지뢰)
 
@@ -192,6 +214,22 @@ super().__init__('ship_turn')   # ← 복붙 실수. 파일은 ship_back 인데 
 | 죽은 토픽 | `/goal_distance`, `/wp_remaining_time`, `video_frames` | 아무도 안 받음 |
 | 펌웨어 | `It_is_Aship` 오타 → **B배 분기가 죽어 있음** | BOAT_A=0 / BOAT_B=1 로 정리 |
 | 펌웨어 | 통신 끊겨도 **모터가 계속 돈다** | 워치독 500ms → 중립(1500/1500) |
+
+### 3-9. 🔒 신설 토픽 이름 확정 — 어긋나면 에러 없이 조용히 빈 값
+
+신설 토픽은 **여러 단계에 걸쳐** 만들어진다. 발행자와 구독자가 **다른 단계**에서 태어나므로,
+이름이 한 글자라도 어긋나면 **ROS2 는 에러를 내지 않고 그냥 아무것도 안 준다.** 지금 못 박는다.
+
+| 토픽 | 타입 | 발행자 | 신설 단계 | 구독자 |
+|---|---|---|---|---|
+| `/health_ok` | `Bool` | `healthcheck` | **0단계** | (사람이 봄) |
+| `/failsafe_level` | `Int32` | `ship_direction` | **3단계** | `blackbox` |
+| `/gates_passed` | `Int32` | `ship_gate` | **5단계** | `blackbox` |
+| `/geofence_state` | `Float32MultiArray` | `north_goal_angle` | **6단계** | `ship_direction` |
+
+**🚨 게이트 통과 수는 `/gates_passed` 다 (`/gate_pass_count` 아님).**
+0단계 blackbox 가 처음엔 `/gate_pass_count` 로 구독했는데, 5단계 `ship_gate` 는 `/gates_passed` 로 발행할 예정이라
+**그대로 뒀으면 게이트 통과 수가 영원히 빈칸이 됐을 것이다.** → 0단계에서 `/gates_passed` 로 정정 완료.
 
 ---
 

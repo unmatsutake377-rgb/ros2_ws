@@ -63,7 +63,7 @@ class BlackBox(Node):
         motor_topic = self.declare_parameter("motor_topic", "Motor_run").value
         obstacle_topic = self.declare_parameter("obstacle_topic", "/obstacle_distance_array").value
         failsafe_topic = self.declare_parameter("failsafe_topic", "/failsafe_level").value
-        gate_count_topic = self.declare_parameter("gate_count_topic", "/gate_pass_count").value
+        gate_count_topic = self.declare_parameter("gate_count_topic", "/gates_passed").value
 
         # ---- 최신값 저장소 (콜백이 갱신, 타이머가 읽어 기록) ----
         self.latest = {k: None for k in CSV_HEADER}

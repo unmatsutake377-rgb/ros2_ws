@@ -90,7 +90,9 @@ class HealthCheck(Node):
         dup_modes = {m for m in wp_modes if wp_modes.count(m) > 1}
         if dup_modes:
             problems.append(f"중복 모드: {sorted(dup_modes)}")
-        dup_nodes = {n for n in wp_nodes if wp_nodes.count(n) > 1}
+        # "none"(담당 노드 없음이 정상인 회피 구간)은 여러 모드에 중복돼도 정상
+        real_nodes = [n for n in wp_nodes if str(n).lower() != "none"]
+        dup_nodes = {n for n in real_nodes if real_nodes.count(n) > 1}
         if dup_nodes:
             problems.append(f"한 노드가 여러 모드 담당: {sorted(dup_nodes)}")
         if problems:
@@ -135,6 +137,8 @@ class HealthCheck(Node):
         # --- 매핑표 런타임 검사 ---
         map_ok = True
         for mode, node in sorted(self.wp_map.items()):
+            if str(node).lower() == "none":
+                continue  # mode 5,8 = 순수 회피 구간(담당 노드 없음이 정상). 경고 금지.
             present = node in alive_nodes
             if not present:
                 lines.append(f"   ❌ mode {mode} → {node} : 노드가 떠있지 않음(침묵)")
@@ -149,7 +153,10 @@ class HealthCheck(Node):
                 cur_owner_ok = False
             else:
                 owner = self.wp_map[cur]
-                if owner not in alive_nodes:
+                if str(owner).lower() == "none":
+                    # 순수 회피 구간(mode 5,8): ship_direction 이 GPS 로 감. 정상.
+                    lines.append(f"   ✅ wp_mode={cur} 회피 구간(담당 노드 없음이 정상)")
+                elif owner not in alive_nodes:
                     lines.append(f"   ❌ 현재 wp_mode={cur} 담당 {owner} 침묵")
                     cur_owner_ok = False
                 elif self._sensor_state("candidate") == "DEAD":

@@ -16,7 +16,7 @@
     motor_topic: "Motor_run"                     # Int32 = pwm_r*10000 + pwm_l
     obstacle_topic: "/obstacle_distance_array"   # Float32MultiArray
     failsafe_topic: "/failsafe_level"            # Int32  (3단계 ship_direction 이 신설 예정)
-    gate_count_topic: "/gate_pass_count"         # Int32  (5단계 ship_gate 가 신설 예정)
+    gate_count_topic: "/gates_passed"            # Int32  (5단계 ship_gate 가 신설 예정, CLAUDE.md 3-9 확정)
 
 /healthcheck:
   ros__parameters:
@@ -29,6 +29,9 @@
     # ---- 매핑표 검사 ----
     wp_mode_topic: "/wp_mode"
     candidate_topic: "/candidate_angle"
-    # wp_mode -> 담당 노드 (의도한 정답표. dock 은 7 이 정답, 코드엔 9 로 박혀있음 = 버그)
-    wp_modes: [0, 1, 2, 3, 7]
-    wp_nodes: ["ship_last", "ship_gate", "ship_back", "ship_turn", "ship_dock"]
+    # wp_mode -> 담당 노드 매핑표 (실제 waypoint 값: {0,1,2,3,5,7,8})
+    #   dock 은 7 이 정답, 코드엔 9 로 박혀있음 = 버그(CLAUDE.md 3-1)
+    #   mode 5(WP6,7 회피)·mode 8(WP10 회피)은 담당 노드 없음이 정상 → "none"
+    #   (ship_direction 이 GPS 방위로만 감. "none" 은 거짓 경보를 내지 않음, CLAUDE.md 3-6)
+    wp_modes: [0, 1, 2, 3, 5, 7, 8]
+    wp_nodes: ["ship_last", "ship_gate", "ship_back", "ship_turn", "none", "ship_dock", "none"]
