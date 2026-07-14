@@ -70,10 +70,15 @@ class ShipDirection(Node):
         (작년 코드에도 방어가 없었다). 이상 스캔은 scan_callback 에서 버리고 즉시 정지.
         하드 폴트라 확인 N회 없이 바로 레벨 2. 정상 스캔이 오면 스스로 풀린다.
 
-    [G] 시간 투표 필터(TemporalVote). 물보라 반사가 한 프레임만 튀어도 예전엔 그걸
-        장애물로 믿었다. 최근 3프레임 중 2회 이상 나타난 셀만 인정한다(10Hz → 0.3초 기억).
-        측정(정면 부표 1개, 25판, 물보라 60%): 최소여유 0.17m → 0.40m (2.4배).
-        ★ dilate 전, 원본 마스크에 건다 (팽창 후면 진짜 부표의 팽창 영역까지 표가 갈린다).
+    [G] 시간 투표 필터(TemporalVote) — **기본 OFF(temporal_frames=1)**. 코드는 남겨둔다.
+        최근 N프레임 중 votes 회 이상 나타난 셀만 장애물로 인정하는 필터다.
+        처음엔 효과가 있어 보였으나(단일 시드), **시드 20개로 재보니 효과가 없었다:**
+          필터 OFF → 접촉 19/20, 전진 25.5m  /  필터 ON → 접촉 20/20, 전진 23.4m
+        해당 시나리오(정면 부표 + 물보라 60%)는 어느 코드든 95% 접촉하는 '통과 불가' 판이었다.
+        → **무해하지만 무익.** (TTC 는 '해로워서' 삭제했지만, 이건 '무익해서' 기본 OFF다.)
+        실제 물보라의 시간 특성이 시뮬과 다를 수 있으니 켤 수 있게 남긴다: frames=3, votes=2.
+        ★ 켤 때는 반드시 dilate 전, 원본 마스크에 건다
+          (팽창 후에 걸면 진짜 부표의 팽창 영역까지 표가 갈려 부표가 얇아진다).
 
     ※ 판정 로직(SensorWatch, TemporalVote)은 **ROS 비의존 모듈** ship_direction/failsafe.py 에 있다.
       워치독을 노드 안에 인라인하면 단위 테스트가 불가능해진다. rclpy 없이 임포트 가능:
@@ -97,8 +102,10 @@ class ShipDirection(Node):
         self.fs_stop_sec = float(self.declare_parameter('failsafe_stop_sec', 3.0).value)   # → 레벨 2
         self.fs_confirm_n = int(self.declare_parameter('failsafe_confirm_n', 3).value)
 
-        # 시간 투표 필터 — 물보라 한 프레임짜리 오탐 제거 (끄려면 frames 나 votes 를 1 로)
-        self.temporal_frames = int(self.declare_parameter('temporal_frames', 3).value)
+        # 시간 투표 필터 — **기본 OFF(frames=1)**. 시드 20개로 재보니 효과가 없었다(아래 [G]).
+        # 무해하지만 무익하다. 실제 물보라의 시간 특성이 시뮬과 다를 수 있으니 코드는 남겨두고
+        # 켤 수 있게만 해둔다: temporal_frames=3, temporal_votes=2 로 켠다.
+        self.temporal_frames = int(self.declare_parameter('temporal_frames', 1).value)
         self.temporal_votes = int(self.declare_parameter('temporal_votes', 2).value)
 
         # 회피 튜닝 — §6 시뮬 스윕으로 검증된 값. 임의로 바꾸지 말 것.

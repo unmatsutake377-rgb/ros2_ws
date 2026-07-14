@@ -37,11 +37,13 @@ class MotorController(Node):
         # ---- 파라미터 (config/motor_control.yaml, CLAUDE.md 1-4) ----
         self.slow_start_dist = float(self.declare_parameter("slow_start_dist", 1.2).value)  # 감속 시작 거리(m)
         self.min_speed_ratio = float(self.declare_parameter("min_speed_ratio", 0.7).value)  # 최저 속도비
-        # 명령 워치독: 3.5s. 지금 ship_direction 은 scan_cb 에서만 /desired_angle 을 발행해서
-        # LiDAR 가 잠깐 끊기면 /desired_angle 도 멈춘다. 짧게(0.5s) 잡으면 ship_direction 자체
-        # 페일세이프(0.7s 감속/3.0s 정지)를 덮어써 배를 죽인다. 3.5>3.0 이라 안 건드림.
-        # ⚠️ 3단계에서 ship_direction 제어루프를 고정주기 타이머로 분리하면 0.5 로 조인다.
-        self.cmd_timeout_sec = float(self.declare_parameter("cmd_timeout_sec", 3.5).value)
+        # 명령 워치독: 0.5s (3단계에서 3.5 → 0.5 로 조임).
+        # 예전엔 ship_direction 이 scan_cb 에서만 발행해서 LiDAR 가 잠깐 끊기면 /desired_angle 도
+        # 멈췄다 → 짧게 잡으면 ship_direction 자체 페일세이프를 덮어써 배를 죽였다(그래서 3.5).
+        # 지금은 제어 루프가 고정주기 타이머라 ship_direction 이 살아있는 한 항상 발행한다
+        # (LiDAR 4초 끊겨도 STOP_HOLD 를 40회 계속 발행하는 것으로 검증).
+        # → /desired_angle 침묵 = 'ship_direction 사망' 이다(LiDAR 끊김이 아니라). 0.5 로 조인다.
+        self.cmd_timeout_sec = float(self.declare_parameter("cmd_timeout_sec", 0.5).value)
 
         # ---- 페일세이프 속도 상한 (/failsafe_level 구독, ship_direction 이 발행) ----
         # /desired_angle 은 '각도'라 속도를 담을 수 없다 → 속도는 여기서 건다.

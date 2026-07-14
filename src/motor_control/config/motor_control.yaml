@@ -21,8 +21,8 @@
     # ⚠️ 경고 감속의 효과는 아직 미측정. 효과 없으면 뺀다(TTC 때처럼). 끄려면 1.0 으로.
     failsafe_l1_speed: 0.7
     # ---- 명령 워치독 ----
-    cmd_timeout_sec: 3.5   # /desired_angle 이 이보다 끊기면 중립(1500/1500)
-                           # 3.5>3.0: ship_direction 이 scan_cb 에서만 발행해 LiDAR 끊김 시
-                           # /desired_angle 도 멈추므로, 짧게 잡으면 ship_direction 자체
-                           # 페일세이프(0.7s 감속/3.0s 정지)를 덮어써 배를 죽인다.
-                           # ⚠️ TODO(3단계): ship_direction 을 고정주기 타이머로 분리한 뒤 0.5 로 조일 것.
+    cmd_timeout_sec: 0.5   # /desired_angle 이 이보다 끊기면 중립(1500/1500)
+                           # 3단계에서 3.5 → 0.5 로 조임. 전제가 성립했다:
+                           # ship_direction 제어 루프가 고정주기 타이머라, 살아있는 한 항상 발행한다
+                           # (LiDAR 4초 끊겨도 STOP_HOLD 를 40회 계속 발행 — 검증됨).
+                           # → /desired_angle 침묵 = ship_direction 사망 (LiDAR 끊김이 아니라).

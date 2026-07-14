@@ -102,11 +102,13 @@ self.sub_angle = self.create_subscription(Float32, "/desired_angle", self.angle_
 구독하고 근접 시 감속. `slow_start_dist=1.2`, `min_speed_ratio=0.7`. 전진 성분(pwm<1500)만 중립 쪽으로 당김
 (후진은 안 건드림). + 명령 워치독: `/desired_angle` 이 `cmd_timeout_sec` 넘게 끊기면 중립. 부팅 중립.
 
-**⚠️ 명령 워치독은 3.5s 다 (0.5s 아님).** 지금 `ship_direction` 은 `scan_cb` 에서만 `/desired_angle` 을 발행해서,
-LiDAR 가 잠깐만 끊겨도 `/desired_angle` 이 멈춘다. 0.5s 로 잡으면 `ship_direction` 자체 페일세이프(0.7s 감속/3.0s 정지)를
-덮어써 배를 죽인다(시뮬: LiDAR 1s 끊김→0.6s 정지). 3.5>3.0 이라 안 건드림.
-**TODO(3단계):** `ship_direction` 제어루프를 `scan_cb` → **고정주기 타이머**로 분리 → 그러면 `ship_direction` 이
-살아있는 한 항상 발행하므로 `/desired_angle` 침묵 = ship_direction 사망. 그때 `cmd_timeout_sec` 을 **0.5** 로 조인다.
+**✅ 명령 워치독은 0.5s 다 (3단계에서 3.5 → 0.5 로 조임).**
+2단계 땐 3.5s 였다. `ship_direction` 이 `scan_cb` 에서만 `/desired_angle` 을 발행해서, LiDAR 가 잠깐만 끊겨도
+`/desired_angle` 이 멈췄기 때문이다 — 짧게 잡으면 `ship_direction` 자체 페일세이프(0.7s 감속/3.0s 정지)를
+덮어써 배를 죽였다(시뮬: LiDAR 1s 끊김→0.6s 정지).
+**3단계에서 제어루프를 고정주기 타이머로 분리해 전제가 성립했다:** `ship_direction` 이 살아있는 한 항상 발행한다
+(LiDAR 4초 끊겨도 STOP_HOLD 를 40회 계속 발행 — 검증됨). → **`/desired_angle` 침묵 = ship_direction 사망**
+(LiDAR 끊김이 아니라). 그래서 0.5s 로 조였다.
 
 **🚫 TTC 비상제동은 폐기했다.** `/obstacle_distance_array` 최소거리는 시간필터 없는 생값이라, 미분(접근속도)이
 노이즈를 증폭한다. 물보라 반사 하나가 0.4m 로 튀면 접근속도 26m/s → TTC 0.015s → 급정지.
@@ -364,10 +366,33 @@ if wp_mode == 7:
 | `detection_distance_default` | **3.0** | 1.8 이면 8/8 충돌. 3.0 이면 5/8 통과 |
 | `detection_distance_gate` | **2.0** | 3.0 이면 오히려 접촉 증가 (게이트가 좁아서) |
 | `min_obstacle_cells` | **1** | 3 이면 작은 부표가 무시됨 |
-| `temporal_frames/votes` | **3 / 2** | 물보라 오탐 제거 (10Hz 기준 0.3초) |
+| `temporal_frames/votes` | **1 / 2 = OFF** | 🚫 **효과 없음(철회).** 아래 참고 |
 | `track_gate_deg` | **12.0** | 오탐 35% 환경에서 속는 비율 36% → 0.3% |
 
 **`rear_obstacle_ignore_margin` 은 제거했다.** 물보라 0.3m 반사 하나가 실제 1.6m 부표를 **통째로 사라지게** 만들었다 (17셀 → 0셀).
+
+### 🚫 효과 없어서 기본 OFF: 시간 투표 필터 (`temporal_frames`)
+
+처음엔 효과가 있어 보였으나 **단일 시드로 판단한 착시**였다. 시드 20개로 재보니:
+
+| | 접촉 | 전진 |
+|---|---|---|
+| 필터 OFF | 19/20 | 25.5m |
+| 필터 ON | **20/20** | 23.4m |
+
+해당 시나리오(정면 부표 + 물보라 60%)는 **어느 코드든 95% 접촉하는 '통과 불가' 판**이었다.
+→ **무해하지만 무익.** 기본 `temporal_frames: 1`(OFF). **코드는 남겨둔다** — 실제 물보라의 시간 특성이
+시뮬과 다를 수 있으니 켤 수 있게(`frames:3, votes:2`). 켤 때는 반드시 **dilate 전, 원본 마스크**에 건다.
+
+> **`TTC` 는 '해로워서' 삭제했고(3-2), 이건 '무익해서' 기본 OFF다.** 둘을 구분할 것.
+
+### 📏 측정으로 효과가 확인된 것 (유지)
+
+| 항목 | 효과 |
+|---|---|
+| `failsafe_l1_speed: 0.7` (경고 시 감속) | 50판에서 **접촉 24 → 14회** |
+| 제어 루프 타이머 분리 | LiDAR 1~3초 끊김 시 `/desired_angle` 발행 **0회 → 10~30회** |
+| `rear_obstacle_ignore_margin` 제거 | 부표가 통째로 사라지던 결함 해소 |
 
 ---
 
