@@ -5,6 +5,13 @@ import rclpy
 from rclpy.node import Node
 from std_msgs.msg import Float32, Float32MultiArray, Int32
 
+# /desired_angle · /candidate_angle 특수 신호 상수 (CLAUDE.md 3-9 상수표)
+# ★ 작년엔 이 값들이 6개 파일에 흩어져 각자 정의돼 어긋났다. 여기 값은 그 표를 따른다.
+SPIN_RIGHT = 5000.0         # 우선회 (ship_dock RIGHT_SPIN 계승)
+SPIN_LEFT = 6000.0          # 좌선회
+CANDIDATE_INVALID = 20000.0 # 미션 없음 → fallback 전진
+STOP_HOLD = 50000.0         # 정지/대기
+
 
 class MotorController(Node):
     """조향각(/desired_angle)을 모터 PWM(Motor_run)으로 변환하는 체인의 끝단.
@@ -35,11 +42,14 @@ class MotorController(Node):
         # ⚠️ 3단계에서 ship_direction 제어루프를 고정주기 타이머로 분리하면 0.5 로 조인다.
         self.cmd_timeout_sec = float(self.declare_parameter("cmd_timeout_sec", 3.5).value)
 
-        # ---- 기존 조향 상수 (작년 값 유지 — 보트별 파라미터화는 별도 범위) ----
-        self.base_pwm = 1360
-        self.max_angle = 81   # -1~161도 전체를 조향에 반영
-        self.max_diff = 100
-        self.turn_offset = -60  # 부드러운 왼쪽 선회
+        # ---- 조향 파라미터 (배 2척 A/B 크기·추력 다름 → config, CLAUDE.md 1-4) ----
+        self.base_pwm = int(self.declare_parameter("base_pwm", 1360).value)      # ⚠️ 실측 필요(순항 추력)
+        self.max_diff = int(self.declare_parameter("max_diff", 100).value)       # ⚠️ 실측 필요(최대 차동)
+        self.turn_offset = int(self.declare_parameter("turn_offset", -60).value)  # SPIN 크기(부호 무의미)
+        # 조향 좌/우 반전 노브: 모터 배선이 반대면 조향(4)·SPIN(3)이 함께 반대로 나온다(원인 하나).
+        # ★ 물 위 첫 시험에서 확정. 지금 추측 금지(배가 아직 없음). CLAUDE.md §8 "가장 흔한 사고".
+        self.steer_invert = bool(self.declare_parameter("steer_invert", False).value)
+        self.max_angle = 81   # -1~161도 전체를 조향에 반영 (매핑 상수, 보트 무관)
 
         # ---- 구독/발행 (토픽·타입 불변, CLAUDE.md 1-3) ----
         self.sub_angle = self.create_subscription(Float32, "/desired_angle", self.angle_callback, 2)
@@ -56,8 +66,9 @@ class MotorController(Node):
 
         self.get_logger().info(
             f"motor_control 시작: 20Hz. 감속 slow_start={self.slow_start_dist}m/"
-            f"min_ratio={self.min_speed_ratio}, 명령 워치독={self.cmd_timeout_sec}s.\n"
-            f"   첫 명령 전/명령 끊김 시 중립(1500/1500). PWM: <1500 전진, >1500 후진."
+            f"min_ratio={self.min_speed_ratio}, 명령 워치독={self.cmd_timeout_sec}s, "
+            f"steer_invert={self.steer_invert}.\n"
+            f"   SPIN: 5000=우선회 6000=좌선회. 첫 명령 전/끊김 시 중립. PWM: <1500 전진, >1500 후진."
         )
 
     # ───────────────────────── 콜백 ─────────────────────────
@@ -78,6 +89,12 @@ class MotorController(Node):
         off = max(-self.max_angle, min(self.max_angle, offset))
         diff = (abs(off) / self.max_angle) * self.max_diff
         return int(diff)
+
+    def apply_steer(self, signed_diff):
+        """base_pwm 중심 좌우 차동. signed_diff>0 = '왼쪽 패턴'(오른쪽 모터가 더 전진).
+        steer_invert=True 면 좌/우를 통째로 뒤집는다 — 조향(4)·SPIN(3) 공통(배선 반대 대비)."""
+        s = -signed_diff if self.steer_invert else signed_diff
+        return self.base_pwm - s, self.base_pwm + s
 
     def speed_ratio(self):
         """전방 최근접 거리 → 속도비 [min_speed_ratio, 1.0]. dist>=slow_start_dist 면 1.0."""
@@ -119,37 +136,34 @@ class MotorController(Node):
         angle = self.desired_angle
 
         # (1) STOP
-        if angle >= 50000:
+        if angle >= STOP_HOLD:
             pwm_r = 1500
             pwm_l = 1500
 
-        # (2) fallback 전진
-        elif 20000 <= angle < 50000:
+        # (2) fallback 전진 (미션 없음)
+        elif CANDIDATE_INVALID <= angle < STOP_HOLD:
             pwm_r = self.base_pwm
             pwm_l = self.base_pwm
 
-        # (3) 느린 왼쪽 선회 (좌측 방향으로 고정 오프셋)
-        elif 5000 <= angle < 20000:
-            diff = self.linear_diff(self.turn_offset)
-            pwm_r = self.base_pwm - diff
-            pwm_l = self.base_pwm + diff
+        # (3a) SPIN_RIGHT(5000) → 우선회. 작년 버그: 이 값을 왼쪽으로 돌렸다(이름과 반대).
+        elif SPIN_RIGHT <= angle < SPIN_LEFT:
+            spin = self.linear_diff(self.turn_offset)
+            pwm_r, pwm_l = self.apply_steer(-spin)   # 오른쪽 패턴
+
+        # (3b) SPIN_LEFT(6000) → 좌선회
+        elif SPIN_LEFT <= angle < CANDIDATE_INVALID:
+            spin = self.linear_diff(self.turn_offset)
+            pwm_r, pwm_l = self.apply_steer(+spin)   # 왼쪽 패턴
 
         # (4) 정상 조향 구간
         elif -1.0 <= angle <= 161.0:
             offset = angle - 80.0   # 중앙(정면) 80도 기준
             diff = self.linear_diff(offset)
-
-            if offset > 0:
-                # 왼쪽 조향
-                pwm_r = self.base_pwm - diff
-                pwm_l = self.base_pwm + diff
-            else:
-                # 오른쪽 조향
-                pwm_r = self.base_pwm + diff
-                pwm_l = self.base_pwm - diff
+            # offset>0 = 왼쪽 조향(+), offset<=0 = 오른쪽 조향(-)
+            pwm_r, pwm_l = self.apply_steer(diff if offset > 0 else -diff)
 
         # (5) 후진 구간
-        elif 161.0 < angle < 5000.0:
+        elif 161.0 < angle < SPIN_RIGHT:
             pwm_r = 1590
             pwm_l = 1590
 

@@ -244,6 +244,24 @@ super().__init__('ship_turn')   # ← 복붙 실수. 파일은 ship_back 인데 
 0단계 blackbox 가 처음엔 `/gate_pass_count` 로 구독했는데, 5단계 `ship_gate` 는 `/gates_passed` 로 발행할 예정이라
 **그대로 뒀으면 게이트 통과 수가 영원히 빈칸이 됐을 것이다.** → 0단계에서 `/gates_passed` 로 정정 완료.
 
+#### 🔒 `/candidate_angle`·`/desired_angle` 특수 신호 상수표 (값이 곧 계약)
+
+이 값들은 각도가 아니라 **명령 코드**다. `north_goal_angle`·`ship_dock`·`ship_turn`·`ship_back`·`ship_direction`·`motor_control`
+**6개 파일에 흩어져 각자 정의**돼 있어서 어긋났다(아래 SPIN 버그의 원인). 값을 여기 못 박는다.
+
+| 값 | 의미 | 비고 |
+|---|---|---|
+| `5000.0` | **우선회 (SPIN_RIGHT)** | 작년 `ship_dock` 의 `RIGHT_SPIN=5000` 계승 |
+| `6000.0` | **좌선회 (SPIN_LEFT)** | 현재 발행하는 노드 없음(예약) |
+| `20000.0` | **미션 없음 (CANDIDATE_INVALID)** | → fallback 전진 |
+| `50000.0` | **정지 (STOP_HOLD / STOP_VALUE)** | `ship_dock`·`ship_turn`·`ship_back`·`ship_direction` 에 각자 적혀 있음 |
+
+**🚨 작년 SPIN 방향 버그 (2단계에서 고침):** `ship_dock` 은 `RIGHT_SPIN=5000` "오른쪽 회전"으로 보내는데,
+`motor_control` 분기 (3) 은 이걸 **"느린 왼쪽 선회"로 처리**했다 — 이름과 동작이 반대. (도킹이 mode 9 로 죽어 있어 1년간 아무도 몰랐다.)
+2단계에서 `5000→우선회 / 6000→좌선회` 로 분리하고, **물리 배선 반전은 `steer_invert`(기본 false) 파라미터**로 뺐다.
+한 노브가 조향(4)·SPIN(3)을 함께 뒤집는다(배선 반대면 원인이 하나). **물 위 첫 시험에서 확정 — §8 "가장 흔한 사고".**
+※ TODO: 위 상수를 공유 모듈 한 곳으로 모으면 재발 방지(현재는 파일마다 재정의).
+
 ---
 
 ## 4. 교체 우선순위 — 이 순서대로
