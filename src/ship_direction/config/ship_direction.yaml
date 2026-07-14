@@ -20,6 +20,14 @@
     failsafe_stop_sec: 3.0     # → 레벨2 (LiDAR 10Hz 기준 30스캔 연속 누락)
     failsafe_confirm_n: 3      # 올릴 땐 연속 N회 확인(지터 방지). 내릴 땐 즉시(자동 복구)
 
+    # ---- 시간 투표 필터 (물보라 한 프레임짜리 오탐 제거) ----
+    # 최근 N프레임 중 votes 회 이상 나타난 셀만 진짜 장애물로 인정. 10Hz → 0.3초 기억.
+    # 측정(정면 부표 1개, 25판, 물보라 60%): 최소여유 0.17m(없음) → 0.40m(있음). 2.4배.
+    # ★ dilate 전, 원본 마스크에 건다 (팽창 후면 진짜 부표의 팽창 영역까지 표가 갈려 얇아진다).
+    # 끄려면 frames 나 votes 를 1 로.
+    temporal_frames: 3
+    temporal_votes: 2
+
     # ---- 회피 튜닝 (CLAUDE.md §6 시뮬로 검증된 값 — 임의로 바꾸지 말 것) ----
     detection_distance_default: 3.0  # 1.8 이면 8/8 충돌. 3.0 이면 5/8 통과
     detection_distance_gate: 2.0     # 게이트는 좁아서 3.0 이면 오히려 접촉 증가

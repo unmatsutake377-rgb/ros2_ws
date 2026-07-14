@@ -8,6 +8,10 @@ from rclpy.executors import MultiThreadedExecutor
 from std_msgs.msg import Int32, Float32, Float32MultiArray
 from sensor_msgs.msg import LaserScan
 
+# 판정 로직은 ROS 비의존 모듈에 있다 (ROS 없이 단위 테스트 가능).
+# 재수출: from ship_direction.ship_direction import SensorWatch 로도 접근 가능.
+from ship_direction.failsafe import SensorWatch, TemporalVote
+
 # 특수 신호 상수 (CLAUDE.md 3-9 상수표)
 SPIN_RIGHT = 5000.0          # 우선회
 SPIN_LEFT = 6000.0           # 좌선회
@@ -65,6 +69,16 @@ class ShipDirection(Node):
         LiDAR 가 이상 스캔을 보내면 ZeroDivisionError 로 노드가 통째로 죽는다
         (작년 코드에도 방어가 없었다). 이상 스캔은 scan_callback 에서 버리고 즉시 정지.
         하드 폴트라 확인 N회 없이 바로 레벨 2. 정상 스캔이 오면 스스로 풀린다.
+
+    [G] 시간 투표 필터(TemporalVote). 물보라 반사가 한 프레임만 튀어도 예전엔 그걸
+        장애물로 믿었다. 최근 3프레임 중 2회 이상 나타난 셀만 인정한다(10Hz → 0.3초 기억).
+        측정(정면 부표 1개, 25판, 물보라 60%): 최소여유 0.17m → 0.40m (2.4배).
+        ★ dilate 전, 원본 마스크에 건다 (팽창 후면 진짜 부표의 팽창 영역까지 표가 갈린다).
+
+    ※ 판정 로직(SensorWatch, TemporalVote)은 **ROS 비의존 모듈** ship_direction/failsafe.py 에 있다.
+      워치독을 노드 안에 인라인하면 단위 테스트가 불가능해진다. rclpy 없이 임포트 가능:
+          from ship_direction.failsafe import SensorWatch, TemporalVote   # ← ROS 불필요(권장)
+          from ship_direction.ship_direction import SensorWatch           # ← 재수출(ROS 필요)
     """
 
     def __init__(self):
@@ -78,10 +92,14 @@ class ShipDirection(Node):
         self.control_period = float(self.declare_parameter('control_period_sec', 0.1).value)    # 10Hz
         self.watchdog_period = float(self.declare_parameter('watchdog_period_sec', 0.1).value)
 
-        # 페일세이프 임계(스캔이 묵은 시간). 3상태·2임계 (CLAUDE.md §5)
+        # 페일세이프 임계(센서가 묵은 시간). 3상태·2임계 (CLAUDE.md §5)
         self.fs_warn_sec = float(self.declare_parameter('failsafe_warn_sec', 0.7).value)   # → 레벨 1
         self.fs_stop_sec = float(self.declare_parameter('failsafe_stop_sec', 3.0).value)   # → 레벨 2
         self.fs_confirm_n = int(self.declare_parameter('failsafe_confirm_n', 3).value)
+
+        # 시간 투표 필터 — 물보라 한 프레임짜리 오탐 제거 (끄려면 frames 나 votes 를 1 로)
+        self.temporal_frames = int(self.declare_parameter('temporal_frames', 3).value)
+        self.temporal_votes = int(self.declare_parameter('temporal_votes', 2).value)
 
         # 회피 튜닝 — §6 시뮬 스윕으로 검증된 값. 임의로 바꾸지 말 것.
         self.detection_distance_default = float(
@@ -128,17 +146,21 @@ class ShipDirection(Node):
         self.candidate_angle = CANDIDATE_INVALID
 
         self.latest_scan = None       # scan_cb 는 저장만 한다
-        self.bad_scan = False         # angle_increment 이상 스캔 래치 (아래 [F])
-
-        # 센서별 마지막 수신 시각(monotonic). None = ARMED 전(그 센서는 아직 감시 안 함).
-        # ★ /scan 만 보면 안 된다. IMU 가 죽으면 ship_goal_angle 이 /yaw_error 를 끊는데,
-        #   그 침묵을 들을 귀가 없으면 마지막 yaw_error 를 영원히 붙들고 조향한다. (아래 [E])
-        self.last_seen = {'scan': None, 'yaw_error': None}
-
         self.last_reverse_time = time.monotonic()
 
+        # 페일세이프 감시 — /scan 과 /yaw_error 를 둘 다 본다.
+        # ★ /scan 만 보면 IMU 사망을 놓친다. IMU 가 죽으면 ship_goal_angle 이 /yaw_error 를
+        #   끊어주는데(1단계 설계), 그 침묵을 들을 귀가 없으면 마지막 yaw_error 로 영원히 조향한다.
+        self.watch = SensorWatch(
+            ['scan', 'yaw_error'],
+            warn_sec=self.fs_warn_sec,
+            stop_sec=self.fs_stop_sec,
+            confirm_n=self.fs_confirm_n,
+        )
         self.failsafe_level = 0
-        self._raise_count = 0
+
+        # 시간 투표 필터 (dilate 전, 원본 마스크에 적용)
+        self.temporal = TemporalVote(self.temporal_frames, self.temporal_votes)
 
         # ----------------------
         #  타이머: 제어 / 워치독 (서로 독립)
@@ -150,7 +172,9 @@ class ShipDirection(Node):
             f"ship_direction 시작: 제어 {1.0 / self.control_period:.0f}Hz (스캔 유무 무관 항상 발행), "
             f"워치독 {1.0 / self.watchdog_period:.0f}Hz.\n"
             f"   페일세이프 경고={self.fs_warn_sec}s(레벨1) 정지={self.fs_stop_sec}s(레벨2), "
-            f"확인 {self.fs_confirm_n}회. 각도 override 는 레벨2 뿐."
+            f"확인 {self.fs_confirm_n}회. 각도 override 는 레벨2 뿐.\n"
+            f"   시간투표 {self.temporal_frames}프레임 중 {self.temporal_votes}표 "
+            f"({'ON' if self.temporal.enabled else 'OFF'}), 감시 센서: scan + yaw_error."
         )
 
     # =====================================================
@@ -170,18 +194,18 @@ class ShipDirection(Node):
                 throttle_duration_sec=1.0,
             )
             with self.lock:
-                self.bad_scan = True
+                self.watch.set_fault(True)     # 하드 폴트 → 즉시 레벨 2
             return
 
         with self.lock:
-            self.bad_scan = False
+            self.watch.set_fault(False)        # 정상 스캔이 오면 스스로 풀린다
             self.latest_scan = msg
-            self.last_seen['scan'] = time.monotonic()
+            self.watch.feed('scan', time.monotonic())
 
     def yaw_error_callback(self, msg):
         with self.lock:
             self.yaw_error = (360.0 - msg.data) % 360.0
-            self.last_seen['yaw_error'] = time.monotonic()   # [E] IMU 체인 생존 신호
+            self.watch.feed('yaw_error', time.monotonic())   # [E] IMU 체인 생존 신호
 
     def candidate_callback(self, msg):
         val = msg.data
@@ -220,52 +244,19 @@ class ShipDirection(Node):
             /scan 만 보면 IMU 사망을 놓친다: IMU 가 죽으면 ship_goal_angle 이 /yaw_error 를
             끊어주는데(1단계 설계), 그 침묵을 들을 귀가 없으면 ship_direction 은 마지막
             yaw_error 를 영원히 붙들고 조향한다. (측정: 정지율 0%, 접촉 3회, 14.8m 계속 주행)
-            센서별로 첫 데이터를 받은 뒤에만 감시(ARMED) — 부팅 오발동 방지."""
+            센서별로 첫 데이터를 받은 뒤에만 감시(ARMED) — 부팅 오발동 방지.
+
+        판정 로직은 SensorWatch(ROS 비의존)에 있다 — 단위 테스트 가능."""
         now = time.monotonic()
+        prev = self.failsafe_level
+
         with self.lock:
-            seen = dict(self.last_seen)
-            bad = self.bad_scan
+            level = self.watch.update(now)
+            worst = self.watch.worst
 
-        if bad:
-            # [F] 이상 스캔은 하드 폴트 — 지터가 아니므로 확인 N회 없이 즉시 정지
-            raw = 2
-            worst = 'scan(angle_increment 이상)'
-        else:
-            raw = 0
-            worst = None
-            for name, t in seen.items():
-                if t is None:
-                    continue          # ARMED 전 — 이 센서는 아직 감시하지 않는다
-                age = now - t
-                if age > self.fs_stop_sec:
-                    lvl = 2
-                elif age > self.fs_warn_sec:
-                    lvl = 1
-                else:
-                    lvl = 0
-                if lvl > raw:         # 가장 나쁜 센서가 레벨을 정한다
-                    raw, worst = lvl, f"{name}({age:.1f}s)"
-
-        level = self.failsafe_level
-        if bad:
-            level = raw
-            self._raise_count = 0
-        elif raw > level:
-            # 올릴 땐 연속 N회 확인 — 순간 지터로 레벨 안 올림
-            self._raise_count += 1
-            if self._raise_count >= self.fs_confirm_n:
-                level = raw
-                self._raise_count = 0
-        elif raw < level:
-            # 자동 복구: 센서가 돌아왔다는 뜻 → 즉시 해제 (올릴 땐 느리게, 풀 땐 빠르게)
-            level = raw
-            self._raise_count = 0
-        else:
-            self._raise_count = 0
-
-        if level != self.failsafe_level:
-            log = self.get_logger().warn if level > self.failsafe_level else self.get_logger().info
-            log(f"페일세이프 L{self.failsafe_level} → L{level}"
+        if level != prev:
+            log = self.get_logger().warn if level > prev else self.get_logger().info
+            log(f"페일세이프 L{prev} → L{level}"
                 + (f"  (원인: {worst})" if worst else "  (복구)"))
 
         self.failsafe_level = level
@@ -279,7 +270,7 @@ class ShipDirection(Node):
 
         with self.lock:
             scan = self.latest_scan
-            bad = self.bad_scan
+            bad = self.watch.fault
             wp4_enter_time = self.wp4_enter_time
             candidate_angle = self.candidate_angle
             yaw_error = self.yaw_error
@@ -398,6 +389,11 @@ class ShipDirection(Node):
                 binary.append(1)
             else:
                 binary.append(0)
+
+        # ---- [G] 시간 투표 — 물보라 한 프레임짜리 오탐 제거 ----
+        # ★ 반드시 dilate 전, 원본 마스크에 건다. 팽창 후에 걸면 진짜 부표의 팽창 영역까지
+        #   표가 갈려 부표가 얇아진다.
+        binary = self.temporal.apply(binary)
 
         binary = self.smooth_spikes(binary)
         binary = self.suppress_spike_edges(binary)
