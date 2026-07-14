@@ -254,7 +254,20 @@ super().__init__('ship_turn')   # ← 복붙 실수. 파일은 ship_back 인데 
 | `/health_ok` | `Bool` | `healthcheck` | **0단계** | (사람이 봄) |
 | `/failsafe_level` | `Int32` | `ship_direction` | **3단계** | `blackbox`, **`motor_control`**(속도 상한) |
 | `/gates_passed` | `Int32` | `ship_gate` | **5단계** | `blackbox` |
-| `/geofence_state` | `Float32MultiArray` | `north_goal_angle` | **6단계** | `ship_direction` |
+| `/geofence_state` | `Float32MultiArray` | `north_goal_angle` (**6a**) | **6a 발행 / 6a-2 구독** | `ship_direction` (**6a-2**) |
+
+#### 🔒 `/geofence_state` 계약 (6a 에서 확정)
+
+`data = [경계까지 거리(m), 경계 **상대**방위(deg)]` — 멀거나 미설정이거나 **이미 이탈** 시 `[inf, nan]`.
+
+- **상대방위**다(0 = 정면). `/candidate_angle` 과 같은 규약 → 소비자가 LiDAR 이진 마스크(정면=80°)에 바로 칠할 수 있다.
+  (`north_goal_angle` 이 `/imu/yaw` 로 변환한다. ⚠️ 4단계의 'IMU 절대방위' 수정에 의존 — 3-5.)
+- **이탈 시 `[inf, nan]` 인 이유:** 이미 밖인데 경계를 '장애물'로 칠하면 **돌아갈 길을 막는다.**
+  대신 ERROR 를 찍고 GPS 웨이포인트가 안으로 끌어당기게 둔다. (6a-2 에서 재검토)
+
+**🚨 발행자만 있고 구독자가 0 인 상태 = 경계 방어가 통째로 없는 것.** 도킹이 1년간 침묵한 것과 같은 사고다.
+→ **이중 방어:** ① `north_goal_angle` 이 부팅 5초 뒤 구독자 0 이면 ERROR 를 계속 찍는다.
+② `healthcheck` 가 출발 전에 검사해 `/health_ok = false` 로 만든다. **6a-2 전까지는 일부러 계속 실패한다.**
 
 **🚨 게이트 통과 수는 `/gates_passed` 다 (`/gate_pass_count` 아님).**
 0단계 blackbox 가 처음엔 `/gate_pass_count` 로 구독했는데, 5단계 `ship_gate` 는 `/gates_passed` 로 발행할 예정이라

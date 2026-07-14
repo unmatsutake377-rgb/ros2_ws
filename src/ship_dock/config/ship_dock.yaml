@@ -1,0 +1,32 @@
+# ship_dock 파라미터 (하드코딩 금지, CLAUDE.md 1-4)
+/ship_dock:
+  ros__parameters:
+    active_wp_mode: 7        # 🚨 작년엔 9 였다 → 도킹 노드가 1년 내내 침묵했다 (CLAUDE.md 3-1)
+    period_sec: 0.1
+
+    # ---- 거리: 전부 LiDAR '전방 섹터 최소거리' 기준 ----
+    # ★ 표식 방위의 LiDAR 거리를 찾지 않는다. 도크는 넓어서 표식(중앙) 방위와
+    #   LiDAR 최근접점 방위가 최대 15° 어긋난다 → 매칭이 틀린다.
+    #   "전방에 뭔가 얼마나 가까운가"만 알면 접안엔 충분하다. 각도 정합 문제가 사라진다.
+    front_sector_half_deg: 15.0   # 정면 ±15° 섹터
+    standoff_dist_m: 3.0          # ⚠️ 실측 필요 — 정면 정렬을 마칠 지점
+    contact_dist_m: 1.0           # ⚠️ 실측 필요 — 접안 완료 (도크 규격 공지 후 확정)
+    backoff_dist_m: 2.5           # ⚠️ 실측 필요 — 후진으로 빠져나올 거리
+
+    # ---- 정렬 (정면 접근) ----
+    align_tol_deg: 8.0            # 이 안에 들면 '정면'으로 본다
+    realign_tol_deg: 25.0         # 접근 중 이만큼 틀어지면 제자리 재정렬 (비스듬한 접안 방지)
+    image_positive_is_left: true  # ⚠️ 벤치 검증 필요 — /image_angle 양수가 좌현인가 (카메라 좌표계)
+    sweep_right: true             # SEARCH 스윕 방향 (true=우선회 5000)
+
+    # ---- 시간 ----
+    init_wait_sec: 3.0
+    search_timeout_sec: 25.0
+    align_timeout_sec: 15.0
+    approach_timeout_sec: 30.0
+    contact_hold_sec: 3.0         # ⚠️ 규정 확인 — 접안 유지 시간
+    backoff_timeout_sec: 8.0
+
+    # ---- 신선도 (묵은 데이터로 도킹하지 않는다) ----
+    image_stale_sec: 1.0
+    scan_stale_sec: 1.0

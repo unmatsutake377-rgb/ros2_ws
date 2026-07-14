@@ -1,0 +1,16 @@
+# north_goal_angle 파라미터 (하드코딩 금지, CLAUDE.md 1-4)
+/north_goal_angle:
+  ros__parameters:
+    period_sec: 0.5
+
+    # ---- Geofence (경계 이탈 = 실격) ----
+    # 경기장 폴리곤: [lat1, lon1, lat2, lon2, ...] 평탄 배열. 최소 3점(=6개 수).
+    # ⚠️ 실측 필요 — 대회장 경계 좌표를 아직 모른다. 비어 있으면 geofence 는 꺼진다(=[inf,nan]).
+    geofence_polygon: []
+    geofence_report_dist_m: 10.0   # 이보다 멀면 [inf, nan] (가까울 때만 의미가 있다)
+    geofence_check_after_sec: 5.0  # 부팅 후 이 시간이 지나면 구독자 0 검사를 시작한다
+
+    # 🚨 /geofence_state 는 6a 에서 '발행만' 한다. 구독자(ship_direction)는 6a-2 에서 붙인다.
+    #    발행자만 있는 토픽은 무해하지만, '넣었다'고 믿고 잊으면 도킹이 1년간 침묵한 것과
+    #    똑같은 사고가 된다. → 구독자가 0 이면 노드가 ERROR 를 계속 찍는다.
+    #    healthcheck 도 출발 전에 이걸 검사한다 (ssf_tools).

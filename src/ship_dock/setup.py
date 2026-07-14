@@ -14,6 +14,7 @@ setup(
         ('share/' + package_name, ['package.xml']),
         # ⬇⬇ 이 줄 추가 (launch 파일 설치)
         (os.path.join('share', package_name, 'launch'), glob('launch/*.launch.py')),
+        (os.path.join('share', package_name, 'config'), glob('config/*.yaml')),
     ],
     install_requires=['setuptools'],
     zip_safe=True,

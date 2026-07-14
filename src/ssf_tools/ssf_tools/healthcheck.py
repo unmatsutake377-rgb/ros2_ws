@@ -50,6 +50,15 @@ class HealthCheck(Node):
         wp_nodes = list(self.declare_parameter(
             "wp_nodes", ["ship_last", "ship_gate", "ship_back", "ship_turn", "ship_dock"]).value)
 
+        # 🚨 geofence 배선 검사 — '잊으면 최악'.
+        # north_goal_angle 이 /geofence_state 를 발행하는데 구독자가 0 이면 경계 이탈 방어가
+        # 통째로 없는 것이다(실격). 발행자만 있고 아무도 안 듣는 상태는 에러를 내지 않는다
+        # — 도킹이 1년간 침묵한 것과 똑같은 사고다. **출발 전에** 여기서 잡는다.
+        self.geofence_topic = str(
+            self.declare_parameter("geofence_topic", "/geofence_state").value)
+        self.require_geofence_sub = bool(
+            self.declare_parameter("require_geofence_subscriber", True).value)
+
         # wp_mode -> 담당 노드 매핑표 (yaml 한 곳에 모음 = CLAUDE.md 3-6 의 단일 출처)
         self.wp_map = {}
         for m, n in zip(wp_modes, wp_nodes):
@@ -163,10 +172,25 @@ class HealthCheck(Node):
                     lines.append(f"   ❌ wp_mode={cur} {owner} 살아있으나 /candidate_angle 끊김")
                     cur_owner_ok = False
 
+        # --- geofence 배선 검사 ('잊으면 최악') ---
+        # 발행자가 있는데 구독자가 0 이면 경계 이탈 방어가 통째로 없다 = 실격 위험.
+        # 침묵하는 기능은 에러를 내지 않는다 → 여기서 소리내어 잡는다.
+        geofence_ok = True
+        if self.require_geofence_sub:
+            n_pub = self.count_publishers(self.geofence_topic)
+            n_sub = self.count_subscribers(self.geofence_topic)
+            if n_pub == 0:
+                lines.append(f"   ❌ {self.geofence_topic} 발행자 없음 (north_goal_angle 미기동?)")
+                geofence_ok = False
+            elif n_sub == 0:
+                lines.append(f"   🚨 {self.geofence_topic} 구독자 0 — 경계 이탈 방어가 작동하지 않는다"
+                             f" (실격 위험). ship_direction 이 구독해야 한다.")
+                geofence_ok = False
+
         # --- /health_ok 판정 ---
         # 센서는 WAIT(부팅 중)을 죽음으로 치지 않는다(오탐 방지). DEAD 만 실패.
         sensors_ok = all(st != "DEAD" for st in sensors.values())
-        health_ok = sensors_ok and map_ok and cur_owner_ok
+        health_ok = sensors_ok and map_ok and cur_owner_ok and geofence_ok
 
         self.pub_health.publish(Bool(data=bool(health_ok)))
 
