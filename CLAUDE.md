@@ -83,6 +83,7 @@ self.declare_parameter("active_wp_mode", 9)   # ← 웨이포인트의 도킹 �
 **침묵하는 노드는 에러를 내지 않는다.** 이게 이 구조의 근본 위험이다.
 
 **고칠 것:** `active_wp_mode` 를 **7** 로. 그리고 아래 3-6 의 매핑표 검사를 넣을 것.
+⚠️ **단, 이 수정은 단독으로 하면 안 된다.** `north_goal_angle` 의 mode-7 폴백과 **원자적 한 쌍**이다 (4장 **6a** 참고). 같은 커밋에서 함께 고칠 것.
 
 ### 3-2. 🚨 감속이 연결되어 있지 않았다
 
@@ -246,7 +247,31 @@ super().__init__('ship_turn')   # ← 복붙 실수. 파일은 ship_back 인데 
 | **3** | `ship_direction` | 회피·페일세이프. **가장 큰 이득** (접촉 3.0 → 0.2회). |
 | **4** | `iahrs_driver` + Arduino 펌웨어 | **가장 위험.** 시뮬로 못 잡는다. **벤치 확인 필수.** |
 | **5** | 비전 묶음 ⚛ (`marker_detector`+`marker_selector`+`tracker`+`ship_gate`) | **원자적.** 쪼개면 깨진다. `basic_image_*.py` 전부 삭제. |
-| **6** | 미션 노드 (`ship_dock`, `ship_turn`, `ship_back`, `north_goal_angle`) | 각각 독립. 비전(5단계) 이후에 의미가 생긴다. |
+| **6a** | ⚛ **`ship_dock` + `north_goal_angle`** (원자적 한 쌍) | **반드시 같은 커밋.** 아래 🚨 참고. 비전(5단계) 이후에 의미가 생긴다. |
+| **6b** | `ship_turn`, `ship_back` (각각 독립) | 서로·6a 와 독립. 비전(5단계) 이후에 의미가 생긴다. |
+
+### 🚨 6a 는 원자적이다 — `ship_dock` 과 `north_goal_angle` 을 쪼개면 도킹이 튄다
+
+`north_goal_angle.py` 는 `timer_cb` 에서 **0.5초(2Hz)마다** 다음을 발행한다:
+
+```python
+self.create_timer(0.5, self.timer_cb)
+...
+if wp_mode == 7:
+    self.pub_candidate.publish(Float32(data=CANDIDATE_INVALID))   # 20000
+```
+
+지금은 `ship_dock` 이 **9** 로 선언돼 mode 7 에 침묵하므로(3-1), `/candidate_angle` 발행자가 north_goal 하나뿐이라 충돌이 없다.
+**`ship_dock` 만 9→7 로 고치면** 도킹 중 같은 `/candidate_angle` 에 **발행자가 둘**이 된다:
+- `ship_dock` : 진짜 도킹 조향각
+- `north_goal_angle` : `20000`(INVALID) 폴백 — 0.5초마다
+
+→ **도킹 중 조향이 GPS 방위로 튄다** (제어 주기의 약 2%, 20초에 약 7회 전환). 접안 직전에 이러면 실패한다.
+
+**반드시 같은 커밋에서 함께 고칠 것:**
+- `ship_dock` : `active_wp_mode` **9 → 7**
+- `north_goal_angle` : **mode-7 폴백 제거**. 폴백은 **담당 노드가 없는 `mode 5`, `8` 에만** 남긴다.
+  (`if wp_mode == 7:` → `if wp_mode in (5, 8):`)
 
 **0단계를 절대 건너뛰지 말 것.** 블랙박스가 없으면 이후 단계의 개선을 **측정할 수 없다.**
 (규정상 종합임무 **5회 도전 가능, 최고점 채택** — 왜 실패했는지 알아야 다음 회차에서 고친다.)
