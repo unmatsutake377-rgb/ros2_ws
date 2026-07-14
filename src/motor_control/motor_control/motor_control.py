@@ -20,7 +20,8 @@ class MotorController(Node):
 
     2단계에서 이은 것 (CLAUDE.md 3-2 / 4장):
       · 감속 복구: /obstacle_distance_array(전방 최근접 거리)를 구독해, 장애물이 가까우면
-        전진 성분을 중립(1500) 쪽으로 당겨 감속한다. 작년엔 이 노드가 /desired_angle 하나만
+        '전진 명령'(분기 2,4,6)을 중립(1500) 쪽으로 당겨 감속한다. SPIN(3)·후진(5)·STOP(1)은
+        제외 — 다가가지 않으므로 감속 대상이 아니다. 작년엔 이 노드가 /desired_angle 하나만
         구독해 '장애물이 코앞이어도 감속하지 않았다'.
       · 명령 워치독: /desired_angle 이 cmd_timeout_sec 넘게 끊기면 중립(1500/1500).
         + 부팅 직후 첫 명령이 오기 전에도 중립 (명령 없이 전진 금지).
@@ -113,11 +114,11 @@ class MotorController(Node):
         return self.min_speed_ratio + (1.0 - self.min_speed_ratio) * frac
 
     def apply_slow(self, pwm, ratio):
-        """전진 성분(pwm<1500)만 중립(1500) 쪽으로 당긴다.
-        후진(>1500)/정지(1500)는 안 건드림 — 전방 장애물이 후진을 늦추면 안 되니까."""
-        if pwm < 1500:
-            return int(round(1500 + (pwm - 1500) * ratio))
-        return pwm
+        """PWM 을 중립(1500) 쪽으로 ratio 만큼 당긴다.
+        '전진 명령' 분기(2,4,6)에서만 호출한다 — 감속은 '앞으로 가며 장애물에 다가가니 천천히'.
+        제자리 선회(3)·후진(5)·정지(1)는 다가가지 않으므로 감속 대상이 아니다.
+        (과거 '전진 성분(pwm<1500)' 규칙은 SPIN 의 1400 쪽만 깎아 배가 뒤로 밀리며 돌게 했다.)"""
+        return int(round(1500 + (pwm - 1500) * ratio))
 
     def publish_pwm(self, pwm_r, pwm_l):
         msg = Int32()
@@ -142,6 +143,7 @@ class MotorController(Node):
             return
 
         angle = self.desired_angle
+        slow_ok = False   # 감속은 '전진 명령'(2,4,6)에만. SPIN(3)·후진(5)·STOP(1)은 제외.
 
         # (1) STOP
         if angle >= STOP_HOLD:
@@ -152,6 +154,7 @@ class MotorController(Node):
         elif CANDIDATE_INVALID <= angle < STOP_HOLD:
             pwm_r = self.base_pwm
             pwm_l = self.base_pwm
+            slow_ok = True
 
         # (3a) SPIN_RIGHT(5000) → 우선회 (제자리, 중심=spin_forward_pwm).
         #      작년 버그 2개: ① 왼쪽으로 돌았고 ② base_pwm 중심이라 순항 속도로 원을 그려 도크에 부딪혔다.
@@ -168,6 +171,7 @@ class MotorController(Node):
             diff = self.linear_diff(offset)
             # offset>0 = 왼쪽 조향(+), offset<=0 = 오른쪽 조향(-)
             pwm_r, pwm_l = self.apply_steer(diff if offset > 0 else -diff)
+            slow_ok = True
 
         # (5) 후진 구간
         elif 161.0 < angle < SPIN_RIGHT:
@@ -178,10 +182,13 @@ class MotorController(Node):
         else:
             pwm_r = self.base_pwm
             pwm_l = self.base_pwm
+            slow_ok = True
 
-        # (감속 복구) 장애물 근접 시 전진 성분을 중립 쪽으로 당겨 감속
+        # (감속 복구) '전진 명령'일 때만, 장애물 근접 시 중립 쪽으로 당겨 감속.
+        #   '전진 성분(pwm<1500)'이 아니라 '전진 명령' 기준 — 제자리 선회(3)는 다가가지 않으니
+        #   감속 대상이 아니다(전진 쪽만 깎이면 뒤로 밀리며 돈다). 후진 제외와 같은 이유.
         ratio = self.speed_ratio()
-        if ratio < 1.0:
+        if slow_ok and ratio < 1.0:
             pwm_r = self.apply_slow(pwm_r, ratio)
             pwm_l = self.apply_slow(pwm_l, ratio)
 
