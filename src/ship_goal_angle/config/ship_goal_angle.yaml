@@ -1,0 +1,7 @@
+# ship_goal_angle 파라미터 (하드코딩 금지, CLAUDE.md 1-4)
+/ship_goal_angle:
+  ros__parameters:
+    period_sec: 0.05    # [1] 발행 주기. 20Hz. 작년 0.5s(2Hz)는 제어 체인 병목이었다
+                        #     (LiDAR/ship_direction 은 10Hz 인데 yaw_error 만 2Hz → 최대 0.5s 묵은 방위)
+    stale_sec: 0.5      # [3] IMU(/imu/yaw) 입력이 이보다 묵으면 /yaw_error 발행을 멈춘다
+                        #     → ship_direction 이 두절을 감지해 감속/정지 (IMU 실명 방지)

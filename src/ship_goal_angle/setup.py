@@ -11,6 +11,7 @@ setup(
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
         ('share/' + package_name + '/launch', ['launch/ship_goal_angle_launch_file.launch.py']),
+        ('share/' + package_name + '/config', ['config/ship_goal_angle.yaml']),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
