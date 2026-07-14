@@ -71,18 +71,26 @@ class ShipDirection(Node):
         self.fs_stop_sec = float(self.declare_parameter('failsafe_stop_sec', 3.0).value)   # → 레벨 2
         self.fs_confirm_n = int(self.declare_parameter('failsafe_confirm_n', 3).value)
 
-        # 회피 튜닝 — 값은 작년 그대로 유지(§6 시뮬값 반영은 별도 커밋에서 측정하며 진행)
-        self.base_detection_distance = float(self.declare_parameter('base_detection_distance', 1.8).value)
-        self.mode2_detection_distance = float(self.declare_parameter('mode2_detection_distance', 1.8).value)
+        # 회피 튜닝 — §6 시뮬 스윕으로 검증된 값. 임의로 바꾸지 말 것.
+        self.detection_distance_default = float(
+            self.declare_parameter('detection_distance_default', 3.0).value)   # 1.8 이면 8/8 충돌
+        self.detection_distance_gate = float(
+            self.declare_parameter('detection_distance_gate', 2.0).value)      # 3.0 이면 게이트가 좁아 접촉 증가
+        # 게이트 구간의 wp_mode. 확정된 웨이포인트 표(3-6): mode 0=게이트 시작, 1=게이트 끝.
+        # (작년 코드는 wp_mode==2 (위치유지)를 키로 썼는데, 그건 게이트가 아니다.)
+        self.gate_wp_modes = list(self.declare_parameter('gate_wp_modes', [0, 1]).value)
+
         self.half_width = float(self.declare_parameter('half_width', 0.45).value)
-        self.clearance = float(self.declare_parameter('clearance', 0.15).value)
+        # 0.20→접촉 1.7회 / 0.25→0.2회 / 0.30→0.8회 / 0.45→807초 폭주(과보수)
+        self.clearance = float(self.declare_parameter('clearance', 0.25).value)
         self.border_margin = int(self.declare_parameter('border_margin', 2).value)
         self.max_spike_ratio = float(self.declare_parameter('max_spike_ratio', 0.01).value)
         # ※ rear_obstacle_ignore_margin 은 제거했다 (파라미터 자체를 없앰). 위 [C] 참고.
-        self.min_obstacle_cells = int(self.declare_parameter('min_obstacle_cells', 3).value)
+        self.min_obstacle_cells = int(
+            self.declare_parameter('min_obstacle_cells', 1).value)   # 3 이면 작은 부표가 무시된다
         self.reverse_cooldown = float(self.declare_parameter('reverse_cooldown_sec', 3.0).value)
 
-        self.detection_distance = self.base_detection_distance
+        self.detection_distance = self.detection_distance_default
 
         # ----------------------
         #      Subscriptions
@@ -154,7 +162,10 @@ class ShipDirection(Node):
             prev = self.wp_mode
             self.wp_mode = msg.data
 
-            new_dd = self.mode2_detection_distance if self.wp_mode == 2 else self.base_detection_distance
+            # 게이트 구간(mode 0,1)은 좁아서 detection 을 짧게 (3.0 이면 오히려 접촉 증가, §6)
+            new_dd = (self.detection_distance_gate
+                      if self.wp_mode in self.gate_wp_modes
+                      else self.detection_distance_default)
             if abs(new_dd - self.detection_distance) > 1e-6:
                 self.detection_distance = new_dd
 

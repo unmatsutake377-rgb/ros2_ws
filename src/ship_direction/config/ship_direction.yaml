@@ -15,17 +15,16 @@
     failsafe_stop_sec: 3.0     # → 레벨2 (LiDAR 10Hz 기준 30스캔 연속 누락)
     failsafe_confirm_n: 3      # 올릴 땐 연속 N회 확인(지터 방지). 내릴 땐 즉시(자동 복구)
 
-    # ---- 회피 튜닝 ----
-    # ⚠️ 아래 값은 아직 작년 코드 값이다. CLAUDE.md §6 시뮬 최적값과 다르다:
-    #      clearance 0.15→0.25 / base_detection 1.8→3.0 / 게이트 2.0 / min_obstacle_cells 3→1
-    #    구조 변경과 값 튜닝을 한 커밋에 섞으면 하네스가 효과를 귀속시킬 수 없으므로 바로 다음 커밋에서 반영.
-    # ※ rear_obstacle_ignore_margin 은 '튜닝값'이 아니라 증명된 결함이라 구조 커밋에서 즉시 제거했다
-    #    (물보라 0.3m 반사 하나가 실제 1.6m 부표를 통째로 지웠다: 17셀 → 0셀).
-    base_detection_distance: 1.8
-    mode2_detection_distance: 1.8
+    # ---- 회피 튜닝 (CLAUDE.md §6 시뮬로 검증된 값 — 임의로 바꾸지 말 것) ----
+    detection_distance_default: 3.0  # 1.8 이면 8/8 충돌. 3.0 이면 5/8 통과
+    detection_distance_gate: 2.0     # 게이트는 좁아서 3.0 이면 오히려 접촉 증가
+    gate_wp_modes: [0, 1]            # 게이트 구간 wp_mode (3-6 표: 0=게이트 시작, 1=게이트 끝)
+                                     # 작년 코드는 wp_mode==2(위치유지)를 키로 썼다 — 게이트가 아니다
     half_width: 0.45
-    clearance: 0.15
+    clearance: 0.25                  # 스윕: 0.20→접촉1.7 / 0.25→0.2 / 0.30→0.8 / 0.45→807초 폭주
     border_margin: 2
     max_spike_ratio: 0.01
-    min_obstacle_cells: 3
+    min_obstacle_cells: 1            # 3 이면 작은 부표가 무시된다
     reverse_cooldown_sec: 3.0
+    # ※ rear_obstacle_ignore_margin 은 '튜닝값'이 아니라 증명된 결함이라 구조 커밋에서 제거했다
+    #    (물보라 0.3m 반사 하나가 실제 1.6m 부표를 통째로 지웠다: 17셀 → 0셀).
