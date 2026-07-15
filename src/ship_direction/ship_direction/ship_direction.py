@@ -97,8 +97,15 @@ class ShipDirection(Node):
           광선으로 쏘면 정면 경계 거리(2.12m)가 그대로 벽이 된다. 경기장이 사각형이 아니어도 맞다.
 
         ★ 빈 배열/stale 이면 병합하지 않는다 — 묵은 '없는 벽'은 배를 가둔다.
-        ⚠️ 이 병합은 **(C) 자율 회피 구간에서만** 일어난다. 미션 노드가 각도를 직접 지시하는
-           구간((A) SPIN, (B) candidate)에서는 마스크를 만들지 않으므로 geofence 가 걸리지 않는다.
+
+    [I] Geofence 하드 가드 — (A)SPIN·(B)candidate 구간 전용 (6a-2 보강).
+        [H]의 스캔 병합은 (C) 자율회피에서만 일어난다. 그런데 **도킹은 SPIN+candidate 로 조향**하고
+        이 구간은 distance_array 를 안 만들어 병합할 대상이 없다. 도크가 경기장 가장자리면
+        접안하다 경계로 파고들어 이탈 → 실격. (측정으로 확인된 실제 위험.)
+        → _compute 맨 앞에서 검사: 경계 최소거리가 geofence_stop_margin_m(2.0) 안이고 그 상대방위가
+          '전진하려는 방향 ±geofence_stop_cone_deg(60°)' 와 겹치면 → candidate/SPIN 무시하고 STOP_HOLD.
+        **미션보다 실격 방지가 우선.** 경계를 등지고 멈춘다.
+        ⚠️ north 광선은 전방 ±80° 만 → 후진 중 뒤쪽 경계는 못 본다(접안=전방 방어용).
 
     ※ 판정 로직(SensorWatch, TemporalVote)은 **ROS 비의존 모듈** ship_direction/failsafe.py 에 있다.
       워치독을 노드 안에 인라인하면 단위 테스트가 불가능해진다. rclpy 없이 임포트 가능:
@@ -127,6 +134,13 @@ class ShipDirection(Node):
         # 특수 로직도, 튜닝 파라미터(half_block)도 없다. 아래 [H] 참고.
         # 🚨 묵으면 병합하지 않는다. 묵은 '없는 벽'은 배를 가둔다. (north 주기 0.5s 의 4배)
         self.geofence_stale_sec = float(self.declare_parameter('geofence_stale_sec', 2.0).value)
+        # 하드 가드([I]): 경계가 이 거리 안이고 전진 방향과 겹치면 미션 무시하고 정지.
+        # (A)SPIN/(B)candidate 구간은 마스크를 안 만들어 병합이 안 되므로, 도킹이 경계로 파고들면
+        # 이탈한다. 미션보다 실격 방지가 우선 → 경계를 등지고 멈춘다.
+        self.geofence_stop_margin_m = float(
+            self.declare_parameter('geofence_stop_margin_m', 2.0).value)
+        self.geofence_stop_cone_deg = float(
+            self.declare_parameter('geofence_stop_cone_deg', 60.0).value)
 
         # 시간 투표 필터 — **기본 OFF(frames=1)**. 시드 20개로 재보니 효과가 없었다(아래 [G]).
         # 무해하지만 무익하다. 실제 물보라의 시간 특성이 시뮬과 다를 수 있으니 코드는 남겨두고
@@ -435,6 +449,46 @@ class ShipDirection(Node):
                 throttle_duration_sec=2.0)
         return out
 
+    def _geofence_blocks(self, intended_rel):
+        """[I] 경계가 stop_margin 안이고, 그 방위가 '전진하려는 방향 ±cone' 과 겹치면 True.
+
+        (A)SPIN·(B)candidate 구간은 distance_array 를 안 만들어 스캔 병합이 안 된다.
+        도킹은 SPIN+candidate 로 조향하므로, 도크가 경기장 가장자리면 접안하다 경계로 파고든다.
+        → 여기서 하드하게 막는다. **미션보다 실격 방지가 우선.** 경계를 등지고 멈춘다.
+        (C) 자율회피는 이미 _merge_geofence 로 처리되므로 이 가드를 호출하지 않는다.
+        ⚠️ north 의 광선은 전방 ±80° 만 쏜다 → 뒤쪽(후진 중) 경계는 못 본다. 접안 방향(전방) 방어용.
+        """
+        with self.lock:
+            gf = self.geofence
+            gf_t = self.last_geofence_t
+
+        if gf is None or gf_t is None:
+            return False
+        if (time.monotonic() - gf_t) > self.geofence_stale_sec:
+            return False
+
+        a0, inc, gr = gf
+        if not gr or inc <= 0.0:
+            return False
+
+        # 최근접 경계와 그 상대방위
+        best_d, best_rel = float('inf'), None
+        for k, g in enumerate(gr):
+            if math.isfinite(g) and g < best_d:
+                best_d, best_rel = g, a0 + k * inc
+        if best_rel is None or best_d > self.geofence_stop_margin_m:
+            return False
+
+        # 전진하려는 방향과 겹치나 (각도차를 [-180,180]로 래핑)
+        diff = ((best_rel - intended_rel) + 180.0) % 360.0 - 180.0
+        if abs(diff) <= self.geofence_stop_cone_deg:
+            self.get_logger().warn(
+                f"🚧🛑 경계 {best_d:.1f}m (상대 {best_rel:.0f}°) 가 전진 방향({intended_rel:.0f}°)과 "
+                f"겹침 → 미션 무시하고 정지 (실격 방지 우선)",
+                throttle_duration_sec=1.0)
+            return True
+        return False
+
     def _compute(self, msg, wp4_enter_time, candidate_angle, yaw_error, detection_distance):
         """(desired_angle, obstacle_array) 를 만든다. 작년 scan_callback 의 로직 그대로."""
         now = time.monotonic()
@@ -445,6 +499,15 @@ class ShipDirection(Node):
         if (wp4_enter_time is not None and (now - wp4_enter_time) < 5.0) or \
            (candidate_angle == STOP_HOLD):
             return STOP_HOLD, obst
+
+        # ---- [I] Geofence 하드 가드 ((A)SPIN/(B)candidate 전용) ----
+        # 이 두 구간은 마스크 병합이 없어 경계로 파고들 수 있다(도킹이 가장자리일 때).
+        # (C)(CANDIDATE_INVALID)는 아래에서 _merge_geofence 로 처리되므로 제외한다.
+        if candidate_angle != CANDIDATE_INVALID:
+            # 전진하려는 방향: candidate 는 그 상대각, SPIN(제자리)은 전방(0°)으로 본다.
+            intended_rel = 0.0 if candidate_angle in (SPIN_RIGHT, SPIN_LEFT) else candidate_angle
+            if self._geofence_blocks(intended_rel):
+                return STOP_HOLD, obst
 
         # ---- (A) PASS-THROUGH: 미션 노드가 선회를 직접 지시 ----
         if candidate_angle in (SPIN_RIGHT, SPIN_LEFT):
