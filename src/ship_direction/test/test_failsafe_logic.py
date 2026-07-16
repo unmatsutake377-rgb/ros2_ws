@@ -11,7 +11,9 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
-from ship_direction.failsafe import SensorWatch, TemporalVote  # noqa: E402
+from ship_direction.failsafe import SensorWatch, TemporalVote, median_min  # noqa: E402
+
+INF = float('inf')
 
 
 # ─────────────────────────── SensorWatch ───────────────────────────
@@ -152,6 +154,69 @@ def test_varying_scan_length_is_safe():
     tv.apply([1, 1, 1, 1, 1])
     out = tv.apply([1, 1])           # 갑자기 짧아짐
     assert out == [1, 1]
+
+
+# ─────────────────────────── median_min (감속 신호 필터) ───────────────────────────
+
+def test_median_kills_isolated_spike():
+    """★ 핵심: 물보라 고립 스파이크(0.3m)가 이웃(5m)과 어긋나면 지워진다.
+    raw-min 이면 0.3 을 믿고 감속했다."""
+    r = [5.0, 5.0, 0.3, 5.0, 5.0]
+    d, _ = median_min(r, 0, 4, kernel=5)
+    assert abs(d - 5.0) < 1e-9, f"고립 스파이크가 안 지워졌다: d={d}"
+
+
+def test_raw_min_would_be_fooled():
+    """대조군: kernel=0(raw-min 폴백)이면 같은 데이터에 속는다."""
+    r = [5.0, 5.0, 0.3, 5.0, 5.0]
+    d, _ = median_min(r, 0, 4, kernel=0)
+    assert abs(d - 0.3) < 1e-9, f"raw-min 폴백이 동작 안 함: d={d}"
+
+
+def test_median_keeps_real_obstacle():
+    """★ 진짜 장애물(연속 군집 2m)은 살아남는다 — 필터가 부표를 지우면 안 된다."""
+    r = [5.0, 5.0, 2.0, 2.0, 2.0, 5.0, 5.0]
+    d, i = median_min(r, 0, 6, kernel=5)
+    assert abs(d - 2.0) < 1e-9, f"진짜 장애물을 지웠다(위험!): d={d}"
+
+
+def test_isolated_spike_with_no_returns_ignored():
+    """주변이 전부 무반사(inf)인 고립 반사 → 유효점 3개 미만 → 무시(=장애물 없음)."""
+    r = [INF, INF, 0.3, INF, INF]
+    d, i = median_min(r, 0, 4, kernel=5)
+    assert d is None, f"고립 반사를 장애물로 믿었다: d={d}"
+
+
+def test_min_valid_threshold():
+    """유효점이 2개뿐이면(min_valid=3 미만) 그 인덱스는 무시된다."""
+    r = [INF, 4.0, 0.3, INF, INF]
+    d, _ = median_min(r, 0, 4, kernel=5)
+    assert d is None, f"유효점 부족한데 채택했다: d={d}"
+
+
+def test_even_window_uses_upper_median():
+    """짝수 개일 땐 위쪽 median → 거리가 크게 나와 '가짜 감속' 쪽으로 안 기운다."""
+    # 창 끝단(i=0)은 [0,2] = 3점이라 홀수 → 경계에서 4점 되는 지점을 본다
+    r = [1.0, 9.0, 9.0, 9.0]
+    d, _ = median_min(r, 0, 3, kernel=5)   # i=0 창=[1,9,9] → med 9 / i=1 창=[1,9,9,9] → 위쪽 9
+    assert abs(d - 9.0) < 1e-9, f"위쪽 median 아님: d={d}"
+
+
+def test_all_invalid_returns_none():
+    d, i = median_min([INF, INF, INF], 0, 2, kernel=5)
+    assert d is None and i is None
+
+
+def test_empty_range_returns_none():
+    d, i = median_min([], 0, 5, kernel=5)
+    assert d is None and i is None
+
+
+def test_index_returned_for_angle():
+    """최소 지점의 인덱스를 돌려줘야 각도를 계산할 수 있다."""
+    r = [9.0, 9.0, 3.0, 3.0, 3.0, 9.0, 9.0]
+    d, i = median_min(r, 0, 6, kernel=5)
+    assert i is not None and abs(d - 3.0) < 1e-9, f"d={d}, i={i}"
 
 
 # ─────────────────────────── 러너 ───────────────────────────

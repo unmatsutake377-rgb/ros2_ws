@@ -2,12 +2,60 @@
 
 여기엔 rclpy 를 임포트하지 않는다. 그래야 ROS 없이도 단위 테스트할 수 있다:
 
-    from ship_direction.failsafe import SensorWatch, TemporalVote
+    from ship_direction.failsafe import SensorWatch, TemporalVote, median_min
 
 시각(now)은 호출자가 주입한다 → 테스트에서 시간을 마음대로 돌릴 수 있다.
 """
 
+import math
 from collections import deque
+
+
+def median_min(ranges, lo, hi, kernel=5, min_valid=3):
+    """[lo,hi] 구간에 **공간 median** 을 걸고 최소거리를 찾는다. → (거리, 인덱스) 또는 (None, None).
+
+    ★ 왜 필요한가 — **감속 신호가 물보라 한 점에 속는다:**
+      _closest_obstacle 이 필터 없는 raw min 이라, 물보라 반사 하나가 0.3m 로 튀면
+      /obstacle_distance_array[0] = 0.3 → motor_control 이 그대로 감속한다.
+      측정(시드 20, 물보라 30%): raw-min 가짜감속 **36.8% → median 8.9%**(기준선). 접촉은 전 조건 0.
+
+    ★ 이건 **공간** 필터다 — 폐기한 TemporalVote(시간 투표)와 메커니즘이 다르다.
+      한 프레임 안에서 이웃과 어긋나는 고립 스파이크를 range 값 수준에서 지운다.
+
+    각 인덱스의 ±(kernel//2) 창에서 유효점(finite, >0)의 median 을 그 인덱스 값으로 쓴다.
+    유효점이 min_valid 미만이면 그 인덱스는 **무시**한다 (주변에 아무것도 없는 고립 반사 = 물보라).
+    kernel 이 0/1 이면 필터 없이 raw min (폴백).
+
+    ※ 짝수 개일 때 위쪽 median 을 쓴다 → 거리가 더 크게 나와 '가짜 감속' 쪽으로 안 기운다.
+    """
+    n = len(ranges)
+    lo = max(0, lo)
+    hi = min(n - 1, hi)
+    if lo > hi:
+        return None, None
+
+    half = (kernel // 2) if (kernel and kernel > 1) else 0
+
+    best_d, best_i = None, None
+    for i in range(lo, hi + 1):
+        if half == 0:
+            r = ranges[i]
+            v = r if (math.isfinite(r) and r > 0.0) else None
+        else:
+            w = []
+            for j in range(max(0, i - half), min(n - 1, i + half) + 1):
+                r = ranges[j]
+                if math.isfinite(r) and r > 0.0:
+                    w.append(r)
+            if len(w) < min_valid:
+                continue                 # 고립 스파이크 → 무시
+            w.sort()
+            v = w[len(w) // 2]           # median (짝수면 위쪽)
+        if v is None:
+            continue
+        if best_d is None or v < best_d:
+            best_d, best_i = v, i
+    return best_d, best_i
 
 
 class SensorWatch:

@@ -10,7 +10,7 @@ from sensor_msgs.msg import LaserScan
 
 # 판정 로직은 ROS 비의존 모듈에 있다 (ROS 없이 단위 테스트 가능).
 # 재수출: from ship_direction.ship_direction import SensorWatch 로도 접근 가능.
-from ship_direction.failsafe import SensorWatch, TemporalVote
+from ship_direction.failsafe import SensorWatch, TemporalVote, median_min
 
 # 특수 신호 상수 (CLAUDE.md 3-9 상수표)
 SPIN_RIGHT = 5000.0          # 우선회
@@ -107,7 +107,17 @@ class ShipDirection(Node):
         **미션보다 실격 방지가 우선.** 경계를 등지고 멈춘다.
         ⚠️ north 광선은 전방 ±80° 만 → 후진 중 뒤쪽 경계는 못 본다(접안=전방 방어용).
 
-    ※ 판정 로직(SensorWatch, TemporalVote)은 **ROS 비의존 모듈** ship_direction/failsafe.py 에 있다.
+    [J] 감속 신호용 공간 median 필터 (obst_median_kernel, **기본 ON**).
+        _closest_obstacle 이 필터 없는 raw min 이라 **물보라 반사 한 점(0.3m)이 그대로
+        motor_control 감속을 물렸다.** 이웃과 어긋나는 고립 스파이크를 range 값 수준에서 지운다.
+        측정(시드 20, 물보라 30%): raw-min 가짜감속 **36.8% → median 8.9%**(기준선). 접촉은 전 조건 0.
+        ★ **감속 신호에만** 건다 — _compute 의 회피 마스크는 안 건드린다(그래서 접촉이 안 변한다).
+        ★ [G] TemporalVote(시간 투표)와 다르다: 저건 효과 0 이라 OFF, 이건 명확한 이득이라 ON.
+          시간 투표는 프레임 간, 이건 한 프레임 안의 공간.
+        ⚠️ 시뮬 물보라는 '단일점' 모델이다. 실제 물보라가 작은 군집이면 커널5로 부족할 수 있다
+           → 배 뜬 뒤 블랙박스의 obstacle_min_dist 로 실측 확인하고 커널을 7/9 로 올릴 것.
+
+    ※ 판정 로직(SensorWatch, TemporalVote, median_min)은 **ROS 비의존 모듈** ship_direction/failsafe.py 에 있다.
       워치독을 노드 안에 인라인하면 단위 테스트가 불가능해진다. rclpy 없이 임포트 가능:
           from ship_direction.failsafe import SensorWatch, TemporalVote   # ← ROS 불필요(권장)
           from ship_direction.ship_direction import SensorWatch           # ← 재수출(ROS 필요)
@@ -141,6 +151,12 @@ class ShipDirection(Node):
             self.declare_parameter('geofence_stop_margin_m', 2.0).value)
         self.geofence_stop_cone_deg = float(
             self.declare_parameter('geofence_stop_cone_deg', 60.0).value)
+
+        # ---- [J] 감속 신호용 공간 median 필터. **기본 ON.** ----
+        # _closest_obstacle(감속 신호)에만 건다. 회피 마스크(_compute)는 안 건드린다.
+        # 측정(시드 20, 물보라 30%): raw-min 가짜감속 36.8% → median 8.9%. 접촉 전 조건 0.
+        # 0 이면 raw-min 폴백.
+        self.obst_median_kernel = int(self.declare_parameter('obst_median_kernel', 5).value)
 
         # 시간 투표 필터 — **기본 OFF(frames=1)**. 시드 20개로 재보니 효과가 없었다(아래 [G]).
         # 무해하지만 무익하다. 실제 물보라의 시간 특성이 시뮬과 다를 수 있으니 코드는 남겨두고
@@ -383,18 +399,15 @@ class ShipDirection(Node):
         min_index = int((0 - angle_min) / angle_increment_deg)
         max_index = int((160 - angle_min) / angle_increment_deg)
 
-        closest_distance = float('inf')
-        closest_angle = float('nan')
-
-        if 0 <= min_index < len(ranges) and 0 <= max_index < len(ranges):
-            for i in range(min_index, max_index + 1):
-                r = ranges[i]
-                if not math.isinf(r) and not math.isnan(r) and r < closest_distance:
-                    closest_distance = r
-                    closest_angle = angle_min + i * angle_increment_deg
-
-        obst.data = ([closest_distance, closest_angle]
-                     if not math.isinf(closest_distance) else [float('inf'), float('nan')])
+        # ---- [J] 공간 median 후 최소거리 (감속 신호 전용) ----
+        # 작년엔 필터 없는 raw min 이라 물보라 반사 한 점(0.3m)이 그대로 motor_control 감속을
+        # 물렸다. median 은 이웃과 어긋나는 고립 스파이크를 지운다.
+        # ★ 여기(감속 신호)에만 건다 — _compute 의 회피 마스크는 손대지 않는다(접촉 성능 불변).
+        d, i = median_min(ranges, min_index, max_index, self.obst_median_kernel)
+        if d is None:
+            obst.data = [float('inf'), float('nan')]
+        else:
+            obst.data = [d, angle_min + i * angle_increment_deg]
         return obst
 
     def _merge_geofence(self, distance_array, angle_array):
