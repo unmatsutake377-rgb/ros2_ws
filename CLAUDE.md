@@ -238,7 +238,7 @@ super().__init__('ship_turn')   # ← 복붙 실수. 파일은 ship_back 인데 
 | `ship_turn` | 부표를 **비껴 지나감** (규정은 **선회**) | orbit 기동으로 재작성 |
 | `ship_turn` | 흰색 부표 인식 없음 | 빨강·초록=시계 / 흰색=반시계 |
 | `ship_back` | **그냥 5초간 PWM 중립** | 조류 0.5m/s → 5초에 2.5m 밀림 → 실패. 위치 피드백 필요 |
-| `ship_last` | `/candidate_angle` 에 20000 폴백만 발행 | 제거 (north_goal_angle 이 담당) |
+| `ship_last` | `/candidate_angle` 에 20000 폴백만 발행 | ✅ 6b: **제거됨.** mode 0 은 ship_gate 가 인수 (발행자 둘 충돌 없이 하나→하나) |
 | 전체 | **경계 이탈 방지(geofence) 없음** | 경기장 밖으로 나가면 실격. `north_goal_angle` 에 추가 |
 | 죽은 토픽 | `/goal_distance`, `/wp_remaining_time`, `video_frames` | 아무도 안 받음 |
 | 펌웨어 | `It_is_Aship` 오타 → **B배 분기가 죽어 있음** | BOAT_A=0 / BOAT_B=1 로 정리 |

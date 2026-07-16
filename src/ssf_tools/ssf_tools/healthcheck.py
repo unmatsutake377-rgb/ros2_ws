@@ -46,9 +46,11 @@ class HealthCheck(Node):
         wp_mode_topic = self.declare_parameter("wp_mode_topic", "/wp_mode").value
         candidate_topic = self.declare_parameter("candidate_topic", "/candidate_angle").value
 
-        wp_modes = list(self.declare_parameter("wp_modes", [0, 1, 2, 3, 7]).value)
+        # mode 0,1 → ship_gate (6b 에서 ship_last 제거, mode 0 인수). 5,8 = 회피(담당 없음).
+        wp_modes = list(self.declare_parameter("wp_modes", [0, 1, 2, 3, 5, 7, 8]).value)
         wp_nodes = list(self.declare_parameter(
-            "wp_nodes", ["ship_last", "ship_gate", "ship_back", "ship_turn", "ship_dock"]).value)
+            "wp_nodes",
+            ["ship_gate", "ship_gate", "ship_back", "ship_turn", "none", "ship_dock", "none"]).value)
 
         # 🚨 geofence 배선 검사 — '잊으면 최악'.
         # north_goal_angle 이 /geofence_state 를 발행하는데 구독자가 0 이면 경계 이탈 방어가
@@ -99,11 +101,8 @@ class HealthCheck(Node):
         dup_modes = {m for m in wp_modes if wp_modes.count(m) > 1}
         if dup_modes:
             problems.append(f"중복 모드: {sorted(dup_modes)}")
-        # "none"(담당 노드 없음이 정상인 회피 구간)은 여러 모드에 중복돼도 정상
-        real_nodes = [n for n in wp_nodes if str(n).lower() != "none"]
-        dup_nodes = {n for n in real_nodes if real_nodes.count(n) > 1}
-        if dup_nodes:
-            problems.append(f"한 노드가 여러 모드 담당: {sorted(dup_nodes)}")
+        # ※ 한 노드가 여러 모드를 담당하는 건 정상이다 (ship_gate 는 mode 0,1 둘 다 맡는다).
+        #   그래서 '노드 중복' 은 검사하지 않는다. '모드 중복'(같은 mode 를 두 노드가) 만 오류다.
         if problems:
             for p in problems:
                 self.get_logger().error(f"🩺 매핑표 정적 검사 ❌ {p}")

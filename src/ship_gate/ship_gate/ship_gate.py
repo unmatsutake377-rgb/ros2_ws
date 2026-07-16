@@ -4,7 +4,9 @@
   [1] 🚨 yellow 폴백 제거. 규정은 '빨강-초록' 게이트인데 작년 코드에 yellow 가 섞여 있었다.
   [2] active_wp_modes = [0, 1]. 작년엔 ship_gate=1, ship_last=0 (WP0 "게이트 시작"인데 ship_last 가
       잡고 GPS 폴백만 냈다). 게이트 접근 구간(mode 0)부터 비전을 쓰면 정렬 시간을 번다.
-      ⚠️ mode 0 소유권이 ship_last → ship_gate 로 넘어온다. ship_last 제거는 6d. (아래 주의)
+      ship_last 는 6b 에서 제거했다 → mode 0 은 ship_gate 단독(발행자 둘 충돌 없음).
+      ★ north 의 FALLBACK_MODES 에 0 을 넣으면 안 된다: ship_gate 가 mode 0 을 발행하는데 north 도
+        폴백을 내면 다시 발행자 둘이 된다. FALLBACK_MODES 는 (5,8) 로 유지.
   [3] 🚨 게이트 쌍 제약. '다음 게이트 빨강' + '이번 게이트 초록'이 같이 보이면 둘의 중간으로
       가버린다(엉뚱). 각도차가 [pair_min_sep, pair_max_sep] 일 때만 쌍으로 인정. 벗어나면
       가까운 쪽 하나만. (판정은 gate_logic.gate_candidate — 순수 함수, 테스트됨)

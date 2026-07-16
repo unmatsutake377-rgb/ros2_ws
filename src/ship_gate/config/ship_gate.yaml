@@ -2,8 +2,7 @@
 /ship_gate:
   ros__parameters:
     # 게이트 접근(mode 0)부터 비전 사용 → 정렬 시간 확보 (작년엔 mode 0 을 ship_last 가 잡았다).
-    # ⚠️ mode 0 소유권이 ship_last → ship_gate 로 넘어온다. ship_last 제거는 6d.
-    #    6d 전에 둘을 함께 실행하면 mode 0 에서 /candidate_angle 발행자가 둘이 된다.
+    # ship_last 는 6b 에서 제거됨 → mode 0 은 이제 ship_gate 단독. (발행자 둘 충돌 없음)
     active_wp_modes: [0, 1]
     period_sec: 0.1
 

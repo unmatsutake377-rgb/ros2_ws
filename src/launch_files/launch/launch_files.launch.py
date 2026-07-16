@@ -120,7 +120,8 @@ def generate_launch_description():
         Node(package='ship_gate', executable='ship_gate', name='ship_gate', output='screen'),
         Node(package='ship_dock', executable='ship_dock', name='ship_dock', output='screen'),
         Node(package='ship_turn', executable='ship_turn', name='ship_turn', output='screen'),
-        Node(package='ship_last', executable='ship_last', name='ship_last', output='screen'),
+        # ship_last 제거됨(6b): mode 0 을 ship_gate 가 인수. 하던 일은 /candidate_angle 에 20000
+        #   폴백을 내는 것뿐이라 중복이었다. (mode 5,8 폴백은 north_goal_angle 이 담당)
         Node(package='ship_back', executable='ship_back', name='ship_back', output='screen'),
 
         # ============================================================

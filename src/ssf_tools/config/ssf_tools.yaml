@@ -33,8 +33,9 @@
     #   dock 은 7 이 정답, 코드엔 9 로 박혀있음 = 버그(CLAUDE.md 3-1)
     #   mode 5(WP6,7 회피)·mode 8(WP10 회피)은 담당 노드 없음이 정상 → "none"
     #   (ship_direction 이 GPS 방위로만 감. "none" 은 거짓 경보를 내지 않음, CLAUDE.md 3-6)
+    # mode 0,1 → ship_gate (6b: ship_last 제거, mode 0 인수). 5,8 = 회피 구간(담당 없음).
     wp_modes: [0, 1, 2, 3, 5, 7, 8]
-    wp_nodes: ["ship_last", "ship_gate", "ship_back", "ship_turn", "none", "ship_dock", "none"]
+    wp_nodes: ["ship_gate", "ship_gate", "ship_back", "ship_turn", "none", "ship_dock", "none"]
     # ---- geofence 배선 검사 ('잊으면 최악') ----
     # north_goal_angle 이 /geofence_state 를 발행하는데 구독자가 0 이면 경계 이탈 방어가
     # 통째로 없는 것이다(실격 위험). 침묵하는 기능은 에러를 안 내니 출발 전에 여기서 잡는다.
