@@ -1,0 +1,26 @@
+# ship_turn 파라미터 (하드코딩 금지, CLAUDE.md 1-4)
+/ship_turn:
+  ros__parameters:
+    active_wp_mode: 3        # WP3,4,5(부표 3개)는 모두 /wp_mode==3 으로 온다
+    period_sec: 0.1
+
+    # ---- orbit 기하 (6c-[4]) ----
+    orbit_radius_m: 3.0      # ⚠️ 실측 필요 — 부표를 도는 반경
+    radius_tol_m: 0.5        # 반경 허용 오차
+    approach_dist_m: 4.0     # ⚠️ 실측 필요 — 이 거리 안으로 들어오면 ORBIT 시작
+    k_radial_deg_per_m: 30.0 # 반경 오차 1m 당 조향 보정각
+    radial_limit_deg: 45.0   # 반경 보정 최대(접선을 완전히 덮지 않게)
+    orbit_target_deg: 360.0  # 한 바퀴
+
+    # ---- 시간 ----
+    hold_sec: 2.0            # 진입 직후 정지(autonomous 접근)
+    search_timeout_sec: 20.0
+    orbit_max_sec: 60.0      # 안전 타임아웃 (yaw 없어 진행각을 못 잴 때)
+    cooldown_sec: 5.0        # 한 부표 완료 후 손 떼고 다음으로 이동
+    lost_sec: 2.0            # 부표를 이 시간 넘게 놓치면 SEARCH 로
+
+    # ---- 신선도 / LiDAR ----
+    angle_stale_sec: 1.0
+    color_stale_sec: 2.0
+    scan_stale_sec: 1.0
+    lidar_match_half_deg: 3.0  # 부표 방위 ±이 각도의 LiDAR 최소거리 (부표=점 물체)
