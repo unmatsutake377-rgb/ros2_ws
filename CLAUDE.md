@@ -228,7 +228,10 @@ super().__init__('ship_turn')   # ← 복붙 실수. 파일은 ship_back 인데 
 올해는 `boat_a.yaml` / `boat_b.yaml` 을 **노드 이름으로 찾아 적용**한다.
 이름이 틀리면 **파라미터가 엉뚱한 노드로 간다.** (`ship_back` 이 `ship_turn` 의 `active_wp_mode: 3` 을 받아버림)
 
-**고칠 것:** `super().__init__()` 의 이름이 **파일명·패키지명과 일치**하는지 전 노드 확인.
+**✅ 6d 에서 고침:** `ship_back` 의 `super().__init__('ship_turn')` → `'ship_back'`, 클래스명 `ShipTurn` → `ShipBack`.
+**전 노드 전수 감사 완료** (super().__init__ 이름 vs 패키지명):
+`ship_gate·ship_dock·ship_turn·north_goal_angle·ship_direction·ship_goal_angle·motor_control` 는 모두 일치했고,
+**`ship_back` 만 어긋나 있었다** → 수정 완료.
 
 ### 3-8. 기타 확인된 것들
 
@@ -237,7 +240,7 @@ super().__init__('ship_turn')   # ← 복붙 실수. 파일은 ship_back 인데 
 | `ship_gate` | 규정은 **빨강-초록**인데 코드에 yellow 폴백 | ✅ 6b: yellow 제거 + 쌍 제약 + `/gates_passed` 카운트 + LiDAR 거리 |
 | `ship_turn` | 부표를 **비껴 지나감** (규정은 **선회**) | ✅ 6c: orbit 기동으로 재작성 |
 | `ship_turn` | 흰색 부표 인식 없음 | ✅ 6c: /buoy_color 로 빨강·초록=시계 / 흰색=반시계 |
-| `ship_back` | **그냥 5초간 PWM 중립** | 조류 0.5m/s → 5초에 2.5m 밀림 → 실패. 위치 피드백 필요 |
+| `ship_back` | **그냥 5초간 PWM 중립** | ✅ 6d: LiDAR 거리로 능동 위치유지(bang-bang+데드밴드) + 이름충돌 수정 |
 | `ship_last` | `/candidate_angle` 에 20000 폴백만 발행 | ✅ 6b: **제거됨.** mode 0 은 ship_gate 가 인수 (발행자 둘 충돌 없이 하나→하나) |
 | 전체 | **경계 이탈 방지(geofence) 없음** | 경기장 밖으로 나가면 실격. `north_goal_angle` 에 추가 |
 | 죽은 토픽 | `/goal_distance`, `/wp_remaining_time`, `video_frames` | 아무도 안 받음 |

@@ -1,0 +1,19 @@
+# ship_back 파라미터 (하드코딩 금지, CLAUDE.md 1-4)
+/ship_back:
+  ros__parameters:
+    active_wp_mode: 2        # 위치유지 구간
+    period_sec: 0.1
+
+    # ---- 위치유지 (규정: 부표 5m 이내 5초) ----
+    keep_radius_m: 5.0       # 규정 성공 반경 (이 안에 연속으로 머물면 카운트)
+    hold_time_sec: 5.0       # 규정 유지 시간
+    hold_dist_m: 2.5         # ⚠️ 실측 필요 — 능동 유지 목표 거리(충돌 여유 + 5m 안을 동시에 만족)
+    dist_tol_m: 0.4          # 데드밴드(±). 벗어나면 전/후진으로 되돌린다(표류를 ~tol 로 제한)
+
+    # ---- 탐색/신선도 ----
+    search_timeout_sec: 20.0
+    lost_sec: 2.0            # 부표를 이 시간 넘게 놓치면 SEARCH 로
+    angle_stale_sec: 1.0
+    scan_stale_sec: 1.0
+    lidar_match_half_deg: 3.0   # 부표 방위 ±이 각도의 LiDAR 최소거리
+    front_sector_half_deg: 30.0 # 비전 방위를 못 받을 때 LiDAR 전방 ±이 각도 최근접을 부표로
