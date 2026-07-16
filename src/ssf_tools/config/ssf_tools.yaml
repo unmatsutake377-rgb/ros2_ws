@@ -4,7 +4,7 @@
 /blackbox:
   ros__parameters:
     rate_hz: 10.0                 # CSV 기록 주기
-    log_dir: ""                   # 빈 값이면 ~/ros2_ws/result/blackbox 에 저장
+    log_dir: ""                   # 빈 값이면 ~/ssf_logs 에 저장
     flush_every_n: 10             # N행마다 디스크 flush (1초)
     # ---- 구독 토픽 (전부 관찰 전용) ----
     wp_mode_topic: "/wp_mode"
@@ -17,6 +17,10 @@
     obstacle_topic: "/obstacle_distance_array"   # Float32MultiArray
     failsafe_topic: "/failsafe_level"            # Int32  (3단계 ship_direction 이 신설 예정)
     gate_count_topic: "/gates_passed"            # Int32  (5단계 ship_gate 가 신설 예정, CLAUDE.md 3-9 확정)
+    # ---- 동역학 역산(system ID)용 ----
+    imu_topic: "/imu/data"                       # sensor_msgs/Imu (각속도+선가속도) — iahrs 가 발행
+    gps_vel_topic: "/ublox_gps_node/fix_velocity"  # TwistWithCovarianceStamped (GPS 속도)
+    # ⚠️ system-ID 주행 때는 rate_hz 를 20~50 으로 올려라. 그냥 순항만 하면 추력·관성이 안 잡힌다.
 
 /healthcheck:
   ros__parameters:
