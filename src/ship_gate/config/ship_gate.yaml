@@ -1,0 +1,28 @@
+# ship_gate 파라미터 (하드코딩 금지, CLAUDE.md 1-4)
+/ship_gate:
+  ros__parameters:
+    # 게이트 접근(mode 0)부터 비전 사용 → 정렬 시간 확보 (작년엔 mode 0 을 ship_last 가 잡았다).
+    # ⚠️ mode 0 소유권이 ship_last → ship_gate 로 넘어온다. ship_last 제거는 6d.
+    #    6d 전에 둘을 함께 실행하면 mode 0 에서 /candidate_angle 발행자가 둘이 된다.
+    active_wp_modes: [0, 1]
+    period_sec: 0.1
+
+    # ---- 게이트 쌍 제약 [3] ----
+    # '다음 게이트 빨강' + '이번 게이트 초록'이 같이 보이면 둘의 중간으로 가버린다(엉뚱).
+    pair_min_sep_deg: 5.0    # 이보다 붙어 있으면 같은 게이트 아님(중복 검출)
+    pair_max_sep_deg: 80.0   # 이보다 벌어져 있으면 같은 게이트 아님(→ 가까운 쪽 하나만)
+    single_offset_deg: 40.0  # 한쪽만 보일 때 게이트 중심 쪽으로 트는 각
+
+    # 🚨 빨강이 좌현인가 — 한쪽만 보일 때 트는 방향을 정한다.
+    #    ⚠️ 벤치 검증 필요 [6]: 카메라 좌표계에서 빨강이 실제로 좌현(음의 상대각)에 오는지 확인.
+    red_on_port: true
+
+    # ---- 순차 통과 카운트 [4] → /gates_passed ----
+    pass_behind_deg: 75.0    # 부표가 이 각을 넘어 뒤로 가면 '통과' 로 카운트
+    gate_arm_dist_m: 6.0     # 먼 게이트를 미리 카운트하지 않게 arming 을 이 거리 안으로 제한
+                             # (LiDAR 가 부표를 못 봐 거리 미상이면 막지 않음 — 카운트를 죽이면 안 됨)
+    lidar_match_half_deg: 3.0  # 부표 방위 ±이 각도의 LiDAR 최소거리 (부표는 점 물체라 매칭 통함)
+
+    # ---- 신선도 ----
+    angle_stale_sec: 0.7     # /red_angle·/green_angle 이 이보다 묵으면 '안 보임'
+    scan_stale_sec: 1.0

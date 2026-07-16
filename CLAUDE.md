@@ -234,7 +234,7 @@ super().__init__('ship_turn')   # ← 복붙 실수. 파일은 ship_back 인데 
 
 | 항목 | 문제 | 조치 |
 |---|---|---|
-| `ship_gate` | 규정은 **빨강-초록**인데 코드에 yellow 폴백 | 초록으로 |
+| `ship_gate` | 규정은 **빨강-초록**인데 코드에 yellow 폴백 | ✅ 6b: yellow 제거 + 쌍 제약 + `/gates_passed` 카운트 + LiDAR 거리 |
 | `ship_turn` | 부표를 **비껴 지나감** (규정은 **선회**) | orbit 기동으로 재작성 |
 | `ship_turn` | 흰색 부표 인식 없음 | 빨강·초록=시계 / 흰색=반시계 |
 | `ship_back` | **그냥 5초간 PWM 중립** | 조류 0.5m/s → 5초에 2.5m 밀림 → 실패. 위치 피드백 필요 |
