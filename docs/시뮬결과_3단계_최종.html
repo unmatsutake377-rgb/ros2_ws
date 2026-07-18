@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="ko"><head><meta charset="utf-8">
+<title>3단계 최종 검증 — ship_direction</title>
+<style>
+:root{--tx:#1a1a18;--sec:#5c5c56;--mut:#8f8f88;--bg:#fbfaf7;--card:#fff;--bd:#dcdad0;
+      --ok:#0F6E56;--okbg:#E1F5EE;--bad:#A32D2D;--badbg:#FCEBEB;--warn:#854F0B;--warnbg:#FAEEDA}
+*{box-sizing:border-box}
+body{margin:0;padding:28px 20px 60px;font-family:-apple-system,"Pretendard","Apple SD Gothic Neo",system-ui,sans-serif;
+     background:var(--bg);color:var(--tx);line-height:1.65}
+.w{max-width:980px;margin:0 auto}
+h1{font-size:25px;font-weight:500;margin:0 0 4px}
+.sub{color:var(--sec);font-size:14px;margin:0 0 6px}
+.stamp{color:var(--mut);font-size:12px;margin:0 0 24px}
+h2{font-size:19px;font-weight:500;margin:36px 0 12px;padding-bottom:8px;border-bottom:1px solid var(--bd)}
+h3{font-size:15px;font-weight:500;margin:20px 0 8px}
+table{width:100%;border-collapse:collapse;font-size:13.5px;margin:10px 0;background:var(--card);
+      border:1px solid var(--bd);border-radius:10px;overflow:hidden}
+th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--bd)}
+tr:last-child td{border-bottom:none}
+th{color:var(--mut);font-size:11px;letter-spacing:.05em;text-transform:uppercase;font-weight:500;background:#f7f6f1}
+td.n{text-align:right;font-variant-numeric:tabular-nums}
+.pass{color:var(--ok);font-weight:500}
+.fail{color:var(--bad);font-weight:500}
+.hero{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:18px 0}
+.m{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:12px 14px}
+.m .l{font-size:12px;color:var(--mut)}
+.m .v{font-size:25px;font-weight:500;margin-top:2px}
+.m .d{font-size:12px;color:var(--sec)}
+.box{border-radius:10px;padding:14px 16px;margin:12px 0;font-size:14px}
+.box.ok{background:var(--okbg);border:1px solid #9FE1CB}
+.box.bad{background:var(--badbg);border:1px solid #F09595}
+.box.warn{background:var(--warnbg);border:1px solid #FAC775}
+.box b{font-weight:500}
+code{font-family:ui-monospace,Menlo,monospace;font-size:12.5px;background:#f1efe8;padding:1px 5px;border-radius:4px}
+.bar{display:inline-block;height:9px;border-radius:5px;background:#D3D1C7;vertical-align:middle}
+.bar.g{background:#5DCAA5} .bar.r{background:#F09595}
+.note{font-size:13px;color:var(--sec)}
+ul{margin:8px 0;padding-left:20px}
+</style></head><body><div class="w">
+
+<h1>3단계 최종 검증 — ship_direction</h1>
+<p class="sub">루프 분리 · 페일세이프 게이팅 · 회귀 수정 · 시간 투표 필터</p>
+<p class="stamp">실제 노드 코드를 mock ROS 위에서 그대로 구동. 2026-07-14</p>
+
+<div class="hero">
+  <div class="m"><div class="l">고장 시나리오</div><div class="v pass">11 / 12</div><div class="d">남은 1개는 아래 설명</div></div>
+  <div class="m"><div class="l">L1 감속 효과</div><div class="v pass">-42%</div><div class="d">접촉 24 → 14회 (50판)</div></div>
+  <div class="m"><div class="l">회귀 수정</div><div class="v pass">2 / 2</div><div class="d">IMU 감시, 0나눗셈</div></div>
+  <div class="m"><div class="l">시간 필터</div><div class="v fail">효과 0</div><div class="d">내 권고가 틀렸습니다</div></div>
+</div>
+
+<div class="box bad">
+<b>먼저 정정합니다.</b> 제가 <b>시간 투표 필터를 넣으라고 한 것은 잘못된 권고</b>였습니다.
+근거로 삼은 측정이 결함이 있었고, 제대로 재보니 <b>효과가 0이고 오히려 배가 느려집니다.</b>
+자세한 내용은 아래 4절에 있습니다.
+</div>
+
+<h2>1. 루프 분리 — 성공 (이번 단계의 핵심)</h2>
+
+<p>이전에는 LiDAR가 끊기면 <code>scan_cb</code>가 안 불려서 <b><code>/desired_angle</code>이 완전히 침묵</b>했습니다.
+페일세이프 레벨은 올라가는데 <b>아무도 명령을 내보내지 않는</b> 상태였습니다.
+즉 <b>L1(경고, 감속)은 설계서에만 있고 코드에는 없었습니다.</b></p>
+
+<table>
+<thead><tr><th>LiDAR 끊김</th><th>이전 — 발행</th><th>이후 — 발행</th><th>판정</th></tr></thead>
+<tbody>
+<tr><td>0.5초</td><td class="n fail">0회</td><td class="n pass">5회</td><td class="pass">✅</td></tr>
+<tr><td>1.0초</td><td class="n fail">0회</td><td class="n pass">10회</td><td class="pass">✅</td></tr>
+<tr><td>2.0초</td><td class="n fail">0회</td><td class="n pass">20회</td><td class="pass">✅</td></tr>
+<tr><td>3.0초</td><td class="n fail">0회</td><td class="n pass">30회</td><td class="pass">✅</td></tr>
+<tr><td>4.0초</td><td class="n">8회</td><td class="n pass">40회 (STOP_HOLD)</td><td class="pass">✅</td></tr>
+</tbody></table>
+
+<div class="box ok">
+<b>이제 <code>ship_direction</code>이 살아있는 한 <code>/desired_angle</code>이 흐릅니다.</b>
+<b>침묵 = ship_direction 사망</b>이라는 의미가 성립하므로,
+<code>motor_control</code>의 <code>cmd_timeout</code>을 <b>3.5초 → 0.5초로 조일 수 있습니다.</b>
+</div>
+
+<h2>2. L1 감속(70%) — 효과 확인</h2>
+<p class="note">루프를 고치기 전에는 L1에서 발행이 0회라 <b>측정 자체가 불가능</b>했습니다.
+같은 시드 50판, LiDAR 간헐 끊김(0.8~2.5초) 주입.</p>
+
+<table>
+<thead><tr><th>L1 속도</th><th>접촉 총합</th><th>접촉 평균</th><th>전진 평균</th></tr></thead>
+<tbody>
+<tr><td>끔 (100%)</td><td class="n">24회 <span class="bar r" style="width:96px"></span></td><td class="n">0.48회</td><td class="n">39.1m</td></tr>
+<tr><td><b>켬 (70%)</b></td><td class="n pass"><b>14회</b> <span class="bar g" style="width:56px"></span></td><td class="n">0.28회</td><td class="n">39.6m</td></tr>
+</tbody></table>
+
+<div class="box ok">
+<b>유지하세요.</b> 같은 시드에서 좋아진 판 14 / 나빠진 판 4 / 동일 32. <b>전진 손해는 없습니다</b> (39.1 → 39.6m).
+<br><span class="note">※ TTC 비상제동과 정반대입니다. <b>점진적 감속은 노이즈를 견디지만, 이진 급정지는 한 번만 튀어도 경기가 끝납니다.</b></span>
+</div>
+
+<h2>3. 회귀 2건 — 발견하고 고쳤습니다</h2>
+
+<h3>IMU 감시가 통째로 사라졌었다</h3>
+<p>재작성 과정에서 워치독이 <code>/scan</code>만 보고 <code>/yaw_error</code>는 안 보게 됐습니다.
+<b>1단계에서 만든 "침묵이 신호다" 설계가 무력화</b>됐습니다 — 입은 다무는데 <b>들을 귀가 없었습니다.</b></p>
+
+<table>
+<thead><tr><th>IMU 완전 고장 시</th><th>회귀 상태</th><th>수정 후</th></tr></thead>
+<tbody>
+<tr><td>접촉</td><td class="n fail">3회</td><td class="n pass">0회</td></tr>
+<tr><td>정지율</td><td class="n fail">0%</td><td class="n pass">71%</td></tr>
+<tr><td>정지 페일세이프 발동</td><td class="n fail">0회</td><td class="n pass">214회</td></tr>
+</tbody></table>
+
+<h3>ZeroDivisionError — angle_increment == 0</h3>
+<p>이상한 스캔이 오면 <b>노드가 죽었습니다</b> (411회 예외). 수정 후 <b>크래시 0회, 정지 160회 발동</b>.</p>
+<div class="box warn">
+<b>이건 작년 코드에도 있던 버그입니다.</b> 방어 코드가 0건이었습니다.
+재작성본에만 가드가 있었고, 점진적 이관 경로에는 들어간 적이 없었습니다.
+</div>
+
+<h2>4. 🚨 정정 — 시간 투표 필터는 효과가 없습니다</h2>
+
+<p>제가 <b>"참조본 12/12 vs 현재 11/12, 차이는 시간 필터뿐"</b>이라고 했습니다. <b>틀렸습니다.</b></p>
+
+<h3>제대로 재봤습니다 (시나리오 6, 전체 체인, 시드 20개)</h3>
+<table>
+<thead><tr><th>시간 투표</th><th>접촉 총합 (20판)</th><th>접촉 평균</th><th>전진 평균</th></tr></thead>
+<tbody>
+<tr><td>OFF (1/1)</td><td class="n">19회</td><td class="n">0.95회</td><td class="n pass">25.5m</td></tr>
+<tr><td>ON (3/2) — 현재 기본값</td><td class="n">20회</td><td class="n">1.00회</td><td class="n">23.4m</td></tr>
+<tr><td>강함 (5/3)</td><td class="n">20회</td><td class="n">1.00회</td><td class="n fail">22.6m</td></tr>
+<tr style="background:#F1EFE8"><td><b>내 참조 코드</b> (필터 내장)</td><td class="n">19회</td><td class="n">0.95회</td><td class="n">25.5m</td></tr>
+</tbody></table>
+
+<div class="box bad">
+<b>네 가지가 전부 똑같습니다.</b> 접촉 19~20회 / 20판.
+<br><br>
+<b>시나리오 6은 애초에 통과가 거의 불가능한 시나리오였습니다.</b>
+정면 부표(반경 0.3m) + 물보라 60%. <b>어느 코드든 95% 접촉합니다.</b>
+<br><br>
+제 참조본이 "12/12"였던 건 <b>시드 7 하나의 운</b>이었습니다.
+20시드로 재보니 참조본도 19/20 접촉합니다.
+<br><br>
+<b>그리고 필터는 전진을 8~11% 깎습니다</b> (25.5 → 23.4~22.6m). <b>이득 0, 비용 있음.</b>
+</div>
+
+<h3>권고: 기본값을 OFF로</h3>
+<p><code>temporal_frames: 1</code> (필터 끔). <b>코드는 남겨두되 기본값을 끄세요.</b>
+실제 물 위 물보라의 시간적 특성이 제 시뮬과 다를 수 있으니, 필요하면 켤 수 있게 남겨둡니다.</p>
+<p class="note"><b>TTC 때와 같은 원칙입니다:</b> 효과가 측정되지 않으면 기본값으로 넣지 않습니다.
+다만 TTC는 <b>해로웠으므로 삭제</b>했고, 이건 <b>무해하지만 무익하므로 기본값 OFF</b>입니다.</p>
+
+<h2>5. 고장/변수 시나리오 12종</h2>
+<table>
+<thead><tr><th>#</th><th>시나리오</th><th>접촉</th><th>전진</th><th>정지율</th><th>정지발동</th><th>크래시</th><th>판정</th></tr></thead>
+<tbody>
+<tr><td>1</td><td>정상 주행</td><td class="n">0</td><td class="n">29.8m</td><td class="n">0%</td><td class="n">0</td><td class="n">0</td><td class="pass">✅</td></tr>
+<tr><td>2</td><td>LiDAR 완전 고장</td><td class="n">0</td><td class="n">9.0m</td><td class="n">73%</td><td class="n">219</td><td class="n">0</td><td class="pass">✅ 벽 안 뚫음</td></tr>
+<tr><td>3</td><td>IMU 완전 고장</td><td class="n">0</td><td class="n">9.6m</td><td class="n">71%</td><td class="n">214</td><td class="n">0</td><td class="pass">✅ 회귀 수정</td></tr>
+<tr><td>4</td><td>GPS 고장</td><td class="n">0</td><td class="n">29.8m</td><td class="n">0%</td><td class="n">0</td><td class="n">0</td><td class="pass">✅</td></tr>
+<tr><td>5</td><td>LiDAR 순간 끊김 (0.3초)</td><td class="n">0</td><td class="n">29.5m</td><td class="n">0%</td><td class="n">0</td><td class="n">0</td><td class="pass">✅ 오탐지 정지 없음</td></tr>
+<tr style="background:#FAEEDA"><td>6</td><td>물보라 60% <span class="note">(통과 불가 시나리오 — 위 4절)</span></td><td class="n">1</td><td class="n">22.6m</td><td class="n">0%</td><td class="n">0</td><td class="n">0</td><td class="fail">❌</td></tr>
+<tr><td>7</td><td>스캔 이상 (angle_increment=0)</td><td class="n">0</td><td class="n">4.9m</td><td class="n">80%</td><td class="n">160</td><td class="n">0</td><td class="pass">✅ 회귀 수정</td></tr>
+<tr><td>8</td><td>스캔 이상 (길이 부족)</td><td class="n">0</td><td class="n">—</td><td class="n">0%</td><td class="n">0</td><td class="n">0</td><td class="pass">✅</td></tr>
+<tr><td>9</td><td>벽시계 -5초 점프</td><td class="n">0</td><td class="n">29.8m</td><td class="n">0%</td><td class="n">0</td><td class="n">0</td><td class="pass">✅ monotonic</td></tr>
+<tr><td>10</td><td>clearance=1.0 (과보수)</td><td class="n">0</td><td class="n">29.2m</td><td class="n">0%</td><td class="n">0</td><td class="n">0</td><td class="pass">✅</td></tr>
+<tr><td>11</td><td>미션노드 침묵</td><td class="n">0</td><td class="n">29.8m</td><td class="n">0%</td><td class="n">0</td><td class="n">0</td><td class="pass">✅</td></tr>
+<tr><td>12</td><td>조류 0.5m/s</td><td class="n">0</td><td class="n">27.7m</td><td class="n">0%</td><td class="n">0</td><td class="n">0</td><td class="pass">✅</td></tr>
+</tbody></table>
+
+<h2>6. 검증 도구 자체의 결함 — 4건 발견</h2>
+<div class="box warn">
+<b>도구가 틀리면 결론도 틀립니다.</b> 이번에 제 하네스에서 결함 4개를 찾았습니다.
+<ul>
+<li><b>정지 레벨을 문자열 <code>'L3'</code>로 찾고 있었습니다.</b> 새 코드가 레벨을 0/1/2로 바꾸자
+시나리오 2·5·9를 <b>오판</b>했습니다 → <code>/failsafe_level</code> 직접 구독으로 수정</li>
+<li><b>mock Logger가 <code>throttle_duration_sec</code>을 못 받았습니다.</b> 실제 rclpy는 받습니다 → 수정</li>
+<li><b>패키지 내부 import를 못 살렸습니다.</b> <code>from ship_direction.failsafe import ...</code>가
+실패했습니다. 실제 ROS에선 colcon이 해주는 일 → 시뮬 로더에 경로 주입으로 수정</li>
+<li><b>🚨 시나리오 6을 단일 시드로 판단했습니다.</b> 이것 때문에 <b>시간 필터라는 잘못된 처방</b>을
+내렸습니다. 20시드로 재보니 효과 0 → <b>다중 시드가 기본이어야 합니다</b></li>
+</ul>
+</div>
+
+<h2>7. 다음 할 일</h2>
+<table>
+<thead><tr><th>항목</th><th>내용</th></tr></thead>
+<tbody>
+<tr><td><b>시간 필터</b></td><td><code>temporal_frames: 1</code> — 기본값 OFF. 코드는 남겨둠</td></tr>
+<tr><td><b>cmd_timeout</b></td><td><b>3.5초 → 0.5초</b>. 루프 분리로 전제가 마련됨</td></tr>
+<tr><td><b>시나리오 6</b></td><td>통과 불가 시나리오. 하네스에서 <b>다중 시드 + 완화된 배치</b>로 교체 필요</td></tr>
+<tr><td>4단계</td><td><code>iahrs_driver</code> + 펌웨어 — <b>시뮬로 못 잡습니다. 벤치 확인 필수</b></td></tr>
+</tbody></table>
+
+</div></body></html>

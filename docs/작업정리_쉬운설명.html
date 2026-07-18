@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="ko"><head><meta charset="utf-8">
+<title>SSF 코드 수정 — 쉬운 설명 (순서대로)</title>
+<style>
+:root{--tx:#1a1a18;--sec:#5c5c56;--mut:#8f8f88;--bg:#fbfaf7;--card:#fff;--bd:#dcdad0;
+      --ok:#0F6E56;--okbg:#E1F5EE;--bad:#A32D2D;--badbg:#FCEBEB;--warn:#854F0B;--warnbg:#FAEEDA;
+      --accent:#185FA5;--accentbg:#E6F1FB}
+*{box-sizing:border-box}
+body{margin:0;padding:28px 20px 70px;font-family:-apple-system,"Pretendard","Apple SD Gothic Neo",system-ui,sans-serif;
+     background:var(--bg);color:var(--tx);line-height:1.75}
+.w{max-width:820px;margin:0 auto}
+h1{font-size:26px;font-weight:500;margin:0 0 6px}
+.sub{color:var(--sec);font-size:15px;margin:0 0 30px}
+.stage{background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:22px 24px;margin:18px 0}
+.badge{display:inline-block;background:var(--tx);color:#fff;font-size:13px;font-weight:500;
+       padding:3px 12px;border-radius:20px;margin-bottom:10px}
+.stage h2{font-size:19px;font-weight:500;margin:6px 0 4px}
+.oneline{color:var(--accent);font-size:14px;font-weight:500;margin:0 0 14px}
+.stage p{margin:8px 0}
+.q{color:var(--mut);font-size:14px;margin:14px 0 2px}
+.item{border-left:3px solid var(--bd);padding:2px 0 2px 14px;margin:12px 0}
+.item.fix{border-color:#5DCAA5}
+.item.bug{border-color:#F09595}
+.item b{font-weight:500}
+.tag{font-size:12px;font-weight:500;padding:1px 8px;border-radius:6px;margin-right:6px}
+.tag.b{background:var(--badbg);color:var(--bad)}
+.tag.f{background:var(--okbg);color:var(--ok)}
+.me{background:var(--warnbg);border:1px solid #FAC775;border-radius:10px;padding:12px 15px;margin:14px 0;font-size:14px}
+.me b{font-weight:500;color:var(--warn)}
+.intro{background:var(--accentbg);border:1px solid #B5D4F4;border-radius:12px;padding:16px 20px;margin:0 0 24px;font-size:15px}
+.big{font-size:16px}
+hr{border:none;border-top:1px dashed var(--bd);margin:34px 0}
+.tl{color:var(--mut);font-size:13px;letter-spacing:.1em;font-weight:500;margin:30px 0 6px}
+.emoji{font-size:17px}
+</style></head><body><div class="w">
+
+<h1>SSF 코드 수정 — 순서대로 쉽게</h1>
+<p class="sub">클로드 코드와 주고받으며 고친 것들. 각 단계마다 "무엇을 / 왜" 만 담았습니다.</p>
+
+<div class="intro">
+<b class="big">전체 그림 한 줄:</b> 작년 배 코드를 새 배 2척에 재활용하는데,
+곳곳에 <b>조용히 망가진 부분</b>이 있었습니다. 그걸 <b>한 노드씩</b> 고치면서,
+고칠 때마다 <b>가상으로 배를 돌려(시뮬)</b> 정말 나아졌는지 확인했습니다.
+</div>
+
+<p class="tl">준비 단계 — 검증할 눈부터 만든다</p>
+
+<div class="stage">
+<span class="badge">0단계 · ssf_tools</span>
+<h2>블랙박스 + 헬스체크</h2>
+<p class="oneline">🎥 경기 중 모든 걸 기록하고, 출발 전 센서를 점검하는 도구</p>
+<p>이걸 <b>제일 먼저</b> 넣었습니다. 이건 배를 조종하지 않고 <b>구경만</b> 하는 노드라
+아무것도 망가뜨릴 수 없습니다. 그런데 <b>이후 모든 수정을 확인하는 눈</b>이 됩니다.</p>
+<div class="item fix"><b>블랙박스</b> — 경기 중 배의 모든 상태를 0.1초마다 CSV로 기록.
+규정상 5번 도전 가능한데, <b>왜 실패했는지 알아야</b> 다음 회차에서 고칩니다.</div>
+<div class="item fix"><b>헬스체크</b> — 출발 전 "센서 다 살아있나?"를 한 줄로 알려줌.
+센서 하나 죽은 채 출발하면 배가 물 위에 멈춰섭니다.</div>
+</div>
+
+<p class="tl">항법 체인 — 배가 방향을 잡는 부분</p>
+
+<div class="stage">
+<span class="badge">1단계 · ship_goal_angle</span>
+<h2>"어느 쪽으로 틀지" 계산기</h2>
+<p class="oneline">🧭 목표 방향 − 뱃머리 방향 = 얼마나 틀어야 하나</p>
+<div class="item bug"><span class="tag b">버그</span><b>켜자마자 거짓말</b> —
+센서 값이 오기도 전에 "완벽 정렬! 직진!"이라고 발표했습니다.
+<b>→ 값이 실제로 올 때까지 입을 다물게</b> 고침.</div>
+<div class="item bug"><span class="tag b">버그</span><b>센서가 죽어도 계속 떠듦</b> —
+IMU(방향센서)가 죽었는데 마지막 값으로 계속 말해서, 안전장치가 "살아있구나" 착각.
+<b>→ 센서가 조용하면 이 노드도 입을 다물게</b> 고침. 그 침묵이 "고장" 신호가 됩니다.</div>
+<div class="me"><b>제가 틀렸던 것:</b> "0.5초에 한 번 계산은 너무 느리다"고 했는데,
+시뮬로 재보니 <b>속도를 10배 올려도 아무 차이가 없었습니다.</b> 주장을 철회했습니다.
+(20Hz로 올리긴 했지만, 그게 성능을 올린 건 아닙니다.)</div>
+</div>
+
+<div class="stage">
+<span class="badge">2단계 · motor_control</span>
+<h2>"각도"를 "모터 힘"으로 바꾸는 번역기</h2>
+<p class="oneline">⚙️ 체인의 맨 끝. 여기서 실제 모터가 움직입니다.</p>
+<div class="item fix"><span class="tag f">복구</span><b>감속이 끊겨 있었음</b> —
+작년엔 장애물이 코앞이어도 <b>전속력</b>이었습니다. 이 노드가 장애물 거리를 아예 안 듣고 있었어요.
+<b>→ 장애물 1.2m 안이면 속도를 70%까지 줄이게</b> 연결.</div>
+<div class="item fix"><span class="tag f">추가</span><b>명령 끊기면 정지</b> —
+위에서 명령이 안 오면 3.5초 뒤 중립(정지).</div>
+<div class="item bug"><span class="tag b">버그</span><b>제자리 도는 명령이 반대로</b> —
+"오른쪽으로 돌아"가 왼쪽으로 돌았습니다. 도킹 탐색이 반대로 훑을 뻔했습니다.</div>
+<div class="item fix"><span class="tag f">개선</span><b>진짜 제자리 선회로</b> —
+작년 "선회"는 순항 속도로 큰 원(반경 2m)을 그려서 <b>도크에 부딪혔습니다.</b>
+이제 제자리에서 돕니다.</div>
+<div class="item fix"><span class="tag f">추가</span><b>모터 좌우 힘 차이 보정</b> —
+두 모터 출력이 조금 다르면 배가 게처럼 옆으로 갑니다. 물 위에서 5분 측정하면
+자동으로 보정값을 뽑는 도구도 만들었습니다.</div>
+<div class="me"><b>클로드 코드가 저를 잡은 것:</b> 제가 "제자리 선회 중에도 감속하라"고 했는데,
+그러면 배가 <b>뒤로 밀리며 돕니다.</b> 계산해보니 맞아서, "전진할 때만 감속"으로 규칙을 고쳤습니다.</div>
+<div class="me"><b>둘이 함께 버린 것 (TTC 급정지):</b> "부딪힐 것 같으면 급정지" 기능을 제가 넣었었는데,
+시뮬로 재보니 <b>물보라 한 번에 배가 35초 중 28초를 멈춰섰습니다.</b> 이득 0, 위험 막대 → 삭제.</div>
+</div>
+
+<div class="stage">
+<span class="badge">3단계 · ship_direction</span>
+<h2>중앙 판단 — 장애물을 피하고 안전을 지킴</h2>
+<p class="oneline">🚢 가장 중요한 노드. 여기서 회피와 페일세이프를 결정합니다.</p>
+<div class="item fix"><span class="tag f">구조 개선</span><b>"침묵" 문제 해결</b> —
+전에는 라이다가 끊기면 이 노드가 <b>아무 명령도 안 냈습니다</b>(완전 침묵).
+<b>→ 라이다가 오든 안 오든 항상 명령을 내게</b> 구조를 바꿨습니다.
+이제 "침묵 = 이 노드가 죽음"이라는 뜻이 됩니다.</div>
+<div class="item fix"><span class="tag f">추가</span><b>단계적 감속</b> —
+센서가 0.7초 끊기면 속도 70%, 3초 끊기면 정지. 시뮬로 재보니
+<b>접촉이 24→14회로 줄었습니다.</b></div>
+<div class="item bug"><span class="tag b">회귀</span><b>IMU 감시가 사라졌었음</b> —
+코드를 새로 짜다가 실수로 <b>1단계에서 만든 안전장치를 무력화</b>했습니다.
+시뮬이 잡아냈습니다(IMU 죽어도 배가 안 멈춤). 바로 복구.</div>
+<div class="item bug"><span class="tag b">버그</span><b>이상한 센서값에 노드가 죽음</b> —
+라이다가 깨진 데이터를 보내면 <b>0으로 나누기</b> 오류로 노드가 죽었습니다.
+(작년 코드에도 있던 버그) 방어 코드 추가.</div>
+<div class="me"><b>제가 또 틀렸던 것 (시간 필터):</b> "물보라 걸러내는 필터를 넣으라"고 했는데,
+<b>단일 시드로 판단한 실수</b>였습니다. 20번 돌려보니 효과가 0이고 오히려 배가 느려져서,
+기능은 남기되 <b>기본 꺼짐</b>으로 뒀습니다.</div>
+</div>
+
+<p class="tl">미션 노드 — 실제 점수를 따는 부분</p>
+
+<div class="stage">
+<span class="badge">6a · ship_dock + north_goal_angle</span>
+<h2>🚨 죽어 있던 도킹을 살림 (점수 15%)</h2>
+<p class="oneline">두 노드를 반드시 <b>동시에</b> 고쳐야 하는 한 쌍</p>
+<div class="item bug"><span class="tag b">최악의 버그</span><b>도킹이 1년간 침묵</b> —
+도킹 노드가 엉뚱한 번호(9번)를 기다리고 있어서, 실제 도킹(7번)에서 <b>아무 일도 안 했습니다.</b>
+배는 멀쩡히 돌아다녔고 도킹만 안 했으니 <b>아무도 몰랐습니다.</b> → 7번으로 고침.</div>
+<div class="item fix"><span class="tag f">개선</span><b>카메라 깊이 안 씀</b> —
+새 카메라(OAK-1)는 거리를 못 잽니다. 그래서 거리는 전부 <b>라이다</b>로.
+도크는 넓어서 카메라와 라이다 방향이 어긋나므로, "정면에 뭔가 얼마나 가까운가"만 봅니다.</div>
+<div class="me"><b>왜 동시에?</b> 도킹을 살리는 순간, 다른 노드가 같은 채널에 "무시해"를 계속
+보내고 있어서 <b>둘이 싸웁니다.</b> 그래서 한쪽을 살리면서 다른 쪽의 방해를 같이 꺼야 합니다.</div>
+</div>
+
+<div class="stage">
+<span class="badge">6a-2 · geofence</span>
+<h2>경기장 밖으로 안 나가게 (이탈 = 실격)</h2>
+<p class="oneline">🧱 경계선을 "보이지 않는 벽"으로 만듦</p>
+<div class="item fix"><span class="tag f">추가</span>경계가 가까우면 그 방향을 <b>가짜 장애물</b>로 만들어서,
+기존 회피 로직이 알아서 피하게 했습니다. 새 로직을 안 만든 게 핵심입니다.</div>
+<div class="me"><b>제가 걱정한 것 → 클로드 코드가 뒤집음:</b> 제가 "모서리에서 배가 갇힐 것"이라 했는데,
+클로드 코드가 "안 갇힌다"고 맞게 반박했습니다. <b>그런데 제가 다시 확인하니 반대 문제가 있었습니다</b> —
+모서리 대각선으로 <b>빠져나갈</b> 수 있었습니다. 그래서 방식을 "경계를 레이저처럼 쏘는" 방법으로
+바꿨고, 시뮬로 <b>모서리에서도 안 나가는 것</b>을 확인했습니다.</div>
+</div>
+
+<div class="stage">
+<span class="badge">6b · ship_gate</span>
+<h2>게이트(문) 통과</h2>
+<p class="oneline">🚩 빨강-초록 부표 사이로 지나가기</p>
+<div class="item bug"><span class="tag b">버그</span><b>배선이 뒤엉켜 있었음</b> —
+빨강 신호가 초록 변수로 들어가는 식으로 꼬여 있었습니다. 재작성하며 바로잡음.</div>
+<div class="item fix"><span class="tag f">추가</span><b>엉뚱한 짝짓기 방지</b> —
+"다음 게이트의 빨강"과 "이번 게이트의 초록"이 같이 보이면 그 중간으로 가버립니다.
+두 부표 각도가 말이 되는 범위일 때만 한 쌍으로 인정.</div>
+<div class="item fix"><span class="tag f">추가</span><b>통과 개수 세기</b> — 몇 개 통과했는지 기록(규정: 순서대로).</div>
+<div class="me"><b>클로드 코드가 저를 또 잡음:</b> 제가 "옆 노드에 폴백 추가하라"고 했는데,
+그러면 <b>또 둘이 싸우는</b> 상황이 됩니다. 클로드 코드가 소스를 확인하고 "그거 넣으면 안 됩니다"라고
+막았습니다. 정확했습니다.</div>
+</div>
+
+<div class="stage">
+<span class="badge">6c · ship_turn</span>
+<h2>부표 선회 (규정 위반이던 것 수정)</h2>
+<p class="oneline">🔄 부표를 중심으로 원을 그리며 돌기</p>
+<div class="item bug"><span class="tag b">규정 위반</span><b>작년엔 그냥 옆으로 스쳐 지나감</b> —
+규정은 <b>한 바퀴 도는 것</b>인데 작년 코드는 비껴 지나갔습니다. 완전히 새로 짬.</div>
+<div class="item fix"><span class="tag f">추가</span><b>흰색 부표 인식</b> —
+빨강·초록은 시계방향, 흰색은 반시계방향(규정). 작년엔 빨강만 봤습니다.</div>
+</div>
+
+<div class="stage">
+<span class="badge">6d · ship_back</span>
+<h2>위치 유지 (한자리 버티기)</h2>
+<p class="oneline">🅿️ 부표 근처에서 5초간 안 밀리고 버티기</p>
+<div class="item bug"><span class="tag b">버그</span><b>가짜 위치유지</b> —
+작년엔 "그냥 5초간 가만히". 물살이 있으면 <b>2.5m나 밀려나</b> 실패합니다.
+<b>→ 거리를 재면서 밀리면 되돌아오게</b> 고침.</div>
+<div class="item bug"><span class="tag b">지뢰</span><b>이 노드가 자기를 "ship_turn"이라 등록</b> —
+복붙 실수로 이름이 겹쳐 있었습니다. 설정값이 엉뚱한 노드로 갈 뻔했습니다.
+<b>→ 이름 바로잡고, 전체 노드 이름을 전수 검사</b>(나머지는 정상).</div>
+</div>
+
+<hr>
+
+<div class="stage" style="background:var(--accentbg);border-color:#B5D4F4">
+<h2 style="margin-top:0">🎯 지금 어디까지 왔나</h2>
+<p><b>시뮬로 확인 가능한 건 거의 다 했습니다.</b> 회피·안전장치·경계 이탈 방지는 검증 완료.
+미션 노드(도킹·게이트·선회·위치유지)는 코드 완성, 통합 시뮬 검증만 남았습니다.</p>
+<p><b>남은 건 하드웨어를 기다립니다:</b> IMU 방향/조향 부호(배 뜨면 벤치에서 5분),
+카메라 인식(카메라 오면), 실측값(배 폭·모터 힘 등, 2주 뒤).</p>
+<p style="margin-bottom:0"><b>중요한 습관 하나:</b> 저는 이번에 <b>4번 틀렸고</b>(느린 계산·시간 필터·모서리 걱정·감속 규칙),
+전부 <b>시뮬이나 클로드 코드가 잡아냈습니다.</b> "고쳤다"고 믿지 않고 매번 확인한 게 핵심입니다.</p>
+</div>
+
+</div></body></html>

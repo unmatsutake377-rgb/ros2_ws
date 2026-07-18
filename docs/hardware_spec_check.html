@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="ko"><head><meta charset="utf-8">
+<title>하드웨어 스펙 확인표 — 데이터 수집 전 대조용</title>
+<style>
+:root{--tx:#1a1a18;--sec:#5c5c56;--mut:#8f8f88;--bg:#fbfaf7;--card:#fff;--bd:#dcdad0;
+      --ok:#0F6E56;--okbg:#E1F5EE;--warn:#854F0B;--warnbg:#FAEEDA;--bad:#A32D2D;--badbg:#FCEBEB;--accent:#185FA5}
+*{box-sizing:border-box}
+body{margin:0;padding:28px 20px 60px;font-family:-apple-system,"Pretendard","Apple SD Gothic Neo",system-ui,sans-serif;
+     background:var(--bg);color:var(--tx);line-height:1.65}
+.w{max-width:900px;margin:0 auto}
+h1{font-size:25px;font-weight:500;margin:0 0 4px}
+.sub{color:var(--sec);font-size:14px;margin:0 0 24px}
+h2{font-size:18px;font-weight:500;margin:32px 0 10px;padding-bottom:7px;border-bottom:1px solid var(--bd)}
+table{width:100%;border-collapse:collapse;font-size:13px;margin:8px 0;background:var(--card);
+      border:1px solid var(--bd);border-radius:10px;overflow:hidden}
+th,td{text-align:left;padding:8px 11px;border-bottom:1px solid var(--bd);vertical-align:top}
+tr:last-child td{border-bottom:none}
+th{color:var(--mut);font-size:11px;letter-spacing:.04em;text-transform:uppercase;font-weight:500;background:#f7f6f1}
+code{font-family:ui-monospace,Menlo,monospace;font-size:12px;background:#f1efe8;padding:1px 5px;border-radius:4px}
+.c-ok{color:var(--ok);font-weight:500}
+.c-chk{color:var(--warn);font-weight:500}
+.c-bad{color:var(--bad);font-weight:500}
+.legend{display:flex;gap:16px;flex-wrap:wrap;font-size:13px;margin:6px 0 18px}
+.legend span{display:flex;align-items:center;gap:5px}
+.box{border-radius:10px;padding:13px 16px;margin:14px 0;font-size:14px}
+.box.warn{background:var(--warnbg);border:1px solid #FAC775}
+.box.ok{background:var(--okbg);border:1px solid #9FE1CB}
+.box b{font-weight:500}
+.dev{font-family:ui-monospace,Menlo,monospace;font-size:11.5px;color:var(--accent)}
+</style></head><body><div class="w">
+
+<h1>하드웨어 스펙 확인표</h1>
+<p class="sub">데이터 수집 전에 이걸로 하나씩 대조하세요. 스펙이 틀리면 데이터를 모아도 못 씁니다.</p>
+
+<div class="legend">
+  <span><span class="c-ok">✅ 확정</span> — 확인됨, 코드 반영 완료</span>
+  <span><span class="c-chk">⚠️ 확인필요</span> — 배 뜨면/실물에서 검증</span>
+  <span><span class="c-bad">🚨 미정</span> — 아직 정해지거나 측정 안 됨</span>
+</div>
+
+<h2>1. 센서·구동 하드웨어</h2>
+<table>
+<thead><tr><th>부품</th><th>모델</th><th>연결(코드가 기대하는 것)</th><th>상태</th></tr></thead>
+<tbody>
+<tr><td><b>LiDAR</b></td><td>RPLIDAR A3</td>
+    <td>USB, <span class="dev">/dev/ttyLiDAR</span><br>256000 baud · Sensitivity 모드 · 10Hz · 25m</td>
+    <td class="c-ok">✅ 확정</td></tr>
+<tr><td><b>IMU</b></td><td>RB-SDA-v1<br>(IntelliThings iAHRS, 9축)</td>
+    <td>시리얼, <span class="dev">/dev/IMU</span><br>ASCII "e\n" 프로토콜</td>
+    <td class="c-ok">✅ 모델 확정<br><span class="c-chk">⚠️ 방향 부호 검증</span></td></tr>
+<tr><td><b>GPS (A배)</b></td><td>u-blox C94-M8P</td>
+    <td>시리얼, <span class="dev">/dev/ttyGPS</span><br>NTRIP RTK 보정</td>
+    <td class="c-ok">✅ 확정</td></tr>
+<tr><td><b>GPS (B배)</b></td><td>u-blox ZED-F9P</td>
+    <td>시리얼, <span class="dev">/dev/ttyGPS</span> · 38400 baud<br>rover 설정(별도 yaml)</td>
+    <td class="c-ok">✅ 확정</td></tr>
+<tr><td><b>MCU</b></td><td>Arduino Due<br>+ micro-ROS</td>
+    <td>시리얼, <span class="dev">/dev/ttyMCU</span><br><code>Motor_run = pwm_r*10000 + pwm_l</code></td>
+    <td class="c-ok">✅ 규약 확정<br><span class="c-bad">🚨 아직 안 만듦</span></td></tr>
+<tr><td><b>카메라</b></td><td>OAK-1 W PoE</td>
+    <td>이더넷(PoE), 고정 IP<br>depthai-ros 드라이버 · <b>RGB 전용(뎁스 없음)</b></td>
+    <td class="c-bad">🚨 미연결<br>드라이버 미작업</td></tr>
+</tbody>
+</table>
+
+<div class="box warn">
+<b>⚠️ IMU 방향 부호 — 데이터 수집 전 반드시 확인</b><br>
+자기편각 <code>-8°</code>(한국 서편차)와 <code>invert_yaw: true</code>는 <b>기본값 추측</b>입니다.
+뱃머리를 정북에 놓고 IMU 출력이 0 근처인지, 시계로 돌릴 때 값이 커지는지 확인해야 합니다.
+<b>이게 틀리면 모으는 모든 데이터의 방위가 틀어집니다.</b>
+</div>
+
+<h2>2. 모터 PWM 규약 (절대 바꾸면 안 되는 것)</h2>
+<table>
+<thead><tr><th>값</th><th>의미</th><th>상태</th></tr></thead>
+<tbody>
+<tr><td><code>1500</code></td><td>중립(정지) — 펌웨어 map의 중앙값. <b>ESC 중립</b></td><td class="c-ok">✅ 고정</td></tr>
+<tr><td><code>&lt;1500</code></td><td>전진 (작을수록 빠름)</td><td class="c-ok">✅</td></tr>
+<tr><td><code>&gt;1500</code></td><td>후진</td><td class="c-ok">✅</td></tr>
+<tr><td>순항 <code>1360</code> / 후진 <code>1590</code></td><td>임시값 — 새 배 추력에 맞춰야 함</td><td class="c-chk">⚠️ 실측</td></tr>
+</tbody>
+</table>
+
+<h2>3. 배 뜨면 실측할 값 (지금은 전부 임시값)</h2>
+<table>
+<thead><tr><th>파라미터</th><th>지금 값</th><th>무엇</th><th>어떻게 얻나</th></tr></thead>
+<tbody>
+<tr><td><code>half_width</code></td><td>0.45 (작년 배)</td><td>선폭 ÷ 2</td><td>줄자</td></tr>
+<tr><td><code>pwm_cruise</code></td><td>1360</td><td>순항 속도</td><td>블랙박스 CSV</td></tr>
+<tr><td><code>pwm_reverse</code></td><td>1590</td><td>후진 속도</td><td>블랙박스 CSV</td></tr>
+<tr><td><code>mount_offset_deg</code></td><td>0.0</td><td>IMU 장착 오프셋</td><td>정북에 놓고 출력 읽기</td></tr>
+<tr><td><code>magnetic_declination_deg</code></td><td>-8.0</td><td>대회장 자기편각</td><td>대회장 위치로 계산</td></tr>
+<tr><td><code>orbit_radius_m</code></td><td>3.0</td><td>선회 반경</td><td>보정된 시뮬 + 실측</td></tr>
+<tr><td><code>hold_dist_m</code></td><td>2.5</td><td>위치유지 거리</td><td>시뮬 + 실측</td></tr>
+<tr><td><code>contact_dist_m</code></td><td>0.8</td><td>도킹 접안 거리</td><td>도크 규격 공지 후</td></tr>
+<tr><td><code>k_v / k_w / tau</code></td><td>시뮬 기본</td><td>관성·추력</td><td><code>fit_dynamics.py</code></td></tr>
+<tr><td>모터 좌우 게인</td><td>1.0 / 1.0</td><td>모터 불균형</td><td><code>calibrate_motors.py</code></td></tr>
+<tr><td>조향 부호 <code>steer_invert</code></td><td>false</td><td>좌/우 방향</td><td>물 위 눈으로 30초</td></tr>
+<tr><td>경기장 폴리곤</td><td>(비어있음)</td><td>경계 좌표</td><td>당일 GPS로 모서리 찍기</td></tr>
+</tbody>
+</table>
+
+<div class="box ok">
+<b>✅ 핵심:</b> 위 표의 <b>대부분이 블랙박스 CSV 한 장에서 나옵니다.</b>
+<code>fit_dynamics.py</code>(관성·추력), <code>calibrate_motors.py</code>(불균형),
+그리고 눈으로 조향 부호. <b>배 뜨는 날 5~10분 주행 → CSV를 채팅에 올리면 제가 다 뽑습니다.</b>
+</div>
+
+<h2>4. 소프트웨어 환경</h2>
+<table>
+<thead><tr><th>항목</th><th>필요</th><th>상태</th></tr></thead>
+<tbody>
+<tr><td>OS</td><td>Ubuntu 22.04</td><td class="c-chk">⚠️ 온보드 노트북 확인</td></tr>
+<tr><td>ROS</td><td>ROS2 Humble</td><td class="c-chk">⚠️ 설치 확인</td></tr>
+<tr><td>빌드</td><td><code>colcon build --symlink-install</code></td><td class="c-bad">🚨 아직 안 함(우분투 필요)</td></tr>
+<tr><td>카메라 드라이버</td><td><code>ros-humble-depthai-ros</code></td><td class="c-bad">🚨 설치·연결 안 함</td></tr>
+<tr><td>udev 규칙</td><td>포트 고정(<code>/dev/ttyLiDAR</code> 등)</td><td class="c-chk">⚠️ 노트북마다 1회</td></tr>
+<tr><td>NTRIP 계정</td><td>배 2대 → 계정 2개</td><td class="c-chk">⚠️ 준비 (동시접속 1개 제한 흔함)</td></tr>
+</tbody>
+</table>
+
+<h2>5. 데이터 수집 전 "이것만은" 체크리스트</h2>
+<div class="box warn">
+데이터를 모아도 못 쓰는 사고를 막으려면, 수집 <b>전에</b> 이 4개를 확인하세요:
+<table style="margin-top:10px">
+<tbody>
+<tr><td>☐ <b>블랙박스가 실제로 CSV를 쓰는가</b></td><td><code>~/ssf_logs/</code>에 파일이 쌓이나</td></tr>
+<tr><td>☐ <b>gyro_z·gps_vel 컬럼이 채워지나</b></td><td>빈칸이면 <code>/imu/data</code>·<code>/fix_velocity</code> 발행 확인</td></tr>
+<tr><td>☐ <b>로깅 주파수 20~50Hz</b></td><td>system-ID는 촘촘해야 함</td></tr>
+<tr><td>☐ <b>포트 이름이 맞나</b></td><td>udev 없으면 <code>/dev/ttyUSB0</code> 등으로 바뀜 → 노드가 센서 못 찾음</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="box ok">
+<b>내가 지금 다 알고 있는 것:</b> 센서 모델 5종, 연결 방식(포트·baud·프로토콜),
+PWM 규약, 필요한 파라미터 목록과 얻는 방법.<br>
+<b>내가 아직 모르는 것(측정해야 함):</b> 새 배의 실제 물리값(폭·추력·관성),
+IMU 방향 부호, 대회장 좌표·자기편각, 카메라 실측 스펙(초점거리·왜곡).<br>
+<b>→ 이건 "모르는 게 정상"입니다. 배와 대회장이 있어야 나오니까요.</b>
+</div>
+
+</div></body></html>

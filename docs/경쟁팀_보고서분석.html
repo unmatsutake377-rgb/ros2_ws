@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="ko"><head><meta charset="utf-8">
+<title>KABOAT 2025 경쟁팀 보고서 분석 — 도킹·회피</title>
+<style>
+:root{--tx:#1a1a18;--sec:#5c5c56;--mut:#8f8f88;--bg:#fbfaf7;--card:#fff;--bd:#dcdad0;
+      --ok:#0F6E56;--okbg:#E1F5EE;--warn:#854F0B;--warnbg:#FAEEDA;--bad:#A32D2D;--badbg:#FCEBEB;--accent:#185FA5;--accbg:#E6F1FB}
+*{box-sizing:border-box}
+body{margin:0;padding:28px 20px 60px;font-family:-apple-system,"Pretendard","Apple SD Gothic Neo",system-ui,sans-serif;
+     background:var(--bg);color:var(--tx);line-height:1.6}
+.w{max-width:900px;margin:0 auto}
+h1{font-size:25px;font-weight:500;margin:0 0 4px}
+.sub{color:var(--sec);font-size:14px;margin:0 0 22px}
+h2{font-size:20px;font-weight:500;margin:34px 0 6px}
+h3{font-size:15px;font-weight:500;margin:16px 0 6px;color:var(--accent)}
+.tag{display:inline-block;font-size:12px;font-weight:500;padding:2px 10px;border-radius:20px;margin-left:8px;vertical-align:middle}
+.t-win{background:var(--okbg);color:var(--ok)}.t-fail{background:var(--badbg);color:var(--bad)}
+table{width:100%;border-collapse:collapse;font-size:13px;margin:8px 0;background:var(--card);border:1px solid var(--bd);border-radius:10px;overflow:hidden}
+th,td{text-align:left;padding:8px 11px;border-bottom:1px solid var(--bd);vertical-align:top}
+tr:last-child td{border-bottom:none}
+th{color:var(--mut);font-size:11px;font-weight:500;background:#f7f6f1}
+.box{border-radius:10px;padding:13px 16px;margin:12px 0;font-size:14px}
+.box.ok{background:var(--okbg);border:1px solid #9FE1CB}.box.warn{background:var(--warnbg);border:1px solid #FAC775}
+.box.bad{background:var(--badbg);border:1px solid #F09595}.box.acc{background:var(--accbg);border:1px solid #B5D4F4}
+.box b{font-weight:500}
+.q{border-left:3px solid var(--bd);padding:2px 0 2px 12px;margin:8px 0;color:var(--sec);font-size:13px;font-style:italic}
+code{font-family:ui-monospace,Menlo,monospace;font-size:12px;background:#f1efe8;padding:1px 5px;border-radius:4px}
+ul{margin:6px 0;padding-left:20px}
+li{margin:3px 0}
+</style></head><body><div class="w">
+
+<h1>경쟁팀 보고서 분석 — 도킹·회피</h1>
+<p class="sub">채점표 정답지와 대조. "화려한데 0점" vs "담백한데 만점"을 걸러냈습니다.</p>
+
+<div class="box acc">
+<b>가장 큰 발견:</b> 도킹 만점 팀(인하대 252)이 <b>우리와 거의 같은 하드웨어</b>(RPLIDAR A3 + 단안 카메라 + u-blox RTK)로 도킹했습니다.
+반면 도킹 0점 팀(부경대)은 <b>고가 3D LiDAR + YOLO</b>로 정교하게 짰지만 실패했습니다.
+<b>→ 우리 하드웨어로 도킹 가능함이 실증됐고, 정답은 "단순·경량"입니다.</b>
+</div>
+
+<h2>① 인하대 i-Tricat 252 <span class="tag t-win">도킹 15점 만점</span></h2>
+<p class="sub" style="margin:0 0 10px">우리와 하드웨어가 판박이 → 방법을 그대로 이식 가능. <b>최우선 롤모델.</b></p>
+
+<table>
+<tr><th>센서</th><td><b>RPLIDAR A3</b>(우리와 동일) · <b>단안 웹캠</b>(Logitech, 뎁스 없음 = OAK-1급) · <b>u-blox ZED-F9R RTK</b> · myAHRS+ IMU</td></tr>
+</table>
+
+<h3>도킹 — 딥러닝을 버리고 OpenCV를 택함</h3>
+<p>YOLOv5와 OpenCV를 둘 다 만들어 비교한 뒤 <b>OpenCV(HSV+컨투어)를 채택</b>했습니다. 이유가 우리 상황과 정확히 같습니다:</p>
+<div class="q">"야외에서 진행하는 대회 특성상 자외선 및 조도가 인식에 많은 영향을 미쳤고... 훈련 데이터를 증가하였을 때 연산 복잡도가 올라가며 처리 속도가 느려지는 현상... 먼 거리 도형을 잘 검출하지 못하는 경향을 보였다"</div>
+<ul>
+<li><b>표식 인식:</b> HSV 색상 마스킹(실시간 Trackbar 조정) → Blur/모폴로지/Canny → 컨투어 → 꼭짓점 개수·각도로 도형 분류</li>
+<li><b>정면 접근:</b> <code>t_heading</code>(표식 정면일 때 IMU 각) 도입 → <code>error = 헤딩 − t_heading</code>. error 40° 이상이면 한쪽 역추진으로 제자리 회전, 40° 이하면 추력 끊고 <b>관성으로 마무리</b></li>
+<li><b>추종:</b> <code>diff_x</code>(정면 방향과 도형 중심의 <b>픽셀 차이</b>)로 좌우 추력 조정 → 표식을 화면 중앙에 유지하며 접근</li>
+</ul>
+<div class="box ok"><b>우리 6a와 개념이 판박이입니다.</b> 정지 → 정면 회전(히스테리시스 40°) → 픽셀 추종. 우리 도킹 FSM에 <b>t_heading 방식과 diff_x 픽셀 정렬을 그대로 얹으면</b> 됩니다.</div>
+
+<h3>장애물 회피 — Obstacle-Detector 라이브러리</h3>
+<ul>
+<li>2D 스캔을 <b>Circle(장애물)/Segment(벽)</b>로 클러스터링 (오픈소스 <code>Obstacle-Detector</code>)</li>
+<li><b>Span Ang</b>(장애물 각도 팽창=안전여유) → <b>Danger Ang</b>(위험각 목록) → <b>Safe Ang</b>(갈 수 있는 각) → <b>Optimal Ang</b>(목표로 가기 최적각) → PD 제어</li>
+<li>인식 범위: 전방 ±90°, 2m</li>
+</ul>
+<div class="box acc"><b>배울 점:</b> <b>Span Ang(장애물을 실제보다 크게 인식해 안전여유 확보)</b> — 이게 우리 dilate(팽창)와 같은 개념인데 더 체계적입니다. 우리 갭-팔로잉의 안전마진 처리로 참고 가치 큼.</div>
+
+<h2>② 창원대 ECOCEAN <span class="tag t-win">장애물회피 20점 만점</span></h2>
+<table>
+<tr><th>센서</th><td><b>RPLIDAR A3M1</b>(우리 계열) · 단안 웹캠(C922) · <b>ZED-F9P RTK</b>(우리와 동일) · ROS2</td></tr>
+</table>
+<h3>회피 = VFH+ (Vector Field Histogram Plus)</h3>
+<div class="q">"라이다로 주변 장애물 분포를 히스토그램으로 변환, 충돌 위험이 적은 방향을 선택... 기본 VFH보다 <b>목표각과 회피각의 가중치를 함께 고려</b>해 더 부드럽고 안정적인 경로를 생성"</div>
+<div class="box ok"><b>우리 갭-팔로잉 개선 포인트:</b> 우리는 갭 중앙만 쫓아 지그재그가 날 수 있는데, VFH+는 <b>"목표 방향 유지" 가중치</b>를 더해 경로를 매끄럽게 합니다. 이 가중합 아이디어를 우리 회피에 얹으면 개선 여지 큼.</div>
+
+<h2>③ 부경대 Team PASS <span class="tag t-fail">도킹 0점 (반면교사)</span></h2>
+<table>
+<tr><th>센서</th><td>🚨 <b>Ouster OS1-128 (3D 점군, 2천만원대)</b> · YOLO · GPS+IMU · MAVROS · pyproj UTM 변환</td></tr>
+</table>
+<p><b>도킹 알고리즘은 오히려 가장 정교했습니다</b> — FSM 12단계, 3개 도크 동시 인식→좌우 순번 판정→2차 회전→시각정렬(±5°)→LiDAR 4m 정지→후진 10m. <b>그런데 0점.</b></p>
+
+<h3>왜 실패했나 (단서)</h3>
+<div class="box bad">
+<b>1. YOLO 버전이 보고서 안에서 3개 혼재</b> — 도킹은 YOLOv12n, 시스템은 YOLOv8, 탐색은 YOLO11n. <b>여러 코드베이스를 급히 통합한 정황.</b>
+<br><br>
+<b>2. 과도한 직렬 의존성</b> — "3개 도형 동시 인식 → 순번 판정 → 2차 회전 → ±5° 정렬 → 4m 정지"의 긴 사슬. <b>한 단계라도 실패(야외 조도 YOLO 오검출, 수면 반사 노이즈)하면 전체 도킹이 무너짐.</b>
+<br><br>
+<b>3. 무거운 스택</b> — 3D 점군 + YOLO + MAVROS + UTM을 단일 노드 실시간 처리 → 연산 부하·지연.
+</div>
+<div class="box warn">
+<b>우리가 피할 것:</b> YOLO·3D LiDAR 고정밀 도킹의 유혹. 우리 단안+2D 조합엔 <b>PASS식이 아니라 252식(OpenCV+픽셀정렬)</b>이 정답.
+<br><b>단, 하나는 배웁니다:</b> PASS의 <b>"픽셀 오차 유지시간 측정"</b>(순간 오검출 무시) — 이 방어 로직은 좋으니 우리 도킹 FSM에 차용.
+<br>그리고 <b>LiDAR 전방 ±10° FOV + Z축 필터 → 최근접점</b> 도킹 정지 방식은 우리 설계와 정확히 일치.
+</div>
+
+<h2>🎯 종합 — 우리가 반영할 것</h2>
+<table>
+<thead><tr><th>영역</th><th>누구에게</th><th>무엇을</th></tr></thead>
+<tbody>
+<tr><td><b>도킹 표식 인식</b></td><td>인하대 252</td><td>YOLO 대신 <b>OpenCV HSV+컨투어</b> (야외 조도·경량). 우리 OAK-1 단안에 정확히 맞음</td></tr>
+<tr><td><b>도킹 정면접근</b></td><td>인하대 252</td><td><code>t_heading</code> 제자리 회전(40° 히스테리시스) + <code>diff_x</code> 픽셀 추종. 우리 FSM에 이식</td></tr>
+<tr><td><b>도킹 정지</b></td><td>부경대(방법만)</td><td>LiDAR 전방 ±10° + Z축 필터 → 최근접점. <b>우리 설계와 이미 일치</b> ✅</td></tr>
+<tr><td><b>도킹 견고성</b></td><td>부경대(반면교사)</td><td>FSM 단계 최소화 + <b>픽셀 오차 유지시간 필터</b>(순간 오검출 무시)</td></tr>
+<tr><td><b>장애물 회피</b></td><td>창원대 / 인하대</td><td>갭-팔로잉에 <b>목표각 가중치(VFH+)</b> + <b>Span Ang(장애물 팽창)</b> 얹기</td></tr>
+</tbody>
+</table>
+
+<div class="box ok">
+<b>가장 중요한 결론:</b> 도킹 만점 팀이 <b>우리와 같은 하드웨어</b>로, <b>우리와 같은 접근(정면접근 FSM + 카메라 방위 + LiDAR 거리)</b>으로 성공했습니다.
+<b>우리 6a 도킹 설계가 옳았다는 강력한 증거입니다.</b> 차이는 디테일(HSV 표식인식, 픽셀 정렬, 유지시간 필터)뿐이고, 그것도 이식 가능합니다.
+<br><br>
+그리고 <b>딥러닝(YOLO)은 함정</b>이었습니다 — 정교한 YOLO 팀은 0점, 담백한 OpenCV 팀이 만점. <b>우리가 HSV로 가기로 한 것이 맞습니다.</b>
+</div>
+
+</div></body></html>

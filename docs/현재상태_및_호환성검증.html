@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="ko"><head><meta charset="utf-8">
+<title>SSF 2026 현재 상태 + 호환성 검증</title>
+<style>
+:root{--tx:#1a1a18;--sec:#5c5c56;--mut:#8f8f88;--bg:#fbfaf7;--card:#fff;--bd:#dcdad0;
+      --ok:#0F6E56;--okbg:#E1F5EE;--bad:#A32D2D;--badbg:#FCEBEB;--warn:#854F0B;--warnbg:#FAEEDA;--accent:#185FA5;--accbg:#E6F1FB}
+*{box-sizing:border-box}
+body{margin:0;padding:28px 20px 60px;font-family:-apple-system,"Pretendard","Apple SD Gothic Neo",system-ui,sans-serif;
+     background:var(--bg);color:var(--tx);line-height:1.6}
+.w{max-width:940px;margin:0 auto}
+h1{font-size:25px;font-weight:500;margin:0 0 4px}
+.sub{color:var(--sec);font-size:14px;margin:0 0 22px}
+h2{font-size:19px;font-weight:500;margin:34px 0 10px;padding-bottom:7px;border-bottom:1px solid var(--bd)}
+h3{font-size:15px;font-weight:500;margin:18px 0 6px}
+table{width:100%;border-collapse:collapse;font-size:13px;margin:8px 0;background:var(--card);border:1px solid var(--bd);border-radius:10px;overflow:hidden}
+th,td{text-align:left;padding:8px 11px;border-bottom:1px solid var(--bd);vertical-align:top}
+tr:last-child td{border-bottom:none}
+th{color:var(--mut);font-size:11px;font-weight:500;background:#f7f6f1}
+code{font-family:ui-monospace,Menlo,monospace;font-size:12px;background:#f1efe8;padding:1px 5px;border-radius:4px}
+.hero{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:16px 0}
+.m{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:12px 14px}
+.m .l{font-size:12px;color:var(--mut)}.m .v{font-size:24px;font-weight:500;margin-top:2px}.m .d{font-size:12px;color:var(--sec)}
+.box{border-radius:10px;padding:14px 16px;margin:12px 0;font-size:14px}
+.box.ok{background:var(--okbg);border:1px solid #9FE1CB}.box.warn{background:var(--warnbg);border:1px solid #FAC775}.box.acc{background:var(--accbg);border:1px solid #B5D4F4}
+.box b{font-weight:500}
+.tag{display:inline-block;font-size:11px;font-weight:500;padding:1px 8px;border-radius:6px}
+.t-done{background:var(--okbg);color:var(--ok)}.t-hw{background:var(--warnbg);color:var(--warn)}.t-wait{background:#f1efe8;color:var(--mut)}
+.good{color:var(--ok);font-weight:500}
+ul{margin:6px 0;padding-left:20px}li{margin:3px 0}
+</style></head><body><div class="w">
+
+<h1>SSF 2026 — 현재 상태 + 호환성 검증</h1>
+<p class="sub">작년 종합임무 0점 → 올해까지 무엇을 했고, 배선이 문제없는지 실제 검사한 결과.</p>
+
+<div class="hero">
+<div class="m"><div class="l">소프트웨어</div><div class="v good">사실상 완료</div><div class="d">시뮬 검증 가능한 건 다</div></div>
+<div class="m"><div class="l">호환성 검사</div><div class="v good">✅ 통과</div><div class="d">아래 5개 항목</div></div>
+<div class="m"><div class="l">고장 시나리오</div><div class="v good">회귀 통과</div><div class="d">12종 + 로직 다수</div></div>
+<div class="m"><div class="l">남은 병목</div><div class="v t-hw">하드웨어</div><div class="d">배·카메라 대기</div></div>
+</div>
+
+<h2>1. 🔌 호환성 검증 (방금 실제 검사)</h2>
+<p>"말로 문제없다"가 아니라 <b>전 노드의 발행/구독 배선을 코드로 스캔</b>했습니다. 노드별 교체 내내 <b>토픽 계약을 유지</b>한 게 여기서 증명됩니다.</p>
+<table>
+<thead><tr><th>검사</th><th>결과</th></tr></thead>
+<tbody>
+<tr><td><b>① 노드명 = 패키지명</b><br><span class="sub">(yaml 파라미터가 맞는 노드로 가는가)</span></td>
+    <td class="good">✅ 전부 일치. 멀티노드 패키지(<code>marker_detector/selector</code>, <code>blackbox/healthcheck</code>)도 각각 이름 정확.</td></tr>
+<tr><td><b>② <code>/candidate_angle</code> 발행자 5개</b><br><span class="sub">(같은 토픽 = 충돌 위험)</span></td>
+    <td class="good">✅ <b>충돌 없음.</b> wp_mode 배타 라우팅 — 아래 소유 맵 참고.</td></tr>
+<tr><td><b>③ 신설 토픽 발행↔구독 짝</b><br><span class="sub">(안 맞으면 '조용한 실패')</span></td>
+    <td class="good">✅ 전부 짝. <code>/failsafe_level</code>→motor, <code>/geofence_state</code>→ship_direction, <code>/buoy_color</code>→ship_turn, <code>/gates_passed</code>→blackbox</td></tr>
+<tr><td><b>④ 구독하나 발행자 없음</b></td><td class="good">✅ 없음 (외부 드라이버 제외)</td></tr>
+<tr><td><b>⑤ 죽은 토픽</b></td><td>⚠️ <code>/goal_distance</code>, <code>/wp_remaining_time</code> 2개 — <b>무해</b>(작년 잔재, 아무 영향 없음). 정리는 선택.</td></tr>
+</tbody>
+</table>
+
+<h3>wp_mode 소유 맵 — 배타적 (가장 중요)</h3>
+<div class="box ok">
+<code>mode 0,1 → ship_gate</code> · <code>2 → ship_back</code> · <code>3 → ship_turn</code> · <code>7 → ship_dock</code> · <code>5,8 → north 폴백(담당 없음)</code>
+<br><b>모든 모드에 소유자가 정확히 하나.</b> 작년 도킹 사고(mode 9 vs 7)와 6b의 발행자 둘 함정이 <b>구조적으로 해소</b>됐습니다. 겹치는 모드 0개.
+</div>
+
+<div class="box acc">
+<b>이게 노드별 교체가 안전했던 이유입니다.</b> 처음부터 "토픽 이름 유지 + 새 기능은 토픽 추가"를 원칙으로 삼아,
+옛 노드와 새 노드가 섞인 중간 상태에서도 배가 돌았습니다(실제로 5/5 조합 검증). 지금은 전부 새 노드지만 계약은 그대로입니다.
+</div>
+
+<h2>2. ✅ 완료된 것 (시뮬 검증)</h2>
+<table>
+<thead><tr><th>단계</th><th>노드</th><th>핵심</th><th>검증</th></tr></thead>
+<tbody>
+<tr><td>0</td><td>ssf_tools</td><td>블랙박스·헬스체크</td><td class="t-done">구독전용, 무해</td></tr>
+<tr><td>1</td><td>ship_goal_angle</td><td>부팅 거짓말·침묵 신호 제거</td><td class="t-done">고장주입 통과</td></tr>
+<tr><td>2</td><td>motor_control</td><td>감속 복구·워치독·SPIN·제자리선회·모터게인</td><td class="t-done">TTC 폐기(측정)</td></tr>
+<tr><td>3</td><td>ship_direction</td><td>루프 분리·페일세이프·IMU감시·<b>C-median</b></td><td class="t-done">12종+회귀</td></tr>
+<tr><td>6a</td><td>ship_dock+north</td><td>🚨 도킹 부활(9→7)+geofence(원자적)</td><td class="t-done">폐루프 검증</td></tr>
+<tr><td>6b</td><td>ship_gate</td><td>쌍제약·통과카운트·ship_last제거</td><td class="t-done">로직 14/14</td></tr>
+<tr><td>6c</td><td>ship_turn</td><td>비껴가기→orbit·흰색부표</td><td class="t-done">로직 15/15</td></tr>
+<tr><td>6d</td><td>ship_back</td><td>가짜→능동 위치유지·이름충돌</td><td class="t-done">로직 15/15</td></tr>
+</tbody>
+</table>
+<p class="sub">그 외: 경쟁팀 8개 아이디어 평가(6개 이미 있거나 안 함, C만 채택), 팀원 GPS·게이트·EKF 파일 검토(로직만 선별 이식).</p>
+
+<h2>3. ⏳ 남은 일 — 전부 하드웨어 대기</h2>
+<table>
+<thead><tr><th>시기</th><th>할 일</th><th>왜 지금 못 하나</th></tr></thead>
+<tbody>
+<tr><td class="t-hw">지금 (배 없이)</td><td><b>OAK-1 노트북 연결</b> → <code>camera_info</code>(초점거리·왜곡계수) 확보</td><td>이건 배 없이 됨. 5단계 설계의 전제</td></tr>
+<tr><td class="t-hw">지금</td><td><b>Ubuntu에서 <code>colcon build</code></b> 전체 빌드 확인</td><td>Mac엔 ROS2 없음. 문법만 확인됨</td></tr>
+<tr><td class="t-hw">배 완성(2주)</td><td>수조 테스트 → 블랙박스 CSV → 분석</td><td>배가 있어야 함</td></tr>
+<tr><td class="t-hw">배+벤치</td><td><b>4단계</b> IMU 부호·자기편각, 조향 부호</td><td>🚨 시뮬로 못 잡음. 틀리면 배가 반대로</td></tr>
+<tr><td class="t-hw">카메라+조명</td><td><b>5단계</b> 비전 인식(HSV 튜닝), 광각 왜곡보정</td><td>실물 조명·camera_info 필요</td></tr>
+<tr><td class="t-hw">실측</td><td>선폭·PWM·관성·모터게인 (전 파라미터)</td><td>배 물리를 재야 나옴</td></tr>
+</tbody>
+</table>
+
+<h2>4. 🧰 배 뜨는 날을 위한 준비물 (이미 완성)</h2>
+<ul style="font-size:14px">
+<li><code>boat_launch_checklist.md</code> — 물 위 5~10분 주행 순서 (직진·선회·조향부호)</li>
+<li><code>fit_dynamics.py</code> — CSV → 관성·추력 역산 (시뮬을 '그 배'로 보정). 자체검증 통과</li>
+<li><code>calibrate_motors.py</code> — CSV → 모터 좌우 불균형 게인. 자체검증 통과</li>
+<li><code>review_node.py</code> — 노드 검토 하네스 (요구계약+정적+혼합시뮬+회귀)</li>
+<li>시뮬 재생기 HTML — 배 움직임을 눈으로 확인</li>
+<li>블랙박스 — <code>gyro_z</code>·<code>gps_vel</code>까지 로깅(시스템ID용)</li>
+</ul>
+<div class="box acc">
+<b>고리가 닫혀 있습니다:</b> 배 뜨면 → 체크리스트대로 주행 → CSV를 채팅에 올리기 → 관성·게인·조향부호 산출 →
+시뮬 보정 → 튜닝값 확정. <b>지금까지 만든 도구가 그 순간을 위한 것입니다.</b>
+</div>
+
+<h2>5. 한 줄 요약</h2>
+<div class="box ok">
+<b>작년 종합임무 0점의 원인 세 개(위치유지 가짜·도킹 사망·회피 결함)를 전부 고쳤고, 전 노드 배선이 호환됨을 검증했습니다.</b>
+소프트웨어는 시뮬로 확인 가능한 만큼 완료됐습니다. 이제 <b>배와 카메라가 오면 실측으로 마무리</b>하는 단계입니다.
+채점표 기준 <b>위치유지(10)+회피(20)+도킹(15)=45점, 작년 2~3등 수준</b>이 목표입니다.
+</div>
+
+</div></body></html>

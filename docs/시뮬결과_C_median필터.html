@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="ko"><head><meta charset="utf-8"><title>C-median 필터 검증</title>
+<style>
+:root{--tx:#1a1a18;--sec:#5c5c56;--mut:#8f8f88;--bg:#fbfaf7;--card:#fff;--bd:#dcdad0;--ok:#0F6E56;--okbg:#E1F5EE;--bad:#A32D2D;--badbg:#FCEBEB;--warn:#854F0B;--warnbg:#FAEEDA}
+*{box-sizing:border-box}body{margin:0;padding:28px 20px 50px;font-family:-apple-system,"Pretendard","Apple SD Gothic Neo",system-ui,sans-serif;background:var(--bg);color:var(--tx);line-height:1.6}
+.w{max-width:760px;margin:0 auto}h1{font-size:23px;font-weight:500;margin:0 0 4px}.sub{color:var(--sec);font-size:14px;margin:0 0 22px}
+h2{font-size:18px;font-weight:500;margin:28px 0 8px;padding-bottom:6px;border-bottom:1px solid var(--bd)}
+table{width:100%;border-collapse:collapse;font-size:13.5px;margin:8px 0;background:var(--card);border:1px solid var(--bd);border-radius:10px;overflow:hidden}
+th,td{text-align:right;padding:8px 11px;border-bottom:1px solid var(--bd)}td.l,th.l{text-align:left}tr:last-child td{border-bottom:none}
+th{color:var(--mut);font-size:11px;font-weight:500;background:#f7f6f1}
+.box{border-radius:10px;padding:13px 16px;margin:12px 0;font-size:14px}.box.ok{background:var(--okbg);border:1px solid #9FE1CB}.box.warn{background:var(--warnbg);border:1px solid #FAC775}.box b{font-weight:500}
+.bar{display:inline-block;height:9px;border-radius:5px;vertical-align:middle}.br{background:#F09595}.bg{background:#5DCAA5}
+.good{color:var(--ok);font-weight:500}.bad{color:var(--bad);font-weight:500}
+</style></head><body><div class="w">
+<h1>C-median 필터 검증</h1>
+<p class="sub">물보라가 raw-min 감속을 유발하는가 / 공간 median(커널5)이 고치는가. 시드 20개.</p>
+
+<div class="box ok">
+<b>결론: 채택.</b> 물보라가 <b>가짜 감속</b>을 실제로 유발하고(전진 시간의 최대 37%),
+median 필터가 그걸 <b>완전히 제거</b>하면서 <b>접촉은 그대로 0</b>입니다. 순수 이득입니다.
+</div>
+
+<h2>측정 결과</h2>
+<table>
+<thead><tr><th class="l">물보라</th><th class="l">방식</th><th>접촉 합</th><th>전진 평균</th><th>가짜 감속 시간비율</th></tr></thead>
+<tbody>
+<tr><td class="l">0%</td><td class="l">raw min</td><td>0</td><td>33.7m</td><td>8.9% <span class="bar br" style="width:36px"></span></td></tr>
+<tr><td class="l">0%</td><td class="l">median</td><td>0</td><td>33.7m</td><td>8.9% <span class="bar bg" style="width:36px"></span></td></tr>
+<tr style="background:#FAEEDA"><td class="l">15%</td><td class="l">raw min</td><td>0</td><td>34.9m</td><td class="bad">22.5% <span class="bar br" style="width:90px"></span></td></tr>
+<tr style="background:#E1F5EE"><td class="l">15%</td><td class="l">median</td><td>0</td><td>33.8m</td><td class="good">8.9% <span class="bar bg" style="width:36px"></span></td></tr>
+<tr style="background:#FAEEDA"><td class="l">30%</td><td class="l">raw min</td><td>0</td><td>36.1m</td><td class="bad">36.8% <span class="bar br" style="width:147px"></span></td></tr>
+<tr style="background:#E1F5EE"><td class="l">30%</td><td class="l">median</td><td>0</td><td>33.8m</td><td class="good">8.9% <span class="bar bg" style="width:36px"></span></td></tr>
+</tbody></table>
+<p class="sub" style="margin-top:4px">"가짜 감속 시간비율" = 전진 명령 중 순항속도 미달로 감속된 시간 비율. 8.9%는 실제 부표 앞 정상 감속(기준선).</p>
+
+<h2>왜 temporal 필터와 다른가</h2>
+<table>
+<thead><tr><th class="l"></th><th class="l">temporal (폐기)</th><th class="l">C-median (채택)</th></tr></thead>
+<tbody>
+<tr><td class="l">막는 것</td><td class="l">프레임 간 깜빡이는 오탐</td><td class="l"><b>한 프레임 안 고립 스파이크</b></td></tr>
+<tr><td class="l">닿는 곳</td><td class="l">회피 마스크 (효과 0이었음)</td><td class="l"><b>감속 신호(_closest_obstacle)</b></td></tr>
+<tr><td class="l">20시드 효과</td><td class="l bad">차이 없음</td><td class="l good">가짜감속 22~37% → 9%</td></tr>
+<tr><td class="l">접촉 영향</td><td class="l">—</td><td class="l good">0 유지 (회피 안 건드림)</td></tr>
+</tbody></table>
+
+<div class="box warn">
+<b>왜 접촉이 안 변하나 (핵심):</b> median 은 <code>_closest_obstacle</code>(감속 신호)에만 적용됩니다.
+회피 조향은 <code>_compute</code> 의 별도 경로(마스크→dilate→갭)를 씁니다.
+<b>즉 감속 오탐만 고치고 회피는 손대지 않습니다.</b> 그래서 접촉 0 그대로. 가장 외과적인 수정입니다.
+</div>
+
+<h2>권고</h2>
+<ul style="font-size:14px;line-height:1.7">
+<li><b>채택하되 파라미터화</b> — <code>obst_median_kernel</code> (기본 5, 0이면 raw min)</li>
+<li><b>기본 ON 권장</b> — temporal 은 효과 0이라 OFF였지만, 이건 명확한 이득 + 무해라 ON</li>
+<li>적용 위치: <code>_closest_obstacle</code>. 회피 마스크는 건드리지 말 것</li>
+<li>⚠️ 시뮬 물보라는 '고립 단일점' 모델 — 실제 물보라가 작은 군집이면 커널5가 부족할 수 있음.
+   <b>배 뜬 뒤 블랙박스 <code>obst_min_dist</code> 로 실측 확인</b></li>
+</ul>
+</div></body></html>

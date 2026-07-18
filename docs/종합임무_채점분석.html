@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="ko"><head><meta charset="utf-8">
+<title>KABOAT 2025 종합임무 채점 분석</title>
+<style>
+:root{--tx:#1a1a18;--sec:#5c5c56;--mut:#8f8f88;--bg:#fbfaf7;--card:#fff;--bd:#dcdad0;
+      --ok:#0F6E56;--okbg:#E1F5EE;--warn:#854F0B;--warnbg:#FAEEDA;--bad:#A32D2D;--badbg:#FCEBEB;--accent:#185FA5;--accbg:#E6F1FB}
+*{box-sizing:border-box}
+body{margin:0;padding:28px 20px 60px;font-family:-apple-system,"Pretendard","Apple SD Gothic Neo",system-ui,sans-serif;
+     background:var(--bg);color:var(--tx);line-height:1.6}
+.w{max-width:960px;margin:0 auto}
+h1{font-size:25px;font-weight:500;margin:0 0 4px}
+.sub{color:var(--sec);font-size:14px;margin:0 0 24px}
+h2{font-size:19px;font-weight:500;margin:34px 0 10px;padding-bottom:7px;border-bottom:1px solid var(--bd)}
+table{width:100%;border-collapse:collapse;font-size:12.5px;margin:8px 0;background:var(--card);
+      border:1px solid var(--bd);border-radius:10px;overflow:hidden}
+th,td{text-align:right;padding:7px 9px;border-bottom:1px solid var(--bd)}
+td.l,th.l{text-align:left}
+tr:last-child td{border-bottom:none}
+th{color:var(--mut);font-size:10.5px;font-weight:500;background:#f7f6f1}
+.hi{background:#FAEEDA}
+.us{background:#FCEBEB}
+.z{color:var(--mut)}
+.hero{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin:16px 0}
+.m{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:12px 14px}
+.m .l{font-size:12px;color:var(--mut)}.m .v{font-size:23px;font-weight:500;margin-top:2px}.m .d{font-size:12px;color:var(--sec)}
+.box{border-radius:10px;padding:14px 16px;margin:14px 0;font-size:14px}
+.box.ok{background:var(--okbg);border:1px solid #9FE1CB}.box.warn{background:var(--warnbg);border:1px solid #FAC775}
+.box.bad{background:var(--badbg);border:1px solid #F09595}.box.acc{background:var(--accbg);border:1px solid #B5D4F4}
+.box b{font-weight:500}
+.tag{display:inline-block;font-size:11px;font-weight:500;padding:1px 8px;border-radius:6px;margin-right:5px}
+.t-easy{background:var(--okbg);color:var(--ok)}.t-rare{background:var(--accbg);color:var(--accent)}.t-big{background:var(--warnbg);color:var(--warn)}
+</style></head><body><div class="w">
+
+<h1>KABOAT 2025 종합임무 채점 분석</h1>
+<p class="sub">24개 팀, 가중치 적용 점수 기준. 우리 팀(홍익대 SSF)이 어디서 이기고 어디서 0점이었는지.</p>
+
+<div class="hero">
+  <div class="m"><div class="l">종합임무 득점 팀</div><div class="v">9 / 24</div><div class="d">15팀은 0점</div></div>
+  <div class="m"><div class="l">우리 팀(SSF) 작년</div><div class="v" style="color:var(--bad)">0.00</div><div class="d">종합임무 전 항목 0점</div></div>
+  <div class="m"><div class="l">1등 종합임무</div><div class="v">52 / 75</div><div class="d">인하대 i-Tricat252</div></div>
+  <div class="m"><div class="l">도킹 성공 팀</div><div class="v">2 / 24</div><div class="d">인하대 2팀뿐</div></div>
+</div>
+
+<div class="box bad">
+<b>🚨 가장 중요한 사실:</b> 작년 우리 팀 <b>SSF A·B 둘 다 종합임무 0.00점</b>이었습니다.
+항로추종·위치유지·탐색·장애물회피·도킹 <b>전부 0점.</b> 그리고 우리가 코드에서 찾은 것들
+(도킹 mode 9 사망, 위치유지 가짜)이 <b>정확히 이 0점의 원인</b>입니다.
+</div>
+
+<h2>종합임무 상위 팀 (75점 만점)</h2>
+<table>
+<thead><tr>
+<th class="l">순위</th><th class="l">팀</th>
+<th>항로<br>15</th><th>위치<br>10</th><th>탐색<br>15</th><th>회피<br>20</th><th>도킹<br>15</th>
+<th>종합임무<br>75</th><th>최종<br>110</th></tr></thead>
+<tbody>
+<tr class="hi"><td class="l">1</td><td class="l">인하대 i-Tricat252</td><td>12.0</td><td>10.0</td><td>15.0</td><td class="z">0</td><td>15.0</td><td><b>52.0</b></td><td>78.9</td></tr>
+<tr><td class="l">2</td><td class="l">부산대 ISV_J</td><td>10.5</td><td>10.0</td><td>12.0</td><td>16.0</td><td class="z">0</td><td><b>48.5</b></td><td>75.4</td></tr>
+<tr><td class="l">3</td><td class="l">인하대 I-tricat251</td><td>4.5</td><td>10.0</td><td class="z">0</td><td>14.0</td><td>13.5</td><td><b>42.0</b></td><td>71.4</td></tr>
+<tr><td class="l">4</td><td class="l">부경대 PASS</td><td>4.5</td><td>10.0</td><td>10.5</td><td>12.0</td><td class="z">0</td><td>37.0</td><td>63.4</td></tr>
+<tr><td class="l">5</td><td class="l">창원대 ECOCEAN</td><td>4.5</td><td>10.0</td><td class="z">0</td><td>20.0</td><td class="z">0</td><td>34.5</td><td>62.6</td></tr>
+<tr><td class="l">6</td><td class="l">서울대 MSGA</td><td>9.0</td><td>10.0</td><td>13.5</td><td class="z">0</td><td class="z">0</td><td>32.5</td><td>61.5</td></tr>
+<tr><td class="l">7</td><td class="l">동아대 OpenDEP</td><td>13.5</td><td class="z">0</td><td class="z">0</td><td>18.0</td><td class="z">0</td><td>31.5</td><td>60.3</td></tr>
+<tr><td class="l">8</td><td class="l">부산대 해미르</td><td>7.5</td><td>10.0</td><td class="z">0</td><td class="z">0</td><td class="z">0</td><td>17.5</td><td>44.0</td></tr>
+<tr><td class="l">9</td><td class="l">한국해양대 KMOU MACRO</td><td>15.0</td><td class="z">0</td><td class="z">0</td><td class="z">0</td><td class="z">0</td><td>15.0</td><td>44.2</td></tr>
+<tr class="us"><td class="l">23·24</td><td class="l">홍익대 SSF A·B (우리)</td><td class="z">0</td><td class="z">0</td><td class="z">0</td><td class="z">0</td><td class="z">0</td><td><b>0.0</b></td><td>~26</td></tr>
+</tbody></table>
+<p class="sub" style="margin-top:6px">※ 10~22위(15팀)는 전부 종합임무 0.00점. 최종점수는 설계·검사·토너먼트에서만 나왔습니다.</p>
+
+<h2>미션별 난이도 — 어디가 "먹을 수 있는" 점수인가</h2>
+<table>
+<thead><tr><th class="l">미션</th><th class="l">배점</th><th>득점 팀</th><th>만점 팀</th><th class="l">성격</th></tr></thead>
+<tbody>
+<tr class="hi"><td class="l">위치유지</td><td class="l">10점</td><td>7</td><td>7</td><td class="l"><span class="tag t-easy">가장 쉬움</span>O/X 방식. 득점=전원 만점. <b>반드시 먹어야 함</b></td></tr>
+<tr class="hi"><td class="l">장애물회피</td><td class="l">20점 (최고)</td><td>5</td><td>1</td><td class="l"><span class="tag t-big">배점 최고</span>우리가 가장 많이 검증한 영역</td></tr>
+<tr class="hi"><td class="l">도킹</td><td class="l">15점</td><td>2</td><td>1</td><td class="l"><span class="tag t-rare">희소</span>인하대 2팀뿐. 하면 <b>큰 차별화</b></td></tr>
+<tr><td class="l">항로추종</td><td class="l">15점</td><td>9</td><td>1</td><td class="l">가장 많은 팀이 시도. GPS 기본기</td></tr>
+<tr><td class="l">탐색(선회)</td><td class="l">15점</td><td>4</td><td>1</td><td class="l">중간 난이도</td></tr>
+</tbody></table>
+
+<h2>1등은 "다 잘해서"가 아니라 "될 걸 확실히" 해서 이겼다</h2>
+<div class="box acc">
+<b>1등 인하대 i-Tricat252 (52점)는 장애물회피를 0점 받았습니다.</b>
+대신 <b>위치유지(10 만점) + 탐색(15 만점) + 도킹(15 만점)</b>을 확실히 챙겼습니다.
+<br><br>
+2등 부산대 ISV_J(48.5)는 반대로 <b>도킹 0점</b>이지만 회피(16)+탐색(12)+위치(10)로 채웠습니다.
+<br><br>
+<b>교훈: 5개를 다 할 필요 없습니다. "확실히 되는 3개"를 만점 받으면 상위권입니다.</b>
+</div>
+
+<h2>🎯 우리 전략 — 우리가 고친 것이 정확히 고득점 미션</h2>
+<table>
+<thead><tr><th class="l">미션</th><th class="l">배점</th><th class="l">작년 우리</th><th class="l">우리가 한 것</th><th class="l">전망</th></tr></thead>
+<tbody>
+<tr class="hi"><td class="l">위치유지</td><td class="l">10점</td><td class="l" style="color:var(--bad)">0 (가짜였음)</td><td class="l">6d: 능동 위치유지</td><td class="l" style="color:var(--ok)">쉬운 만점 후보</td></tr>
+<tr class="hi"><td class="l">장애물회피</td><td class="l">20점</td><td class="l" style="color:var(--bad)">0</td><td class="l">1~3단계 집중 검증</td><td class="l" style="color:var(--ok)">우리 최강 영역</td></tr>
+<tr class="hi"><td class="l">도킹</td><td class="l">15점</td><td class="l" style="color:var(--bad)">0 (mode9 사망)</td><td class="l">6a: 9→7 부활 + 정면접근</td><td class="l" style="color:var(--ok)">되면 2/24 엘리트</td></tr>
+<tr><td class="l">탐색</td><td class="l">15점</td><td class="l" style="color:var(--bad)">0 (규정위반)</td><td class="l">6c: orbit 재작성</td><td class="l">보너스</td></tr>
+<tr><td class="l">항로추종</td><td class="l">15점</td><td class="l" style="color:var(--bad)">0</td><td class="l">GPS 웨이포인트</td><td class="l">기본기</td></tr>
+</tbody></table>
+
+<div class="box ok">
+<b>핵심:</b> 우리가 6단계에서 고친 <b>위치유지(10) + 도킹(15)</b>과 우리 최강인 <b>장애물회피(20)</b>,
+이 셋이 정확히 <b>고배점·희소 미션</b>입니다. 셋만 확실히 하면 <b>45점</b> — 작년 기준 <b>2~3등 수준</b>입니다.
+<br><br>
+<b>작년 우리는 이 셋 다 0점이었습니다.</b> 위치유지는 가짜, 도킹은 mode9로 죽고, 회피도 감속이 끊겨 있었죠.
+<b>우리가 찾아 고친 버그들이 정확히 0점의 원인이었습니다.</b>
+</div>
+
+<h2>우선순위 재확인</h2>
+<div class="box warn">
+채점표가 우선순위를 확정해줍니다:
+<ol style="margin:8px 0 0;padding-left:22px">
+<li><b>위치유지</b> — 배점은 낮아도(10) <b>가장 쉬운 만점.</b> 득점한 7팀 전원 만점. 반드시 확보.</li>
+<li><b>장애물회피</b> — <b>배점 최고(20)</b>이고 우리가 가장 잘함. 여기가 점수의 기둥.</li>
+<li><b>도킹</b> — <b>희소(2팀)</b>라 성공 시 순위가 크게 오름. 위험하지만 고배점.</li>
+<li>탐색·항로추종 — 되면 보너스. 무리하지 말 것.</li>
+</ol>
+</div>
+
+</div></body></html>

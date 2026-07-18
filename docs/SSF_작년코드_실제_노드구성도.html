@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>SSF 작년 코드 — 실제 노드 구성도 (소스 코드 기준)</title>
+<style>
+  :root{
+    --text-primary:#1a1a18; --text-secondary:#5c5c56; --text-muted:#8f8f88;
+    --bg-primary:#ffffff; --bg-secondary:#f6f5f0; --border:#dcdad0;
+    --warn:#b4501e;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;padding:32px 24px 64px;font-family:-apple-system,"Pretendard","Apple SD Gothic Neo",system-ui,sans-serif;
+       color:var(--text-primary);background:#fbfaf7;line-height:1.65;}
+  .wrap{max-width:1240px;margin:0 auto}
+  h1{font-size:26px;margin:0 0 6px}
+  .sub{color:var(--text-secondary);font-size:14px;margin:0 0 28px}
+  h2{font-size:19px;margin:40px 0 12px;padding-bottom:8px;border-bottom:1px solid var(--border)}
+  .card{background:var(--bg-primary);border:1px solid var(--border);border-radius:10px;padding:20px 22px;margin:14px 0}
+  .card.warn{border-color:var(--warn);border-width:2px}
+  .card h3{margin:0 0 10px;font-size:16px}
+  table{width:100%;border-collapse:collapse;font-size:13.5px;margin:10px 0}
+  th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--border);vertical-align:top}
+  th{color:var(--text-muted);font-size:11.5px;letter-spacing:.05em;text-transform:uppercase;font-weight:700}
+  code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;
+       background:var(--bg-secondary);padding:1px 5px;border-radius:4px}
+  .dead{color:var(--text-muted)}
+  .tag{display:inline-block;font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;
+       background:var(--text-primary);color:#fff;margin-right:6px}
+  .tag.w{background:var(--warn)}
+  .note{font-size:13px;color:var(--text-secondary)}
+  svg{width:100%;height:auto;background:var(--bg-primary);border:1px solid var(--border);border-radius:10px;padding:8px}
+  .foot{margin-top:48px;padding-top:16px;border-top:1px solid var(--border);font-size:12.5px;color:var(--text-muted)}
+</style>
+</head>
+<body><div class="wrap">
+
+<h1>SSF 작년 코드 — 실제 노드 구성도</h1>
+<p class="sub">
+  기존에 돌던 구성표와 <strong>소스 코드가 3곳에서 다릅니다.</strong>
+  이 문서는 <code>ros2_ws</code> (대회 온보드 노트북 최종본) 의 <code>create_subscription</code> /
+  <code>create_publisher</code> 를 전부 파싱해서 만든 것입니다. 코드가 정답입니다.
+</p>
+
+<h2>1. 실제 배선</h2>
+
+<table>
+<thead><tr><th>노드</th><th>구독 (SUB)</th><th>발행 (PUB)</th></tr></thead>
+<tbody>
+<tr><td><strong>iahrs_driver</strong></td><td>—</td><td><code>/imu/yaw</code></td></tr>
+<tr><td><strong>rplidar_node</strong></td><td>—</td><td><code>/scan</code></td></tr>
+<tr><td><strong>ublox_gps_node</strong></td><td><code>rtcm</code></td><td><code>/ublox_gps_node/fix</code>, <code>nmea</code></td></tr>
+<tr><td><strong>ntrip_client</strong></td><td><code>nmea</code></td><td><code>rtcm</code></td></tr>
+<tr><td><strong>realsense2_camera</strong></td><td>—</td><td><code>/camera/camera/color/image_raw</code><br><code>/camera/camera/depth/image_rect_raw</code></td></tr>
+
+<tr><td><strong>image_subscriber_gate</strong></td><td>color + <strong>depth</strong></td>
+    <td><code>/red_angle</code> <code>/red_distance</code><br><code>/green_angle</code> <code>/green_distance</code></td></tr>
+<tr><td><strong>image_subscriber_dock</strong></td><td>color + <strong>depth</strong></td>
+    <td><code>/image_angle</code> <code>/image_distance</code></td></tr>
+<tr><td><strong>image_subscriber_turn</strong></td><td>color + <strong>depth</strong>, <code>/wp_mode</code></td>
+    <td><code>/image_angle</code> <code>/image_color</code> <code>/image_distance</code></td></tr>
+<tr><td><strong>image_subscriber_mode</strong> ⚠</td><td><code>/wp_mode</code></td>
+    <td class="dead">없음 — <strong>subprocess 로 위 3개를 죽였다 살림</strong></td></tr>
+<tr class="dead"><td>image_publisher 💀</td><td>cv2.VideoCapture(6)</td><td><code>video_frames</code> — 아무도 안 받음</td></tr>
+<tr class="dead"><td>hsv_debug 💀</td><td>color</td><td>없음 (디버그 도구)</td></tr>
+
+<tr><td><strong>north_goal_angle</strong></td><td><code>/ublox_gps_node/fix</code></td>
+    <td><code>/wp_mode</code> <code>/north_goal_angle_tp</code> <code>/candidate_angle</code><br>
+        <span class="dead"><code>/goal_distance</code> <code>/wp_remaining_time</code> 💀</span></td></tr>
+<tr><td><strong>ship_goal_angle</strong></td><td><code>/imu/yaw</code> <code>/north_goal_angle_tp</code></td><td><code>/yaw_error</code></td></tr>
+
+<tr><td><strong>ship_gate</strong></td><td><code>/red_angle</code> <code>/red_distance</code> <code>/green_angle</code> <code>/green_distance</code> <code>/wp_mode</code></td><td><code>/candidate_angle</code></td></tr>
+<tr><td><strong>ship_dock</strong></td><td><code>/image_angle</code> <code>/image_distance</code> <code>/wp_mode</code></td><td><code>/candidate_angle</code></td></tr>
+<tr><td><strong>ship_turn</strong></td><td><code>/image_angle</code> <code>/image_color</code> <code>/image_distance</code> <code>/obstacle_distance_array</code> <code>/wp_mode</code></td><td><code>/candidate_angle</code></td></tr>
+<tr><td><strong>ship_back</strong></td><td>(ship_turn 과 동일)</td><td><code>/candidate_angle</code></td></tr>
+<tr><td><strong>ship_last</strong></td><td><code>/wp_mode</code></td><td><code>/candidate_angle</code> (20000 폴백만)</td></tr>
+
+<tr><td><strong>ship_direction</strong></td><td><code>/scan</code> <code>/yaw_error</code> <code>/candidate_angle</code> <code>/wp_mode</code></td>
+    <td><code>/desired_angle</code> <code>/obstacle_distance_array</code></td></tr>
+<tr><td><strong>motor_control</strong></td><td><code>/desired_angle</code> <strong>← 이것 하나뿐</strong></td><td><code>Motor_run</code></td></tr>
+</tbody>
+</table>
+
+<h2>2. 기존 구성표와 다른 3곳</h2>
+
+<div class="card warn">
+<h3><span class="tag w">1</span> <code>/left_*</code>, <code>/right_*</code> 토픽은 <strong>존재하지 않습니다</strong></h3>
+<p>구성표에는 <code>/left_angle</code>, <code>/left_distance</code>, <code>/right_angle</code>, <code>/right_distance</code> 가 그려져 있지만,
+<strong>코드 어디에도 없습니다.</strong> 실제 게이트 비전은 <code>/red_angle</code>, <code>/red_distance</code>,
+<code>/green_angle</code>, <code>/green_distance</code> 를 씁니다.</p>
+<p class="note">→ <strong>구성표가 구버전입니다.</strong> 이대로 작업하면 없는 토픽을 <code>ros2 topic echo</code> 하게 됩니다.</p>
+</div>
+
+<div class="card warn">
+<h3><span class="tag w">2</span> <code>motor_control</code> 로 들어가는 선 2개가 <strong>실제로는 끊겨 있습니다</strong></h3>
+<p>구성표는 <code>/obstacle_distance_array</code> 와 <code>/goal_distance</code> 가 <code>motor_control</code> 로
+들어가는 것처럼 그렸습니다. 실제 코드는:</p>
+<p><code>self.sub_angle = self.create_subscription(Float32, "/desired_angle", ...)</code> &nbsp;— <strong>이게 전부입니다.</strong></p>
+<p class="note">
+<strong>장애물이 코앞이어도 감속하지 않았던 이유가 이겁니다.</strong>
+<code>/obstacle_distance_array</code> 는 <code>ship_turn</code> 과 <code>ship_back</code> 만 받고 있고,
+<code>/goal_distance</code> 는 <strong>아무도 안 받는 죽은 토픽</strong>입니다.
+구성표는 '의도'를 그렸는데, 코드가 그 의도를 구현하지 않았습니다.
+</p>
+</div>
+
+<div class="card warn">
+<h3><span class="tag w">3</span> <strong>뎁스(depth) 카메라 의존</strong>이 구성표에 아예 없습니다 — 가장 위험</h3>
+<p>비전 노드 3종이 전부 <code>/camera/camera/depth/image_rect_raw</code> 를 구독합니다.
+<strong>모든 거리값</strong>(<code>/image_distance</code>, <code>/red_distance</code>, <code>/green_distance</code>)이
+RealSense 의 <strong>뎁스에서 나옵니다.</strong></p>
+<p class="note">
+<strong>OAK-1 W POE 는 단안(mono) 카메라라 뎁스가 없습니다.</strong>
+(뎁스가 있는 건 OAK-<strong>D</strong> 계열입니다.)
+카메라만 갈아끼우면 <code>ship_gate</code>, <code>ship_dock</code>, <code>ship_turn</code>, <code>ship_back</code> 이
+<strong>전부 거리를 못 받아 죽습니다.</strong>
+</p>
+<p class="note"><strong>대응은 둘 중 하나입니다:</strong>
+① OAK-D 계열(스테레오 뎁스 있음)로 바꾸거나,
+② <strong>거리를 LiDAR 에서 가져오도록 코드를 바꾸는 것</strong> — 올해 새 코드가 이미 이 방식입니다
+(카메라는 <em>방위각만</em>, 거리는 <code>/scan</code> 에서).
+</p>
+</div>
+
+<h2>3. 구조적 결함 — <code>/candidate_angle</code> 에 6개 노드가 발행</h2>
+
+<div class="card">
+<p><code>north_goal_angle</code>, <code>ship_gate</code>, <code>ship_dock</code>, <code>ship_turn</code>,
+<code>ship_back</code>, <code>ship_last</code> — <strong>여섯 노드가 같은 토픽에 발행합니다.</strong></p>
+
+<p>각 노드가 스스로 <code>/wp_mode</code> 를 보고 "내 차례면 발행" 하는 <strong>분산 합의</strong> 구조입니다.
+그런데 <code>active_wp_mode</code> 가 <strong>6개 파일에 흩어져</strong> 있어서, 아무도 전체 표를 볼 수 없습니다.</p>
+
+<table>
+<thead><tr><th>노드</th><th>active_wp_mode</th><th>상태</th></tr></thead>
+<tbody>
+<tr><td><code>ship_gate</code></td><td>0, 1</td><td>정상</td></tr>
+<tr><td><code>ship_back</code></td><td>2</td><td>정상</td></tr>
+<tr><td><code>ship_turn</code></td><td>3</td><td>정상</td></tr>
+<tr><td><code>ship_dock</code></td><td><strong>9</strong></td>
+    <td><strong>🚨 웨이포인트의 도킹 모드는 7입니다 → 1년 내내 침묵</strong></td></tr>
+</tbody>
+</table>
+
+<p class="note">
+<strong>도킹 미션이 통째로 죽어 있었는데 아무도 몰랐습니다.</strong>
+배는 멀쩡히 돌아다녔고, 그냥 도킹만 안 했으니까요.
+침묵하는 노드는 <strong>에러를 내지 않습니다.</strong> 이게 이 구조의 근본 위험입니다.
+</p>
+
+<p class="note"><strong>권고:</strong> 노드 구조는 그대로 두고,
+<code>wp_mode → 담당 노드</code> 매핑표를 <strong>yaml 한 곳</strong>에 모은 뒤,
+부팅 시 <code>healthcheck</code> 가 "빠진 모드 / 중복 모드 / 침묵하는 노드" 를 자동 검사하게 하는 것.
+노드를 하나도 안 건드리면서 같은 사고를 구조적으로 막습니다.
+</p>
+</div>
+
+<div class="foot">
+소스: <code>ros2_ws/src</code> (대회 온보드 노트북 최종본) — 전 <code>.py</code> 파일의
+<code>create_subscription</code> / <code>create_publisher</code> 자동 파싱 결과.<br>
+💀 = 발행되지만 아무도 구독하지 않는 죽은 토픽 · ⚠ = ROS 그래프 밖에서 시스템을 조작하는 노드
+</div>
+
+</div></body></html>

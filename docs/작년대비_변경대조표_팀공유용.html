@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="ko"><head><meta charset="utf-8">
+<title>ship_direction 작년 → 올해 변경 대조표 (팀 공유용)</title>
+<style>
+:root{--tx:#1a1a18;--sec:#5c5c56;--mut:#8f8f88;--bg:#fbfaf7;--card:#fff;--bd:#dcdad0;
+      --ok:#0F6E56;--okbg:#E1F5EE;--bad:#A32D2D;--badbg:#FCEBEB;--warn:#854F0B;--warnbg:#FAEEDA;--accent:#185FA5;--accbg:#E6F1FB}
+*{box-sizing:border-box}
+body{margin:0;padding:28px 20px 60px;font-family:-apple-system,"Pretendard","Apple SD Gothic Neo",system-ui,sans-serif;
+     background:var(--bg);color:var(--tx);line-height:1.65}
+.w{max-width:920px;margin:0 auto}
+h1{font-size:24px;font-weight:500;margin:0 0 4px}
+.sub{color:var(--sec);font-size:14px;margin:0 0 22px}
+h2{font-size:18px;font-weight:500;margin:32px 0 10px;padding-bottom:7px;border-bottom:1px solid var(--bd)}
+table{width:100%;border-collapse:collapse;font-size:13px;margin:8px 0;background:var(--card);border:1px solid var(--bd);border-radius:10px;overflow:hidden}
+th,td{text-align:left;padding:9px 11px;border-bottom:1px solid var(--bd);vertical-align:top}
+tr:last-child td{border-bottom:none}
+th{color:var(--mut);font-size:11px;font-weight:500;background:#f7f6f1;letter-spacing:.03em}
+code{font-family:ui-monospace,Menlo,monospace;font-size:12px;background:#f1efe8;padding:1px 5px;border-radius:4px}
+.old{color:var(--bad)}.new{color:var(--ok);font-weight:500}
+.tag{display:inline-block;font-size:11px;font-weight:500;padding:1px 8px;border-radius:6px}
+.t-del{background:var(--badbg);color:var(--bad)}.t-chg{background:var(--warnbg);color:var(--warn)}.t-keep{background:var(--okbg);color:var(--ok)}
+.box{border-radius:10px;padding:14px 16px;margin:14px 0;font-size:14px}
+.box.ok{background:var(--okbg);border:1px solid #9FE1CB}.box.acc{background:var(--accbg);border:1px solid #B5D4F4}.box.warn{background:var(--warnbg);border:1px solid #FAC775}
+.box b{font-weight:500}
+</style></head><body><div class="w">
+
+<h1>ship_direction 작년 → 올해 변경 대조표</h1>
+<p class="sub">팀원이 작년 코드를 한 줄씩 공부한 노트를 기준으로, <b>올해 무엇이 왜 바뀌었는지</b> 정리했습니다. 공부가 헛되지 않게, 이해를 최신으로 맞춥니다.</p>
+
+<div class="box acc">
+<b>먼저:</b> 작년 코드 공부한 것 정말 잘했습니다. 그 이해가 인수인계에 큰 도움이 됩니다.
+다만 <b>아래 5개 값은 올해 이미 바뀌었으니</b>, 노트를 이 표로 갱신하면 새 코드를 볼 때 안 헷갈립니다.
+</div>
+
+<h2>1. 바뀐 파라미터 5개 (핵심)</h2>
+<table>
+<thead><tr><th>파라미터</th><th>작년(노트)</th><th>올해</th><th>왜 바꿨나 (시뮬 근거)</th></tr></thead>
+<tbody>
+<tr>
+<td><code>rear_obstacle_ignore_margin</code></td>
+<td class="old">1.0<br>(뒤쪽 장애물 무시)</td>
+<td><span class="tag t-del">삭제</span></td>
+<td>🚨 이게 <b>진짜 부표를 지우는 버그</b>였습니다. 물보라 반사 0.3m 하나가 최근접점을 끌어내리면, 실제 1.6m 부표가 <b>17셀 → 0셀로 통째로 사라졌습니다.</b> "튜닝값"이 아니라 결함이라 제거.</td>
+</tr>
+<tr>
+<td><code>min_obstacle_cells</code></td>
+<td class="old">3</td>
+<td class="new">1</td>
+<td>3이면 <b>작은 부표(점 1~2개)가 무시</b>됩니다. 1로 낮추고, 대신 dilate(팽창)로 배 폭만큼 안전여유를 줍니다.</td>
+</tr>
+<tr>
+<td><code>base_detection_distance</code></td>
+<td class="old">1.8m</td>
+<td class="new">3.0m</td>
+<td>1.8m는 시뮬에서 <b>8/8 충돌</b>, 3.0m는 <b>5/8 통과</b>. 멀리 봐야 미리 피합니다. (게이트 구간만 2.0m로 짧게 — 아래 참고)</td>
+</tr>
+<tr>
+<td><code>mode2_detection_distance</code></td>
+<td class="old">1.8m<br>("작년에 죽은 코드")</td>
+<td><span class="tag t-del">제거</span></td>
+<td>노트에도 "죽은 코드"라 적혀 있습니다. 올바른 지적. 실제로 제거했습니다.</td>
+</tr>
+<tr>
+<td>candidate <code>5000 / 6000</code></td>
+<td class="old">특수값</td>
+<td class="new">규약 확정</td>
+<td><b>5000 = 우선회, 6000 = 좌선회</b>로 못 박았습니다. (작년엔 ship_dock이 "오른쪽 회전"으로 5000을 보내는데 motor_control은 왼쪽으로 처리 = 반대였음)</td>
+</tr>
+</tbody>
+</table>
+
+<h2>2. 🚨 "탐지거리 늘리면 벽까지 인식" — 팀원 고민에 대한 답</h2>
+<div class="box warn">
+노트의 "고민거리": <b>"탐지거리 3~5m로 늘리면 멀리 있는 부표나 경기장 벽면까지 전부 장애물로 인식"</b>
+<br>→ 타당한 걱정이었습니다. 그래서 <b>시뮬로 재봤고, 답이 나왔습니다:</b>
+</div>
+<table>
+<thead><tr><th>걱정</th><th>실제</th></tr></thead>
+<tbody>
+<tr><td>"멀리 볼수록 데이터가 폭발한다"</td><td>❌ 아닙니다. 탐지거리는 <b>임계값</b>일 뿐, <b>계산량은 거리와 무관</b>(스캔당 0.15ms, CPU 0.1%). LiDAR는 어차피 25m까지 다 봅니다.</td></tr>
+<tr><td>"벽을 장애물로 인식한다"</td><td>경기장 벽은 <b>geofence(경계 방어)가 따로 처리</b>합니다. 회피 로직이 벽을 볼 필요 없음.</td></tr>
+<tr><td>"부표를 미리 다 장애물로 본다"</td><td>그게 <b>목적</b>입니다. 미리 봐야 피합니다. 단, <b>게이트 구간만 2.0m로 짧게</b> — 좁은 문에선 양쪽 부표를 다 막으면 오히려 못 지나가서요.</td></tr>
+</tbody>
+</table>
+<div class="box ok"><b>결론:</b> 팀원 걱정은 옳았고, <b>그 걱정을 측정으로 풀어서 "3.0m가 최적"</b>임을 확인했습니다. 데이터 폭발도 벽 문제도 없습니다.</div>
+
+<h2>3. 그대로 유지된 것 (노트가 정확함)</h2>
+<table>
+<thead><tr><th>항목</th><th>상태</th></tr></thead>
+<tbody>
+<tr><td><code>__init__.py</code>는 0바이트여도 삭제 금지</td><td><span class="tag t-keep">유지</span> 노트 설명 정확합니다.</td></tr>
+<tr><td><code>CANDIDATE_INVALID = 20000</code> (카메라 놓침 → yaw_error 폴백)</td><td><span class="tag t-keep">유지</span> 개념 그대로. 정확히 이해하셨습니다.</td></tr>
+<tr><td><code>STOP_HOLD = 50000</code> (정지/HOLD)</td><td><span class="tag t-keep">유지</span></td></tr>
+<tr><td><code>half_width=0.45</code>, <code>clearance</code> (배 반폭 + 여유)</td><td><span class="tag t-chg">값만</span> clearance 0.15 → <b>0.25</b> (시뮬 스윕 최적). half_width는 <b>배 완성 후 실측</b>.</td></tr>
+<tr><td>비상 후진 (전방 막히면 3초 후진)</td><td><span class="tag t-keep">유지</span></td></tr>
+</tbody>
+</table>
+
+<h2>4. 노트의 작은 오탈자 하나</h2>
+<div class="box warn">
+<code>self.debug_interval = 1.0</code>을 <b>"뒤쪽 장애물 무시 여유 거리"</b>로 주석했는데, <b>복붙 실수</b>입니다.
+실제로는 <b>"디버그 출력 간격(1초)"</b>입니다. (바로 위 <code>rear_obstacle_ignore_margin</code> 설명이 잘못 복사됨)
+사소하지만 나중에 헷갈릴 수 있어 짚어둡니다.
+</div>
+
+<h2>5. 왜 이렇게 바꿨나 — 한눈에</h2>
+<div class="box acc">
+올해 작업의 원칙은 <b>"모든 변경을 시뮬로 재서 확인"</b>입니다.
+<ul style="margin:8px 0 0;padding-left:20px">
+<li><b>rear_margin 삭제 · cells 1 · detection 3.0</b> → 전부 <b>시뮬 측정</b>으로 결정 (추측 아님)</li>
+<li>작년 종합임무 <b>0점의 원인</b>이 이 회피 결함들 + 도킹 사망(mode 9) + 위치유지 가짜였습니다</li>
+<li>시뮬에서 <b>접촉 3.0회 → 0.2회</b>로 개선 확인</li>
+</ul>
+<b>팀원 노트 + 이 대조표를 같이 보면, 작년 코드와 올해 코드를 완벽히 연결해서 이해할 수 있습니다.</b>
+</div>
+
+</div></body></html>
