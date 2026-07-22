@@ -2,6 +2,9 @@
 
 배에 탑재되는 Arduino Due 코드. 설계 근거와 결정 사항은 `docs/펌웨어_설계문서.md` 참고.
 
+**컴파일 검증: ✅ 통과 (2026-07-22, Arduino IDE 2.x + SAM Boards 1.6.12 + micro_ros_arduino humble + platform.txt 패치).**
+실기 동작 검증은 아직 — 벤치 테스트 대기 (docs/펌웨어_설계문서.md §6 목록).
+
 - `ssf_boat/ssf_boat.ino` — 펌웨어 본체 (Arduino IDE로 열어서 업로드)
 - 업로드: Arduino IDE → 보드 "Arduino Due (Programming Port)" → Programming 포트에 USB 연결 → 업로드
 - 포트 역할: **Programming 포트 = 업로드 + 노트북 micro-ROS 에이전트 연결** / Native 포트 = 디버그 출력(시리얼 모니터)
