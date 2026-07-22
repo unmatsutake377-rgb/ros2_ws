@@ -107,7 +107,9 @@ bool rcFresh(int idx) {                          // 최근 RC_TIMEOUT_MS 내 갱
 enum BoatId { BOAT_A = 0, BOAT_B = 1, BOAT_FAULT = 2 };
 BoatId boatId = BOAT_FAULT;
 
-BoatId readBoatId() {
+// 반환형을 int로 둔 이유: Arduino IDE가 함수 목록을 enum 정의보다 앞에
+// 자동 생성해서, enum 반환형이면 컴파일 에러가 남 (IDE 특유의 함정)
+int readBoatId() {
   bool aLow = (digitalRead(PIN_ID_A) == LOW);
   bool bLow = (digitalRead(PIN_ID_B) == LOW);
   if (aLow && !bLow) return BOAT_A;
@@ -271,7 +273,7 @@ void publishStatus(bool estopActive) {
 
 // =====================[ 11. setup / loop ]=============================
 void setup() {
-  Serial.begin(115200);          // Programming 포트 = 디버그 출력 (ROS와 별개)
+  SerialUSB.begin(115200);       // Native 포트 = 디버그 출력 (ROS는 Programming 포트)
 
   // 핀 모드
   pinMode(PIN_RC_THROTTLE, INPUT);
@@ -290,15 +292,15 @@ void setup() {
 #endif
 
   // 배 ID 판독 + 표시 (고장이면 이후 루프에서 영구 중립)
-  boatId = readBoatId();
+  boatId = (BoatId)readBoatId();
   blinkBoatId();
-  Serial.print("Boat ID: "); Serial.println(boatId == BOAT_A ? "A" : boatId == BOAT_B ? "B" : "FAULT");
+  SerialUSB.print("Boat ID: "); Serial.println(boatId == BOAT_A ? "A" : boatId == BOAT_B ? "B" : "FAULT");
 
   // ESC arm: 1500 출력 유지, 이 동안 모든 명령 무시 (설계 §2-5)
   for (int i = 0; i < 4; i++) { esc[i].attach(motors[i].pin); esc[i].writeMicroseconds(1500); }
   delay(ARM_HOLD_MS);
   armed = true;
-  Serial.println("ESC armed.");
+  SerialUSB.println("ESC armed.");
 
   // RC 인터럽트 연결 (arm 후 — arm 중 명령 무시를 구조로 보장)
   attachInterrupt(digitalPinToInterrupt(PIN_RC_THROTTLE), isrThrottle, CHANGE);
@@ -307,14 +309,16 @@ void setup() {
 
   // micro-ROS transport 준비만 함 — 연결 시도는 loop()에서 비블로킹으로.
   // 노트북(에이전트)이 없어도 RC 수동은 즉시 가동됨 (설계 §2-1, 수동 토너먼트)
-  set_microros_serial_transports(SerialUSB);   // Native USB 포트 사용
+  // 라이브러리 기본 transport = Programming 포트(Serial) 사용.
+  // → 포트 역할: Programming = 업로드 + ROS 통신 / Native(SerialUSB) = 디버그 출력
+  set_microros_transports();
 
   // /firmware_status 메시지 버퍼 연결 (MultiArray는 메모리 수동 지정 필요)
   msgStatus.data.data = statusBuf;
   msgStatus.data.size = 8;
   msgStatus.data.capacity = 8;
 
-  Serial.println("Setup done. Control loop start.");
+  SerialUSB.println("Setup done. Control loop start.");
 }
 
 unsigned long lastControlMs = 0;

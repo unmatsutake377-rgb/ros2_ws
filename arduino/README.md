@@ -4,5 +4,6 @@
 
 - `ssf_boat/ssf_boat.ino` — 펌웨어 본체 (Arduino IDE로 열어서 업로드)
 - 업로드: Arduino IDE → 보드 "Arduino Due (Programming Port)" → Programming 포트에 USB 연결 → 업로드
+- 포트 역할: **Programming 포트 = 업로드 + 노트북 micro-ROS 에이전트 연결** / Native 포트 = 디버그 출력(시리얼 모니터)
 - 노트북과의 토픽 계약: `Motor_run` 구독(Int32, pwm_r*10000+pwm_l, 1500=중립), `/firmware_status` 발행(Int32MultiArray, 10Hz)
 - 배 A/B 구분은 코드가 아니라 **배에 달린 ID 핀(DIP 스위치)** 으로 자동 인식 — 펌웨어는 두 배 공용 1벌
