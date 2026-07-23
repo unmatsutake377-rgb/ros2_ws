@@ -244,8 +244,14 @@ super().__init__('ship_turn')   # ← 복붙 실수. 파일은 ship_back 인데 
 | `ship_last` | `/candidate_angle` 에 20000 폴백만 발행 | ✅ 6b: **제거됨.** mode 0 은 ship_gate 가 인수 (발행자 둘 충돌 없이 하나→하나) |
 | 전체 | **경계 이탈 방지(geofence) 없음** | 경기장 밖으로 나가면 실격. `north_goal_angle` 에 추가 |
 | 죽은 토픽 | `/goal_distance`, `/wp_remaining_time`, `video_frames` | 아무도 안 받음 |
-| 펌웨어 | `It_is_Aship` 오타 → **B배 분기가 죽어 있음** | BOAT_A=0 / BOAT_B=1 로 정리 |
-| 펌웨어 | 통신 끊겨도 **모터가 계속 돈다** | 워치독 500ms → 중립(1500/1500) |
+| 펌웨어 | `It_is_Aship` 오타 → **B배 분기가 죽어 있음** | ✅ 회로팀: `BoatId{A,B,FAULT}` ID핀 판별 + FAULT 처리 (`arduino/ssf_boat/ssf_boat.ino`) |
+| 펌웨어 | 통신 끊겨도 **모터가 계속 돈다** | ✅ 회로팀: `ROS_TIMEOUT_MS=500` 워치독 → 중립. RC도 500ms |
+
+**🔌 펌웨어(회로팀)는 `arduino/` 에 있다** (`ssf_boat.ino` + `COLCON_IGNORE`). colcon 은 안 건드린다(다른 툴체인).
+**`Motor_run` 계약 검증 완료** — 펌웨어 디코딩(`r=data/10000, l=data%10000`, 1500=중립, **패스스루/리매핑 없음**)이
+`motor_control.py` 인코딩과 일치. 토픽 `/Motor_run` 일치. 전/후진 방향은 펌웨어가 안 정하고 물리 배선이 정한다
+→ **`steer_invert`(2단계) + 벤치 확인**의 대상. 펌웨어는 dumb passthrough 라 여기에 숨은 반전이 없다(좋다).
+**4단계 상태:** 펌웨어(Arduino)측은 회로팀이 처리. **iahrs_driver 측(부팅 0점화 제거·절대방위)은 아직**(3-5) — 배·벤치 필요.
 
 ### 3-9. 🔒 신설 토픽 이름 확정 — 어긋나면 에러 없이 조용히 빈 값
 
