@@ -64,7 +64,7 @@ git commit -m "작년 대회 최종본 (수정 전 기준선)"
 | GPS (A배) | u-blox **C94-M8P** | NTRIP RTK |
 | GPS (B배) | u-blox **ZED-F9P** | NTRIP RTK |
 | MCU | **Arduino Due** + micro-ROS | `Motor_run = pwm_r*10000 + pwm_l`, **1500 = 중립** |
-| 카메라 | **OAK-1 W POE** (확정) | RGB 전용(**뎁스 없음**), **광각 120~150° DFOV**, PoE=이더넷. 🚨 3-3 |
+| 카메라 | **RealSense D455 (현역)** / OAK-1 W POE (미구매) | 현재 D455 사용. OAK 는 RGB 전용(**뎁스 없음**)·광각 120~150° DFOV·PoE=이더넷. **코드는 중립화** 🚨 3-3 |
 
 **⚠️ 실측 필요 (배 완성 후):** 선폭, 순항 PWM, 후진 PWM, IMU 장착 오프셋, 대회장 자기편각,
 카메라 **왜곡계수(D)·초점거리(fx,fy)** — `camera_info` 에서, **고정 IP**
@@ -115,34 +115,57 @@ self.sub_angle = self.create_subscription(Float32, "/desired_angle", self.angle_
 시뮬(물보라 10%, 6회): TTC OFF=접촉0·34.4m·급정지0 / TTC ON=접촉0·8.5m·급정지6.5·35초중 28초 정지. **이득 0, 위험 막대.**
 감속(점진적)은 노이즈에 강해 유지, TTC(이진 급정지)만 버린다.
 
-### 3-3. 🚨 카메라 = OAK-1 W POE (확정). RealSense 뎁스가 사라진다
+### 3-3. 🚨 카메라 **중립화** — RealSense 현역 유지 + OAK 준비 완료
 
-작년 비전 노드 3종이 **전부 뎁스를 구독**한다:
-```
-/camera/camera/depth/image_rect_raw
-```
-**모든 거리값**(`/image_distance`, `/red_distance`, `/green_distance`)이 **RealSense 뎁스에서 나온다.**
+> **[2026-07-23 정정]** 이전 판은 "카메라 = OAK-1 W POE **확정**", "`basic_image_*.py` **전부 삭제**",
+> "`realsense2_camera` → `depthai-ros` **교체**" 라고 적혀 있었다. **셋 다 틀렸다.**
+> **OAK-1 W PoE 는 아직 미구매(펀딩 대기)이고, RealSense 가 현역이다.**
+> 그 상태에서 "전부 삭제" 를 실행하면 **지금 동작하는 유일한 비전 경로가 죽는다.**
+> 목표를 **교체**가 아니라 **중립화**로 바꾼다 — 카메라 도착일에 남는 작업이
+> **"yaml 수정 + HSV 재캘리브레이션" 뿐**이 되도록 지금 코드를 손본다.
 
-**OAK-1 W 는 RGB 전용(단안)이라 스테레오 뎁스가 없다.** (뎁스는 OAK-**D** 계열 — Luxonis 문서 확인)
-→ `ship_gate`, `ship_dock`, `ship_turn`, `ship_back` 이 **전부 거리를 못 받아 죽는다.**
+**현 상태 (사실):**
+| 항목 | 상태 |
+|---|---|
+| RealSense D455 | **현역.** `src/realsense-ros-ros2-master/` 유지 — COLCON_IGNORE 넣지 마라, 삭제도 금지 |
+| OAK-1 W PoE | **미구매.** 도착 시점 미정 (RGB 전용·뎁스 없음, 광각 120~150° DFOV, PoE=이더넷) |
+| `basic_image_*.py` | **삭제 금지. 현역 코드다.** 중립화 대상 |
 
-**해법 (채택):** **카메라는 방위각만, 거리는 LiDAR `/scan` 에서.**
+**뎁스 문제는 그대로 유효하다 (그래서 지금 끊는다).**
+작년 비전 노드 3종이 `/camera/camera/depth/image_rect_raw` 를 구독하고,
+`color_callback` 맨 앞에 `if self.latest_depth is None: return` 가드가 있었다.
+→ 뎁스 없는 카메라를 물리면 **에러 한 줄 없이 각도 토픽이 영원히 침묵**한다(침묵 사망).
+RealSense 를 쓰는 **지금** 끊어야, 지금부터 쌓는 물 위 튜닝이 카메라 교체 후에도 유효하다.
+
+**해법 (채택, 변경 없음):** **카메라는 방위각만, 거리는 LiDAR `/scan` 에서.**
 - 부표: 카메라 방위 → 그 방위의 LiDAR 거리
 - 도크: **매칭하지 말 것.** 카메라로 "어느 도크인가 + 어느 방향인가"만, 접안 거리는 **LiDAR 전방 섹터 최소거리**.
   (도크는 넓은 구조물이라 표식 방위와 LiDAR 최근접점 방위가 최대 15° 어긋난다 — 계산으로 확인됨)
 
-**[확정 1] `basic_image_*.py` 는 전부 삭제한다.** 이들이 뎁스(`.../depth/image_rect_raw`)를 구독하는데
-OAK-1 엔 뎁스가 없다. (5단계 비전 재작성 때 제거 — 3-4 의 subprocess 문제와 함께.)
+**[V1 완료 2026-07-23] depth 의존 제거 + 거리 토픽 발행 중단.**
+`basic_image_subscriber{gate,dock,turn}.py` 에서 제거한 것:
+depth 구독 / `depth_callback` / `latest_depth` 가드 / 거리 계산 / 유효거리 필터(`1.0~6.0m`) /
+`/red_distance`·`/green_distance`·`/image_distance` **발행**.
+→ 거리 토픽 **소비자는 0개다.** 6단계에서 `ship_gate/dock/turn/back` 이 전부 `/scan` 으로 전환했다(주석만 잔존).
+→ 각도 토픽(`/red_angle`, `/green_angle`, `/image_angle`)의 **이름·타입은 불변.**
+→ 후보 선택 기준은 `distance` 최소 → **`area` 최대**(면적=거리의 대용).
+→ 각도식은 **값이 완전히 동일**하다: 기존 `atan2((rel_x/80)*0.09*(d/0.5), d)` 는 `d` 가 약분되어
+   `atan(rel_x * 0.00225)` 와 같다. 여러 거리(1/3/6m)·여러 픽셀에서 소수점까지 일치 확인.
 
-**[확정 2] 🚨 광각 렌즈(120~150° DFOV) — 핀홀 방위 계산이 깨진다.**
-작년 RealSense RGB 는 약 **69°** 인데 OAK-1 W 는 **2배 이상** 넓다.
-`marker_detector` 의 `angle = atan((cx - u) / fx)` 는 **핀홀 모델**이라 **광각 가장자리에서 부표 방위각이 몇 도 틀어진다.**
-→ **rectified(왜곡보정) 이미지 토픽을 구독**하거나, `camera_info` 의 **왜곡계수 `D` 를 `cv2.undistortPoints` 로 적용**할 것.
-→ `min_area_px` **재튜닝 필요** — 각도 해상도가 낮아 먼 표식이 더 작게 보인다. (5단계, 실물 카메라·조명에서)
+**[확정] 🚨 화각이 매직넘버에 박혀 있다 — 카메라 교체일의 시한폭탄.**
+`k = (1/80)*0.09/0.5 = 0.00225` → **등가 `fx ≈ 444.4px`** → 640px 기준 **HFOV ≈ 71.5°**.
+즉 **RealSense 화각이 하드코딩**돼 있다. OAK-1 W(광각)로 바꾸면 **같은 픽셀이 다른 각도**가 되어
+모든 각도 출력과 상위 튜닝(`align_tol_deg`, `pair_min/max_sep_deg` 등)이 **통째로 무효**가 된다.
+→ **V3 에서 명시형으로 재작성**: `fx = (msg.width/2) / tan(radians(hfov_deg)/2)`, `angle = -degrees(atan((vX-cx)/fx))`.
+   `image_width` 는 파라미터가 아니라 **매 프레임 `msg.width`** 에서 읽는다(해상도 변경 자동 흡수).
+   `hfov_deg` 기본값 = **71.5**(현 RealSense 역산 실측치). 환산은 순수 함수로 분리 + 테스트.
+→ 광각 도입 시 추가로: **rectified 토픽 구독** 또는 `camera_info` 의 왜곡계수 `D` 를 `cv2.undistortPoints` 로 적용,
+   `min_area_px` 재튜닝(각도 해상도가 낮아 먼 표식이 더 작게 보인다).
 
-**[확정 3] PoE = 이더넷 → 드라이버 교체.**
-`realsense2_camera` → **`depthai-ros`(`depthai_ros_driver`)** 로 교체. **고정 IP 등 네트워크 설정** 필요.
-**배가 없어도 지금 노트북에 물려 연결 테스트 가능 → 지금 시작할 것.** (하드웨어 없이 검증 가능한 작업)
+**[미확정] PoE = 이더넷 → 드라이버 병행.**
+`depthai-ros`(`depthai_ros_driver`)는 **교체가 아니라 추가**다. RealSense 드라이버는 남긴다.
+**고정 IP 등 네트워크 설정** 필요. 카메라 도착 전까지의 절차는 `docs/oak_arrival_runbook.md`(V5) 에 적는다.
+연결 테스트는 **실물이 와야** 가능하다 — 이전 판의 "지금 노트북에 물려 테스트 가능" 은 미구매 상태에서 불가.
 
 ### 3-4. 🚨 `image_subscriber_mode` 는 subprocess 로 노드를 죽였다 살린다
 
@@ -155,8 +178,12 @@ os.killpg(os.getpgid(self._child.pid), signal.SIGINT)
 - subprocess 가 좀비로 남으면 **카메라가 잠긴다**
 - **추적기(tracker)를 쓸 수 없다** — 노드가 죽으면 트랙이 전부 날아간다
 
-**고칠 것:** `basic_image_*.py` 전부 삭제. 노드는 **항상 살아서** 보이는 표식을 전부 발행하고,
-목표 선택은 **파라미터**로 한다. 이건 타협 불가다.
+**고칠 것:** 노드는 **항상 살아서** 보이는 표식을 전부 발행하고, 목표 선택은 **파라미터**로 한다.
+이건 타협 불가다. **문제는 `basic_image_*.py` 가 아니라 `image_subscriber_mode` 의 subprocess 방식**이다.
+
+> **[2026-07-23 정정]** 이전 판은 여기서도 "`basic_image_*.py` 전부 삭제" 라고 했다. **폐기한다.**
+> 그 파일들은 **RealSense 현역 경로**다(3-3 참고). 삭제 대상은 **`subscribermode` 의 subprocess 로직**이고,
+> 검출 노드들은 **상시 상주 + 파라미터 목표선택**으로 **개조**한다. 삭제가 아니다.
 
 ### 3-5. 🚨 IMU 부팅 0점화 ↔ 절대방위 불일치
 
@@ -363,7 +390,7 @@ ranges[i] = min(real_ranges[i], geofence_ranges[i])
 - **3단계(시뮬로 검증 가능한 마지막)를 배 완성 전에 끝낸다.** — 지금이 시뮬 창구.
 - **배가 뜨면** 실측·캘리브레이션·**조향 부호 확인**(§8, `steer_invert`)이 **최우선**.
 - **5단계 비전**은 실물 카메라(OAK-1 W)·조명이 있어야 제대로 된다 → 배 이후.
-- **카메라 연결 테스트(3-3 확정3)는 배 없이 지금 노트북에서 시작** 가능 → 병렬로 진행.
+- **비전 중립화(3-3)는 배 없이 지금 노트북에서** 가능 → 병렬로 진행. (OAK 실물 연결 테스트는 구매 후.)
 
 | 단계 | 대상 | 왜 이 순서인가 |
 |---|---|---|

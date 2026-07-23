@@ -11,6 +11,11 @@ import time
 
 IMAGE_ANGLE_INVALID = 10000.0
 
+# ⚠️ 임시 — V3(T2-4)에서 hfov_deg 파라미터 + msg.width 기반으로 재작성.
+# 기존 `(rel_x/80.0)*0.09*(distance/0.5)` + atan2 는 distance 가 약분되어 아래와 완전히 같다.
+#   K = 0.00225 → 등가 fx ≈ 444.4px → 640px 기준 HFOV ≈ 71.5° (RealSense 화각이 박혀 있었다)
+PIXEL_TO_ANGLE_K = (1.0 / 80.0) * 0.09 / 0.5
+
 
 class ImageSubscriber(Node):
     def __init__(self):
@@ -27,12 +32,6 @@ class ImageSubscriber(Node):
             self.color_callback,
             10)
 
-        self.depth_sub = self.create_subscription(
-            Image,
-            '/camera/camera/depth/image_rect_raw',
-            self.depth_callback,
-            10)
-
         # ★ 추가: WP 모드 구독
         self.wp_mode_sub = self.create_subscription(
             Int32,
@@ -43,17 +42,15 @@ class ImageSubscriber(Node):
         # =============================
         # PUBLISHERS
         # =============================
+        # V1(T2-3): /image_distance 발행 제거 — 소비자 0개(ship_turn 이 LiDAR 로 전환).
         self.angle_pub = self.create_publisher(Float32, '/image_angle', 10)
-        self.distance_pub = self.create_publisher(Float32, '/image_distance', 10)
         self.color_pub = self.create_publisher(String, '/image_color', 10)
 
         # =============================
         # STATE / FALLBACK
         # =============================
-        self.latest_depth = None
         self.last_valid = {
             'angle': None,
-            'distance': None,
             'color': None,
             'time': 0.0
         }
@@ -76,14 +73,8 @@ class ImageSubscriber(Node):
         self.wp_mode = msg.data
 
 
-    def depth_callback(self, msg):
-        self.latest_depth = self.br.imgmsg_to_cv2(msg, desired_encoding='passthrough')
-
-
     def color_callback(self, msg):
-        if self.latest_depth is None:
-            return
-
+        # V1(T2-3): depth 가드 제거 — 뎁스 없는 카메라에서 콜백이 영원히 막히는 것 방지
         self.found_in_frame = False
 
         frame = self.br.imgmsg_to_cv2(msg, desired_encoding='bgr8')
@@ -97,9 +88,8 @@ class ImageSubscriber(Node):
         # ========== Fallback ==========
         now = time.time()
 
-        def publish(angle, dist, color):
+        def publish(angle, color):
             self.angle_pub.publish(Float32(data=float(angle)))
-            self.distance_pub.publish(Float32(data=float(dist)))
             self.color_pub.publish(String(data=str(color)))
 
         if not self.found_in_frame:
@@ -109,16 +99,12 @@ class ImageSubscriber(Node):
                 (now - lv['time']) <= self.grace_period_s and
                 lv['angle'] is not None
             ):
-                publish(lv['angle'], lv['distance'], lv['color'])
+                publish(lv['angle'], lv['color'])
             else:
-                publish(IMAGE_ANGLE_INVALID, IMAGE_ANGLE_INVALID, "none")
+                publish(IMAGE_ANGLE_INVALID, "none")
 
 
     def process_image(self, cv_image, view_frame):
-        depth_img = self.latest_depth
-        if depth_img is None:
-            return
-
         hsv = cv2.cvtColor(cv_image, cv2.COLOR_BGR2HSV)
         img_h, img_w = cv_image.shape[:2]
         cx = img_w // 2
@@ -141,9 +127,10 @@ class ImageSubscriber(Node):
         else:
             target_colors = color_ranges.keys()  # Default: 모든 색
 
+        # V1: 후보 선택 기준 '가장 가까운 것(depth)' → '가장 큰 것(면적)'
         best = {
             'angle': None,
-            'distance': None,
+            'area': -1.0,
             'vX': None,
             'vY': None,
             'vertices': None,
@@ -191,18 +178,14 @@ class ImageSubscriber(Node):
                 if not (img_h * 0.10 <= vY <= img_h * 0.55):
                     continue
 
-                distance = depth_img[vY, vX] * 0.001
-                if distance <= 0:
-                    continue
-
+                # angle (depth 불필요 — 기존 식에서 distance 가 약분되어 값이 완전히 같다)
                 rel_x = vX - cx
-                real_x = (rel_x / 80.0) * 0.09 * (distance / 0.5)
-                angle_deg = -math.degrees(math.atan2(real_x, distance))
+                angle_deg = -math.degrees(math.atan(rel_x * PIXEL_TO_ANGLE_K))
 
-                if best['distance'] is None or distance < best['distance']:
+                if area > best['area']:
                     best.update({
                         'angle': angle_deg,
-                        'distance': distance,
+                        'area': area,
                         'vX': vX,
                         'vY': vY,
                         'vertices': vertices,
@@ -211,24 +194,22 @@ class ImageSubscriber(Node):
 
                 cv2.drawContours(view_frame, [approx], -1, (0, 255, 0), 2)
 
-        if best['distance'] is not None:
+        if best['angle'] is not None:
             self.found_in_frame = True
             now = time.time()
 
             self.last_valid.update({
                 'angle': best['angle'],
-                'distance': best['distance'],
                 'color': best['color'],
                 'time': now
             })
 
             self.angle_pub.publish(Float32(data=best['angle']))
-            self.distance_pub.publish(Float32(data=best['distance']))
             self.color_pub.publish(String(data=best['color']))
 
             cv2.circle(view_frame, (best['vX'], best['vY']), 7, (0, 255, 255), -1)
             cv2.putText(view_frame,
-                        f"{best['color']}  {best['distance']:.2f}m",
+                        f"{best['color']}  {best['angle']:.1f}deg",
                         (best['vX']+10, best['vY']-10),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.7,
                         (255,255,255), 2)

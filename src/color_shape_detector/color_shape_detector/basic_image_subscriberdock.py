@@ -11,35 +11,33 @@ from rclpy.executors import MultiThreadedExecutor
 
 IMAGE_ANGLE_INVALID = 10000.0
 
+# ⚠️ 임시 — V3(T2-4)에서 hfov_deg 파라미터 + msg.width 기반으로 재작성.
+# 기존 `(rel_x/80.0)*0.09*(distance/0.5)` + atan2 는 distance 가 약분되어 아래와 완전히 같다.
+#   K = 0.00225 → 등가 fx ≈ 444.4px → 640px 기준 HFOV ≈ 71.5° (RealSense 화각이 박혀 있었다)
+PIXEL_TO_ANGLE_K = (1.0 / 80.0) * 0.09 / 0.5
+
 class ImageSubscriber(Node):
     def __init__(self):
         super().__init__('image_subscriber_dock')
 
-        # Color 이미지 구독 (turn과 동일)
+        # Color 이미지 구독
+        # V1(T2-3): depth 구독 제거 — OAK 는 뎁스가 없어 depth 를 기다리면 침묵 사망한다.
+        #   거리는 소비자(ship_dock)가 LiDAR 전방 섹터 최소거리로 구한다.
         self.subscription_color = self.create_subscription(
             Image,
             '/camera/camera/color/image_raw',
             self.color_callback,
             10)
 
-        # Depth 이미지 구독 (turn과 동일)
-        self.subscription_depth = self.create_subscription(
-            Image,
-            '/camera/camera/depth/image_rect_raw',
-            self.depth_callback,
-            10)
-
         self.br = CvBridge()
-        self.latest_depth = None
 
-        # 퍼블리셔: angle, distance
+        # 퍼블리셔: angle 만 (이름·타입 불변)
+        # V1: /image_distance 발행 제거 — 소비자 0개(6단계에서 ship_dock/turn/back 이 LiDAR 로 전환).
         self.angle_pub    = self.create_publisher(Float32, '/image_angle', 10)
-        self.distance_pub = self.create_publisher(Float32, '/image_distance', 10)
 
         # fallback
         self.last_valid = {
             'angle': None,
-            'distance': None,
             'time': 0.0
         }
         self.grace_period_s = 2.0
@@ -50,13 +48,6 @@ class ImageSubscriber(Node):
         # 목표 도형
         self.target_color = "red"
         self.target_shape = "Square"
-
-
-    # ============================================
-    # Depth topic 콜백
-    # ============================================
-    def depth_callback(self, msg):
-        self.latest_depth = self.br.imgmsg_to_cv2(msg, desired_encoding='passthrough')
 
 
     # ============================================
@@ -78,9 +69,8 @@ class ImageSubscriber(Node):
         # fallback 처리
         now = time.time()
 
-        def publish(angle_val, dist_val):
+        def publish(angle_val):
             self.angle_pub.publish(Float32(data=float(angle_val)))
-            self.distance_pub.publish(Float32(data=float(dist_val)))
 
         if not self.found_in_frame:
             if (
@@ -88,19 +78,16 @@ class ImageSubscriber(Node):
                 (now - self.last_valid['time']) <= self.grace_period_s and
                 self.last_valid['angle'] is not None
             ):
-                publish(self.last_valid['angle'], self.last_valid['distance'])
+                publish(self.last_valid['angle'])
             else:
-                publish(IMAGE_ANGLE_INVALID, IMAGE_ANGLE_INVALID)
+                publish(IMAGE_ANGLE_INVALID)
 
 
     # ============================================
     # 이미지 처리 (도형 인식)
     # ============================================
     def process_image(self, cv_image, view_frame):
-
-        if self.latest_depth is None:
-            return
-
+        # V1(T2-3): depth 가드 제거 (뎁스 없는 카메라에서 콜백이 영원히 막히는 것 방지)
         hsv_image = cv2.cvtColor(cv_image, cv2.COLOR_BGR2HSV)
         img_h, img_w = cv_image.shape[:2]
         cx = img_w // 2
@@ -173,36 +160,27 @@ class ImageSubscriber(Node):
                 if not (img_h * 0.15 <= vY <= img_h * 0.55):  #위쪽범위 <= vY <=아래쪽범위
                     continue
 
-                # Depth distance
-                distance = self.latest_depth[vY, vX] * 0.001
-                if distance <= 0:
-                    continue
-
-                # angle 계산 (turn과 완전 동일)
+                # angle 계산 (depth 불필요 — 기존 식에서 distance 가 약분되어 값이 완전히 같다)
                 rel_x = vX - cx
-                real_x_offset = (rel_x / 80.0) * 0.09 * (distance / 0.5)
-                angle_rad = math.atan2(real_x_offset, distance)
-                angle_deg = -math.degrees(angle_rad)
+                angle_deg = -math.degrees(math.atan(rel_x * PIXEL_TO_ANGLE_K))
 
-                # 퍼블리시 갱신
+                # 퍼블리시 갱신 (각도만)
                 self.angle_pub.publish(Float32(data=float(angle_deg)))
-                self.distance_pub.publish(Float32(data=float(distance)))
 
                 self.found_in_frame = True
                 self.last_valid['angle'] = float(angle_deg)
-                self.last_valid['distance'] = float(distance)
                 self.last_valid['time'] = time.time()
 
                 # 시각화
                 cv2.drawContours(view_frame, [approx], -1, (0, 255, 0), 2)
                 cv2.circle(view_frame, (vX, vY), 4, (255, 255, 0), -1)
                 cv2.putText(view_frame,
-                            f"{color} {shape} {distance:.2f}m {angle_deg:.1f}deg",
+                            f"{color} {shape} {angle_deg:.1f}deg",
                             (vX + 10, vY - 10),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,255), 2)
 
                 if time.time() - self.last_log_time > 0.5:
-                    print(f"[Dock] {color} {shape}: d={distance:.2f}m  angle={angle_deg:.1f}")
+                    print(f"[Dock] {color} {shape}: angle={angle_deg:.1f}")
                     self.last_log_time = time.time()
 
         return
