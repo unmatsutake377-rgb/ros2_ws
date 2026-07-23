@@ -189,15 +189,50 @@ os.killpg(os.getpgid(self._child.pid), signal.SIGINT)
 
 `iahrs_driver` 가 부팅 시 yaw 를 0 으로 만든다(`yaw_initial_offset`).
 그러면 yaw 가 **상대각**이 된다. 그런데 `north_goal_angle` 은 **절대 방위**(정북 기준)를 계산한다.
-**둘을 빼면 의미가 없다.** (작년에 GPS heading 으로 yaw 를 덮어쓴 코드가 있는데, 이건 증상을 가린 것으로 보인다)
+**둘을 빼면 의미가 없다.**
 
-**고칠 것:**
-- 부팅 0점화 제거
-- GPS heading override 제거 (**뱃머리 방향은 IMU 가 맡는다**)
-- 대신 파라미터 추가: `magnetic_declination_deg`(한국 약 -8°), `mount_offset_deg`, `invert_yaw`
+**[2026-07-23 추가 발견] ③ GPS override 가 ② 보다 더 나빴다.**
+```cpp
+if (!std::isnan(gps_heading)) yaw_corrected = gps_heading;   // IMU 를 통째로 버림
+```
+- `NavPVT.heading` 은 msg 정의상 **"Heading of motion 2-D"** = **COG(대지침로)**. 뱃머리가 아니다.
+- **정지·저속에서 COG 는 노이즈다.** 접안·정지유지(`ship_back`) 구간에서 yaw 가 튄다.
+- **조류·바람에 게걸음하면 COG 와 뱃머리가 벌어진다.** 그 차이를 *추정*하는 게 옵션 B 인데,
+  작년 코드는 차이를 **0 이라고 가정**해버렸다.
+- `g_speed` 를 안 봤다 → **속도 0 에서도 통과.** `head_acc < 30°` 임계도 너무 헐렁하다.
+→ 즉 `/imu/yaw` 는 대부분의 시간 **GPS COG 였다.** ② 의 상대각 문제는 그 뒤에 가려져 있었다.
 
-**⚠️ 이건 시뮬로 못 잡는다.** 배를 정북으로 놓고 IMU 출력을 눈으로 읽는 **벤치 확인이 필수**다.
-부호가 틀리면 **배가 정반대로 간다.**
+**[N1 완료 2026-07-23] 드라이버에서 합성을 걷어내고 `yaw_mux` 로 옮겼다.**
+
+| | 작년 | 지금 |
+|---|---|---|
+| `/imu/yaw` 발행자 | `iahrs_driver` | **`ssf_heading/yaw_mux` 하나뿐** |
+| 드라이버 출력 | `/imu/yaw` (0점화+COG override) | **`/imu/yaw_raw`** (보정 없는 상대 yaw) |
+| 부팅 0점화 | 항상 ON | `zero_yaw_on_boot` **기본 false** |
+| GPS override | 항상 ON | `use_gps_heading_override` **기본 false** |
+
+- 🚨 **드라이버 `yaw_topic` 을 `/imu/yaw` 로 되돌리면 한 토픽에 발행자 2개**가 된다. 에러는 안 난다.
+  기본값을 `/imu/yaw_raw` 로 잡아 상류 launch(`iahrs_driver.py`, `iahrs_driver_launch.xml`)가
+  파라미터를 안 넘겨도 안전하게 했다. `launch_files` 에는 일부러 명시해 뒀다.
+- `heading_source` 로 A/B/C 를 갈아끼운다: `imu_relative`(현재 유일 구현) / `cog_offset`(B, N2) /
+  `dual_gps`(A, N3) / `imu_absolute`(C, N4). **미구현 소스는 조용히 0 을 내지 않고 발행을 멈춘다.**
+- 헤딩이 없으면 **발행하지 않는다.** 소비자가 이미 침묵을 처리한다 —
+  `ship_goal_angle` 은 `/yaw_error` 를 멈추고, `north_goal_angle` 은 geofence 를 침묵시킨다.
+- ⚠️ **자기편각은 자기북 기준 소스에만 적용된다.** 듀얼 GPS(relPosNED)와 COG 는 이미 진북 기준이라
+  편각을 더하면 **이중 보정**(한국 기준 약 8° 오차)이다. `SOURCE_IS_MAGNETIC` 표로 강제하고 테스트로 못박았다.
+- 진단: `/heading_status`(String) 발행. `healthcheck` 가 `/imu/yaw_raw` 를 함께 감시해
+  **"IMU 죽음" 과 "yaw_mux 죽음" 을 구분**한다(로그만 — `/health_ok` 판정엔 안 넣는다, 거짓 정지 금지).
+  `blackbox` 에 `imu_yaw_raw` 컬럼 추가 → N2 를 구현 **전에** CSV 로 타당성 검증 가능
+  (COG 는 `gps_vel_x/y` 로 `atan2`).
+
+**⚠️ 아직 안 끝났다 — 벤치 확인이 필수다. 시뮬로 못 잡는다.**
+`mount_offset_deg=0.0`, `invert_yaw=false` 는 **추측한 값이 아니라 "아직 안 쟀다"** 는 뜻이다.
+절차 (`config/ssf_heading.yaml` 에도 적어둠):
+1. 배를 나침반으로 **정북**에 맞춘다
+2. `ros2 topic echo /imu/yaw` 가 **0** 을 읽을 때까지 `mount_offset_deg` 조정
+3. 뱃머리를 **시계방향(동)으로 90°** → 값이 **90 으로 증가**해야 한다. 감소하면 `invert_yaw: true` 후 2 부터 재시작
+
+**부호가 틀리면 배가 정반대로 간다.**
 
 ### 3-6. 🚨 `/candidate_angle` 에 6개 노드가 발행 — 구조적 결함
 

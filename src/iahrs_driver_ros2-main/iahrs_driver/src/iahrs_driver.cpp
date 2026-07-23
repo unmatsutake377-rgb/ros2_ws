@@ -15,6 +15,7 @@
 #include <dirent.h>
 #include <signal.h>
 #include <atomic>
+#include <string>
 
 #include "rclcpp/rclcpp.hpp"
 #include "std_msgs/msg/float64.hpp"
@@ -54,9 +55,42 @@ class IAHRS : public rclcpp::Node
 public:
   IAHRS() : Node("iahrs_driver")
   {
+    //
+    // 🚨 CLAUDE.md 3-5 — 작년엔 이 드라이버가 /imu/yaw 를 직접 냈고, 그 값이 절대방위가 아니었다.
+    //    ② 부팅 시점 뱃머리를 0 으로 만들어 '상대각' 이 됐다.
+    //       그런데 north_goal_angle 은 '절대방위' 를 계산하고 ship_goal_angle 은 둘을 뺀다.
+    //       → 뺄셈이 무의미했다. 배를 정북으로 놓고 켰을 때만 우연히 맞았다.
+    //    ③ GPS heading 이 유효하면 IMU 를 통째로 덮어썼다.
+    //       NavPVT.heading 은 'Heading of motion'(COG, 대지침로)이지 뱃머리가 아니다.
+    //       정지/저속에서 COG 는 노이즈고, 조류·바람에 게걸음하면 뱃머리와 벌어진다.
+    //       (게다가 g_speed 를 안 봐서 속도 0 에서도 통과했다)
+    //
+    //    → 둘 다 파라미터로 빼고 **기본 OFF**. 이 드라이버는 보정 안 한 상대 yaw 만 낸다.
+    //      절대방위 합성은 ssf_heading/yaw_mux 가 전담한다.
+    //
+    //    ⚠️ yaw_topic 기본값이 /imu/yaw_raw 인 것이 중요하다.
+    //       /imu/yaw 로 되돌리면 yaw_mux 와 **한 토픽에 발행자 2개**가 되어 두 값이 번갈아 나온다.
+    //       에러는 안 난다 — 이 프로젝트가 반복해 당한 침묵 실패 유형이다.
+    //
+    zero_yaw_on_boot = this->declare_parameter<bool>("zero_yaw_on_boot", false);
+    use_gps_heading_override =
+        this->declare_parameter<bool>("use_gps_heading_override", false);
+    yaw_topic = this->declare_parameter<std::string>("yaw_topic", "/imu/yaw_raw");
+
     tf_broadcaster = std::make_shared<tf2_ros::TransformBroadcaster>(this);
     imu_pub = this->create_publisher<sensor_msgs::msg::Imu>("imu/data", 10);
-    yaw_pub = this->create_publisher<std_msgs::msg::Float64>("/imu/yaw", 10);
+    yaw_pub = this->create_publisher<std_msgs::msg::Float64>(yaw_topic, 10);
+
+    RCLCPP_INFO(this->get_logger(),
+                "iahrs_driver: yaw_topic=%s, zero_yaw_on_boot=%s, gps_override=%s",
+                yaw_topic.c_str(),
+                zero_yaw_on_boot ? "true" : "false",
+                use_gps_heading_override ? "true" : "false");
+    if (yaw_topic == "/imu/yaw")
+    {
+      RCLCPP_WARN(this->get_logger(),
+                  "yaw_topic 이 /imu/yaw 다. yaw_mux 를 함께 띄우면 발행자가 2개가 된다.");
+    }
 
     // GPS NAV-PVT 구독
     gps_sub = this->create_subscription<ublox_msgs::msg::NavPVT>(
@@ -79,6 +113,11 @@ public:
   rclcpp::Subscription<ublox_msgs::msg::NavPVT>::SharedPtr gps_sub;
   rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr imu_pub;
   rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr yaw_pub;
+
+  // CLAUDE.md 3-5 — 기본 OFF. 아래 main 루프 ②③ 에서 읽는다.
+  bool zero_yaw_on_boot = false;
+  bool use_gps_heading_override = false;
+  std::string yaw_topic = "/imu/yaw_raw";
 
   int serial_open()
   {
@@ -185,21 +224,33 @@ int main(int argc, char** argv)
       double imu_yaw_cw  = fmod(-imu_yaw_ccw + 360.0, 360.0); // 방향 뒤집기
 
       //
-      // ② 부팅 offset 적용
+      // ② 부팅 offset 적용 — 🚨 기본 OFF (CLAUDE.md 3-5)
+      //    켜면 /imu/yaw_raw 가 '부팅 시점 뱃머리 기준 상대각' 이 된다.
+      //    절대방위 보정은 yaw_mux 의 mount_offset_deg 가 담당하므로 여기선 끈다.
       //
-      if (!initial_set)
+      if (node->zero_yaw_on_boot)
       {
-        yaw_initial_offset = imu_yaw_cw;
-        initial_set = true;
+        if (!initial_set)
+        {
+          yaw_initial_offset = imu_yaw_cw;
+          initial_set = true;
+        }
+      }
+      else
+      {
+        yaw_initial_offset = 0.0;
       }
 
       double yaw_corrected = imu_yaw_cw - yaw_initial_offset;
       yaw_corrected = fmod(yaw_corrected + 360.0, 360.0);
 
       //
-      // ③ GPS heading이 유효하면 GPS heading으로 override
+      // ③ GPS heading override — 🚨 기본 OFF (CLAUDE.md 3-5)
+      //    NavPVT.heading 은 COG(대지침로)지 뱃머리가 아니다. 정지 시 노이즈고,
+      //    게걸음하면 뱃머리와 벌어진다. 그 차이를 '추정' 하는 게 옵션 B(yaw_mux, N2)이고
+      //    여기서 하던 건 차이를 0 이라고 '가정' 하는 것이었다.
       //
-      if (!std::isnan(gps_heading))
+      if (node->use_gps_heading_override && !std::isnan(gps_heading))
       {
         yaw_corrected = gps_heading;
       }

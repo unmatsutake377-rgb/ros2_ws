@@ -9,7 +9,7 @@ blackbox — 비행기 블랙박스처럼, 배가 도는 동안 모든 핵심 �
 
 컬럼:
   t_wall(ROS시계), t_mono(단조시계 경과s), wp_mode, gps_lat, gps_lon, gps_status,
-  imu_yaw, yaw_error, candidate_angle, desired_angle, pwm_r, pwm_l,
+  imu_yaw, imu_yaw_raw, yaw_error, candidate_angle, desired_angle, pwm_r, pwm_l,
   obstacle_min_dist, failsafe_level, gate_pass_count,
   gyro_z, accel_x, accel_y, gps_vel_x, gps_vel_y   ← 동역학 역산(system ID)용
 
@@ -48,7 +48,7 @@ OBSERVER_QOS = QoSProfile(
 CSV_HEADER = [
     "t_wall", "t_mono", "wp_mode",
     "gps_lat", "gps_lon", "gps_status",
-    "imu_yaw", "yaw_error", "candidate_angle", "desired_angle",
+    "imu_yaw", "imu_yaw_raw", "yaw_error", "candidate_angle", "desired_angle",
     "pwm_r", "pwm_l", "obstacle_min_dist",
     "failsafe_level", "gate_pass_count",
     # ---- 동역학 역산(system ID)용 ----
@@ -69,6 +69,12 @@ class BlackBox(Node):
         wp_mode_topic = self.declare_parameter("wp_mode_topic", "/wp_mode").value
         gps_topic = self.declare_parameter("gps_topic", "/ublox_gps_node/fix").value
         imu_yaw_topic = self.declare_parameter("imu_yaw_topic", "/imu/yaw").value
+        # N1: 보정 전 원시 yaw. imu_yaw(=yaw_mux 출력)와 나란히 찍어두면
+        #   · mount_offset_deg 를 CSV 만으로 역산할 수 있고
+        #   · 옵션 B(COG 오프셋, N2)를 구현 '전에' 데이터로 타당성을 볼 수 있다
+        #     (COG 는 gps_vel_x/y 로 atan2 해서 얻는다 — 별도 토픽 불필요)
+        imu_raw_yaw_topic = self.declare_parameter(
+            "imu_raw_yaw_topic", "/imu/yaw_raw").value
         yaw_error_topic = self.declare_parameter("yaw_error_topic", "/yaw_error").value
         candidate_topic = self.declare_parameter("candidate_topic", "/candidate_angle").value
         desired_angle_topic = self.declare_parameter("desired_angle_topic", "/desired_angle").value
@@ -103,6 +109,8 @@ class BlackBox(Node):
         self.create_subscription(Int32, wp_mode_topic, self._cb_wp_mode, OBSERVER_QOS)
         self.create_subscription(NavSatFix, gps_topic, self._cb_gps, OBSERVER_QOS)
         self.create_subscription(Float64, imu_yaw_topic, self._cb_imu_yaw, OBSERVER_QOS)
+        self.create_subscription(
+            Float64, imu_raw_yaw_topic, self._cb_imu_yaw_raw, OBSERVER_QOS)
         self.create_subscription(Float32, yaw_error_topic, self._cb_yaw_error, OBSERVER_QOS)
         self.create_subscription(Float32, candidate_topic, self._cb_candidate, OBSERVER_QOS)
         self.create_subscription(Float32, desired_angle_topic, self._cb_desired, OBSERVER_QOS)
@@ -132,6 +140,7 @@ class BlackBox(Node):
         self.latest["gps_status"] = msg.status.status  # -1=NO_FIX, 0=FIX, 1=SBAS, 2=GBAS
 
     def _cb_imu_yaw(self, msg): self.latest["imu_yaw"] = msg.data
+    def _cb_imu_yaw_raw(self, msg): self.latest["imu_yaw_raw"] = msg.data
     def _cb_yaw_error(self, msg): self.latest["yaw_error"] = msg.data
     def _cb_candidate(self, msg): self.latest["candidate_angle"] = msg.data
     def _cb_desired(self, msg): self.latest["desired_angle"] = msg.data

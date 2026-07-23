@@ -1,0 +1,130 @@
+"""
+yaw_mux — /imu/yaw 의 **단독 발행자**.
+
+왜 있나 (CLAUDE.md 3-5):
+  작년엔 iahrs_driver 가 /imu/yaw 를 직접 냈는데, 그 값이 절대방위가 아니었다.
+    ② 부팅 시점 뱃머리를 0 으로 만들어 상대각이 됐고 (north_goal_angle 은 절대방위를 계산한다)
+    ③ GPS COG 가 유효하면 IMU 를 통째로 덮어썼다 (COG 는 뱃머리가 아니다. 정지 시 노이즈다)
+  → 드라이버는 보정 없는 상대 yaw 를 /imu/yaw_raw 로만 내고, 절대방위 합성은 여기서 한다.
+
+🚨 발행자는 하나뿐이어야 한다.
+  드라이버가 /imu/yaw 를 계속 내는 채로 이 노드를 띄우면 **한 토픽에 발행자 2개**가 되어
+  두 값이 번갈아 나온다. 에러는 안 난다 — 이 프로젝트가 반복해 당한 침묵 실패다.
+  (도킹 mode 9 vs 7, /gate_pass_count vs /gates_passed 와 같은 유형)
+  드라이버 쪽 yaw_topic 파라미터를 반드시 /imu/yaw_raw 로 두고 띄울 것. launch 에 배선돼 있다.
+
+동작:
+  - 고정주기 타이머로 발행한다 (3단계에서 확립한 패턴 — 입력 콜백에 매달지 않는다)
+  - 입력이 stale 하거나 소스가 미구현이면 **발행하지 않는다.**
+    틀린 방위 하나가 배를 정반대로 보낸다. 소비자는 이미 침묵을 처리한다:
+      ship_goal_angle  → /yaw_error 발행 중단 → ship_direction 이 감속/정지
+      north_goal_angle → geofence 침묵(빈 배열)
+  - /heading_status(String) 로 상태를 밖에 알린다 (healthcheck·blackbox 관찰용, 제어엔 안 쓴다)
+"""
+
+import time
+
+import rclpy
+from rclpy.node import Node
+from rclpy.qos import QoSProfile, ReliabilityPolicy
+from std_msgs.msg import Float64, String
+
+from ssf_heading.heading_logic import (
+    ALL_SOURCES, SRC_IMU_RELATIVE, ST_OK, HeadingMux,
+)
+
+
+class YawMux(Node):
+    def __init__(self):
+        super().__init__('yaw_mux')
+
+        # ---- 파라미터 (config/ssf_heading.yaml) ----
+        source = str(self.declare_parameter('heading_source', SRC_IMU_RELATIVE).value)
+        if source not in ALL_SOURCES:
+            # 조용히 기본값으로 떨어지지 않는다. 오타 하나가 엉뚱한 소스를 쓰게 두면 안 된다.
+            raise RuntimeError(
+                f"heading_source '{source}' 를 모른다. 가능한 값: {list(ALL_SOURCES)}")
+
+        self.period_sec = float(self.declare_parameter('period_sec', 0.02).value)   # 50Hz
+        self.stale_sec = float(self.declare_parameter('stale_sec', 0.5).value)
+
+        # ⚠️ 실측 필요 — 전부 벤치에서 확정한다. 지금 추측한 값이 아니다.
+        #    배를 정북으로 놓고 /imu/yaw 가 0 을 읽을 때까지 mount_offset_deg 를 맞춘다.
+        #    부호가 틀리면 배가 정반대로 간다 (CLAUDE.md 3-5).
+        invert_yaw = bool(self.declare_parameter('invert_yaw', False).value)
+        mount_offset_deg = float(self.declare_parameter('mount_offset_deg', 0.0).value)
+        declination_deg = float(
+            self.declare_parameter('magnetic_declination_deg', 0.0).value)
+
+        raw_topic = str(self.declare_parameter('raw_yaw_topic', '/imu/yaw_raw').value)
+        out_topic = str(self.declare_parameter('yaw_topic', '/imu/yaw').value)
+
+        self.mux = HeadingMux(
+            source,
+            invert_yaw=invert_yaw,
+            mount_offset_deg=mount_offset_deg,
+            declination_deg=declination_deg,
+            stale_sec=self.stale_sec,
+        )
+
+        qos = QoSProfile(depth=2, reliability=ReliabilityPolicy.RELIABLE)
+        self.create_subscription(Float64, raw_topic, self.raw_yaw_cb, qos)
+        self.yaw_pub = self.create_publisher(Float64, out_topic, qos)
+        self.status_pub = self.create_publisher(String, '/heading_status', qos)
+
+        self._last_status = None
+        self._last_status_pub_t = 0.0
+
+        self.timer = self.create_timer(self.period_sec, self.tick)
+
+        self.get_logger().info(
+            f"yaw_mux 시작: source={source}, {1.0 / self.period_sec:.0f}Hz, "
+            f"stale={self.stale_sec}s\n"
+            f"   {raw_topic} → {out_topic} "
+            f"(invert={invert_yaw}, mount={mount_offset_deg}°, decl={declination_deg}°)\n"
+            f"   ⚠️ iahrs_driver 는 {raw_topic} 로 내야 한다. {out_topic} 로 두면 발행자 2개다."
+        )
+
+    # ───────────────────────── 콜백 ─────────────────────────
+    def raw_yaw_cb(self, msg):
+        self.mux.update_imu(msg.data, time.monotonic())   # 단조시계 (CLAUDE.md 1-5)
+
+    # ───────────────────────── 주기 ─────────────────────────
+    def tick(self):
+        now = time.monotonic()
+        yaw, status = self.mux.heading(now)
+
+        if yaw is not None and status == ST_OK:
+            self.yaw_pub.publish(Float64(data=float(yaw)))
+        else:
+            # 발행하지 않는다 — 소비자가 stale 로 감지해 스스로 안전 동작한다.
+            self.get_logger().warn(
+                f"헤딩 없음({status}) → /imu/yaw 발행 중단. "
+                f"ship_goal_angle 정지, geofence 침묵.",
+                throttle_duration_sec=2.0)
+
+        self._publish_status(status, now)
+
+    def _publish_status(self, status, now):
+        """상태가 바뀌었거나 1초 지났을 때만 (50Hz 로 문자열을 뿌리지 않는다)."""
+        if status == self._last_status and (now - self._last_status_pub_t) < 1.0:
+            return
+        self._last_status = status
+        self._last_status_pub_t = now
+        self.status_pub.publish(String(data=f"{self.mux.source}:{status}"))
+
+
+def main(args=None):
+    rclpy.init(args=args)
+    node = YawMux()
+    try:
+        rclpy.spin(node)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()
+
+
+if __name__ == '__main__':
+    main()

@@ -1,0 +1,18 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>ssf_heading</name>
+  <version>0.1.0</version>
+  <description>SSF 헤딩 합성: yaw_mux 가 /imu/yaw 의 단독 발행자. IMU 상대 yaw + (A)듀얼GPS / (B)COG오프셋 / (C)지자기 를 갈아끼운다.</description>
+
+  <maintainer email="you@example.com">SSF</maintainer>
+  <license>MIT</license>
+
+  <buildtool_depend>ament_python</buildtool_depend>
+
+  <depend>rclpy</depend>
+  <depend>std_msgs</depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

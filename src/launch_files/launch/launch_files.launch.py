@@ -36,13 +36,37 @@ def generate_launch_description():
         ),
 
         # ============================================================
-        # 2) AHRS (IMU)
+        # 2) AHRS (IMU) — 보정 안 한 상대 yaw 를 /imu/yaw_raw 로만 낸다
         # ============================================================
+        # 🚨 CLAUDE.md 3-5. 작년엔 이 노드가 /imu/yaw 를 직접 냈는데 그 값이 절대방위가 아니었다
+        #    (부팅 0점화 + GPS COG override). 절대방위 합성은 아래 yaw_mux 가 전담한다.
+        #    파라미터는 드라이버 기본값과 같지만 **일부러 명시**한다 —
+        #    나중에 누가 yaml 로 되살려도 여기서 눈에 띄게 하려는 것이다.
         Node(
             package='iahrs_driver',
             executable='iahrs_driver',
             name='iahrs_driver',
-            output='screen'
+            output='screen',
+            parameters=[{
+                'yaw_topic': '/imu/yaw_raw',        # ← /imu/yaw 로 되돌리면 발행자 2개가 된다
+                'zero_yaw_on_boot': False,
+                'use_gps_heading_override': False,
+            }],
+        ),
+
+        # ============================================================
+        # 2b) yaw_mux — /imu/yaw 의 단독 발행자
+        # ============================================================
+        # 입력이 끊기거나 소스가 미구현이면 발행을 멈춘다(설계).
+        # → ship_goal_angle 이 /yaw_error 를 멈추고, north_goal_angle geofence 가 침묵한다.
+        Node(
+            package='ssf_heading',
+            executable='yaw_mux',
+            name='yaw_mux',
+            output='screen',
+            parameters=[os.path.join(
+                get_package_share_directory('ssf_heading'),
+                'config', 'ssf_heading.yaml')],
         ),
 
         # ============================================================

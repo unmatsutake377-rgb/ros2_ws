@@ -20,7 +20,7 @@ import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy, HistoryPolicy
 
-from std_msgs.msg import Int32, Float32, Float64, Bool
+from std_msgs.msg import Int32, Float32, Float64, Bool, String
 from sensor_msgs.msg import LaserScan, NavSatFix
 
 
@@ -42,6 +42,12 @@ class HealthCheck(Node):
 
         scan_topic = self.declare_parameter("scan_topic", "/scan").value
         imu_yaw_topic = self.declare_parameter("imu_yaw_topic", "/imu/yaw").value
+        # N1: /imu/yaw 경로에 yaw_mux 가 끼면서 'IMU 죽음' 과 'yaw_mux 죽음' 이 구분이 안 된다.
+        #     원시 yaw 를 함께 보면 어느 쪽인지 즉시 안다. 진단 전용 — /health_ok 판정엔 안 쓴다
+        #     (거짓 정지 금지 원칙).
+        imu_raw_topic = self.declare_parameter("imu_raw_yaw_topic", "/imu/yaw_raw").value
+        heading_status_topic = self.declare_parameter(
+            "heading_status_topic", "/heading_status").value
         gps_topic = self.declare_parameter("gps_topic", "/ublox_gps_node/fix").value
         wp_mode_topic = self.declare_parameter("wp_mode_topic", "/wp_mode").value
         candidate_topic = self.declare_parameter("candidate_topic", "/candidate_angle").value
@@ -67,12 +73,17 @@ class HealthCheck(Node):
             self.wp_map[int(m)] = str(n)
 
         # ---- 마지막 수신 시각(단조시계). None = 아직 한 번도 못 받음(비ARMED) ----
-        self._last = {"scan": None, "imu": None, "gps": None, "candidate": None}
+        self._last = {"scan": None, "imu": None, "gps": None, "candidate": None,
+                      "imu_raw": None}
         self._cur_wp_mode = None
+        self._heading_status = None
 
         # ---- 구독 (센서 생존 감시 + 현재 모드) ----
         self.create_subscription(LaserScan, scan_topic, self._cb_scan, OBSERVER_QOS)
         self.create_subscription(Float64, imu_yaw_topic, self._cb_imu, OBSERVER_QOS)
+        self.create_subscription(Float64, imu_raw_topic, self._cb_imu_raw, OBSERVER_QOS)
+        self.create_subscription(
+            String, heading_status_topic, self._cb_heading_status, OBSERVER_QOS)
         self.create_subscription(NavSatFix, gps_topic, self._cb_gps, OBSERVER_QOS)
         self.create_subscription(Int32, wp_mode_topic, self._cb_wp_mode, OBSERVER_QOS)
         # candidate 는 '담당 노드가 실제로 말하고 있나' 확인용
@@ -117,7 +128,9 @@ class HealthCheck(Node):
     def _cb_imu(self, _msg): self._last["imu"] = self._now()
     def _cb_gps(self, _msg): self._last["gps"] = self._now()
     def _cb_candidate(self, _msg): self._last["candidate"] = self._now()
+    def _cb_imu_raw(self, _msg): self._last["imu_raw"] = self._now()
     def _cb_wp_mode(self, msg): self._cur_wp_mode = int(msg.data)
+    def _cb_heading_status(self, msg): self._heading_status = str(msg.data)
 
     # ---- 상태 판정 ----
     def _sensor_state(self, key):
@@ -141,6 +154,23 @@ class HealthCheck(Node):
         icon = {"OK": "✅", "DEAD": "❌", "WAIT": "…"}
         lines.append("   센서: " + "  ".join(
             f"{name} {icon[st]}" for name, st in sensors.items()))
+
+        # --- 헤딩 경로 원인 분리 (진단만, /health_ok 엔 반영 안 함) ---
+        # /imu/yaw 는 이제 yaw_mux 가 낸다. 끊겼을 때 원인이 IMU 냐 mux 냐를 여기서 가른다.
+        imu_raw = self._sensor_state("imu_raw")
+        if imu != "OK":
+            hs = self._heading_status or "(상태 없음)"
+            if imu_raw == "OK":
+                lines.append(
+                    f"   ⚠️ /imu/yaw 끊김인데 원시 yaw 는 살아있다 → yaw_mux 문제. status={hs}")
+            elif imu_raw == "DEAD":
+                lines.append("   ⚠️ 원시 yaw 도 끊김 → IMU/드라이버 문제 (yaw_mux 아님)")
+            else:
+                lines.append(
+                    f"   ⚠️ 원시 yaw 를 한 번도 못 받음 → iahrs_driver 미기동 또는 "
+                    f"yaw_topic 설정 확인. status={hs}")
+        elif self._heading_status and not self._heading_status.endswith(":OK"):
+            lines.append(f"   ⚠️ heading_status={self._heading_status}")
 
         # --- 매핑표 런타임 검사 ---
         map_ok = True

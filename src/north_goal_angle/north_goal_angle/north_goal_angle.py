@@ -32,8 +32,11 @@
       계산량: 161방향 × 변 개수 @ 2Hz — 무시할 수준.
 
 프레임 규약: 광선 각도는 **상대 방위**(0=정면)다 — /candidate_angle 과 같은 규약.
-  ⚠️ 광선 방향이 /imu/yaw 에 통째로 의존한다 → 4단계의 'IMU 절대방위' 수정에 의존
-     (지금 yaw 는 부팅 0점화라 상대각 — CLAUDE.md 3-5).
+  ⚠️ 광선 방향이 /imu/yaw 에 통째로 의존한다 (CLAUDE.md 3-5).
+     N1 에서 /imu/yaw 는 ssf_heading/yaw_mux 단독 발행으로 바뀌었다 —
+     부팅 0점화와 GPS COG override 를 걷어낸 절대방위다.
+     🚨 단, mount_offset_deg / invert_yaw 를 **벤치에서 아직 안 쟀다.**
+        그 전까지 이 geofence 는 방향이 맞는다는 보장이 없다.
      IMU 가 묵으면 **빈 배열**을 낸다. 틀린 방향으로 '없는 벽'을 세우느니 안 내는 게 낫다.
 """
 
