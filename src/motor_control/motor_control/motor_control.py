@@ -3,7 +3,7 @@ import time
 
 import rclpy
 from rclpy.node import Node
-from std_msgs.msg import Float32, Float32MultiArray, Int32
+from std_msgs.msg import Bool, Float32, Float32MultiArray, Int32
 
 # /desired_angle · /candidate_angle 특수 신호 상수 (CLAUDE.md 3-9 상수표)
 # ★ 작년엔 이 값들이 6개 파일에 흩어져 각자 정의돼 어긋났다. 여기 값은 그 표를 따른다.
@@ -72,6 +72,14 @@ class MotorController(Node):
         self.sub_failsafe = self.create_subscription(
             Int32, "/failsafe_level", self.failsafe_callback, 10)
         self.pub_motor = self.create_publisher(Int32, "Motor_run", 2)
+
+        # N2: 후진 상태를 밖에 알린다 (신규 토픽 — 기존 계약 불변, CLAUDE.md 1-3).
+        #   ssf_heading/yaw_mux 가 COG 오프셋 표본을 모을지 말지 정하는 데 쓴다.
+        #   후진 중엔 COG 가 뱃머리와 180° 뒤집혀서, 후진만 지속되면 추정이
+        #   R=1.0 으로 **정확히 180° 틀린 값에 수렴**한다(검산됨). 신뢰도로는 못 막는다.
+        #   ⚠️ 판정을 여기서 하는 이유: PWM 규약(1500 기준, <전진 >후진)의 소유자가 이 노드다.
+        #      구독자가 Motor_run 을 디코드하게 두면 규약이 두 곳에 복제된다.
+        self.pub_reverse = self.create_publisher(Bool, "/motor_reverse", 2)
 
         # ---- 상태 ----
         self.desired_angle = None          # 부팅 중립: 첫 명령 전엔 None → 전진 안 함
@@ -145,6 +153,15 @@ class MotorController(Node):
         msg = Int32()
         msg.data = pwm_r * 10000 + pwm_l
         self.pub_motor.publish(msg)
+
+        # 후진 = 좌우 평균이 중립보다 뒤 (순 추력 기준).
+        #   분기가 아니라 '실제로 나가는 PWM' 으로 판정한다 → 워치독 중립·감속·SPIN 까지
+        #   자동으로 맞는다. 분기로 판정하면 나중에 분기를 늘릴 때 여기가 조용히 낡는다.
+        #   예: 1500/1500 중립=False, 1400/1400 전진=False, 1590/1590 후진=True,
+        #       1400/1600 제자리선회=False(순 추력 0 — 병진이 없으니 COG 도 없다)
+        rev = Bool()
+        rev.data = ((pwm_r + pwm_l) / 2.0) > 1500.0
+        self.pub_reverse.publish(rev)
 
     # ───────────────────────── 메인 루프 ─────────────────────
     def timer_callback(self):

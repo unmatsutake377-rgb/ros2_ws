@@ -159,16 +159,28 @@ class COGOffsetEstimator:
 
     신뢰도 R = |벡터합| / 표본수 (원형 결과길이, 0~1):
       · R≈1 표본이 한 방향으로 모임 = 믿을 만함
-      · R≈0 흩어짐 = 못 믿음. 후진(180° 뒤집힘)·게걸음 급변이 여기서 걸린다.
+      · R≈0 흩어짐 = 못 믿음. 게걸음 급변이 여기서 걸린다.
+
+    🚨 후진은 R 로 못 막는다 — 별도 게이트가 필요하다.
+      전·후진이 **섞이면** R 이 무너져 걸린다. 그런데 **후진만 일관되게** 지속되면
+      표본이 서로 일치한 채 전부 180° 틀려서 **R=1.0 으로 정반대 offset 에 수렴**한다.
+      (검산: 후진만 60표본 → R=1.000, offset 217°(참값 37°), 오차 정확히 180°)
+      전진이 충분히 쌓인 뒤의 짧은 후진은 R 이 임계 아래로 내려가 '침묵' 으로 실패하지만
+      (60s 전진 후 3s 후진 → R=0.868), **냉시작 직후 후진**은 그대로 뚫린다.
+      → motor_control 이 발행하는 후진 상태를 게이트로 받는다. 모르면 안 모은다.
     """
 
     def __init__(self, *, min_speed_mps=0.8, max_turn_rate_dps=8.0,
-                 min_samples=30.0, min_resultant=0.9, half_life_sec=60.0):
+                 min_samples=30.0, min_resultant=0.9, half_life_sec=60.0,
+                 require_reverse_gate=True):
         self.min_speed_mps = float(min_speed_mps)
         self.max_turn_rate_dps = float(max_turn_rate_dps)
         self.min_samples = float(min_samples)
         self.min_resultant = float(min_resultant)
         self.half_life_sec = float(half_life_sec)
+        # True 면 후진 상태를 모를 때(신호 없음/stale) 표본을 안 모은다 — 모르면 안 모은다.
+        # False 로 끄면 게이트 없이도 수렴하지만, 지속 후진 시 180° 틀린 값에 수렴할 수 있다.
+        self.require_reverse_gate = bool(require_reverse_gate)
 
         self._cx = 0.0          # 감쇠 벡터합
         self._cy = 0.0
@@ -177,10 +189,25 @@ class COGOffsetEstimator:
         self.last_reject = None  # 왜 버렸는지 (진단용)
 
     # ------------------------------------------------ 표본 투입
-    def update(self, imu_yaw_deg, cog_deg, speed_mps, turn_rate_dps, t):
-        """조건을 통과한 표본만 누적한다. 통과 여부를 bool 로 돌려준다."""
+    def update(self, imu_yaw_deg, cog_deg, speed_mps, turn_rate_dps, t,
+               reverse=False):
+        """
+        조건을 통과한 표본만 누적한다. 통과 여부를 bool 로 돌려준다.
+
+        reverse: True=후진 중, False=전진 중, None=모름(신호 없음/stale).
+                 None 은 require_reverse_gate 가 True 면 배제한다.
+        """
         if not (is_finite(imu_yaw_deg) and is_finite(cog_deg) and is_finite(speed_mps)):
             self.last_reject = "bad_input"
+            return False
+        if reverse is True:
+            # 후진 중엔 COG 가 뱃머리와 180° 뒤집힌다. R 로는 못 걸러진다(위 docstring 참고).
+            self.last_reject = "reverse"
+            return False
+        if reverse is None and self.require_reverse_gate:
+            # 모르면 안 모은다. 다만 조용히 멈추면 '왜 수렴을 안 하지' 로 시간을 버린다
+            # → 호출부가 last_reject 를 /heading_status 에 실어 보이게 한다.
+            self.last_reject = "no_reverse_gate"
             return False
         if speed_mps < self.min_speed_mps:
             # 느리면 COG 는 노이즈다. 작년 드라이버가 g_speed 를 안 봐서 당한 바로 그 지점.
@@ -273,6 +300,7 @@ class HeadingMux:
         # 추정을 돌려두면 /heading_status 로 '지금 전환하면 쓸 만한가' 를 미리 볼 수 있다.
         self.estimator = estimator if estimator is not None else COGOffsetEstimator()
         self._turn_rate_dps = 0.0       # imu yaw 미분 (선회 중 표본 배제용)
+        self._reverse = (None, None)    # (후진중?, 수신시각) — motor_control 이 준다
 
     # ------------------------------------------------ 입력
     def update_imu(self, raw_yaw_deg, t):
@@ -299,11 +327,23 @@ class HeadingMux:
             self.estimator.last_reject = "imu_stale"
             return
         self.estimator.update(imu_yaw, self._cog[0], self._speed,
-                              self._turn_rate_dps, t)
+                              self._turn_rate_dps, t,
+                              reverse=self.reverse_state(t))
 
     def update_dual_gps(self, heading_deg, t):
         if is_finite(heading_deg):
             self._dual = (wrap360(heading_deg), t)
+
+    def update_reverse(self, is_reverse, t):
+        """후진 상태 갱신. motor_control 이 PWM 규약의 소유자라 거기서 판정해 보낸다."""
+        self._reverse = (bool(is_reverse), t)
+
+    def reverse_state(self, t):
+        """True/False/None. None = 신호 없음 또는 stale → '모른다'."""
+        val, ts = self._reverse
+        if ts is None or (t - ts) > self.stale_sec:
+            return None
+        return val
 
     def update_mag(self, heading_deg, t):
         if is_finite(heading_deg):

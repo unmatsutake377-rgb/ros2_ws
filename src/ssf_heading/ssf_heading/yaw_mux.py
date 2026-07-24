@@ -27,7 +27,7 @@ import time
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy
-from std_msgs.msg import Float64, String
+from std_msgs.msg import Bool, Float64, String
 from geometry_msgs.msg import TwistWithCovarianceStamped
 
 from ssf_heading.heading_logic import (
@@ -86,6 +86,13 @@ class YawMux(Node):
                     self.declare_parameter('cog_min_resultant', 0.9).value),
                 half_life_sec=float(
                     self.declare_parameter('cog_half_life_sec', 60.0).value),
+                # 후진 상태를 모르면 표본을 안 모은다 (모르면 안 모은다).
+                # ⚠️ motor_control 이 안 떠 있으면 이 게이트가 영영 안 와서
+                #    cog_offset 이 **영구히 수렴하지 않는다.** 그 상태를 조용히 두지 않으려고
+                #    /heading_status 에 rej=no_reverse_gate 로 노출하고 주기 경고를 낸다.
+                #    헤딩만 벤치할 때는 이 파라미터를 false 로.
+                require_reverse_gate=bool(
+                    self.declare_parameter('cog_require_reverse_gate', True).value),
             ),
         )
 
@@ -106,6 +113,9 @@ class YawMux(Node):
         # /heading_status 로 '지금 전환하면 쓸 만한가' 를 물 위에서 미리 볼 수 있다.
         self.create_subscription(
             TwistWithCovarianceStamped, gps_vel_topic, self.gps_vel_cb, qos)
+        reverse_topic = str(self.declare_parameter(
+            'motor_reverse_topic', '/motor_reverse').value)
+        self.create_subscription(Bool, reverse_topic, self.reverse_cb, qos)
         self.yaw_pub = self.create_publisher(Float64, out_topic, qos)
         self.status_pub = self.create_publisher(String, '/heading_status', qos)
 
@@ -125,6 +135,9 @@ class YawMux(Node):
     # ───────────────────────── 콜백 ─────────────────────────
     def raw_yaw_cb(self, msg):
         self.mux.update_imu(msg.data, time.monotonic())   # 단조시계 (CLAUDE.md 1-5)
+
+    def reverse_cb(self, msg):
+        self.mux.update_reverse(bool(msg.data), time.monotonic())
 
     def gps_vel_cb(self, msg):
         v = msg.twist.twist.linear
@@ -146,6 +159,16 @@ class YawMux(Node):
                 f"헤딩 없음({status}) → /imu/yaw 발행 중단. "
                 f"ship_goal_angle 정지, geofence 침묵.",
                 throttle_duration_sec=2.0)
+
+        # 게이트가 안 와서 추정이 멈춰 있으면 조용히 두지 않는다.
+        # (포화 함정과 같은 유형 — '왜 수렴을 안 하지' 로 시간을 버리는 것을 막는다)
+        if (self.mux.estimator.require_reverse_gate
+                and self.mux.reverse_state(now) is None):
+            self.get_logger().warn(
+                "/motor_reverse 없음(또는 stale) → COG 오프셋 표본 수집 정지. "
+                "motor_control 이 떠 있나? 헤딩만 벤치 중이면 "
+                "cog_require_reverse_gate:=false.",
+                throttle_duration_sec=10.0)
 
         self._publish_status(status, now)
 

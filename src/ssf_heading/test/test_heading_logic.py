@@ -263,7 +263,7 @@ def _feed(est, true_off, n=40, t0=0.0, dt=0.1, imu0=10.0,
         imu = wrap360(imu0 + i * 1.3)          # 배가 서서히 방향을 바꾼다
         err = 0.0 if noise is None else noise[i % len(noise)]
         cog = wrap360(imu + true_off + crab + err)
-        est.update(imu, cog, speed, turn, t)
+        est.update(imu, cog, speed, turn, t, reverse=False)
         t += dt
     return t
 
@@ -360,6 +360,101 @@ def test_estimator_decay_follows_change():
         f"새 오프셋을 못 따라감: {est.offset_deg}"
 
 
+# ================================================================ N2: 후진 게이트
+def test_reverse_only_would_converge_wrong_without_gate():
+    """
+    게이트가 없으면 어떤 일이 벌어지는지 못 박아 둔다.
+    후진만 지속되면 표본이 서로 '일치' 해서 R=1.0 인데 값은 정확히 180° 틀린다.
+    신뢰도로는 절대 못 막는다 — 이래서 별도 게이트가 필요하다.
+    """
+    est = COGOffsetEstimator(min_samples=30, half_life_sec=0.0,
+                             require_reverse_gate=False)
+    _feed(est, 37.0 + 180.0, n=60)          # 후진: COG = 뱃머리 + 180
+    assert est.converged, "게이트 없으면 자신만만하게 수렴해버린다"
+    assert est.resultant > 0.99, est.resultant
+    assert abs(ang_diff(est.offset_deg, 37.0)) > 179.0, \
+        f"정확히 180° 틀려야 한다: {est.offset_deg}"
+
+
+def test_reverse_gate_blocks_samples():
+    """지속 후진 중에는 표본수가 늘지 않아야 한다."""
+    est = COGOffsetEstimator(min_samples=30, half_life_sec=0.0)
+    t = 0.0
+    for i in range(100):
+        est.update(wrap360(10.0 + i * 0.3), wrap360(10.0 + i * 0.3 + 217.0),
+                   2.0, 3.0, t, reverse=True)
+        t += 0.2
+    assert est.samples == 0.0, f"후진 표본이 새어들어갔다: n={est.samples}"
+    assert est.last_reject == "reverse"
+    assert not est.converged
+    assert est.offset_deg is None
+
+
+def test_reverse_gate_unknown_blocks_by_default():
+    """모르면 안 모은다. None(신호 없음/stale) 은 배제."""
+    est = COGOffsetEstimator(min_samples=30, half_life_sec=0.0)
+    assert not est.update(10.0, 47.0, 2.0, 0.0, 0.0, reverse=None)
+    assert est.last_reject == "no_reverse_gate"
+    assert est.samples == 0.0
+
+
+def test_reverse_gate_can_be_disabled():
+    """헤딩만 벤치할 때(motor_control 없이) 끌 수 있어야 한다."""
+    est = COGOffsetEstimator(min_samples=30, half_life_sec=0.0,
+                             require_reverse_gate=False)
+    assert est.update(10.0, 47.0, 2.0, 0.0, 0.0, reverse=None)
+    assert est.samples == 1.0
+
+
+def test_reverse_gate_resumes_after_reverse_ends():
+    """후진이 끝나면 다시 모은다. 오염 없이 정상 수렴해야 한다."""
+    est = COGOffsetEstimator(min_samples=30, half_life_sec=0.0)
+    t = 0.0
+    for i in range(50):                     # 후진 구간 — 전부 배제
+        est.update(wrap360(10.0 + i * 0.3), wrap360(10.0 + i * 0.3 + 217.0),
+                   2.0, 3.0, t, reverse=True)
+        t += 0.2
+    assert est.samples == 0.0
+    _feed(est, 37.0, n=40, t0=t, dt=0.2)    # 전진 재개
+    assert est.converged
+    assert abs(ang_diff(est.offset_deg, 37.0)) < 0.5, est.offset_deg
+
+
+def test_mux_reverse_state_stale_becomes_unknown():
+    """게이트가 끊기면 True/False 가 아니라 '모름' 이 되어야 한다."""
+    mux = HeadingMux(SRC_COG_OFFSET, stale_sec=0.5)
+    assert mux.reverse_state(0.0) is None, "신호 없으면 모름"
+    mux.update_reverse(False, 10.0)
+    assert mux.reverse_state(10.2) is False
+    assert mux.reverse_state(10.5) is False, "경계는 초과"
+    assert mux.reverse_state(11.0) is None, "stale 이면 모름"
+
+
+def test_mux_blocks_collection_without_reverse_gate():
+    """믹서 통합: 게이트가 없으면 COG 가 아무리 와도 표본이 안 쌓인다."""
+    mux = HeadingMux(SRC_COG_OFFSET, stale_sec=10.0,
+                     estimator=COGOffsetEstimator(min_samples=30, half_life_sec=0.0))
+    t = _run_mux(mux, n=60, with_gate=False)   # motor_control 이 안 뜬 상황
+    assert mux.estimator.samples == 0.0
+    assert mux.estimator.last_reject == "no_reverse_gate"
+    assert mux.heading(t)[1] == ST_NOT_CONVERGED
+
+
+def test_mux_collects_when_gate_says_forward():
+    mux = HeadingMux(SRC_COG_OFFSET, stale_sec=10.0,
+                     estimator=COGOffsetEstimator(min_samples=30, half_life_sec=0.0))
+    t = 0.0
+    for i in range(60):
+        imu = wrap360(10.0 + i * 0.3)
+        mux.update_reverse(False, t)
+        mux.update_imu(imu, t)
+        mux.update_cog(wrap360(imu + 37.0), 2.0, t)
+        t += 0.1
+    yaw, st = mux.heading(t)
+    assert st == ST_OK, st
+    assert abs(ang_diff(mux.estimator.offset_deg, 37.0)) < 0.5
+
+
 def test_saturation_formula():
     """감쇠가 있으면 표본수가 포화한다. 공식을 못 박아 둔다."""
     assert saturation_samples(0.1, 0.0) == float("inf"), "감쇠 없으면 무한"
@@ -395,15 +490,19 @@ def test_estimator_decay_zero_never_forgets():
 
 # ================================================================ N2: 믹서 통합
 def _run_mux(mux, n=40, t0=0.0, dt=0.1, imu0=10.0, true_off=37.0, speed=2.0,
-             yaw_step=0.3):
+             yaw_step=0.3, with_gate=True):
     """
     yaw_step=0.3°/0.1s = 3°/s. 직진 중의 자연스러운 흔들림이다.
     ⚠️ 이걸 1.3 으로 두면 13°/s 라 max_turn_rate_dps(8) 에 걸려 전 표본이 배제된다.
        (실제로 이 테스트를 짜다 걸렸다 — 게이팅이 제대로 도는 증거)
+
+    with_gate=False 면 /motor_reverse 를 안 준다 = motor_control 이 안 뜬 상황.
     """
     t = t0
     for i in range(n):
         imu = wrap360(imu0 + i * yaw_step)
+        if with_gate:
+            mux.update_reverse(False, t)
         mux.update_imu(imu, t)
         mux.update_cog(wrap360(imu + true_off), speed, t)
         t += dt
