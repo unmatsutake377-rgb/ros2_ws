@@ -167,10 +167,29 @@ depth 구독 / `depth_callback` / `latest_depth` 가드 / 거리 계산 / 유효
   자식이 `ros2 run` 으로 뜨므로 launch 파라미터가 안 닿는다. 안 넘기면 **대회 실행 경로에서
   debug_view 를 켤 방법이 아예 없다.** (이 subprocess 구조 자체는 3-4 의 제거 대상 — 그때 같이 사라진다.)
 
-**⏸ `/scan` 구독 QoS 는 아직 안 바꿨다 (판단 필요).**
-`ship_direction`, `ship_dock`, `ship_gate`, `ship_turn`, `ship_back` **5곳 전부 `depth=10` 기본값**이다.
-이미지와 똑같은 묵은-큐 문제가 있다(LiDAR 10Hz → depth 10 = **1초치**). 다만 `ship_direction` 은
-페일세이프 경로라 QoS 변경이 스테일 판정에 어떻게 얽히는지 **측정 없이 바꾸면 안 된다.**
+**[QoS-B 완료 2026-07-23] `/scan` 구독 5곳도 BEST_EFFORT + depth=1.**
+`ship_direction`, `ship_dock`, `ship_gate`, `ship_turn`, `ship_back` 전부 `depth=10` 기본값이었다.
+LiDAR 10Hz × depth 10 = **1초치**가 쌓인다.
+- 처음엔 "`ship_direction` 은 페일세이프 경로라 측정 없이 못 바꾼다" 고 미뤘는데, **그 판단이 과했다.**
+  스테일 판정이 '콜백 도착 시각' 기준이라 `depth=10` 에서는 정체 후 묵은 스캔 burst 가
+  워치독을 먹인다 — 늦은 데이터인데 신선하다고 착각시킨다.
+  **`depth=1` 은 도착=신선을 일치시켜 페일세이프를 더 정직하게 만든다.** 측정이 아니라 논리로 나는 결론이었다.
+- BEST_EFFORT 드롭이 생겨도 **'콜백 부재 → 스테일 → 페일세이프 발동'** 으로 안전하게 실패한다.
+- 덤: 구독자 BEST_EFFORT 는 발행자가 무엇이든 호환된다 → **드라이버를 갈아도 `/scan` 0건 사고가 안 난다.**
+
+**현행 LiDAR 드라이버 발행 QoS (소스에서 확정, 실측 불필요):**
+```cpp
+// src/rplidar_ros/src/rplidar_node.cpp:440
+scan_pub = create_publisher<LaserScan>(topic_name, rclcpp::QoS(rclcpp::KeepLast(10)));
+```
+`rclcpp::QoS(KeepLast(10))` = **RELIABLE**, depth 10. 기존 구독자(RELIABLE)와 호환됐다
+→ **"작년 `/scan` 이 침묵했다" 는 설은 성립하지 않는다.** (독립 근거: 작년 `ship_direction` 은
+`scan_cb` 에서만 `/desired_angle` 을 발행했다 — `/scan` 이 0건이었으면 배가 아예 안 움직였다.)
+⚠️ `rplidar_client.cpp:35` 의 `SensorDataQoS()` 는 **예제 클라이언트**지 드라이버가 아니다. 헷갈리기 쉽다.
+
+**blackbox 에 `/scan` 도착 간격 로깅 추가** (`scan_dt`, `scan_dt_min`, `scan_dt_max`, `scan_count`).
+10Hz 로 순간값만 찍으면 LiDAR 도 10Hz 라 **앨리어싱으로 병리를 놓친다** — 그래서 행 구간 min/max 를 남긴다.
+묵은 큐 서명 = 한 행 안에서 `max` 크고 `min` 이 0 근접.
 
 **[확정] 🚨 화각이 매직넘버에 박혀 있다 — 카메라 교체일의 시한폭탄.**
 `k = (1/80)*0.09/0.5 = 0.00225` → **등가 `fx ≈ 444.4px`** → 640px 기준 **HFOV ≈ 71.5°**.
