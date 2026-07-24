@@ -216,10 +216,23 @@ class HealthCheck(Node):
                              f" (실격 위험). ship_direction 이 구독해야 한다.")
                 geofence_ok = False
 
+        # --- 🚨 벤치 편의 스위치가 대회 설정에 남았나 (CLAUDE.md 7-2) ---
+        # cog_require_reverse_gate=false 면 후진 표본이 섞여 헤딩이 정확히 180° 틀린 값에
+        # 수렴할 수 있다(R=1.0 이라 신뢰도로 못 걸러진다). 벤치용 스위치가 실전에 남는 건
+        # 이런 편의 스위치의 고전적 말로다 — 사람 기억이 아니라 여기서 기계적으로 잡는다.
+        # ※ heading_source 가 cog_offset 일 때만 실패로 친다. imu_relative 로 도는 동안엔
+        #   이 게이트가 무의미해서 꺼져 있어도 무해하다 → 거짓 정지를 만들지 않는다.
+        gate_ok = True
+        hs = self._heading_status
+        if hs and hs.startswith("cog_offset:") and "gate=off" in hs:
+            lines.append("   ❌ cog_require_reverse_gate=false 인데 heading_source=cog_offset "
+                         "— 벤치 플래그가 대회 설정에 남았다. 후진 시 헤딩 180° 오수렴 위험")
+            gate_ok = False
+
         # --- /health_ok 판정 ---
         # 센서는 WAIT(부팅 중)을 죽음으로 치지 않는다(오탐 방지). DEAD 만 실패.
         sensors_ok = all(st != "DEAD" for st in sensors.values())
-        health_ok = sensors_ok and map_ok and cur_owner_ok and geofence_ok
+        health_ok = sensors_ok and map_ok and cur_owner_ok and geofence_ok and gate_ok
 
         self.pub_health.publish(Bool(data=bool(health_ok)))
 

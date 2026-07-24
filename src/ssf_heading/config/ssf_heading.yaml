@@ -61,6 +61,14 @@ yaw_mux:
     #    ⚠️ true 인데 motor_control 이 안 떠 있으면 영구히 수렴하지 않는다.
     #       그 상태는 /heading_status 의 rej=no_reverse_gate 와 경고 로그로 보인다.
     #       헤딩만 벤치할 때는 false 로.
+    #
+    #    🚨🚨 대회 설정에서는 **반드시 true** 다. 벤치 편의 스위치가 실전에 남는 사고는
+    #         이런 스위치의 고전적 말로다. 사람 기억에 맡기지 않는다:
+    #           · yaw_mux 가 부팅 때 ERROR 로그
+    #           · /heading_status 에 gate=off 표시
+    #           · healthcheck 가 heading_source=cog_offset + gate=off 를 보면 /health_ok=false
+    #         (imu_relative 로 도는 동안엔 이 게이트가 무의미해서 꺼져 있어도 무해 → 거짓 정지 없음)
+    #         출발 전 체크리스트: CLAUDE.md 7-2
     cog_require_reverse_gate: true
 
     # 🚨 포화 함정: 감쇠가 있으면 표본수 상한이 n_max = 1/(1-0.5^(dt/half_life)) 다.

@@ -107,6 +107,16 @@ class YawMux(Node):
                 f"의 포화상한을 넘는다 → cog_offset 은 영원히 수렴하지 않는다. "
                 f"cog_min_samples 를 줄이거나 cog_half_life_sec 를 늘려라.")
 
+        # 🚨 벤치 편의 스위치가 대회 설정에 남는 사고 방지 (CLAUDE.md 7-2).
+        #    끄면 후진 표본이 섞여 헤딩이 정확히 180° 틀린 값에 수렴할 수 있다.
+        #    부팅 때 시끄럽게 알리고, /heading_status 에 gate=off 를 실어
+        #    healthcheck 가 출발 전에 /health_ok=false 로 잡게 한다.
+        if not self.mux.estimator.require_reverse_gate:
+            self.get_logger().error(
+                "🚨 cog_require_reverse_gate=false — 후진 게이트가 꺼져 있다. "
+                "벤치 전용이다. 대회 설정이면 지금 true 로 되돌려라. "
+                "(후진 중 표본이 섞이면 헤딩이 180° 틀린 값에 수렴할 수 있다)")
+
         qos = QoSProfile(depth=2, reliability=ReliabilityPolicy.RELIABLE)
         self.create_subscription(Float64, raw_topic, self.raw_yaw_cb, qos)
         # COG 표본. 소스가 cog_offset 이 아니어도 구독한다 — 추정을 돌려두면
@@ -181,11 +191,13 @@ class YawMux(Node):
         est = self.mux.estimator
         # 추정 진행도를 항상 같이 싣는다 — cog_offset 이 아닐 때도 '전환하면 쓸 만한가' 가 보인다.
         off = est.offset_deg
+        # gate=off 는 안전 스위치가 꺼졌을 때만 붙인다 — healthcheck 가 이 문자열을 본다.
+        gate = "" if est.require_reverse_gate else " gate=off"
         self.status_pub.publish(String(data=(
             f"{self.mux.source}:{status}"
             f" n={est.samples:.0f} R={est.resultant:.2f}"
             f" off={'--' if off is None else f'{off:.1f}'}"
-            f" rej={est.last_reject or '-'}")))
+            f" rej={est.last_reject or '-'}{gate}")))
 
 
 def main(args=None):
