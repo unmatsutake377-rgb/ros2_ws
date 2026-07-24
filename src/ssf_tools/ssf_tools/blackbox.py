@@ -11,6 +11,7 @@ blackbox — 비행기 블랙박스처럼, 배가 도는 동안 모든 핵심 �
   t_wall(ROS시계), t_mono(단조시계 경과s), wp_mode, gps_lat, gps_lon, gps_status,
   imu_yaw, imu_yaw_raw, yaw_error, candidate_angle, desired_angle, pwm_r, pwm_l,
   obstacle_min_dist, failsafe_level, gate_pass_count,
+  scan_dt, scan_dt_min, scan_dt_max, scan_count   ← /scan 도착 간격 (QoS-B 전후 비교용)
   gyro_z, accel_x, accel_y, gps_vel_x, gps_vel_y   ← 동역학 역산(system ID)용
 
 ★ 동역학 역산용 신호 (배 물성·추력을 CSV 에서 되찾기 위해):
@@ -18,6 +19,14 @@ blackbox — 비행기 블랙박스처럼, 배가 도는 동안 모든 핵심 �
   · gps_vel_x/y(GPS 속도)                    ← ~/fix_velocity. 미분 없이 속도.
   이게 없으면 가속도를 GPS 위치의 2차 미분으로 뽑아야 해 노이즈가 심하다. 있으면 미분 단계가 사라진다.
   ⚠️ system-ID 주행 때는 rate_hz 를 20~50 으로 올려라(동역학이 더 잘 잡힌다). 기본은 10.
+
+★ /scan 도착 간격 (QoS-B 근거 측정):
+  구독 QoS 를 depth=10 RELIABLE → BEST_EFFORT depth=1 로 바꾼 전후를 비교하려고 넣었다.
+  10Hz 로 '순간 간격' 만 찍으면 정확히 그 병리를 놓친다 — LiDAR 도 10Hz 라 앨리어싱이 난다.
+  그래서 **행 사이 구간의 min/max** 를 함께 남긴다:
+    · 묵은 큐(depth=10) 병리 =  한 행 안에서 scan_dt_max 가 크고(정체) scan_dt_min 이 0 에 가깝다(burst).
+    · 정상(depth=1)         =  min·max 가 둘 다 0.1s 근처로 붙는다.
+  scan_count(누적 콜백 수)로 행 간 실제 평균 주기도 샘플링과 무관하게 계산된다.
 """
 
 import csv
@@ -31,7 +40,7 @@ from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy, HistoryPolicy
 
 from std_msgs.msg import Int32, Float32, Float64, Float32MultiArray
-from sensor_msgs.msg import NavSatFix, Imu
+from sensor_msgs.msg import LaserScan, NavSatFix, Imu
 from geometry_msgs.msg import TwistWithCovarianceStamped
 
 
@@ -51,6 +60,11 @@ CSV_HEADER = [
     "imu_yaw", "imu_yaw_raw", "yaw_error", "candidate_angle", "desired_angle",
     "pwm_r", "pwm_l", "obstacle_min_dist",
     "failsafe_level", "gate_pass_count",
+    # ---- /scan 도착 간격 (QoS-B 전후 비교) ----
+    "scan_dt",        # 직전 콜백 대비 간격 [s]
+    "scan_dt_min",    # 이 행 구간의 최소 간격 (burst 탐지)
+    "scan_dt_max",    # 이 행 구간의 최대 간격 (정체 탐지)
+    "scan_count",     # 누적 콜백 수 (행 간 평균 주기 산출용)
     # ---- 동역학 역산(system ID)용 ----
     "gyro_z", "accel_x", "accel_y",   # /imu/data: 각속도 z, 선가속도 x/y
     "gps_vel_x", "gps_vel_y",         # ~/fix_velocity: 속도 성분 (프레임은 드라이버 규약 — ⚠️ 확인)
@@ -66,6 +80,7 @@ class BlackBox(Node):
         log_dir = str(self.declare_parameter("log_dir", "").value)
         self.flush_every_n = int(self.declare_parameter("flush_every_n", 10).value)
 
+        scan_topic = self.declare_parameter("scan_topic", "/scan").value
         wp_mode_topic = self.declare_parameter("wp_mode_topic", "/wp_mode").value
         gps_topic = self.declare_parameter("gps_topic", "/ublox_gps_node/fix").value
         imu_yaw_topic = self.declare_parameter("imu_yaw_topic", "/imu/yaw").value
@@ -90,6 +105,12 @@ class BlackBox(Node):
         # ---- 최신값 저장소 (콜백이 갱신, 타이머가 읽어 기록) ----
         self.latest = {k: None for k in CSV_HEADER}
 
+        # /scan 도착 간격 상태. 관찰 전용 — 제어에 쓰지 않는다.
+        self._scan_prev_t = None      # 직전 콜백 시각(단조)
+        self._scan_count = 0
+        self._scan_dt_min = None      # 행 구간 누적. _on_timer 가 행을 쓴 뒤 리셋한다
+        self._scan_dt_max = None
+
         # ---- 로그 파일 준비 ----
         # 기본 경로를 ~/ssf_logs 로 (역산 워크플로우가 여기서 CSV 를 집는다). log_dir 로 바꿀 수 있음.
         if not log_dir:
@@ -108,6 +129,7 @@ class BlackBox(Node):
         # ---- 구독 (전부 관찰 전용) ----
         self.create_subscription(Int32, wp_mode_topic, self._cb_wp_mode, OBSERVER_QOS)
         self.create_subscription(NavSatFix, gps_topic, self._cb_gps, OBSERVER_QOS)
+        self.create_subscription(LaserScan, scan_topic, self._cb_scan, OBSERVER_QOS)
         self.create_subscription(Float64, imu_yaw_topic, self._cb_imu_yaw, OBSERVER_QOS)
         self.create_subscription(
             Float64, imu_raw_yaw_topic, self._cb_imu_yaw_raw, OBSERVER_QOS)
@@ -138,6 +160,17 @@ class BlackBox(Node):
         self.latest["gps_lat"] = msg.latitude
         self.latest["gps_lon"] = msg.longitude
         self.latest["gps_status"] = msg.status.status  # -1=NO_FIX, 0=FIX, 1=SBAS, 2=GBAS
+
+    def _cb_scan(self, _msg):
+        """도착 간격만 잰다. 스캔 내용은 안 본다(obstacle_min_dist 는 ship_direction 이 준다)."""
+        t = time.monotonic()
+        self._scan_count += 1
+        if self._scan_prev_t is not None:
+            dt = t - self._scan_prev_t
+            self.latest["scan_dt"] = f"{dt:.4f}"
+            self._scan_dt_min = dt if self._scan_dt_min is None else min(self._scan_dt_min, dt)
+            self._scan_dt_max = dt if self._scan_dt_max is None else max(self._scan_dt_max, dt)
+        self._scan_prev_t = t
 
     def _cb_imu_yaw(self, msg): self.latest["imu_yaw"] = msg.data
     def _cb_imu_yaw_raw(self, msg): self.latest["imu_yaw_raw"] = msg.data
@@ -182,11 +215,22 @@ class BlackBox(Node):
         self.latest["t_wall"] = f"{t_wall:.3f}"
         self.latest["t_mono"] = f"{t_mono:.3f}"
 
+        # /scan 구간 통계를 행에 싣는다. 스캔이 한 건도 안 왔으면 빈 칸(= 끊김의 증거).
+        self.latest["scan_count"] = self._scan_count
+        self.latest["scan_dt_min"] = (
+            "" if self._scan_dt_min is None else f"{self._scan_dt_min:.4f}")
+        self.latest["scan_dt_max"] = (
+            "" if self._scan_dt_max is None else f"{self._scan_dt_max:.4f}")
+
         row = []
         for k in CSV_HEADER:
             v = self.latest.get(k)
             row.append("" if v is None else v)
         self._writer.writerow(row)
+
+        # 구간 통계 리셋 — 다음 행은 다음 구간만 대표해야 한다
+        self._scan_dt_min = None
+        self._scan_dt_max = None
 
         self._rows += 1
         if self._rows % max(1, self.flush_every_n) == 0:

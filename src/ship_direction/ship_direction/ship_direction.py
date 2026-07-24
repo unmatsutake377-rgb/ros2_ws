@@ -7,6 +7,7 @@ from rclpy.node import Node
 from rclpy.executors import MultiThreadedExecutor
 from std_msgs.msg import Int32, Float32, Float32MultiArray
 from sensor_msgs.msg import LaserScan
+from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 
 # 판정 로직은 ROS 비의존 모듈에 있다 (ROS 없이 단위 테스트 가능).
 # 재수출: from ship_direction.ship_direction import SensorWatch 로도 접근 가능.
@@ -21,6 +22,22 @@ STOP_HOLD = 50000.0          # 정지/대기
 REVERSE_ANGLE = 260.0        # 회피 경로 없음 → 후진
 LIDAR_FORWARD_DEG = 80.0     # LiDAR 프레임에서 정면 (상대방위 0 에 대응)
 
+
+
+# QoS-B: /scan 표준 sensor-data QoS. 작년은 depth=10 기본 RELIABLE 이었다.
+#   [1] 묵은 큐: LiDAR 10Hz × depth 10 = **1초치**가 쌓인다. 콜백이 한 번 밀리면
+#       그 뒤로 묵은 스캔이 burst 로 몰려와 '1초 전 장면' 으로 조향한다.
+#   [2] 워치독 왜곡: 스테일 판정이 '콜백 도착 시각' 기준이라, burst 가 워치독을 먹여
+#       실제로는 늦은 데이터인데 신선하다고 착각시킨다. depth=1 은 도착=신선을 일치시킨다.
+#   [3] 호환성: 구독자 BEST_EFFORT 는 발행자가 RELIABLE 이든 BEST_EFFORT 든 **전부 호환**된다
+#       (그 반대가 비호환). 현행 rplidar_ros 2.1.4 는 rplidar_node.cpp:440 에서
+#       rclcpp::QoS(KeepLast(10)) = RELIABLE 로 발행한다 — 소스 확인함. 드라이버를 갈아도 안 깨진다.
+#   드롭이 생겨도 '콜백 부재 → 스테일 → 페일세이프 발동' 으로 안전한 방향으로 실패한다.
+SCAN_QOS = QoSProfile(
+    reliability=ReliabilityPolicy.BEST_EFFORT,
+    history=HistoryPolicy.KEEP_LAST,
+    depth=1,
+)
 
 class ShipDirection(Node):
     """LiDAR 회피 + 페일세이프. /desired_angle · /obstacle_distance_array · /failsafe_level 발행.
@@ -188,7 +205,7 @@ class ShipDirection(Node):
         # ----------------------
         #      Subscriptions
         # ----------------------
-        self.create_subscription(LaserScan, '/scan', self.scan_callback, 10)
+        self.create_subscription(LaserScan, '/scan', self.scan_callback, SCAN_QOS)
         self.create_subscription(Float32, '/yaw_error', self.yaw_error_callback, 10)
         self.create_subscription(Float32, '/candidate_angle', self.candidate_callback, 10)
         self.create_subscription(Int32, '/wp_mode', self.wp_mode_cb, 10)

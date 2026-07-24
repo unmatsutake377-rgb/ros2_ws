@@ -30,7 +30,7 @@ import threading
 import rclpy
 from rclpy.node import Node
 from rclpy.executors import MultiThreadedExecutor
-from rclpy.qos import QoSProfile, ReliabilityPolicy
+from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 from std_msgs.msg import Float32, Int32, String, Float64
 from sensor_msgs.msg import LaserScan
 
@@ -43,6 +43,22 @@ SPIN_RIGHT = 5000.0          # 우선회 (CLAUDE.md 3-9)
 SPIN_LEFT = 6000.0           # 좌선회
 LIDAR_FORWARD_DEG = 80.0     # LiDAR 프레임 정면
 
+
+
+# QoS-B: /scan 표준 sensor-data QoS. 작년은 depth=10 기본 RELIABLE 이었다.
+#   [1] 묵은 큐: LiDAR 10Hz × depth 10 = **1초치**가 쌓인다. 콜백이 한 번 밀리면
+#       그 뒤로 묵은 스캔이 burst 로 몰려와 '1초 전 장면' 으로 조향한다.
+#   [2] 워치독 왜곡: 스테일 판정이 '콜백 도착 시각' 기준이라, burst 가 워치독을 먹여
+#       실제로는 늦은 데이터인데 신선하다고 착각시킨다. depth=1 은 도착=신선을 일치시킨다.
+#   [3] 호환성: 구독자 BEST_EFFORT 는 발행자가 RELIABLE 이든 BEST_EFFORT 든 **전부 호환**된다
+#       (그 반대가 비호환). 현행 rplidar_ros 2.1.4 는 rplidar_node.cpp:440 에서
+#       rclcpp::QoS(KeepLast(10)) = RELIABLE 로 발행한다 — 소스 확인함. 드라이버를 갈아도 안 깨진다.
+#   드롭이 생겨도 '콜백 부재 → 스테일 → 페일세이프 발동' 으로 안전한 방향으로 실패한다.
+SCAN_QOS = QoSProfile(
+    reliability=ReliabilityPolicy.BEST_EFFORT,
+    history=HistoryPolicy.KEEP_LAST,
+    depth=1,
+)
 
 class ShipTurn(Node):
     def __init__(self):
@@ -77,7 +93,7 @@ class ShipTurn(Node):
         self.create_subscription(Int32, '/wp_mode', self.wp_cb, qos)
         self.create_subscription(Float32, '/image_angle', self.angle_cb, qos)
         self.create_subscription(String, '/buoy_color', self.color_cb, qos)   # [2] 신규 계약
-        self.create_subscription(LaserScan, '/scan', self.scan_cb, 10)
+        self.create_subscription(LaserScan, '/scan', self.scan_cb, SCAN_QOS)
         self.create_subscription(Float64, '/imu/yaw', self.yaw_cb, qos)       # orbit 진행각용
 
         # ---- 상태 ----
