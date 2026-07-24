@@ -5,20 +5,23 @@ from std_msgs.msg import Float32
 from cv_bridge import CvBridge
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 
+from color_shape_detector.vision_geom import (
+    DEFAULT_HFOV_DEG, angle_from_pixel,
+)
+
 import cv2
 import numpy as np
-import math
 import time
 from rclpy.executors import MultiThreadedExecutor
 
 IMAGE_ANGLE_INVALID = 10000.0
 
-# ⚠️ 임시 상수 — V3(T2-4)에서 hfov_deg 파라미터 + msg.width 기반으로 재작성한다.
-# 기존 코드는 `real_x=(rel_x/80.0)*0.09*(distance/0.5); angle=atan2(real_x, distance)` 였는데,
-# distance 가 분자·분모에서 **약분**되어 실질 `angle = atan(rel_x * K)` 와 완전히 같다.
-#   K = (1/80)*0.09/0.5 = 0.00225  →  등가 fx = 1/K ≈ 444.4px  →  640px 기준 HFOV ≈ 71.5°
-# 즉 RealSense 화각이 매직넘버에 박혀 있었다. 여기서는 **동작을 바꾸지 않고** depth 의존만 끊는다.
-PIXEL_TO_ANGLE_K = (1.0 / 80.0) * 0.09 / 0.5     # = 0.00225
+# V3(T2-4): 픽셀→각도 환산을 명시형으로 재작성했다.
+#   작년: (rel_x/80.0)*0.09*(distance/0.5) + atan2  ← distance 가 약분되어 실질 fx≈444px **고정**
+#   지금: fx = (width/2)/tan(hfov/2),  angle = -degrees(atan((vX-cx)/fx))
+#   width 는 파라미터가 아니라 **매 프레임 실제 이미지에서** 읽는다(해상도 변경 자동 흡수).
+#   ※ 작년 식은 fx 가 고정이라 640x480 에서만 맞았다 — 해상도를 바꾸면 조용히 각도가 틀어졌다.
+#   순수 함수 + 회귀 테스트: vision_geom.py / test_vision_geom.py
 
 # V4(T2-6): 표준 sensor-data QoS. 작년은 depth=10 (기본 RELIABLE) 이었다.
 #   콜백이 밀리면 묵은 프레임 10 장이 큐에 쌓이고, 배는 '몇 백 ms 전 장면' 을 보고 조향한다.
@@ -70,6 +73,15 @@ class ImageSubscriber(Node):
         #   배는 SSH 로 띄운다 — 기본 false 가 맞다. try/except 로 덮지 않고 파라미터로 원천 차단한다.
         #   false 면 그리기 연산과 frame.copy() 자체를 건너뛴다(매 프레임 전체 memcpy).
         self.debug_view = bool(self.declare_parameter('debug_view', False).value)
+
+        # V3(T2-4): 카메라 수평 화각. 기본값은 현 RealSense 를 역산한 값이다.
+        #   OAK-1 W(광각)로 바꾸면 **이 값만 yaml 에서 고치면 된다.**
+        #   하드코딩이었을 땐 카메라 교체일에 모든 각도 출력과 상위 튜닝
+        #   (align_tol_deg, pair_min/max_sep_deg …)이 통째로 무효가 됐다.
+        #   ⚠️ 광각은 핀홀 모델이 가장자리에서 깨진다 — rectified 토픽 구독 또는
+        #      camera_info 의 왜곡계수 D 적용이 추가로 필요하다.
+        self.hfov_deg = float(
+            self.declare_parameter('hfov_deg', DEFAULT_HFOV_DEG).value)
 
         # 내부 상태
         self.last_log_time = time.time()
@@ -127,7 +139,6 @@ class ImageSubscriber(Node):
 
         hsv = cv2.cvtColor(cv_image, cv2.COLOR_BGR2HSV)
         img_h, img_w = cv_image.shape[:2]
-        cx = img_w // 2
 
         # ----------------------------
         # HSV ranges (NEVER remove lines)
@@ -199,13 +210,10 @@ class ImageSubscriber(Node):
 
 
                 # ---- angle (depth 불필요) ----
-                # V1: 기존 식에서 distance 가 약분되므로 아래가 **완전히 같은 값**이다.
-                #     (파일 상단 PIXEL_TO_ANGLE_K 주석 참고. V3 에서 hfov 파라미터화)
                 # ※ depth 유효거리 필터(1.0~6.0m)도 함께 제거했다 — depth 가 없으면
                 #   distance 가 미정의라 그대로 두면 즉사하고, 값을 대체하면 필터 의미가 사라진다.
                 #   후보 검증은 색·형상·면적·y범위 조건으로 일원화한다.
-                rel_x = vX - cx
-                angle_deg = -math.degrees(math.atan(rel_x * PIXEL_TO_ANGLE_K))
+                angle_deg = angle_from_pixel(vX, img_w, self.hfov_deg)
 
                 # 가장 '큰' 것만 저장 (면적 = 거리의 대용)
                 prev = best[color]

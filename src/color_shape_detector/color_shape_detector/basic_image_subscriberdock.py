@@ -4,18 +4,23 @@ from sensor_msgs.msg import Image
 from std_msgs.msg import Float32
 from cv_bridge import CvBridge
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
+
+from color_shape_detector.vision_geom import (
+    DEFAULT_HFOV_DEG, angle_from_pixel,
+)
 import cv2
 import numpy as np
-import math
 import time
 from rclpy.executors import MultiThreadedExecutor
 
 IMAGE_ANGLE_INVALID = 10000.0
 
-# ⚠️ 임시 — V3(T2-4)에서 hfov_deg 파라미터 + msg.width 기반으로 재작성.
-# 기존 `(rel_x/80.0)*0.09*(distance/0.5)` + atan2 는 distance 가 약분되어 아래와 완전히 같다.
-#   K = 0.00225 → 등가 fx ≈ 444.4px → 640px 기준 HFOV ≈ 71.5° (RealSense 화각이 박혀 있었다)
-PIXEL_TO_ANGLE_K = (1.0 / 80.0) * 0.09 / 0.5
+# V3(T2-4): 픽셀→각도 환산을 명시형으로 재작성했다.
+#   작년: (rel_x/80.0)*0.09*(distance/0.5) + atan2  ← distance 가 약분되어 실질 fx≈444px **고정**
+#   지금: fx = (width/2)/tan(hfov/2),  angle = -degrees(atan((vX-cx)/fx))
+#   width 는 파라미터가 아니라 **매 프레임 실제 이미지에서** 읽는다(해상도 변경 자동 흡수).
+#   ※ 작년 식은 fx 가 고정이라 640x480 에서만 맞았다 — 해상도를 바꾸면 조용히 각도가 틀어졌다.
+#   순수 함수 + 회귀 테스트: vision_geom.py / test_vision_geom.py
 
 # V4(T2-6): 표준 sensor-data QoS (작년 depth=10 RELIABLE).
 #   콜백이 밀리면 묵은 프레임이 쌓여 '몇 백 ms 전 장면' 으로 조향한다. depth=1 = 항상 최신.
@@ -55,6 +60,15 @@ class ImageSubscriber(Node):
         # V4(T2-5): 헤드리스에서 cv2.imshow 는 예외로 노드를 죽인다. 배는 SSH 로 띄운다.
         #   try/except 로 덮지 않고 파라미터로 원천 차단. false 면 frame.copy() 와 그리기도 생략.
         self.debug_view = bool(self.declare_parameter('debug_view', False).value)
+
+        # V3(T2-4): 카메라 수평 화각. 기본값은 현 RealSense 를 역산한 값이다.
+        #   OAK-1 W(광각)로 바꾸면 **이 값만 yaml 에서 고치면 된다.**
+        #   하드코딩이었을 땐 카메라 교체일에 모든 각도 출력과 상위 튜닝
+        #   (align_tol_deg, pair_min/max_sep_deg …)이 통째로 무효가 됐다.
+        #   ⚠️ 광각은 핀홀 모델이 가장자리에서 깨진다 — rectified 토픽 구독 또는
+        #      camera_info 의 왜곡계수 D 적용이 추가로 필요하다.
+        self.hfov_deg = float(
+            self.declare_parameter('hfov_deg', DEFAULT_HFOV_DEG).value)
 
         self.found_in_frame = False
         self.last_log_time = time.time()
@@ -104,7 +118,6 @@ class ImageSubscriber(Node):
         # V1(T2-3): depth 가드 제거 (뎁스 없는 카메라에서 콜백이 영원히 막히는 것 방지)
         hsv_image = cv2.cvtColor(cv_image, cv2.COLOR_BGR2HSV)
         img_h, img_w = cv_image.shape[:2]
-        cx = img_w // 2
         cy = img_h // 2
 
         # HSV 범위 (너가 준 그대로)
@@ -175,8 +188,7 @@ class ImageSubscriber(Node):
                     continue
 
                 # angle 계산 (depth 불필요 — 기존 식에서 distance 가 약분되어 값이 완전히 같다)
-                rel_x = vX - cx
-                angle_deg = -math.degrees(math.atan(rel_x * PIXEL_TO_ANGLE_K))
+                angle_deg = angle_from_pixel(vX, img_w, self.hfov_deg)
 
                 # 퍼블리시 갱신 (각도만)
                 self.angle_pub.publish(Float32(data=float(angle_deg)))
