@@ -32,6 +32,40 @@ yaw_mux:
     #    imu_relative 는 기준축이 임의라 mount_offset_deg 가 전부 흡수한다 — 역시 무시.
     magnetic_declination_deg: 0.0
 
+    # ------------------------------------------------------------ 옵션 B (COG 오프셋, N2)
+    # heading_source 가 cog_offset 이 아니어도 추정은 돌아간다.
+    # /heading_status 로 "지금 전환하면 쓸 만한가" 를 물 위에서 미리 볼 수 있다:
+    #   cog_offset:OK  n=142 R=0.97 off=37.4 rej=-
+    #                  └표본  └신뢰도    └추정 오프셋  └마지막 배제 사유
+    # R(원형 결과길이) 0~1. 1 에 가까울수록 표본이 한 방향으로 모임 = 믿을 만함.
+    #
+    # 🚨 옵션 B 의 원리적 한계: COG 는 '간 방향' 이지 '뱃머리' 가 아니다.
+    #    조류·바람에 게걸음하면 그 각도가 offset 에 통째로 흡수된다.
+    #    즉 이 추정치 = 장착 오프셋 + 그날의 평균 게걸음각.
+    #    물살이 일정하면 실용상 문제없다. 절대 헤딩이 정말 필요하면 옵션 A(듀얼 F9P)다.
+
+    cog_min_speed_mps: 0.8      # 이보다 느리면 COG 는 노이즈 → 표본 배제
+                                #   (작년 드라이버는 g_speed 를 안 봐서 속도 0 에서도 통과했다)
+    cog_max_turn_rate_dps: 8.0  # 선회 중엔 COG 가 뱃머리를 못 따라온다 → 표본 배제
+    cog_min_samples: 30.0       # 이만큼 모여야 수렴 인정
+    cog_min_resultant: 0.9      # R 이 이 아래면 못 믿는다 (후진 180° 뒤집힘이 여기서 걸린다)
+    cog_half_life_sec: 60.0     # 오래된 표본 감쇠 반감기. IMU 드리프트를 따라간다
+
+    # 🚨 포화 함정: 감쇠가 있으면 표본수 상한이 n_max = 1/(1-0.5^(dt/half_life)) 다.
+    #    cog_min_samples 를 그 위로 잡으면 **영원히 수렴하지 않는다 — 에러도 없이.**
+    #    예: GPS 10Hz + half_life 1s → n_max ≈ 14.9. min_samples 20 이면 절대 못 넘는다.
+    #    yaw_mux 가 부팅 때 이 조합을 검사해 ERROR 로그를 낸다. gps_rate_hz 는 그 검사용.
+    gps_rate_hz: 5.0
+    # 현재값 검사: dt=0.2, half_life=60 → n_max ≈ 433 ≫ 30. 여유 충분.
+
     # ------------------------------------------------------------ 토픽
     raw_yaw_topic: "/imu/yaw_raw"   # iahrs_driver 가 내는 보정 전 상대 yaw
     yaw_topic: "/imu/yaw"           # 소비자 계약 (CLAUDE.md 1-3, 이름 변경 금지)
+    gps_vel_topic: "/ublox_gps_node/fix_velocity"
+
+    # 🚨 GPS 속도벡터 프레임. 틀리면 헤딩이 90° 돌거나 좌우가 뒤집힌다. 벤치 확인 항목:
+    #    배를 정북으로 천천히 전진 → /heading_status 의 off 가 안정되는지, 그리고
+    #    /imu/yaw 가 0 근처인지 본다.
+    #      enu (ROS 표준, ublox 기본): x=동, y=북
+    #      ned                       : x=북, y=동
+    gps_vel_frame: "enu"

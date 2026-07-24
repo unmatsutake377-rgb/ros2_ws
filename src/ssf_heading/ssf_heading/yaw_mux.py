@@ -28,9 +28,11 @@ import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy
 from std_msgs.msg import Float64, String
+from geometry_msgs.msg import TwistWithCovarianceStamped
 
 from ssf_heading.heading_logic import (
-    ALL_SOURCES, SRC_IMU_RELATIVE, ST_OK, HeadingMux,
+    ALL_SOURCES, SRC_IMU_RELATIVE, ST_OK,
+    COGOffsetEstimator, HeadingMux, cog_from_velocity,
 )
 
 
@@ -59,16 +61,51 @@ class YawMux(Node):
         raw_topic = str(self.declare_parameter('raw_yaw_topic', '/imu/yaw_raw').value)
         out_topic = str(self.declare_parameter('yaw_topic', '/imu/yaw').value)
 
+        # ---- N2: 옵션 B (COG 오프셋 추정) ----
+        gps_vel_topic = str(self.declare_parameter(
+            'gps_vel_topic', '/ublox_gps_node/fix_velocity').value)
+        # 🚨 프레임을 틀리면 헤딩이 90° 돌거나 좌우가 뒤집힌다. 벤치 확인 항목.
+        #    배를 정북으로 천천히 전진시키고 /heading_status 의 cog 가 0 근처인지 본다.
+        self.gps_vel_frame = str(self.declare_parameter('gps_vel_frame', 'enu').value)
+        gps_rate_hz = float(self.declare_parameter('gps_rate_hz', 5.0).value)
+
         self.mux = HeadingMux(
             source,
             invert_yaw=invert_yaw,
             mount_offset_deg=mount_offset_deg,
             declination_deg=declination_deg,
             stale_sec=self.stale_sec,
+            estimator=COGOffsetEstimator(
+                min_speed_mps=float(
+                    self.declare_parameter('cog_min_speed_mps', 0.8).value),
+                max_turn_rate_dps=float(
+                    self.declare_parameter('cog_max_turn_rate_dps', 8.0).value),
+                min_samples=float(
+                    self.declare_parameter('cog_min_samples', 30.0).value),
+                min_resultant=float(
+                    self.declare_parameter('cog_min_resultant', 0.9).value),
+                half_life_sec=float(
+                    self.declare_parameter('cog_half_life_sec', 60.0).value),
+            ),
         )
+
+        # 🚨 감쇠가 있으면 표본수가 포화한다: n_max = 1/(1-0.5^(dt/half_life)).
+        #    min_samples 를 그 위로 잡으면 **영원히 수렴하지 않는다 — 에러도 없이.**
+        #    부팅 때 잡아서 시끄럽게 알린다(조용히 안 죽는 것을 막는다).
+        if gps_rate_hz > 0.0 and not self.mux.estimator.min_samples_reachable(
+                1.0 / gps_rate_hz):
+            self.get_logger().error(
+                f"🚨 cog_min_samples({self.mux.estimator.min_samples:.0f}) 가 "
+                f"GPS {gps_rate_hz:.1f}Hz + half_life {self.mux.estimator.half_life_sec:.0f}s "
+                f"의 포화상한을 넘는다 → cog_offset 은 영원히 수렴하지 않는다. "
+                f"cog_min_samples 를 줄이거나 cog_half_life_sec 를 늘려라.")
 
         qos = QoSProfile(depth=2, reliability=ReliabilityPolicy.RELIABLE)
         self.create_subscription(Float64, raw_topic, self.raw_yaw_cb, qos)
+        # COG 표본. 소스가 cog_offset 이 아니어도 구독한다 — 추정을 돌려두면
+        # /heading_status 로 '지금 전환하면 쓸 만한가' 를 물 위에서 미리 볼 수 있다.
+        self.create_subscription(
+            TwistWithCovarianceStamped, gps_vel_topic, self.gps_vel_cb, qos)
         self.yaw_pub = self.create_publisher(Float64, out_topic, qos)
         self.status_pub = self.create_publisher(String, '/heading_status', qos)
 
@@ -88,6 +125,13 @@ class YawMux(Node):
     # ───────────────────────── 콜백 ─────────────────────────
     def raw_yaw_cb(self, msg):
         self.mux.update_imu(msg.data, time.monotonic())   # 단조시계 (CLAUDE.md 1-5)
+
+    def gps_vel_cb(self, msg):
+        v = msg.twist.twist.linear
+        cog, speed = cog_from_velocity(v.x, v.y, self.gps_vel_frame)
+        if cog is None:
+            return          # 정지/무효 — COG 가 정의되지 않는다. 0.0 을 대신 넣지 않는다.
+        self.mux.update_cog(cog, speed, time.monotonic())
 
     # ───────────────────────── 주기 ─────────────────────────
     def tick(self):
@@ -111,7 +155,14 @@ class YawMux(Node):
             return
         self._last_status = status
         self._last_status_pub_t = now
-        self.status_pub.publish(String(data=f"{self.mux.source}:{status}"))
+        est = self.mux.estimator
+        # 추정 진행도를 항상 같이 싣는다 — cog_offset 이 아닐 때도 '전환하면 쓸 만한가' 가 보인다.
+        off = est.offset_deg
+        self.status_pub.publish(String(data=(
+            f"{self.mux.source}:{status}"
+            f" n={est.samples:.0f} R={est.resultant:.2f}"
+            f" off={'--' if off is None else f'{off:.1f}'}"
+            f" rej={est.last_reject or '-'}")))
 
 
 def main(args=None):
