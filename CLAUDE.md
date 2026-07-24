@@ -785,6 +785,35 @@ colcon build --symlink-install  # 빌드는 되나
 
 ---
 
+## 7-3. ✅ T8 — 노트북 전원·발열 (2026-07-23 완료)
+
+> ⚠️ **표현 주의:** "전원 관리가 제어 지연의 원인" 은 **미검증 가설**이다. 우리는 제어 지연을
+> 측정한 적이 없다. 이 조치는 원인 단정이 아니라 **싸고 무해한 보험**이다 — 아래는 '알려진 요인'
+> 을 선제 차단하는 것이고, 원인 규명은 별도 측정으로 한다(검증 피드백 §2-③).
+
+**`tools/boat_boot.sh` — launch 전에 매번 실행.**
+```bash
+sudo ~/ros2_ws/tools/boat_boot.sh        # 경기 모드 적용
+~/ros2_ws/tools/boat_boot.sh --check     # 상태만 확인 (sudo 불필요)
+```
+- CPU 거버너 → performance (절전으로 내려가 제어 주기가 흔들리는 것 차단)
+- USB autosuspend 비활성 — **시리얼 장치(LiDAR/IMU/GPS)가 끊기는 실재 리눅스 이슈** 차단
+- 화면 잠금/서스펜드/DPMS 비활성 (경기 중 걸리면 사고)
+- **전부 런타임 설정만 만진다 → 재부팅하면 원복.** GRUB·systemd 영구설정은 안 건드린다(실수 대가가 큼)
+- 헤드리스(SSH)면 `xset` 은 건너뛴다(DISPLAY 없음). Mac/VM 에서도 `--check` 가 안전하게 돈다
+
+**`healthcheck` 발열/전원 감시 — 🚨 경고 로그만.**
+- 온도(패키지)·클럭(스로틀 의심)·AC/배터리를 2초마다 보고 경고. 순수 로직은 `ssf_tools/thermal.py`
+- **`/health_ok` 에 넣지 않는다.** 온도로 배를 세우면 출발 전 진단이 늑대소년이 된다.
+  코드에서 `pub_health.publish()` **뒤**에 둬서 영향 없음을 구조로 못박았다. 데이터 없으면(Ubuntu 아님) 조용
+- 임계는 `enable_thermal/temp_warn_c/temp_hot_c/throttle_ratio` 파라미터. 스로틀 판정은
+  **거버너가 performance 인 상태에서만** 의미가 있다(boat_boot 로 고정한 뒤)
+
+**`blackbox` 발열 기록 — 경고 아님, 순수 기록.**
+- `cpu_temp_c`, `cpu_clock_frac`, `on_ac` 컬럼 추가(1초 캐시). 사후에 "그때 스로틀 걸렸나" 확인용
+
+---
+
 ## 8. ⚠️ 아직 모르는 것 (추측하지 말 것)
 
 - 새 배의 **실제 선폭** → `half_width` 미정

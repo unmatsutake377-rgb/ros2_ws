@@ -20,6 +20,8 @@ import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy, HistoryPolicy
 
+from ssf_tools import thermal
+
 from std_msgs.msg import Int32, Float32, Float64, Bool, String
 from sensor_msgs.msg import Image, LaserScan, NavSatFix
 
@@ -38,6 +40,11 @@ class HealthCheck(Node):
 
         # ---- 파라미터 ----
         self.period = float(self.declare_parameter("health_period_sec", 2.0).value)
+        # T8: 발열/전원 감시 임계 (경고 로그 전용 — /health_ok 엔 안 넣는다. 거짓 정지 금지)
+        self.temp_warn_c = float(self.declare_parameter("temp_warn_c", 80.0).value)
+        self.temp_hot_c = float(self.declare_parameter("temp_hot_c", 95.0).value)
+        self.throttle_ratio = float(self.declare_parameter("throttle_ratio", 0.6).value)
+        self.enable_thermal = bool(self.declare_parameter("enable_thermal", True).value)
         self.timeout = float(self.declare_parameter("sensor_timeout_sec", 2.0).value)
 
         scan_topic = self.declare_parameter("scan_topic", "/scan").value
@@ -257,6 +264,30 @@ class HealthCheck(Node):
         health_ok = sensors_ok and map_ok and cur_owner_ok and geofence_ok and gate_ok
 
         self.pub_health.publish(Bool(data=bool(health_ok)))
+
+        # --- T8: 발열/전원 감시 (경고 로그만 — 위 health_ok 판정 '뒤' 라 영향 없음) ---
+        #   🚨 이 값들은 /health_ok 에 들어가지 않는다. 온도로 배를 세우면 진단이 늑대소년이 된다.
+        #      우리는 제어 지연을 측정한 적이 없다 — 관찰·기록만 하고 원인 규명은 별도(검증피드백 §2-③).
+        if self.enable_thermal:
+            cur_khz, max_khz = thermal.read_cpu_clock_khz()
+            th = thermal.summarize(
+                temp_c=thermal.read_pkg_temp_c(),
+                cur_khz=cur_khz, max_khz=max_khz,
+                ac_online=thermal.read_ac_online(),
+                warn_c=self.temp_warn_c, hot_c=self.temp_hot_c,
+                throttle_ratio=self.throttle_ratio)
+            self._latest_thermal = th   # blackbox 가 아니라 여기 로그로만. (blackbox 는 자체 구독)
+            if th["alert"]:
+                bits = []
+                if th["temp_lvl"] in (thermal.LVL_WARN, thermal.LVL_HOT):
+                    bits.append(f"온도 {th['temp_c']:.0f}℃({th['temp_lvl']})")
+                if th["throttle"]:
+                    bits.append(f"클럭 {th['clock_frac']*100:.0f}%(스로틀 의심)")
+                if th["power"] == "BATTERY":
+                    bits.append("🔋 배터리 구동")
+                self.get_logger().warn(
+                    "🌡️ " + " / ".join(bits) + "  (경고만 — 제어 개입 없음)",
+                    throttle_duration_sec=5.0)
 
         lines.append(f"   → /health_ok = {health_ok}"
                      f"  (wp_mode={cur if cur is not None else '—'})")

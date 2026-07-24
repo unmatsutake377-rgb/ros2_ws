@@ -28,6 +28,13 @@
     sensor_timeout_sec: 2.0       # 이 시간 이상 안 들어오면 '죽음'
     # T2-7: 카메라는 이미지가 가장 느릴 수 있어 별도 타임아웃(30fps 여도 처리 지연이 붙는다)
     image_timeout_sec: 3.0
+    # T8: 발열/전원 감시 임계 (⚠️ i5-12450H 기준 일반 목표 — 벤치에서 조정).
+    #    🚨 경고 로그 전용이다. /health_ok 에 안 들어간다(온도로 배를 세우면 진단이 늑대소년).
+    enable_thermal: true
+    temp_warn_c: 80.0       # 이상이면 경고
+    temp_hot_c: 95.0        # 이상이면 강한 경고(강제 스로틀 임박)
+    throttle_ratio: 0.6     # 현재클럭/최대 가 이 아래면 스로틀 의심
+                            #   (거버너를 performance 로 고정한 상태에서만 의미. boat_boot.sh 참고)
     # ---- 센서 생존 감시 토픽 ----
     scan_topic: "/scan"
     imu_yaw_topic: "/imu/yaw"

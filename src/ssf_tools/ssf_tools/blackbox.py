@@ -37,6 +37,8 @@ import datetime
 
 import rclpy
 from rclpy.node import Node
+
+from ssf_tools import thermal
 from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy, HistoryPolicy
 
 from std_msgs.msg import Int32, Float32, Float64, Float32MultiArray
@@ -68,6 +70,8 @@ CSV_HEADER = [
     # ---- 동역학 역산(system ID)용 ----
     "gyro_z", "accel_x", "accel_y",   # /imu/data: 각속도 z, 선가속도 x/y
     "gps_vel_x", "gps_vel_y",         # ~/fix_velocity: 속도 성분 (프레임은 드라이버 규약 — ⚠️ 확인)
+    # ---- T8 발열/전원 (경고 아님, 순수 기록 — 사후에 '그때 스로틀 걸렸나' 확인용) ----
+    "cpu_temp_c", "cpu_clock_frac", "on_ac",
 ]
 
 
@@ -104,6 +108,9 @@ class BlackBox(Node):
 
         # ---- 최신값 저장소 (콜백이 갱신, 타이머가 읽어 기록) ----
         self.latest = {k: None for k in CSV_HEADER}
+
+        # T8: 발열은 느리게 변한다 → 매 틱(최대 50Hz) sysfs 읽기는 낭비. 1초 캐시.
+        self._thermal_next_read = 0.0
 
         # /scan 도착 간격 상태. 관찰 전용 — 제어에 쓰지 않는다.
         self._scan_prev_t = None      # 직전 콜백 시각(단조)
@@ -221,6 +228,17 @@ class BlackBox(Node):
             "" if self._scan_dt_min is None else f"{self._scan_dt_min:.4f}")
         self.latest["scan_dt_max"] = (
             "" if self._scan_dt_max is None else f"{self._scan_dt_max:.4f}")
+
+        # T8: 발열/전원 (1초에 한 번만 갱신). 경고가 아니라 순수 기록 — 사후 분석용.
+        if t_mono >= self._thermal_next_read:
+            self._thermal_next_read = t_mono + 1.0
+            temp = thermal.read_pkg_temp_c()
+            cur, mx = thermal.read_cpu_clock_khz()
+            ac = thermal.read_ac_online()
+            self.latest["cpu_temp_c"] = "" if temp is None else f"{temp:.1f}"
+            self.latest["cpu_clock_frac"] = (
+                "" if (cur is None or not mx) else f"{cur / mx:.3f}")
+            self.latest["on_ac"] = "" if ac is None else (1 if ac else 0)
 
         row = []
         for k in CSV_HEADER:
