@@ -21,7 +21,7 @@ from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy, HistoryPolicy
 
 from std_msgs.msg import Int32, Float32, Float64, Bool, String
-from sensor_msgs.msg import LaserScan, NavSatFix
+from sensor_msgs.msg import Image, LaserScan, NavSatFix
 
 
 OBSERVER_QOS = QoSProfile(
@@ -49,6 +49,15 @@ class HealthCheck(Node):
         heading_status_topic = self.declare_parameter(
             "heading_status_topic", "/heading_status").value
         gps_topic = self.declare_parameter("gps_topic", "/ublox_gps_node/fix").value
+        # T2-7: 카메라 이미지 수신 감시. 카메라는 '조용히' 죽는다 — USB 가 빠져도, 드라이버가
+        #   멈춰도 에러 토픽은 안 나온다. V1 에서 depth 가드를 없앴으니 비전 노드는 이제
+        #   이미지가 안 와도 예외 없이 그냥 침묵한다 → 여기서 잡지 않으면 아무도 모른다.
+        #   ⚠️ image_topic 은 V5 에서 파라미터가 됐다. 카메라를 바꾸면 여기도 같이 바꿀 것.
+        image_topic = self.declare_parameter(
+            "image_topic", "/camera/camera/color/image_raw").value
+        # 이미지는 센서 중 가장 느릴 수 있다(30fps 여도 처리 지연). 별도 타임아웃.
+        self.image_timeout = float(
+            self.declare_parameter("image_timeout_sec", 3.0).value)
         wp_mode_topic = self.declare_parameter("wp_mode_topic", "/wp_mode").value
         candidate_topic = self.declare_parameter("candidate_topic", "/candidate_angle").value
 
@@ -74,7 +83,7 @@ class HealthCheck(Node):
 
         # ---- 마지막 수신 시각(단조시계). None = 아직 한 번도 못 받음(비ARMED) ----
         self._last = {"scan": None, "imu": None, "gps": None, "candidate": None,
-                      "imu_raw": None}
+                      "imu_raw": None, "image": None}
         self._cur_wp_mode = None
         self._heading_status = None
 
@@ -85,6 +94,9 @@ class HealthCheck(Node):
         self.create_subscription(
             String, heading_status_topic, self._cb_heading_status, OBSERVER_QOS)
         self.create_subscription(NavSatFix, gps_topic, self._cb_gps, OBSERVER_QOS)
+        # 이미지 발행자는 BEST_EFFORT 인 경우가 흔하다 → 관찰자도 BEST_EFFORT 여야 받는다
+        # (구독자 RELIABLE + 발행자 BEST_EFFORT = 0건. OBSERVER_QOS 가 BEST_EFFORT 라 안전)
+        self.create_subscription(Image, image_topic, self._cb_image, OBSERVER_QOS)
         self.create_subscription(Int32, wp_mode_topic, self._cb_wp_mode, OBSERVER_QOS)
         # candidate 는 '담당 노드가 실제로 말하고 있나' 확인용
         self.create_subscription(Float32, candidate_topic, self._cb_candidate, OBSERVER_QOS)
@@ -127,25 +139,29 @@ class HealthCheck(Node):
     def _cb_scan(self, _msg): self._last["scan"] = self._now()
     def _cb_imu(self, _msg): self._last["imu"] = self._now()
     def _cb_gps(self, _msg): self._last["gps"] = self._now()
+    def _cb_image(self, _msg): self._last["image"] = self._now()
     def _cb_candidate(self, _msg): self._last["candidate"] = self._now()
     def _cb_imu_raw(self, _msg): self._last["imu_raw"] = self._now()
     def _cb_wp_mode(self, msg): self._cur_wp_mode = int(msg.data)
     def _cb_heading_status(self, msg): self._heading_status = str(msg.data)
 
     # ---- 상태 판정 ----
-    def _sensor_state(self, key):
+    def _sensor_state(self, key, timeout=None):
         """반환: 'OK' | 'DEAD' | 'WAIT'(아직 한 번도 못 받음)"""
         t = self._last[key]
         if t is None:
             return "WAIT"
-        return "OK" if (self._now() - t) <= self.timeout else "DEAD"
+        lim = self.timeout if timeout is None else timeout
+        return "OK" if (self._now() - t) <= lim else "DEAD"
 
     # ---- 2초마다 평가 ----
     def _on_timer(self):
         scan = self._sensor_state("scan")
         imu = self._sensor_state("imu")
         gps = self._sensor_state("gps")
-        sensors = {"LiDAR/scan": scan, "IMU/yaw": imu, "GPS/fix": gps}
+        image = self._sensor_state("image", self.image_timeout)
+        sensors = {"LiDAR/scan": scan, "IMU/yaw": imu, "GPS/fix": gps,
+                   "CAM/image": image}
 
         # 살아있는 노드 목록 (침묵하는 노드 적발용)
         alive_nodes = set(self.get_node_names())
@@ -231,6 +247,12 @@ class HealthCheck(Node):
 
         # --- /health_ok 판정 ---
         # 센서는 WAIT(부팅 중)을 죽음으로 치지 않는다(오탐 방지). DEAD 만 실패.
+        # 카메라도 sensors 에 포함된다 = DEAD 면 /health_ok=false.
+        #   근거: 출발 전에 카메라가 죽어 있으면 게이트·도킹이 **조용히** 실패한다.
+        #        이 프로젝트가 반복해 당한 침묵 실패라 출발 전 진단에서 잡는 게 맞다.
+        #   ⚠️ 단 /health_ok 는 현재 **구독자 0개(진단 전용)** 이라 거짓 정지 위험이 없어서
+        #      이렇게 둔 것이다. 나중에 이걸 실제 제어(정지)에 물린다면 재검토할 것 —
+        #      LiDAR 상실은 치명적이지만 카메라 3초 끊김은 그 정도가 아니다.
         sensors_ok = all(st != "DEAD" for st in sensors.values())
         health_ok = sensors_ok and map_ok and cur_owner_ok and geofence_ok and gate_ok
 

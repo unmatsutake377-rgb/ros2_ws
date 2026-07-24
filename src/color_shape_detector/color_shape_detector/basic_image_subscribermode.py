@@ -48,6 +48,12 @@ class SubscriberModeManager(Node):
         #   ⚠️ 이 subprocess 구조 자체가 CLAUDE.md 3-4 의 제거 대상이다. 그때 같이 사라진다.
         self.vision_debug_view = bool(
             self.declare_parameter("vision_debug_view", False).value)
+        # V5(T2-2): 이미지 토픽도 같이 넘긴다. 안 넘기면 자식이 항상 기본값(RealSense)을 쓰게 되어
+        #   OAK 전환 시 yaml 을 고쳐도 대회 실행 경로에는 안 먹는다(죽은 설정).
+        self.vision_image_topic = str(self.declare_parameter(
+            "vision_image_topic", "/camera/camera/color/image_raw").value)
+        self.vision_hfov_deg = float(
+            self.declare_parameter("vision_hfov_deg", 71.5).value)
 
         #self.get_logger().info("🎛️ subscriber_mode_manager 시작됨 — /wp_mode 대기 중")
 
@@ -73,9 +79,12 @@ class SubscriberModeManager(Node):
         # 3️⃣ 해당 모드 실행
         if mode in MODE_TO_EXEC:
             pkg, exe = MODE_TO_EXEC[mode]
-            cmd = ["ros2", "run", pkg, exe,
-                   "--ros-args", "-p",
-                   f"debug_view:={'true' if self.vision_debug_view else 'false'}"]
+            # ⚠️ 자식은 `ros2 run` 으로 뜬다 → launch/yaml 파라미터가 안 닿는다.
+            #    카메라 관련 설정은 전부 여기서 명시적으로 넘겨야 실행 경로에 반영된다.
+            cmd = ["ros2", "run", pkg, exe, "--ros-args",
+                   "-p", f"debug_view:={'true' if self.vision_debug_view else 'false'}",
+                   "-p", f"image_topic:={self.vision_image_topic}",
+                   "-p", f"hfov_deg:={self.vision_hfov_deg}"]
             #self.get_logger().info(f"▶️ {mode} 모드 실행: {' '.join(cmd)}")
             try:
                 self._child = subprocess.Popen(cmd, preexec_fn=os.setsid)

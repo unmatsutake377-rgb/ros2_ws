@@ -26,10 +26,19 @@
   ros__parameters:
     health_period_sec: 2.0        # 검사 주기
     sensor_timeout_sec: 2.0       # 이 시간 이상 안 들어오면 '죽음'
+    # T2-7: 카메라는 이미지가 가장 느릴 수 있어 별도 타임아웃(30fps 여도 처리 지연이 붙는다)
+    image_timeout_sec: 3.0
     # ---- 센서 생존 감시 토픽 ----
     scan_topic: "/scan"
     imu_yaw_topic: "/imu/yaw"
+    imu_raw_yaw_topic: "/imu/yaw_raw"   # N1: 'IMU 죽음' 과 'yaw_mux 죽음' 을 가른다
+    heading_status_topic: "/heading_status"
     gps_topic: "/ublox_gps_node/fix"
+    # T2-7: 카메라 침묵 감지. 카메라는 조용히 죽는다 — USB 가 빠져도 에러 토픽은 안 나온다.
+    #   V1 에서 depth 가드를 없앴으니 비전 노드는 이미지가 안 와도 예외 없이 그냥 침묵한다
+    #   → 여기서 안 잡으면 아무도 모른다.
+    #   ⚠️ 카메라를 바꾸면 vision.yaml 의 image_topic 과 **여기를 같이** 바꿔야 한다.
+    image_topic: "/camera/camera/color/image_raw"
     # ---- 매핑표 검사 ----
     wp_mode_topic: "/wp_mode"
     candidate_topic: "/candidate_angle"

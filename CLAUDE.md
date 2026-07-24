@@ -232,6 +232,24 @@ angle_deg = -degrees(atan((vX - cx) / fx))     # vision_geom.angle_from_pixel()
 → 광각 도입 시 추가로: **rectified 토픽 구독** 또는 `camera_info` 의 왜곡계수 `D` 를 `cv2.undistortPoints` 로 적용,
    `min_area_px` 재튜닝(각도 해상도가 낮아 먼 표식이 더 작게 보인다).
 
+**[V5 완료 2026-07-23] `image_topic` 파라미터화 + OAK 도착 런북 + 카메라 침묵 감지.**
+- 비전 4종이 `image_topic` 파라미터를 받는다(기본값 = 현 RealSense 토픽). **동작 불변.**
+  ⚠️ 선언을 구독보다 **먼저** 해야 한다 — 뒤에 두면 부팅 즉시 `AttributeError` 다(구현 중 걸림).
+- `subscribermode` 가 자식에게 `image_topic`·`hfov_deg`·`debug_view` 를 `--ros-args` 로 넘긴다.
+  🚨 **검출 노드는 `ros2 run` 으로 떠서 launch/yaml 이 안 닿는다.** 매니저의 `vision_*` 값이
+  실제로 먹는 값이다 — 한쪽만 고치면 조용히 옛 설정으로 돈다.
+- **T2-7(카메라 침묵 감지)이 V1~V5 어디에도 배정 안 돼 있었다** — 원 T2 목록 7번인데
+  트랙 분해 때 누락됐다. 여기서 처리했다. `healthcheck` 가 `image_topic` 을 감시해
+  `CAM/image` 로 표시하고 `/health_ok` 에 반영한다(타임아웃 3.0s, 다른 센서 2.0s 와 별도).
+  카메라는 **조용히** 죽는다 — USB 가 빠져도 에러 토픽이 안 나오고, V1 에서 depth 가드를
+  없앴으니 비전 노드는 예외 없이 그냥 침묵한다. 안 잡으면 아무도 모른다.
+  ※ `/health_ok` 는 현재 구독자 0개(진단 전용)라 거짓 정지 위험이 없어서 이렇게 뒀다.
+    나중에 실제 제어에 물린다면 재검토할 것 — LiDAR 상실과 카메라 3초 끊김은 무게가 다르다.
+- **`docs/oak_arrival_runbook.md`** 신설: 드라이버 병행 설치, PoE(기가비트 필수), 고정 IP,
+  토픽 확인, **화각 실측**(거리별 필요 폭 표 포함 — 150° 면 2m 에서 좌우 14.9m 라 불가능,
+  0.5m 로 재야 한다), HSV 재캘리브레이션, 검증 8단계, 롤백, 인쇄용 체크리스트.
+  ⚠️ 실물 없이 확정 못 한 것(카메라 IP, 컬러 토픽 이름)은 **빈칸으로 남겼다.** 추측으로 안 채웠다.
+
 **[미확정] PoE = 이더넷 → 드라이버 병행.**
 `depthai-ros`(`depthai_ros_driver`)는 **교체가 아니라 추가**다. RealSense 드라이버는 남긴다.
 **고정 IP 등 네트워크 설정** 필요. 카메라 도착 전까지의 절차는 `docs/oak_arrival_runbook.md`(V5) 에 적는다.

@@ -24,5 +24,21 @@
     #   파라미터로 뒀다면 yaml 을 안 고친 채 해상도만 바꿨을 때 조용히 각도가 틀어진다.
     #   (작년 식이 정확히 그 상태였다: fx 가 444.44px 로 고정 → 640x480 에서만 맞았다)
 
+    # 카메라 이미지 토픽. OAK 전환 시 여기만 바꾼다.
+    #   RealSense : /camera/camera/color/image_raw   (현재)
+    #   OAK        : depthai_ros_driver 의 컬러 토픽 (도착일에 `ros2 topic list` 로 확인)
+    image_topic: "/camera/camera/color/image_raw"
+
     # 디버그 창. 배는 SSH 로 띄운다 = 헤드리스 → 기본 false.
     debug_view: false
+
+# ⚠️ 위 /**: 설정은 launch 로 뜨는 노드에만 닿는다.
+#    비전 검출 노드(gate/dock/turn)는 subscriber_mode_manager 가 `ros2 run` 으로 띄우므로
+#    launch 파라미터가 안 닿는다. 그래서 매니저가 vision_* 로 받아 자식에게 --ros-args 로 넘긴다.
+#    ★ 대회 설정을 바꿀 땐 **아래 값**을 고쳐야 실행 경로에 반영된다.
+#      (이 이중 구조 자체는 CLAUDE.md 3-4 의 subprocess 제거 대상 — 그때 사라진다)
+subscriber_mode_manager:
+  ros__parameters:
+    vision_image_topic: "/camera/camera/color/image_raw"
+    vision_hfov_deg: 71.5
+    vision_debug_view: false

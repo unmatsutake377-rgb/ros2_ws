@@ -35,12 +35,20 @@ class ImageSubscriber(Node):
     def __init__(self):
         super().__init__('image_subscriber_dock')
 
+        # V5(T2-2): 이미지 토픽 파라미터화. 기본값은 현 RealSense 토픽 그대로다.
+        #   OAK 로 바꾸는 날 코드를 고치지 않고 **yaml 한 줄**로 끝내려는 것이다.
+        #   ⚠️ 구독보다 반드시 먼저 선언해야 한다 — 뒤에 두면 부팅 즉시 AttributeError 다.
+        #   ⚠️ 이 노드는 subscribermode 가 `ros2 run` 으로 띄운다 → launch 파라미터가 안 닿는다.
+        #      subscribermode 가 --ros-args 로 넘겨준다(vision_image_topic).
+        self.image_topic = str(self.declare_parameter(
+            'image_topic', '/camera/camera/color/image_raw').value)
+
         # Color 이미지 구독
         # V1(T2-3): depth 구독 제거 — OAK 는 뎁스가 없어 depth 를 기다리면 침묵 사망한다.
         #   거리는 소비자(ship_dock)가 LiDAR 전방 섹터 최소거리로 구한다.
         self.subscription_color = self.create_subscription(
             Image,
-            '/camera/camera/color/image_raw',
+            self.image_topic,
             self.color_callback,
             SENSOR_QOS)
 
