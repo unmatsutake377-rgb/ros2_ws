@@ -23,8 +23,7 @@ class HSVSubscriber(Node):
         # V5(T2-2): 이미지 토픽 파라미터화. 기본값은 현 RealSense 토픽 그대로다.
         #   OAK 로 바꾸는 날 코드를 고치지 않고 **yaml 한 줄**로 끝내려는 것이다.
         #   ⚠️ 구독보다 반드시 먼저 선언해야 한다 — 뒤에 두면 부팅 즉시 AttributeError 다.
-        #   ⚠️ 이 노드는 subscribermode 가 `ros2 run` 으로 띄운다 → launch 파라미터가 안 닿는다.
-        #      subscribermode 가 --ros-args 로 넘겨준다(vision_image_topic).
+        #   3-4 이후 launch 가 이 노드를 직접 띄우므로 yaml 파라미터가 그대로 닿는다.
         self.image_topic = str(self.declare_parameter(
             'image_topic', '/camera/camera/color/image_raw').value)
 

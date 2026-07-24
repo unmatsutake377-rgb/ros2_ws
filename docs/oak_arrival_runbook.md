@@ -86,13 +86,12 @@ ros2 topic info <컬러토픽> --verbose   # QoS 확인
 
 | 파일 | 항목 | 왜 |
 |---|---|---|
-| `src/color_shape_detector/config/vision.yaml` | `image_topic`, **`vision_image_topic`** | 검출 노드용. `vision_*` 는 `subscriber_mode_manager` 가 자식에게 넘기는 값 |
+| `src/color_shape_detector/config/vision.yaml` | `image_topic` | 검출 노드용 (`/**:` 블록 — 3종 전부에 적용) |
 | `src/ssf_tools/config/ssf_tools.yaml` | `image_topic` | `healthcheck` 의 카메라 침묵 감지용 |
 
-🚨 **`vision_image_topic` 을 빠뜨리기 쉽다.** 검출 노드는 `subscriber_mode_manager` 가
-`ros2 run` 으로 띄우므로 launch/yaml 파라미터가 **안 닿는다.** 매니저가 `--ros-args` 로
-넘겨주는 `vision_*` 값이 실제로 먹는 값이다.
-(이 이중 구조 자체는 CLAUDE.md 3-4 의 subprocess 제거 대상 — 그때 사라진다.)
+✅ **3-4 이후로는 한 곳만 고치면 된다.** 예전엔 `subscriber_mode_manager` 가 검출기를
+`ros2 run` 으로 띄워서 launch/yaml 이 안 닿았고, 매니저가 중계하는 `vision_*` 를 따로
+고쳐야 했다. 매니저를 폐기하고 launch 가 검출기를 직접 띄우므로 **yaml 이 그대로 닿는다.**
 
 ### QoS 주의
 
@@ -138,7 +137,7 @@ print(f'hfov_deg = {2*math.degrees(math.atan((W/2)/D)):.2f}')
 "
 ```
 
-측정값을 `vision.yaml` 의 `hfov_deg` **와** `vision_hfov_deg` **둘 다** 에 넣는다.
+측정값을 `vision.yaml` 의 `hfov_deg` 에 넣는다 (`/**:` 블록이라 검출기 3종에 함께 적용된다).
 
 ### 검산
 
@@ -217,12 +216,10 @@ ros2 run color_shape_detector basic_image_subscriberhsv \
 OAK 가 안 되면 **yaml 만 되돌리면** RealSense 로 돌아온다. 코드 변경 없음.
 
 ```yaml
-# vision.yaml
+# vision.yaml  (/**: 블록)
 image_topic: "/camera/camera/color/image_raw"
-vision_image_topic: "/camera/camera/color/image_raw"
 hfov_deg: 71.5
-vision_hfov_deg: 71.5
-# ssf_tools.yaml
+# ssf_tools.yaml  (/healthcheck)
 image_topic: "/camera/camera/color/image_raw"
 ```
 
@@ -237,13 +234,15 @@ HSV 는 **되돌릴 값을 미리 저장해 둘 것.** 재캘리브레이션 전
 - [ ] PoE 인젝터 + **기가비트** 이더넷 연결
 - [ ] 고정 IP 설정, `ping` 통과
 - [ ] 컬러 토픽 이름 확인 (`ros2 topic list`)
-- [ ] `vision.yaml` — `image_topic` **+ `vision_image_topic`** (둘 다!)
+- [ ] `vision.yaml` — `image_topic`
 - [ ] `ssf_tools.yaml` — `image_topic`
-- [ ] 화각 실측 → `hfov_deg` **+ `vision_hfov_deg`** (둘 다!)
+- [ ] 화각 실측 → `hfov_deg`
 - [ ] `camera_info` 의 `fx` 로 검산
 - [ ] 왜곡 대응 결정 (rectified 토픽 vs `undistortPoints`)
 - [ ] 기존 HSV 값 **백업**
 - [ ] HSV 재캘리브레이션 (대회장 유사 조명)
 - [ ] `min_area_px` 확인
+- [ ] `active_wp_modes` 확인 (3-4: gate=[0,1], turn=[2,3], dock=[7])
+- [ ] `ros2 topic info /image_angle` — 발행자가 **1개**인지 (2개면 모드 겹침)
 - [ ] 검증 1~8 전부 통과
 - [ ] `debug_view: false` 로 되돌렸는지 (대회 설정)

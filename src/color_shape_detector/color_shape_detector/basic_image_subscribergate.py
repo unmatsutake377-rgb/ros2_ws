@@ -1,10 +1,11 @@
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import Image
-from std_msgs.msg import Float32
+from std_msgs.msg import Float32, Int32
 from cv_bridge import CvBridge
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 
+from color_shape_detector.mode_gate import ModeGate
 from color_shape_detector.vision_geom import (
     DEFAULT_HFOV_DEG, angle_from_pixel,
 )
@@ -42,10 +43,23 @@ class ImageSubscriber(Node):
         # V5(T2-2): 이미지 토픽 파라미터화. 기본값은 현 RealSense 토픽 그대로다.
         #   OAK 로 바꾸는 날 코드를 고치지 않고 **yaml 한 줄**로 끝내려는 것이다.
         #   ⚠️ 구독보다 반드시 먼저 선언해야 한다 — 뒤에 두면 부팅 즉시 AttributeError 다.
-        #   ⚠️ 이 노드는 subscribermode 가 `ros2 run` 으로 띄운다 → launch 파라미터가 안 닿는다.
-        #      subscribermode 가 --ros-args 로 넘겨준다(vision_image_topic).
+        #   3-4 이후 launch 가 이 노드를 직접 띄우므로 yaml 파라미터가 그대로 닿는다.
         self.image_topic = str(self.declare_parameter(
             'image_topic', '/camera/camera/color/image_raw').value)
+
+        # 3-4: 상주 + 모드 게이팅. subprocess 로 죽였다 살리는 방식을 폐기했다.
+        #   담당 모드는 **각 노드가 소유**한다 (미션 노드 ship_gate/dock/turn/back 과 같은 패턴).
+        #   🚨 dock 과 turn 은 둘 다 /image_angle 을 발행한다 — 모드가 겹치면 한 토픽에
+        #      발행자 2개가 되어 에러 없이 값이 섞인다. 겹침 없음은 test_mode_gate 가 검사한다.
+        #   ⚠️ 권위 출처는 미션 노드의 active_wp_mode 다. 바꿀 땐 양쪽을 함께 바꿔라.
+        self.mode_gate = ModeGate(
+            self.declare_parameter('active_wp_modes', [0, 1]).value,
+            stale_sec=float(self.declare_parameter('wp_mode_stale_sec', 2.0).value))
+        self._last_gate_log = 0.0
+
+        # 3-4: 모드 게이팅용. 상주하면서 자기 차례일 때만 일한다.
+        self.create_subscription(
+            Int32, '/wp_mode', self.wp_mode_callback, 10)
 
         self.br = CvBridge()
 
@@ -99,10 +113,27 @@ class ImageSubscriber(Node):
     # -----------------------------------
     # Color Callback
     # -----------------------------------
+    def wp_mode_callback(self, msg):
+        self.mode_gate.update(msg.data, time.monotonic())
+
     def color_callback(self, msg):
         # V1(T2-3): `if self.latest_depth is None: return` 가드 제거.
         #   OAK 처럼 뎁스가 없는 카메라에선 이 한 줄이 콜백을 영원히 막아
         #   /red_angle·/green_angle 이 조용히 죽는다(에러 없음 = 발견이 늦다).
+        # 3-4: 내 차례가 아니면 **여기서 끝낸다.**
+        #   cv_bridge 변환·HSV·컨투어를 전부 건너뛴다 → 비활성 노드의 CPU 는 거의 0.
+        #   발행도 안 한다 → /image_angle 발행자 충돌이 원천 차단된다.
+        now_m = time.monotonic()
+        active, why = self.mode_gate.state(now_m)
+        if not active:
+            # 조용히 멈추지 않는다. '내 차례가 아님' 은 정상이라 로그를 안 내지만,
+            # /wp_mode 자체가 없거나 끊긴 건 FSM 문제라 알린다.
+            if why != ModeGate.R_OTHER_MODE and (now_m - self._last_gate_log) > 5.0:
+                self._last_gate_log = now_m
+                self.get_logger().warn(
+                    f"비활성({why}) → 검출 정지. /wp_mode 가 오고 있나?")
+            return
+
         self.found_in_frame = {'red': False, 'green': False}
 
         frame = self.br.imgmsg_to_cv2(msg, desired_encoding='bgr8')

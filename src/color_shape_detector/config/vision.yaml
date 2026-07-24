@@ -32,13 +32,26 @@
     # 디버그 창. 배는 SSH 로 띄운다 = 헤드리스 → 기본 false.
     debug_view: false
 
-# ⚠️ 위 /**: 설정은 launch 로 뜨는 노드에만 닿는다.
-#    비전 검출 노드(gate/dock/turn)는 subscriber_mode_manager 가 `ros2 run` 으로 띄우므로
-#    launch 파라미터가 안 닿는다. 그래서 매니저가 vision_* 로 받아 자식에게 --ros-args 로 넘긴다.
-#    ★ 대회 설정을 바꿀 땐 **아래 값**을 고쳐야 실행 경로에 반영된다.
-#      (이 이중 구조 자체는 CLAUDE.md 3-4 의 subprocess 제거 대상 — 그때 사라진다)
-subscriber_mode_manager:
+# ------------------------------------------------------------------
+# 3-4: 노드별 담당 모드. 검출기는 **상주**하며 /wp_mode 로 자기 차례를 안다.
+#   권위 출처는 미션 노드의 active_wp_mode 다 — 바꿀 땐 양쪽을 함께 바꿔라.
+#     mode 0,1 → ship_gate  (active_wp_modes=[0,1])
+#     mode 2   → ship_back  (active_wp_mode=2)
+#     mode 3   → ship_turn  (active_wp_mode=3)
+#     mode 7   → ship_dock  (active_wp_mode=7)
+#     mode 5,8 → 순수 회피(담당 없음) → 검출기 전부 비활성
+#
+# 🚨 dock 과 turn 은 둘 다 /image_angle 을 발행한다. 모드가 겹치면 한 토픽에 발행자 2개가
+#    되어 **에러 없이** 값이 섞인다. 겹침 없음은 test_mode_gate.py 가 정적으로 검사한다.
+# ------------------------------------------------------------------
+image_subscriber_gate:
   ros__parameters:
-    vision_image_topic: "/camera/camera/color/image_raw"
-    vision_hfov_deg: 71.5
-    vision_debug_view: false
+    active_wp_modes: [0, 1]
+
+image_subscriber_turn:
+  ros__parameters:
+    active_wp_modes: [2, 3]     # 2=white(ship_back 위치유지), 3=red(ship_turn 선회)
+
+image_subscriber_dock:
+  ros__parameters:
+    active_wp_modes: [7]        # 🚨 작년 매니저는 9 로 띄우고 7 은 비전 OFF 였다

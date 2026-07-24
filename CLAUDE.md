@@ -255,25 +255,59 @@ angle_deg = -degrees(atan((vX - cx) / fx))     # vision_geom.angle_from_pixel()
 **고정 IP 등 네트워크 설정** 필요. 카메라 도착 전까지의 절차는 `docs/oak_arrival_runbook.md`(V5) 에 적는다.
 연결 테스트는 **실물이 와야** 가능하다 — 이전 판의 "지금 노트북에 물려 테스트 가능" 은 미구매 상태에서 불가.
 
-### 3-4. 🚨 `image_subscriber_mode` 는 subprocess 로 노드를 죽였다 살린다
+### 3-4. ✅ subprocess 모드 전환 제거 (2026-07-23 완료)
 
+작년:
 ```python
 self._child = subprocess.Popen(["ros2","run",pkg,exe], preexec_fn=os.setsid)
-os.killpg(os.getpgid(self._child.pid), signal.SIGINT)
+os.killpg(os.getpgid(self._child.pid), signal.SIGINT); time.sleep(0.5)
 ```
-
 - 모드 전환마다 **비전이 몇 초간 완전히 멈춘다**
 - subprocess 가 좀비로 남으면 **카메라가 잠긴다**
-- **추적기(tracker)를 쓸 수 없다** — 노드가 죽으면 트랙이 전부 날아간다
+- **추적기를 쓸 수 없다** — 노드가 죽으면 트랙이 전부 날아간다
+- launch/yaml 파라미터가 **안 닿는다** → 매니저가 `--ros-args` 로 중계하는 이중 배선이 필요했다
 
-**고칠 것:** 노드는 **항상 살아서** 보이는 표식을 전부 발행하고, 목표 선택은 **파라미터**로 한다.
-이건 타협 불가다. **문제는 `basic_image_*.py` 가 아니라 `image_subscriber_mode` 의 subprocess 방식**이다.
+**🚨 그런데 진짜 문제는 구조가 아니라 매핑이었다.** 매니저의 `MODE_TO_EXEC` 가 실제 미션 모드와
+어긋나 있었다 — 작년 `9 vs 7` 버그가 **절반만** 고쳐진 상태였다(`ship_dock` 은 7 로 고쳤는데
+매니저는 여전히 9):
 
-> **[2026-07-23 정정]** 이전 판은 여기서도 "`basic_image_*.py` 전부 삭제" 라고 했다. **폐기한다.**
-> 그 파일들은 **RealSense 현역 경로**다(3-3 참고). 삭제 대상은 **`subscribermode` 의 subprocess 로직**이고,
-> 검출 노드들은 **상시 상주 + 파라미터 목표선택**으로 **개조**한다. 삭제가 아니다.
+| wp_mode | 담당 | 작년 매니저 | 결과 |
+|---|---|---|---|
+| 0 | `ship_gate` (6b 에서 `ship_last` 인수) | `NO_VISION_MODES` | 🚨 **게이트가 눈 없이 돌았다** |
+| 7 | `ship_dock` (9→7 수정됨) | `NO_VISION_MODES` | 🚨 **도킹이 눈 없이 돌았다** |
+| 9 | (없는 모드) | dock 기동 | 죽은 항목 |
+| 4, 10 | (없는 모드) | turn, hsv 기동 | 죽은 항목 |
 
-### 3-5. 🚨 IMU 부팅 0점화 ↔ 절대방위 불일치
+**해결:** 매니저를 **폐기**하고(파일·entry point 삭제) 검출기를 **상주**시킨다.
+담당 모드는 **각 노드가 소유**한다 — 미션 노드(`ship_gate/dock/turn/back`)와 같은 패턴.
+
+| wp_mode | 미션 노드 | 검출기 | 발행 |
+|---|---|---|---|
+| 0, 1 | `ship_gate` | `gate` | `/red_angle`, `/green_angle` |
+| 2 | `ship_back` | `turn`(white) | `/image_angle` |
+| 3 | `ship_turn` | `turn`(red) | `/image_angle` |
+| 7 | `ship_dock` | `dock` | `/image_angle` |
+| 5, 8 | 없음(회피) | 없음 | — |
+
+- 🚨 **발행 게이팅은 선택이 아니다.** `dock` 과 `turn` 이 **둘 다 `/image_angle` 을 발행**한다.
+  상주시키면서 모드가 겹치면 **한 토픽에 발행자 2개**가 되어 에러 없이 값이 섞인다.
+  `test_mode_gate.py` 의 `check_publisher_conflicts` 가 **정적으로** 검사한다.
+- 게이트는 `color_callback` **맨 앞**(cv_bridge 변환 前)이다 → 비활성 노드는 이미지 처리를
+  전부 건너뛴다. 구독은 유지되므로 역직렬화 비용만 남는다(상주의 근본 트레이드오프).
+- **모드를 모르면 비활성이다.** `/wp_mode` 미수신·stale(2.0s 초과) → 발행 정지 + 5초 주기 경고.
+  FSM 이 죽었는데 옛 모드로 계속 발행하면 배가 지난 미션을 계속 한다.
+
+**전환 성능**
+
+| | 전환 소요 | 각도 토픽 공백 |
+|---|---|---|
+| 전 (subprocess) | **1.5~3.0s** (추정: `sleep` 0.5~1.0s + `ros2 run` 콜드 기동) | 그 시간 전부 |
+| 후 (상주) | **≤ 33ms** (결정론: 다음 프레임, 30fps) | ≤ 1프레임 |
+
+⚠️ **[후]는 코드에서 결정론적으로 나오지만 [전]은 추정이다.** `ros2 run` 기동 시간은 머신에
+달려 있다. 실측: `tools/measure_mode_switch.sh` (Ubuntu 필요).
+
+### 3-5.### 3-5. 🚨 IMU 부팅 0점화 ↔ 절대방위 불일치
 
 `iahrs_driver` 가 부팅 시 yaw 를 0 으로 만든다(`yaw_initial_offset`).
 그러면 yaw 가 **상대각**이 된다. 그런데 `north_goal_angle` 은 **절대 방위**(정북 기준)를 계산한다.
@@ -734,7 +768,7 @@ colcon build --symlink-install  # 빌드는 되나
 | `cog_require_reverse_gate` (yaw_mux) | **`true`** | 후진 중 표본이 섞여 헤딩이 **정확히 180° 틀린 값에 수렴**할 수 있다(R=1.0 이라 신뢰도로 못 걸러짐) | `healthcheck` → `/health_ok=false` |
 | `require_geofence_subscriber` (healthcheck) | **`true`** | 경계 이탈 방어가 통째로 없는 상태를 못 잡는다(실격) | `healthcheck` → `/health_ok=false` |
 | `debug_view` (비전 4종) | **`false`** | 헤드리스에서 `cv2.imshow` 가 노드를 죽인다 | (기본값이 안전 쪽) |
-| `vision_debug_view` (subscribermode) | **`false`** | 위와 같음 | (기본값이 안전 쪽) |
+| `active_wp_modes` (검출기 3종) | 3-4 표대로 | 비면 그 검출기가 영원히 침묵 / 겹치면 `/image_angle` 발행자 2개 | `test_mode_gate.py` 정적 검사 |
 
 `cog_require_reverse_gate` 검사는 **`heading_source: cog_offset` 일 때만** 실패로 친다.
 `imu_relative` 로 도는 동안엔 이 게이트가 무의미해서 꺼져 있어도 무해하다 — 거짓 정지를 만들지 않는다.

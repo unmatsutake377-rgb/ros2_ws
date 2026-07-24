@@ -17,6 +17,12 @@ def generate_launch_description():
     dir_ship_goal = get_package_share_directory('ship_goal_angle')
     dir_realsense = get_package_share_directory('realsense2_camera')
 
+    # 비전 공통 설정 (image_topic, hfov_deg, debug_view).
+    # 3-4 이후로는 launch 가 노드를 직접 띄우므로 파라미터가 **그대로 닿는다** —
+    # V5 의 vision_* 중계(매니저가 --ros-args 로 넘기던 것)는 3-4 에서 제거됐다.
+    VISION_CFG = os.path.join(
+        get_package_share_directory('color_shape_detector'), 'config', 'vision.yaml')
+
     # NTRIP 2초 지연
     ntrip_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
@@ -129,14 +135,30 @@ def generate_launch_description():
         ),
 
         # ============================================================
-        # 8) IMAGE 처리 (부표 색상 & 각도/거리 Publisher)
+        # 8) 비전 검출기 — **상주**. 각자 /wp_mode 를 보고 자기 차례일 때만 일한다
         # ============================================================
-        Node(
-            package='color_shape_detector',
-            executable='basic_image_subscribermode',
-            name='ImageSubscriber',
-            output='screen'
-        ),
+        # 🚨 3-4: 작년엔 subscriber_mode_manager 가 subprocess 로 이 노드들을 죽였다 살렸다.
+        #    모드 전환마다 비전이 몇 초 멈추고, 좀비가 남으면 카메라가 잠기고, 추적기를 못 썼다.
+        #    지금은 상주 + 모드 게이팅이다. 매니저는 폐기했다(entry point 도 제거).
+        #
+        #    담당 모드는 **각 노드가 소유**한다 (미션 노드와 같은 패턴).
+        #    권위 출처 = 미션 노드의 active_wp_mode. 바꿀 땐 양쪽을 함께 바꿔라:
+        #      mode 0,1 → ship_gate  ← gate 검출기 (/red_angle, /green_angle)
+        #      mode 2   → ship_back  ← turn 검출기 (white 부표, /image_angle)
+        #      mode 3   → ship_turn  ← turn 검출기 (red 부표)
+        #      mode 7   → ship_dock  ← dock 검출기 (/image_angle)
+        #      mode 5,8 → 순수 회피(담당 없음) → 검출기 전부 비활성
+        #
+        #    🚨 dock 과 turn 은 둘 다 /image_angle 을 발행한다. 모드가 겹치면 한 토픽에
+        #       발행자 2개가 되어 **에러 없이** 값이 섞인다. 겹침 없음은
+        #       test_mode_gate.py 의 check_publisher_conflicts 가 정적으로 검사한다.
+        Node(package='color_shape_detector', executable='basic_image_subscribergate',
+             name='image_subscriber_gate', output='screen', parameters=[VISION_CFG]),
+        Node(package='color_shape_detector', executable='basic_image_subscriberturn',
+             name='image_subscriber_turn', output='screen', parameters=[VISION_CFG]),
+        Node(package='color_shape_detector', executable='basic_image_subscriberdock',
+             name='image_subscriber_dock', output='screen', parameters=[VISION_CFG]),
+        # basic_image_subscriberhsv 는 튜닝 전용 — 대회 launch 에 넣지 않는다.
 
         # ============================================================
         # 9) SHIP mission nodes (WP 루틴)
