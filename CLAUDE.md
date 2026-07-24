@@ -152,6 +152,26 @@ depth 구독 / `depth_callback` / `latest_depth` 가드 / 거리 계산 / 유효
 → 각도식은 **값이 완전히 동일**하다: 기존 `atan2((rel_x/80)*0.09*(d/0.5), d)` 는 `d` 가 약분되어
    `atan(rel_x * 0.00225)` 와 같다. 여러 거리(1/3/6m)·여러 픽셀에서 소수점까지 일치 확인.
 
+**[V4 완료 2026-07-23] `debug_view` 게이트 + sensor QoS.**
+- `cv2.imshow`/`waitKey`/`namedWindow` 를 전부 `debug_view` 파라미터로 감쌌다. **기본 false**
+  (`subscriberhsv` 만 true — HSV 를 마우스로 읽는 게 존재 이유라 창이 없으면 할 일이 없다).
+  배는 SSH 로 띄운다 = 헤드리스다. `imshow` 는 거기서 **예외를 던져 노드를 죽인다.**
+  `try/except` 로 덮지 않고 파라미터로 원천 차단했다. `hsv` 는 `namedWindow` 가 `__init__` 에 있어
+  **콜백 전에, 노드 생성 시점에** 터진다(원인 파악이 더 어렵다) — 그래서 거기도 게이트했다.
+- false 면 `frame.copy()`(매 프레임 전체 memcpy)와 모든 그리기 연산을 건너뛴다. `view_frame=None`.
+- 이미지 구독 QoS: `depth=10 기본 RELIABLE` → **BEST_EFFORT + KEEP_LAST + depth=1**.
+  콜백이 밀리면 묵은 프레임 10 장이 큐에 쌓여 **몇 백 ms 전 장면으로 조향**한다. 늦은 프레임은 버린다.
+  ※ 구독자 BEST_EFFORT 는 발행자가 RELIABLE 이어도 **호환**된다(그 반대가 비호환) → RealSense/OAK 둘 다 안전.
+  ※ `/wp_mode` 는 센서가 아니라 **모드 명령**이라 한 장도 놓치면 안 된다 — RELIABLE 유지.
+- `subscribermode` 에 `vision_debug_view` 추가 → 자식에게 `--ros-args -p debug_view:=` 로 전달.
+  자식이 `ros2 run` 으로 뜨므로 launch 파라미터가 안 닿는다. 안 넘기면 **대회 실행 경로에서
+  debug_view 를 켤 방법이 아예 없다.** (이 subprocess 구조 자체는 3-4 의 제거 대상 — 그때 같이 사라진다.)
+
+**⏸ `/scan` 구독 QoS 는 아직 안 바꿨다 (판단 필요).**
+`ship_direction`, `ship_dock`, `ship_gate`, `ship_turn`, `ship_back` **5곳 전부 `depth=10` 기본값**이다.
+이미지와 똑같은 묵은-큐 문제가 있다(LiDAR 10Hz → depth 10 = **1초치**). 다만 `ship_direction` 은
+페일세이프 경로라 QoS 변경이 스테일 판정에 어떻게 얽히는지 **측정 없이 바꾸면 안 된다.**
+
 **[확정] 🚨 화각이 매직넘버에 박혀 있다 — 카메라 교체일의 시한폭탄.**
 `k = (1/80)*0.09/0.5 = 0.00225` → **등가 `fx ≈ 444.4px`** → 640px 기준 **HFOV ≈ 71.5°**.
 즉 **RealSense 화각이 하드코딩**돼 있다. OAK-1 W(광각)로 바꾸면 **같은 픽셀이 다른 각도**가 되어

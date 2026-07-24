@@ -42,6 +42,13 @@ class SubscriberModeManager(Node):
         self._current_mode: Optional[int] = None
         self._child: Optional[subprocess.Popen] = None
 
+        # V4(T2-5): 자식 비전 노드에 debug_view 를 전달한다.
+        #   자식은 `ros2 run` 으로 뜨므로 launch 파라미터가 안 닿는다 — 안 넘기면 debug_view 가
+        #   대회 실행 경로에서 영원히 기본값(false)이라 벤치에서 켤 방법이 없다.
+        #   ⚠️ 이 subprocess 구조 자체가 CLAUDE.md 3-4 의 제거 대상이다. 그때 같이 사라진다.
+        self.vision_debug_view = bool(
+            self.declare_parameter("vision_debug_view", False).value)
+
         #self.get_logger().info("🎛️ subscriber_mode_manager 시작됨 — /wp_mode 대기 중")
 
     # 🧭 /wp_mode 토픽 수신 콜백
@@ -66,7 +73,9 @@ class SubscriberModeManager(Node):
         # 3️⃣ 해당 모드 실행
         if mode in MODE_TO_EXEC:
             pkg, exe = MODE_TO_EXEC[mode]
-            cmd = ["ros2", "run", pkg, exe]
+            cmd = ["ros2", "run", pkg, exe,
+                   "--ros-args", "-p",
+                   f"debug_view:={'true' if self.vision_debug_view else 'false'}"]
             #self.get_logger().info(f"▶️ {mode} 모드 실행: {' '.join(cmd)}")
             try:
                 self._child = subprocess.Popen(cmd, preexec_fn=os.setsid)

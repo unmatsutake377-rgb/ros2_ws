@@ -3,6 +3,7 @@ from rclpy.node import Node
 from sensor_msgs.msg import Image
 from std_msgs.msg import Float32
 from cv_bridge import CvBridge
+from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 
 import cv2
 import numpy as np
@@ -18,6 +19,17 @@ IMAGE_ANGLE_INVALID = 10000.0
 #   K = (1/80)*0.09/0.5 = 0.00225  →  등가 fx = 1/K ≈ 444.4px  →  640px 기준 HFOV ≈ 71.5°
 # 즉 RealSense 화각이 매직넘버에 박혀 있었다. 여기서는 **동작을 바꾸지 않고** depth 의존만 끊는다.
 PIXEL_TO_ANGLE_K = (1.0 / 80.0) * 0.09 / 0.5     # = 0.00225
+
+# V4(T2-6): 표준 sensor-data QoS. 작년은 depth=10 (기본 RELIABLE) 이었다.
+#   콜백이 밀리면 묵은 프레임 10 장이 큐에 쌓이고, 배는 '몇 백 ms 전 장면' 을 보고 조향한다.
+#   depth=1 이면 항상 최신 프레임만 본다 — 늦은 프레임은 버리는 게 맞다.
+#   ⚠️ 구독자 BEST_EFFORT 는 발행자가 RELIABLE 이어도 호환된다(그 반대가 비호환).
+#      RealSense·OAK 어느 쪽이든 안전하다.
+SENSOR_QOS = QoSProfile(
+    reliability=ReliabilityPolicy.BEST_EFFORT,
+    history=HistoryPolicy.KEEP_LAST,
+    depth=1,
+)
 
 
 class ImageSubscriber(Node):
@@ -36,7 +48,7 @@ class ImageSubscriber(Node):
             Image,
             '/camera/camera/color/image_raw',
             self.color_callback,
-            10)
+            SENSOR_QOS)
 
         # -----------------------------
         # PUBLISHERS (각도만 — 이름·타입 불변)
@@ -54,6 +66,11 @@ class ImageSubscriber(Node):
         }
         self.grace_period_s = 2.0
 
+        # V4(T2-5): 헤드리스(디스플레이 없음)에서 cv2.imshow 는 예외를 던져 노드를 죽인다.
+        #   배는 SSH 로 띄운다 — 기본 false 가 맞다. try/except 로 덮지 않고 파라미터로 원천 차단한다.
+        #   false 면 그리기 연산과 frame.copy() 자체를 건너뛴다(매 프레임 전체 memcpy).
+        self.debug_view = bool(self.declare_parameter('debug_view', False).value)
+
         # 내부 상태
         self.last_log_time = time.time()
         self.found_in_frame = {'red': False, 'green': False}
@@ -69,13 +86,14 @@ class ImageSubscriber(Node):
         self.found_in_frame = {'red': False, 'green': False}
 
         frame = self.br.imgmsg_to_cv2(msg, desired_encoding='bgr8')
-        view = frame.copy()
+        # V4: 디버그 창이 꺼져 있으면 복사본을 만들지 않는다. 그리기도 전부 건너뛴다.
+        view = frame.copy() if self.debug_view else None
 
         self.process_image(frame, view)
 
-        # ---- Show window ----
-        cv2.imshow("Detected Shapes", view)
-        cv2.waitKey(1)
+        if self.debug_view:
+            cv2.imshow("Detected Shapes", view)
+            cv2.waitKey(1)
 
         # ---- Fallback ----
         now = time.time()
@@ -200,9 +218,10 @@ class ImageSubscriber(Node):
                         'vertices': vertices
                     }
 
-                # contour 그리기
-                cv2.drawContours(view_frame, [approx], -1, (0, 255, 0), 2)
-                cv2.circle(view_frame, (cX, cY), 3, (255, 255, 0), -1)
+                # contour 그리기 (디버그 창이 켜져 있을 때만)
+                if self.debug_view:
+                    cv2.drawContours(view_frame, [approx], -1, (0, 255, 0), 2)
+                    cv2.circle(view_frame, (cX, cY), 3, (255, 255, 0), -1)
 
 
 
@@ -229,15 +248,15 @@ class ImageSubscriber(Node):
             else:
                 self.green_angle_pub.publish(msg_a)
 
-            # draw best
-            cv2.circle(view_frame, (cand['vX'], cand['vY']), 5, (0, 255, 255), -1)
-            cv2.putText(view_frame, f"{c} Square  {cand['angle']:.1f}deg",
-                        (cand['vX'] + 10, cand['vY'] - 10),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+            # draw best (디버그 창이 켜져 있을 때만)
+            if self.debug_view:
+                cv2.circle(view_frame, (cand['vX'], cand['vY']), 5, (0, 255, 255), -1)
+                cv2.putText(view_frame, f"{c} Square  {cand['angle']:.1f}deg",
+                            (cand['vX'] + 10, cand['vY'] - 10),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
 
-            # debug vertices
-            for pt in cand['vertices']:
-                cv2.circle(view_frame, tuple(pt), 4, (0, 0, 255), -1)
+                for pt in cand['vertices']:
+                    cv2.circle(view_frame, tuple(pt), 4, (0, 0, 255), -1)
 
 
 def main(args=None):

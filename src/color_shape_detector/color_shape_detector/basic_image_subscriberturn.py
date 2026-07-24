@@ -3,6 +3,7 @@ from rclpy.node import Node
 from sensor_msgs.msg import Image
 from std_msgs.msg import Float32, String, Int32
 from cv_bridge import CvBridge
+from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 
 import cv2
 import numpy as np
@@ -15,6 +16,17 @@ IMAGE_ANGLE_INVALID = 10000.0
 # 기존 `(rel_x/80.0)*0.09*(distance/0.5)` + atan2 는 distance 가 약분되어 아래와 완전히 같다.
 #   K = 0.00225 → 등가 fx ≈ 444.4px → 640px 기준 HFOV ≈ 71.5° (RealSense 화각이 박혀 있었다)
 PIXEL_TO_ANGLE_K = (1.0 / 80.0) * 0.09 / 0.5
+
+# V4(T2-6): 표준 sensor-data QoS (작년 depth=10 RELIABLE).
+#   콜백이 밀리면 묵은 프레임이 쌓여 '몇 백 ms 전 장면' 으로 조향한다. depth=1 = 항상 최신.
+#   구독자 BEST_EFFORT 는 발행자가 RELIABLE 이어도 호환된다(그 반대가 비호환).
+#   ⚠️ 이미지에만 적용한다. /wp_mode 는 센서가 아니라 '모드 명령' 이라 한 장도 놓치면 안 된다
+#      — RELIABLE 유지.
+SENSOR_QOS = QoSProfile(
+    reliability=ReliabilityPolicy.BEST_EFFORT,
+    history=HistoryPolicy.KEEP_LAST,
+    depth=1,
+)
 
 
 class ImageSubscriber(Node):
@@ -30,7 +42,7 @@ class ImageSubscriber(Node):
             Image,
             '/camera/camera/color/image_raw',
             self.color_callback,
-            10)
+            SENSOR_QOS)
 
         # ★ 추가: WP 모드 구독
         self.wp_mode_sub = self.create_subscription(
@@ -55,6 +67,10 @@ class ImageSubscriber(Node):
             'time': 0.0
         }
         self.grace_period_s = 2.0
+        # V4(T2-5): 헤드리스에서 cv2.imshow 는 예외로 노드를 죽인다. 배는 SSH 로 띄운다.
+        #   try/except 로 덮지 않고 파라미터로 원천 차단. false 면 frame.copy() 와 그리기도 생략.
+        self.debug_view = bool(self.declare_parameter('debug_view', False).value)
+
         self.found_in_frame = False
 
         # ★ 추가: WP 모드 초기값
@@ -78,12 +94,13 @@ class ImageSubscriber(Node):
         self.found_in_frame = False
 
         frame = self.br.imgmsg_to_cv2(msg, desired_encoding='bgr8')
-        view = frame.copy()
+        view = frame.copy() if self.debug_view else None
 
         self.process_image(frame, view)
 
-        cv2.imshow("TURN Detection", view)
-        cv2.waitKey(1)
+        if self.debug_view:
+            cv2.imshow("TURN Detection", view)
+            cv2.waitKey(1)
 
         # ========== Fallback ==========
         now = time.time()
@@ -192,7 +209,8 @@ class ImageSubscriber(Node):
                         'color': color
                     })
 
-                cv2.drawContours(view_frame, [approx], -1, (0, 255, 0), 2)
+                if self.debug_view:
+                    cv2.drawContours(view_frame, [approx], -1, (0, 255, 0), 2)
 
         if best['angle'] is not None:
             self.found_in_frame = True
@@ -207,12 +225,13 @@ class ImageSubscriber(Node):
             self.angle_pub.publish(Float32(data=best['angle']))
             self.color_pub.publish(String(data=best['color']))
 
-            cv2.circle(view_frame, (best['vX'], best['vY']), 7, (0, 255, 255), -1)
-            cv2.putText(view_frame,
-                        f"{best['color']}  {best['angle']:.1f}deg",
-                        (best['vX']+10, best['vY']-10),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.7,
-                        (255,255,255), 2)
+            if self.debug_view:
+                cv2.circle(view_frame, (best['vX'], best['vY']), 7, (0, 255, 255), -1)
+                cv2.putText(view_frame,
+                            f"{best['color']}  {best['angle']:.1f}deg",
+                            (best['vX']+10, best['vY']-10),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.7,
+                            (255,255,255), 2)
 
 
 def main(args=None):
