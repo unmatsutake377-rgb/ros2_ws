@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>회로/펌웨어 현황판</title>
+<style>
+  :root { --done:#2e7d32; --todo:#c62828; --wait:#e65100; --bg:#f6f7f9; --card:#fff; --line:#e0e3e8; --tx:#22272e; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:'Malgun Gothic','Apple SD Gothic Neo',sans-serif; background:var(--bg); color:var(--tx); padding:24px; line-height:1.65; }
+  .wrap { max-width:900px; margin:0 auto; }
+  h1 { font-size:1.5em; margin-bottom:4px; }
+  .sub { color:#667; font-size:.9em; margin-bottom:20px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:18px 20px; margin-bottom:16px; }
+  .card h2 { font-size:1.1em; margin-bottom:10px; padding-bottom:8px; border-bottom:2px solid var(--line); }
+  .done h2 { border-color:var(--done); } .todo h2 { border-color:var(--todo); } .wait h2 { border-color:var(--wait); }
+  ul { list-style:none; }
+  li { padding:6px 0 6px 28px; position:relative; border-bottom:1px dashed #eef0f3; }
+  li:last-child { border-bottom:none; }
+  li::before { position:absolute; left:2px; }
+  .done li::before { content:"✅"; }
+  .todo li::before { content:"🔴"; }
+  .wait li::before { content:"⏳"; }
+  b.hl { background:#fff3cd; padding:0 4px; border-radius:3px; }
+  .flow { background:#22272e; color:#d5dce4; border-radius:8px; padding:14px 16px; font-family:Consolas,monospace; font-size:.85em; overflow-x:auto; white-space:pre; margin:10px 0; }
+  .small { font-size:.85em; color:#667; margin-top:6px; }
+  .tag { display:inline-block; font-size:.75em; padding:1px 8px; border-radius:10px; margin-left:6px; vertical-align:middle; }
+  .t-me { background:#ffe0e0; color:#a00; } .t-cir { background:#fff0dd; color:#a50; } .t-cl { background:#e0ecff; color:#0a58ca; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>⚡ 회로/펌웨어 현황판</h1>
+<div class="sub">2026-07-28 기준 · 담당: 회로/펌웨어(소프트) · 상세 근거는 <b>docs/전달용/펌웨어_설계문서.md</b></div>
+
+<div class="card">
+<h2>📌 지금 시스템이 어떻게 생겼나 (아키텍처 확정본)</h2>
+<div class="flow">노트북 motor_control ──(ROS: Motor_run)──▶ 브릿지 노드(회로팀 제작·무수정)
+        ──USB 시리얼 "L1500,R1500"──▶ 아두이노 펌웨어(우리 제작) ──▶ ESC×4 ──▶ T200×4
+펌웨어 → 노트북: "S,모드,워치독,배ID,비상정지,FL,FR,RL,RR" (10Hz, 상태 보고)</div>
+<ul style="list-style:none">
+  <li style="border:none">micro-ROS는 <b>폐기</b> — 브릿지 수용으로 라이브러리·에이전트·패치 전부 불필요해짐</li>
+  <li style="border:none">스러스터 <b class="hl">4개 확정</b> (선수2 보조 + 선미2) · 좌/우 페어 제어 + 선수 게인 0.7 시작</li>
+  <li style="border:none">모드: 자율(AUTO) / 수동(MANUAL) — CH 스위치. 수동 경기 땐 노트북 통째 하선 가능</li>
+</ul>
+</div>
+
+<div class="card done">
+<h2>완료된 것</h2>
+<ul>
+  <li>작년 펌웨어 분석 → 결함 정리 (0µs arm, 무클램프 자율경로, 워치독 없음, It_is_Aship 죽은 분기)</li>
+  <li>설계 7항목 확정 + 문서 4종 작성 (설계문서 / 회로 요구사항서 / 회로팀 설명서 / 부품 추천목록) — <b>docs/전달용/</b></li>
+  <li>펌웨어 <b>ssf_boat.ino</b> 작성, micro-ROS판 컴파일 통과 (2026-07-22)</li>
+  <li>회로팀 브릿지 노드 검토 → <b class="hl">브릿지 무수정 수용 결정</b>, 펌웨어를 시리얼 파서판으로 재작성 (2026-07-25)</li>
+  <li>회로팀 전원 문서 검토 — 충돌 9건 정리 (<b>docs/전달용/회로팀_전원문서_검토.md</b>), 그중 스러스터 4개 확정으로 #1 해소</li>
+</ul>
+</div>
+
+<div class="card todo">
+<h2>내가 처리할 일 (우선순위 순)</h2>
+<ul>
+  <li><b>시리얼판 펌웨어 재컴파일</b> — IDE에서 ssf_boat.ino 다시 열고 ✓ 버튼. 결과(성공/에러 전문)를 Claude에 보고 <span class="tag t-me">나</span></li>
+  <li><b>회로팀 질문 ①</b>: 보드 확정 — 실제 배에 실을 게 <b class="hl">Mega냐 Due냐</b>? (한 단어 답이면 됨) <span class="tag t-cir">회로팀</span></li>
+  <li><b>회로팀 질문 ②</b>: 브릿지 신호("L,R")를 받는 <b class="hl">Mega 스케치 파일(.ino) 원본</b> 받아오기 — 안전 로직 합치기용 <span class="tag t-cir">회로팀</span></li>
+  <li><b>회로팀 리마인드</b>: ESC 모델 / 수신기 모델(FS-iA6 vs iA6B, 겉면 표기) / 핀 배정표(요구사항서 §7 빈 표) / 방향지시등 채택 여부 <span class="tag t-cir">회로팀</span></li>
+  <li><b>회로팀 회의 안건</b> (전원문서_검토.md §3 들고 가기): ESC 부재 / 컨버터를 추진경로에서 Due 5V쪽으로 이동 / <b class="hl">무선 비상정지 추가(규정 의무)</b> + 좌우 동시 차단 / 신호 GND 공통화 / Due 전원 출처 <span class="tag t-cir">회로팀</span></li>
+  <li><b>브릿지 실행법 전달</b>: Ubuntu에선 <code>--port /dev/ttyACM0</code> 인자로 실행 (코드 수정 아님) <span class="tag t-cir">회로팀</span></li>
+</ul>
+<div class="small">※ 질문 ①②의 복붙용 문구는 Claude 대화에 있음 (2026-07-28)</div>
+</div>
+
+<div class="card wait">
+<h2>답 오면 이어지는 작업 (Claude 담당)</h2>
+<ul>
+  <li>보드가 Mega로 확정되면 → 펌웨어 이식 (핀 번호 + 시리얼 이름만, 로직 무변경) <span class="tag t-cl">Claude</span></li>
+  <li>Mega 스케치 원본 받으면 → 내용 검토 + 우리 안전 로직과 병합 방안 <span class="tag t-cl">Claude</span></li>
+  <li>핀 배정표 받으면 → 코드 §1 반영 (5분) <span class="tag t-cl">Claude</span></li>
+  <li>상태 보고("S,...") 수신용 노트북 노드 신규 작성 → 블랙박스 연동 <span class="tag t-cl">Claude</span></li>
+  <li>이후: 벤치 검증 (설계문서 §6 목록 — ESC arm 시간, 모터 방향, RC failsafe 실측 등)</li>
+</ul>
+</div>
+
+<div class="card">
+<h2>🚧 양보 불가 4건 (회의 때 물러서면 안 되는 것 — 물리/규정)</h2>
+<ul style="list-style:none">
+  <li style="border:none">1. <b>ESC 존재</b> — T200은 브러시리스, ESC 없이 안 돎</li>
+  <li style="border:none">2. <b>신호 GND 공통</b> — 좌우 전원 분리는 유지하되 GND 한 가닥은 연결 (안 하면 신호 오동작)</li>
+  <li style="border:none">3. <b>무선 비상정지</b> — 룰북 의무. 버튼식만으론 규정 미달</li>
+  <li style="border:none">4. <b>스러스터 4개</b> — 확정 완료, 전원 설계에 반영돼야 함</li>
+</ul>
+<div class="small">그 외(배터리 2개 독립 구조, 부품 선정, 배치)는 회로팀 재량 존중</div>
+</div>
+
+</div>
+</body>
+</html>
