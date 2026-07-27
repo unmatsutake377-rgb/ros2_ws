@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SSF 자율운항선박 — 발표·설명용 시스템 안내</title>
+<style>
+  :root{
+    --bg:#f6f8fb; --card:#fff; --ink:#1a1f27; --muted:#5b6673; --line:#e2e7ee;
+    --accent:#2563eb; --accent2:#7c3aed; --ok:#0f9d58; --warn:#c77700; --bad:#d13438;
+    --code:#eef1f5; --codeink:#1a1f27; --sensor:#0891b2; --think:#7c3aed; --act:#c2410c; --tool:#4b5563;
+  }
+  @media (prefers-color-scheme:dark){:root{
+    --bg:#0e1116; --card:#161b22; --ink:#e6e9ee; --muted:#9aa4b0; --line:#272d36;
+    --accent:#5b9bff; --accent2:#b388ff; --ok:#41c07a; --warn:#e0a233; --bad:#ff6b6f;
+    --code:#0b0e12; --codeink:#d6dbe2; --sensor:#22d3ee; --think:#b388ff; --act:#fb923c; --tool:#9ca3af;
+  }}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans KR",sans-serif;
+    line-height:1.62;font-size:16px}
+  .wrap{max-width:1000px;margin:0 auto;padding:28px 18px 90px}
+  header h1{font-size:1.8rem;margin:0 0 6px}
+  .sub{color:var(--muted);font-size:.95rem}
+  nav{position:sticky;top:0;z-index:50;background:var(--bg);border-bottom:1px solid var(--line);
+    margin:16px -18px 0;padding:10px 18px;display:flex;gap:6px;flex-wrap:wrap}
+  nav a{font-size:.82rem;color:var(--muted);text-decoration:none;padding:4px 10px;
+    border:1px solid var(--line);border-radius:999px}
+  nav a:hover{color:var(--accent);border-color:var(--accent)}
+  h2{font-size:1.35rem;margin:38px 0 12px;padding-top:12px;border-top:2px solid var(--line)}
+  h3{font-size:1.08rem;margin:22px 0 8px}
+  p{margin:8px 0}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin:14px 0}
+  .lead{border-left:4px solid var(--accent);background:var(--card);padding:14px 18px;border-radius:8px;margin:14px 0}
+  .analogy{border-left:4px solid var(--accent2);background:var(--card);padding:12px 16px;border-radius:8px;
+    margin:10px 0;color:var(--ink)}
+  .analogy b{color:var(--accent2)}
+  code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.85em;
+    background:var(--code);color:var(--codeink);padding:1px 5px;border-radius:4px}
+  table{width:100%;border-collapse:collapse;margin:10px 0;font-size:.9rem;overflow-x:auto;display:block}
+  th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--muted);font-weight:600;font-size:.8rem}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin:14px 0}
+  .nodebox{border:1px solid var(--line);border-radius:10px;padding:11px 12px;cursor:pointer;
+    background:var(--card);transition:.15s;border-left-width:4px}
+  .nodebox:hover{transform:translateY(-2px);box-shadow:0 4px 14px rgba(0,0,0,.12)}
+  .nodebox .nm{font-family:ui-monospace,monospace;font-size:.82rem;font-weight:700}
+  .nodebox .rl{font-size:.74rem;color:var(--muted);margin-top:3px}
+  .k-sensor{border-left-color:var(--sensor)} .k-think{border-left-color:var(--think)}
+  .k-act{border-left-color:var(--act)} .k-tool{border-left-color:var(--tool)}
+  .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:.8rem;color:var(--muted);margin:8px 0}
+  .dot{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:4px;vertical-align:middle}
+  #detail{position:fixed;bottom:0;left:0;right:0;max-height:76vh;overflow-y:auto;
+    background:var(--card);border-top:2px solid var(--accent);box-shadow:0 -6px 24px rgba(0,0,0,.25);
+    transform:translateY(102%);transition:transform .22s;z-index:100;padding:18px 20px 28px}
+  #detail.open{transform:translateY(0)}
+  #detail .dwrap{max-width:1000px;margin:0 auto}
+  #detail h3{margin:0 0 6px;font-family:ui-monospace,monospace}
+  .close{position:absolute;top:12px;right:16px;font-size:1.4rem;cursor:pointer;color:var(--muted);
+    background:none;border:none}
+  .io{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:10px 0}
+  @media(max-width:640px){.io{grid-template-columns:1fr}}
+  .io>div{border:1px solid var(--line);border-radius:8px;padding:10px 12px;font-size:.85rem}
+  .io .lbl{font-size:.72rem;font-weight:700;letter-spacing:.03em;margin-bottom:6px;display:block}
+  .in .lbl{color:var(--sensor)} .out .lbl{color:var(--act)}
+  .io ul{margin:0;padding-left:18px} .io li{margin:2px 0}
+  .script{border-left:3px solid var(--ok);background:var(--code);padding:10px 14px;border-radius:6px;
+    margin:10px 0;font-size:.92rem}
+  .script b{color:var(--ok)}
+  .qa{margin:10px 0}
+  .qa summary{cursor:pointer;font-weight:600;padding:8px 0;font-size:.95rem}
+  .qa summary::marker{color:var(--accent)}
+  .qa div{color:var(--muted);padding:2px 0 10px 14px;font-size:.92rem}
+  .flow{display:flex;flex-direction:column;gap:4px;margin:12px 0}
+  .frow{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .fbadge{font-family:ui-monospace,monospace;font-size:.75rem;background:var(--code);
+    border:1px solid var(--line);border-radius:6px;padding:3px 8px}
+  .arr{color:var(--muted)}
+  .tag{font-size:.7rem;padding:1px 7px;border-radius:999px;border:1px solid var(--line);color:var(--muted)}
+  .warn{border-left:3px solid var(--warn);padding:8px 14px;margin:10px 0;background:var(--card);
+    color:var(--muted);font-size:.9rem}
+  .timeline{display:flex;gap:6px;flex-wrap:wrap;margin:12px 0}
+  .step{border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:.8rem;flex:1;min-width:110px}
+  .step b{color:var(--accent);display:block;font-size:.9rem}
+  footer{margin-top:40px;padding-top:16px;border-top:1px solid var(--line);color:var(--muted);font-size:.85rem}
+  .hl{background:linear-gradient(transparent 60%,rgba(124,58,237,.28) 60%)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>🚤 SSF 자율운항선박 — 시스템 설명서</h1>
+  <div class="sub">발표·설명용. 비전공자도 따라올 수 있게 만들었습니다. 노드 상자를 <b>클릭</b>하면 상세가 뜹니다.</div>
+</header>
+
+<nav>
+  <a href="#ros2">① ROS2란?</a>
+  <a href="#hw">② 하드웨어</a>
+  <a href="#map">③ 전체 흐름</a>
+  <a href="#nodes">④ 노드 상세(클릭)</a>
+  <a href="#mission">⑤ 미션 진행</a>
+  <a href="#whatif">⑥ 만약에?</a>
+  <a href="#qa">⑦ 예상 질문</a>
+  <a href="#glossary">⑧ 용어</a>
+  <a href="#present">⑨ 발표 대본</a>
+</nav>
+
+<!-- ================= ① ROS2 ================= -->
+<h2 id="ros2">① ROS2가 뭔가요? (3분)</h2>
+<div class="lead">
+  <b>ROS2 = 로봇 소프트웨어를 만드는 틀.</b> 핵심 아이디어 하나만 알면 됩니다 —
+  <b>"프로그램을 잘게 쪼개서, 서로 메시지를 주고받게 한다."</b>
+</div>
+<div class="analogy">
+  <b>비유 — 공장 컨베이어 벨트.</b> 작업자 여러 명이 각자 자기 일만 합니다. 앞 사람이 벨트에
+  물건을 올리면(<b>발행</b>), 뒷사람이 집어서(<b>구독</b>) 다음 일을 합니다. 작업자 한 명이
+  쉬어도 나머지는 계속 돕니다.
+</div>
+<table>
+  <tr><th>ROS2 용어</th><th>공장 비유</th><th>뜻</th></tr>
+  <tr><td><b>노드 (node)</b></td><td>작업자 한 명</td><td>한 가지 일만 하는 작은 프로그램</td></tr>
+  <tr><td><b>토픽 (topic)</b></td><td>컨베이어 벨트</td><td>메시지가 흐르는 이름 붙은 통로. 예: <code>/scan</code></td></tr>
+  <tr><td><b>발행 (publish)</b></td><td>벨트에 올리기</td><td>노드가 데이터를 내보냄</td></tr>
+  <tr><td><b>구독 (subscribe)</b></td><td>벨트에서 집기</td><td>노드가 데이터를 받아 읽음</td></tr>
+</table>
+<div class="warn">
+  <b>딱 하나 규칙:</b> 한 통로(토픽)에 <b>내보내는 노드는 하나</b>여야 합니다. 둘이 같은 벨트에
+  다른 물건을 올리면 뒷사람이 뭘 집어야 할지 모릅니다. (이게 작년 사고의 핵심 — ⑦ 참고)
+</div>
+
+<!-- ================= ② 하드웨어 ================= -->
+<h2 id="hw">② 하드웨어 — "하드웨어 노드"란?</h2>
+<p>"하드웨어 노드"는 <b>실제 장비(센서·모터)에서 데이터를 읽거나 명령을 내보내는 노드</b>를 말합니다.
+   장비 자체가 아니라, 그 장비와 소프트웨어를 이어주는 프로그램입니다.</p>
+<div class="grid">
+  <div class="nodebox k-sensor" onclick="show('lidar')"><div class="nm">LiDAR</div><div class="rl">사방 거리 측정 (주 눈)</div></div>
+  <div class="nodebox k-sensor" onclick="show('imu')"><div class="nm">IMU</div><div class="rl">뱃머리 방향</div></div>
+  <div class="nodebox k-sensor" onclick="show('gps')"><div class="nm">GPS</div><div class="rl">위치·이동방향</div></div>
+  <div class="nodebox k-sensor" onclick="show('cam')"><div class="nm">카메라</div><div class="rl">부표 색·방향</div></div>
+  <div class="nodebox k-act" onclick="show('arduino')"><div class="nm">아두이노</div><div class="rl">모터 구동</div></div>
+</div>
+<div class="analogy">
+  사람으로 치면 — <b>LiDAR·카메라 = 눈</b>, <b>IMU = 평형감각(어디 보는지)</b>,
+  <b>GPS = "내가 지도상 어디에 있나"</b>, <b>아두이노 = 팔다리 근육</b>, <b>노트북 = 뇌</b>.
+</div>
+
+<!-- ================= ③ 전체 흐름 ================= -->
+<h2 id="map">③ 전체 흐름 — 보고 → 판단 → 움직인다</h2>
+<p>배의 뇌는 이 3단계를 <b>1초에 수십 번</b> 반복합니다.</p>
+<div class="flow">
+  <div class="frow"><span class="fbadge" style="border-color:var(--sensor)">👁 센서(눈)</span><span class="arr">→</span>
+    <span class="fbadge" style="border-color:var(--think)">🧠 판단(여러 노드)</span><span class="arr">→</span>
+    <span class="fbadge" style="border-color:var(--act)">⚙️ 모터</span></div>
+</div>
+<div class="card">
+  <div class="flow" style="font-size:.85rem">
+    <div class="frow"><b style="color:var(--sensor)">GPS·IMU</b><span class="arr">→</span>
+      <code>yaw_mux</code><span class="arr">→</span><code>north_goal_angle</code><span class="arr">→</span>
+      <code>ship_goal_angle</code><span class="arr">→</span><span class="tag">목표 방향 오차</span></div>
+    <div class="frow"><b style="color:var(--sensor)">카메라</b><span class="arr">→</span>
+      <code>비전 검출기</code><span class="arr">→</span><code>미션 노드 4종</code><span class="arr">→</span>
+      <span class="tag">이번 미션에서 갈 방향</span></div>
+    <div class="frow"><span class="arr">↓ 둘이 만난다</span></div>
+    <div class="frow"><code>ship_direction</code> <span class="tag">LiDAR로 장애물 보며 최종 조향 결정</span>
+      <span class="arr">→</span><code>motor_control</code><span class="arr">→</span>
+      <b style="color:var(--act)">아두이노 → 모터</b></div>
+  </div>
+</div>
+<div class="legend">
+  <span><span class="dot" style="background:var(--sensor)"></span>센서(눈)</span>
+  <span><span class="dot" style="background:var(--think)"></span>판단(뇌)</span>
+  <span><span class="dot" style="background:var(--act)"></span>행동(근육)</span>
+  <span><span class="dot" style="background:var(--tool)"></span>감시 도구</span>
+</div>
+
+<!-- ================= ④ 노드 상세 ================= -->
+<h2 id="nodes">④ 노드 하나하나 — 상자를 클릭하세요</h2>
+<p class="sub">클릭하면 화면 아래에 상세(하는 일 · 입력 · 출력 · 담당 코드 · <b>발표 대본</b>)가 뜹니다.</p>
+
+<h3>🧠 판단 노드 (뇌)</h3>
+<div class="grid">
+  <div class="nodebox k-think" onclick="show('yaw_mux')"><div class="nm">yaw_mux</div><div class="rl">진짜 뱃머리 방향 만들기</div></div>
+  <div class="nodebox k-think" onclick="show('north')"><div class="nm">north_goal_angle</div><div class="rl">목표 방위 + 경계선</div></div>
+  <div class="nodebox k-think" onclick="show('shipgoal')"><div class="nm">ship_goal_angle</div><div class="rl">방향 오차 계산</div></div>
+  <div class="nodebox k-think" onclick="show('vision')"><div class="nm">비전 검출기 3종</div><div class="rl">부표 색·방향 찾기</div></div>
+  <div class="nodebox k-think" onclick="show('shipgate')"><div class="nm">ship_gate</div><div class="rl">게이트 통과 미션</div></div>
+  <div class="nodebox k-think" onclick="show('shipturn')"><div class="nm">ship_turn</div><div class="rl">부표 돌기 미션</div></div>
+  <div class="nodebox k-think" onclick="show('shipdock')"><div class="nm">ship_dock</div><div class="rl">도킹 미션</div></div>
+  <div class="nodebox k-think" onclick="show('shipback')"><div class="nm">ship_back</div><div class="rl">위치 유지 미션</div></div>
+  <div class="nodebox k-think" onclick="show('shipdir')"><div class="nm">ship_direction</div><div class="rl">⭐ 최종 조향 결정</div></div>
+</div>
+<h3>⚙️ 행동 노드 (근육)</h3>
+<div class="grid">
+  <div class="nodebox k-act" onclick="show('motor')"><div class="nm">motor_control</div><div class="rl">조향각 → 모터 세기</div></div>
+  <div class="nodebox k-act" onclick="show('arduino')"><div class="nm">아두이노 펌웨어</div><div class="rl">실제 모터 구동</div></div>
+</div>
+<h3>🔍 감시 도구 (우리가 새로 만듦)</h3>
+<div class="grid">
+  <div class="nodebox k-tool" onclick="show('blackbox')"><div class="nm">blackbox</div><div class="rl">모든 신호 기록</div></div>
+  <div class="nodebox k-tool" onclick="show('health')"><div class="nm">healthcheck</div><div class="rl">고장 감시</div></div>
+</div>
+
+<!-- ================= ⑤ 미션 진행 ================= -->
+<h2 id="mission">⑤ 미션은 어떻게 진행되나 (wp_mode)</h2>
+<p><code>/wp_mode</code>라는 숫자가 "지금 몇 번째 미션인지"를 알려줍니다. 이 숫자가 바뀌면
+   담당 노드가 깨어나 일합니다. 순서대로:</p>
+<div class="timeline">
+  <div class="step"><b>0·1</b>게이트 통과<br><span class="sub">ship_gate</span></div>
+  <div class="step"><b>2</b>위치 유지<br><span class="sub">ship_back</span></div>
+  <div class="step"><b>3</b>부표 돌기<br><span class="sub">ship_turn</span></div>
+  <div class="step"><b>5·8</b>회피 구간<br><span class="sub">담당 없음(GPS만)</span></div>
+  <div class="step"><b>7</b>도킹<br><span class="sub">ship_dock</span></div>
+</div>
+<div class="warn">발표 포인트: "미션마다 <b>다른 노드가 깨어나는 게 아니라, 모든 노드가 항상 켜져 있고
+  자기 번호일 때만 일합니다.</b> 작년엔 켰다 껐다 해서 전환할 때 몇 초씩 멈췄는데, 그걸 고쳤습니다."</div>
+
+<!-- ================= ⑥ 만약에 ================= -->
+<h2 id="whatif">⑥ "만약에 ~하면?" — 안전 설계</h2>
+<p class="sub">발표에서 제일 많이 받는 질문입니다. 답이 다 준비돼 있습니다.</p>
+<div class="qa">
+  <details><summary>LiDAR(눈)가 갑자기 꺼지면?</summary>
+    <div>ship_direction이 "센서 죽음"을 감지해 <b>자동으로 감속 → 정지</b>합니다(페일세이프).
+    작년엔 LiDAR가 멈추면 계산 자체가 멈춰서 정지 명령도 못 냈는데, 지금은 별도 타이머가
+    항상 돌아 "멈춰라"를 계속 보냅니다.</div></details>
+  <details><summary>배가 경기장 밖으로 나가려 하면?</summary>
+    <div>경계선을 <b>보이지 않는 벽(가짜 LiDAR)</b>으로 만들어 놨습니다. 배가 그 벽을 장애물처럼
+    피합니다. 경기장 밖 = 실격이라, 이걸 못 막으면 아무리 잘해도 0점입니다.</div></details>
+  <details><summary>물보라가 튀어서 센서가 헛것을 보면?</summary>
+    <div>주변 값들의 <b>중앙값(median)</b>을 써서 튀는 값 하나를 걸러냅니다. 측정상 가짜 감속이
+    36.8% → 8.9%로 줄었습니다.</div></details>
+  <details><summary>카메라가 부표를 한 프레임 잘못 보면?</summary>
+    <div>같은 판정이 <b>연속 3프레임</b> 나와야 확정합니다(도킹). 한 프레임 오탐은 무시됩니다.</div></details>
+  <details><summary>명령이 안 오면 모터가 마지막 명령대로 계속 달리나?</summary>
+    <div>아닙니다. 0.5초 넘게 명령이 끊기면 <b>자동으로 중립(정지)</b>입니다(워치독). 아두이노에도
+    같은 안전장치가 한 겹 더 있습니다.</div></details>
+</div>
+
+<!-- ================= ⑦ 예상 질문 ================= -->
+<h2 id="qa">⑦ 발표 예상 질문 & 답</h2>
+<div class="qa">
+  <details><summary>Q. 작년 코드를 그대로 쓴 건가요?</summary>
+    <div>아니요. 작년 대회 코드를 <b>기반</b>으로 하되, "에러 없이 조용히 죽는" 버그들을 찾아 고쳤습니다.
+    대표적으로 <b>도킹 노드가 1년간 침묵</b>했던 걸 발견해 고쳤습니다(번호가 9 vs 7로 안 맞았음).</div></details>
+  <details><summary>Q. 가장 큰 개선이 뭔가요?</summary>
+    <div>세 가지: ① <b>침묵 실패 차단</b> — 값이 이상하면 틀린 값을 내보내느니 멈추고 알립니다.
+    ② <b>뱃머리 방향 정상화</b> — 작년엔 GPS 이동방향을 뱃머리로 착각했는데 분리했습니다.
+    ③ <b>안전장치</b> — 센서 죽으면 자동 정지, 경계선 방어.</div></details>
+  <details><summary>Q. 검증은 어떻게 했나요? (배도 없는데)</summary>
+    <div>계산 로직을 ROS·장비와 분리해서, 노트북에서 돌아가는 <b>자동 테스트 155개</b>를 만들었습니다.
+    코드를 고칠 때마다 이게 다 통과하는지 확인합니다. 물 위 검증이 필요한 것들은 "실기 대기"로
+    따로 표시해 뒀습니다.</div></details>
+  <details><summary>Q. 왜 "조용히 멈추는 것"을 그렇게 강조하나요?</summary>
+    <div>이 프로젝트가 계속 당한 사고가 그 유형이라서요. 프로그램이 빨간 에러를 내면 눈에 보이니 낫습니다.
+    근데 <b>아무 일도 없어 보이는데 실제론 기능이 죽어 있으면</b> 아무도 모릅니다. 도킹이 1년간
+    그랬습니다. 그래서 "모르면 멈추고 알린다"를 원칙으로 삼았습니다.</div></details>
+  <details><summary>Q. 배가 두 척(A·B)인데 코드가 두 벌인가요?</summary>
+    <div>아니요, 코드는 한 벌입니다. 크기·세기 같은 배마다 다른 값만 <b>설정 파일(yaml)</b>로 빼뒀습니다.
+    배가 바뀌면 설정 파일만 갈아끼웁니다.</div></details>
+</div>
+
+<!-- ================= ⑧ 용어 ================= -->
+<h2 id="glossary">⑧ 용어 사전 (발표 중 나올 것)</h2>
+<table>
+  <tr><th>용어</th><th>쉬운 뜻</th></tr>
+  <tr><td><b>노드</b></td><td>한 가지 일만 하는 작은 프로그램</td></tr>
+  <tr><td><b>토픽</b></td><td>노드끼리 데이터를 주고받는 이름 붙은 통로</td></tr>
+  <tr><td><b>발행/구독</b></td><td>내보내기 / 받아 읽기</td></tr>
+  <tr><td><b>yaw(요)</b></td><td>뱃머리가 좌우로 향한 방위 각도</td></tr>
+  <tr><td><b>COG</b></td><td>GPS가 재는 실제 이동 방향(뱃머리와 다를 수 있음)</td></tr>
+  <tr><td><b>페일세이프</b></td><td>고장 나면 안전하게 멈추는 장치</td></tr>
+  <tr><td><b>지오펜스</b></td><td>보이지 않는 경계선(가짜 벽)</td></tr>
+  <tr><td><b>워치독</b></td><td>신호가 끊기면 스스로 안전 상태로 만드는 감시</td></tr>
+  <tr><td><b>파라미터/yaml</b></td><td>코드 안 고치고 바꾸는 설정값 / 그 설정 파일</td></tr>
+  <tr><td><b>wp_mode</b></td><td>지금 몇 번째 미션인지 나타내는 숫자</td></tr>
+  <tr><td><b>침묵 실패</b></td><td>에러 없이 조용히 기능이 죽는 것 (이 팀의 최대 적)</td></tr>
+</table>
+
+<!-- ================= ⑨ 발표 대본 ================= -->
+<h2 id="present">⑨ 발표 대본 (30초 버전)</h2>
+<div class="script">
+  <b>"우리 배는 사람처럼 '보고 → 판단하고 → 움직인다'를 1초에 수십 번 반복합니다.</b>
+  LiDAR·카메라·GPS·IMU가 <b>눈과 감각</b>이고, 여러 개의 작은 프로그램(노드)이 <b>뇌</b>처럼 나눠서
+  판단합니다. 그 결과가 모터로 갑니다. 저희가 한 일은 작년 코드에서 <b>'에러 없이 조용히 죽던
+  버그들'</b>을 찾아 고치고, 센서가 죽거나 경계를 넘으려 하면 <b>스스로 안전하게 멈추게</b>
+  만든 겁니다. 그리고 배 없이도 검증할 수 있게 <b>자동 테스트 155개</b>를 붙였습니다."</b>
+</div>
+<div class="warn">
+  발표 팁: 위 ④ 노드 상자를 <b>실제로 클릭하며</b> "이 노드는 이걸 받아서(입력) 이걸 내보냅니다(출력)"
+  라고 짚으면, 청중이 데이터 흐름을 눈으로 따라갑니다. 한 노드당 "한 문장 대본"이 상세창에 있습니다.
+</div>
+
+<footer>
+  이 페이지는 발표·이해용 요약입니다. 정확한 기준은 저장소 코드와 <code>CLAUDE.md</code>,
+  <code>docs/소프트파트_전체설명_쉬운버전.md</code> 입니다. 인터넷 없이 열립니다(자체 완결).
+</footer>
+</div>
+
+<!-- ===== 상세 패널 ===== -->
+<div id="detail"><div class="dwrap">
+  <button class="close" onclick="hide()">✕</button>
+  <div id="dbody"></div>
+</div></div>
+
+<script>
+const N = {
+ lidar:{t:"LiDAR (RPLIDAR A3) — 주된 눈", role:"빙 돌면서 레이저로 사방 거리를 잽니다.",
+   in:["레이저 반사(물리)"], out:["<code>/scan</code> — 사방 거리 배열"],
+   code:["드라이버: <code>rplidar_ros</code>"],
+   say:"“LiDAR는 배의 주된 눈입니다. 사방에 뭐가 얼마나 떨어져 있는지를 초당 10번 잽니다.”"},
+ imu:{t:"IMU (iAHRS) — 방향 감각", role:"뱃머리가 어느 쪽을 향하는지(yaw), 얼마나 기울었는지 잽니다.",
+   in:["관성(물리)"], out:["<code>/imu/yaw_raw</code> — 보정 전 방향"],
+   code:["드라이버: <code>iahrs_driver</code> (C++)"],
+   say:"“IMU는 뱃머리 방향을 알려줍니다. 단, 날것이라 yaw_mux가 진짜 방위로 보정합니다.”"},
+ gps:{t:"GPS (RTK) — 위치·이동방향", role:"위도·경도와 움직인 방향/속도를 cm 단위로 잽니다.",
+   in:["위성 신호 + NTRIP 보정"], out:["<code>/ublox_gps_node/fix</code> 위치","<code>.../fix_velocity</code> 속도"],
+   code:["드라이버: <code>ublox_gps</code>"],
+   say:"“GPS는 지도상 위치와 이동 방향을 줍니다. RTK라 오차가 센티미터급입니다.”"},
+ cam:{t:"카메라 (RealSense) — 부표 눈", role:"부표의 색과 방향을 알아냅니다. 거리는 안 씁니다(LiDAR가 담당).",
+   in:["영상"], out:["<code>/camera/.../image_raw</code> — 컬러 영상"],
+   code:["드라이버: <code>realsense2_camera</code>"],
+   say:"“카메라는 부표의 색과 방향만 봅니다. 거리는 LiDAR가 더 정확해서 역할을 나눴습니다.”"},
+ arduino:{t:"아두이노 펌웨어 — 근육", role:"노트북이 보낸 모터 세기 숫자를 실제 모터 신호로 바꿉니다.",
+   in:["<code>Motor_run</code> — 좌우 모터 세기"], out:["모터 회전(물리)"],
+   code:["<code>arduino/ssf_boat/ssf_boat.ino</code> (회로팀)"],
+   say:"“아두이노는 뇌(노트북)의 명령을 실제 모터 힘으로 바꾸는 근육입니다. 명령이 0.5초 끊기면 스스로 멈춥니다.”"},
+ yaw_mux:{t:"yaw_mux — 진짜 뱃머리 방향 만들기", role:"IMU의 날것 방향을 보정해 '진짜 절대방위'로 만듭니다. 이 값의 유일한 발행자입니다.",
+   in:["<code>/imu/yaw_raw</code>","<code>.../fix_velocity</code> (GPS 보정)","<code>/motor_reverse</code>"],
+   out:["<code>/imu/yaw</code> — 진짜 뱃머리 방위","<code>/heading_status</code> — 상태"],
+   code:["<code>ssf_heading/yaw_mux.py</code>","순수 로직 <code>heading_logic.py</code>"],
+   say:"“작년엔 GPS 이동방향을 뱃머리로 착각했습니다. 이 노드가 그걸 분리해 진짜 뱃머리 방위를 만듭니다. 값이 불확실하면 아예 안 내보냅니다.”"},
+ north:{t:"north_goal_angle — 목표 방위 + 경계선", role:"GPS로 '목표까지 방위'를 계산하고, 경기장 경계선을 가짜 벽으로 만듭니다.",
+   in:["<code>/ublox_gps_node/fix</code>","<code>/imu/yaw</code>"],
+   out:["<code>/wp_mode</code> 미션번호","<code>/north_goal_angle_tp</code> 목표방위","<code>/geofence_state</code> 경계벽","<code>/goal_distance</code>"],
+   code:["<code>north_goal_angle.py</code>","광선 계산 <code>_ray_polygon_dist</code>"],
+   say:"“다음 목표가 어느 방향인지 계산하고, 경기장 밖으로 못 나가게 보이지 않는 벽을 세웁니다.”"},
+ shipgoal:{t:"ship_goal_angle — 방향 오차", role:"'목표 방위'와 '지금 뱃머리 방향'을 빼서 얼마나 틀어졌는지 냅니다.",
+   in:["<code>/imu/yaw</code>","<code>/north_goal_angle_tp</code>"],
+   out:["<code>/yaw_error</code> — 방향 오차"],
+   code:["<code>ship_goal_angle.py</code>"],
+   say:"“목표와 현재 방향의 차이를 계산합니다. 이 차이가 클수록 배가 더 많이 틀어야 한다는 뜻입니다.”"},
+ vision:{t:"비전 검출기 3종 (gate/turn/dock)", role:"카메라 영상에서 부표의 색과 방향을 찾습니다. 각자 자기 미션 번호일 때만 일합니다.",
+   in:["<code>/camera/.../image_raw</code>","<code>/wp_mode</code>"],
+   out:["<code>/red_angle</code>,<code>/green_angle</code> (gate)","<code>/image_angle</code> (turn/dock)"],
+   code:["<code>basic_image_subscriber{gate,turn,dock}.py</code>","분류 로직 <code>dock_logic.py</code>"],
+   say:"“카메라로 부표가 어느 방향에 있는지 각도를 뽑습니다. 도킹은 형상×색 조합이 당일 공지돼서, 설정만 바꾸면 되게 만들었습니다.”"},
+ shipgate:{t:"ship_gate — 게이트 통과 미션", role:"빨강·초록 부표 사이(문)를 통과하는 방향을 정합니다.",
+   in:["<code>/red_angle</code>,<code>/green_angle</code>","<code>/scan</code>","<code>/wp_mode</code>"],
+   out:["<code>/candidate_angle</code> 갈 방향","<code>/gates_passed</code> 통과 수"],
+   code:["<code>ship_gate.py</code>","<code>gate_logic.py</code>"],
+   say:"“두 부표 사이 한가운데로 지나가도록 방향을 잡습니다.”"},
+ shipturn:{t:"ship_turn — 부표 돌기 미션", role:"부표를 중심으로 원을 그리며 도는 방향을 정합니다.",
+   in:["<code>/image_angle</code>","<code>/scan</code>","<code>/imu/yaw</code>","<code>/wp_mode</code>"],
+   out:["<code>/candidate_angle</code>"],
+   code:["<code>ship_turn.py</code>","<code>orbit_logic.py</code>"],
+   say:"“부표 주위를 일정 반경으로 도는 궤도를 만듭니다.”"},
+ shipdock:{t:"ship_dock — 도킹 미션", role:"공지된 표식(형상×색)을 찾아 그 도크에 접안합니다.",
+   in:["<code>/image_angle</code>","<code>/scan</code>","<code>/wp_mode</code>"],
+   out:["<code>/candidate_angle</code>"],
+   code:["<code>ship_dock.py</code>","<code>dock_logic.py</code> (형상 분류·N프레임 확정)"],
+   say:"“표식을 정면으로 맞추고 천천히 접안합니다. 표식은 대회 당일 공지되므로 설정으로 바꿉니다.”"},
+ shipback:{t:"ship_back — 위치 유지 미션", role:"부표 옆 정해진 자리에 5초간 버팁니다(조류에 안 밀리게 능동 제어).",
+   in:["<code>/image_angle</code>","<code>/scan</code>","<code>/wp_mode</code>"],
+   out:["<code>/candidate_angle</code>"],
+   code:["<code>ship_back.py</code>","<code>hold_logic.py</code>"],
+   say:"“작년엔 그냥 5초 정지라 조류에 밀렸습니다. 지금은 거리를 재며 전진·후진으로 자리를 지킵니다.”"},
+ shipdir:{t:"⭐ ship_direction — 최종 조향 결정 (가장 중요)", role:"목표 방향 + 미션 제안 + LiDAR 장애물을 종합해 최종 조향각을 정합니다. 위험하면 감속·정지.",
+   in:["<code>/scan</code>","<code>/yaw_error</code>","<code>/candidate_angle</code>","<code>/geofence_state</code>","<code>/wp_mode</code>"],
+   out:["<code>/desired_angle</code> 최종 조향","<code>/failsafe_level</code> 안전단계","<code>/obstacle_distance_array</code>"],
+   code:["<code>ship_direction.py</code>","페일세이프 <code>failsafe.py</code>"],
+   say:"“모든 판단이 여기서 하나로 합쳐집니다. 목표 방향으로 가되 장애물·경계를 피하고, 센서가 죽으면 스스로 감속·정지합니다.”"},
+ motor:{t:"motor_control — 조향각을 모터 세기로", role:"'어느 쪽으로 얼마나'를 좌우 모터 각각의 세기로 바꿉니다. 명령 끊기면 중립.",
+   in:["<code>/desired_angle</code>","<code>/obstacle_distance_array</code>","<code>/failsafe_level</code>"],
+   out:["<code>Motor_run</code> 모터 세기","<code>/motor_reverse</code> 후진여부"],
+   code:["<code>motor_control.py</code>"],
+   say:"“조향 결정을 좌우 모터 힘으로 번역합니다. 1500이 중립, 낮으면 전진, 높으면 후진입니다.”"},
+ blackbox:{t:"blackbox — 비행기 블랙박스", role:"모든 신호를 CSV 파일로 계속 기록합니다. 나중에 '왜 그랬나' 되짚기용. 구독만 합니다.",
+   in:["거의 모든 토픽"], out:["CSV 파일 (기록)"],
+   code:["<code>ssf_tools/blackbox.py</code>"],
+   say:"“배가 도는 동안 모든 데이터를 기록합니다. 실패해도 원인을 데이터로 찾을 수 있습니다.”"},
+ health:{t:"healthcheck — 고장 감시", role:"센서·노드가 살아있는지 2초마다 점검하고, 출발해도 되는지 알립니다.",
+   in:["<code>/scan</code>,<code>/imu/yaw</code>,<code>/camera</code> 등"], out:["<code>/health_ok</code> 출발가능 여부"],
+   code:["<code>ssf_tools/healthcheck.py</code>"],
+   say:"“출발 전에 눈·귀가 다 살아있는지 확인합니다. 하나라도 죽어 있으면 빨간불을 켭니다.”"},
+};
+function show(k){
+  const n=N[k]; if(!n) return;
+  let io = '<div class="io"><div class="in"><span class="lbl">⬇ 입력 (받는 것)</span><ul>'
+    + n.in.map(x=>'<li>'+x+'</li>').join('') + '</ul></div>'
+    + '<div class="out"><span class="lbl">⬆ 출력 (내보내는 것)</span><ul>'
+    + n.out.map(x=>'<li>'+x+'</li>').join('') + '</ul></div></div>';
+  document.getElementById('dbody').innerHTML =
+    '<h3>'+n.t+'</h3><p>'+n.role+'</p>'+io
+    +'<p class="sub">📄 담당 코드: '+n.code.join(' · ')+'</p>'
+    +'<div class="script"><b>🎤 발표 대본:</b> '+n.say+'</div>';
+  document.getElementById('detail').classList.add('open');
+}
+function hide(){document.getElementById('detail').classList.remove('open');}
+document.addEventListener('keydown',e=>{if(e.key==='Escape')hide();});
+</script>
+</body>
+</html>
