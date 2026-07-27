@@ -9,6 +9,9 @@ from color_shape_detector.mode_gate import ModeGate
 from color_shape_detector.vision_geom import (
     DEFAULT_HFOV_DEG, angle_from_pixel,
 )
+from color_shape_detector.dock_logic import (
+    VALID_COLORS, VALID_SHAPES, classify_shape, DetectionConfirmer,
+)
 import cv2
 import numpy as np
 import time
@@ -95,9 +98,56 @@ class ImageSubscriber(Node):
         self.found_in_frame = False
         self.last_log_time = time.time()
 
-        # 목표 도형
-        self.target_color = "red"
-        self.target_shape = "Square"
+        # ---- D1: 목표 표식 파라미터화 (당일 아침 공지 대응) ----
+        # 작년: target_color="red", target_shape="Square" 하드코딩 → 공지된 조합이 다르면
+        #   코드를 고쳐야 했다. 파라미터로 빼서 yaml 한 줄(또는 --ros-args)로 바꾼다.
+        #   유효값 검증: 오타(예: "Squre")면 조용히 아무것도 못 찾는다 → ERROR 로그 + 발행 중단.
+        self.target_color = str(self.declare_parameter('target_color', 'red').value)
+        self.target_shape = str(self.declare_parameter('target_shape', 'Square').value)
+        self._target_valid = True
+        if self.target_color not in VALID_COLORS:
+            self._target_valid = False
+            self.get_logger().error(
+                f"🚨 target_color '{self.target_color}' 는 유효하지 않다. "
+                f"가능: {list(VALID_COLORS)}. 발행 중단 — 오타로 조용히 못 찾는 것 방지.")
+        if self.target_shape not in VALID_SHAPES:
+            self._target_valid = False
+            self.get_logger().error(
+                f"🚨 target_shape '{self.target_shape}' 는 유효하지 않다. "
+                f"가능: {list(VALID_SHAPES)}. 발행 중단.")
+
+        # ---- D2: N프레임 시간 안정화 ----
+        self.confirm_frames = int(self.declare_parameter('confirm_frames', 3).value)
+        # grace_period 도 파라미터로 (열화 환경에서 N·grace 를 올려 대응)
+        self.grace_period_s = float(
+            self.declare_parameter('grace_period_s', 2.0).value)
+        self.confirmer = DetectionConfirmer(confirm_frames=self.confirm_frames)
+
+        # ---- D3: 도형 분류·검출 임계 파라미터화 ----
+        self.approx_epsilon = float(self.declare_parameter('approx_epsilon', 0.0315).value)
+        self.min_area_px = float(self.declare_parameter('min_area_px', 80.0).value)
+        self.square_extent_min = float(
+            self.declare_parameter('square_extent_min', 0.4).value)
+        self.square_aspect_lo = float(self.declare_parameter('square_aspect_lo', 0.6).value)
+        self.square_aspect_hi = float(self.declare_parameter('square_aspect_hi', 1.4).value)
+        self.circle_circularity_min = float(
+            self.declare_parameter('circle_circularity_min', 0.82).value)
+        self.square_circularity_max = float(
+            self.declare_parameter('square_circularity_max', 0.60).value)
+        self.y_zone_lo = float(self.declare_parameter('y_zone_lo', 0.15).value)
+        self.y_zone_hi = float(self.declare_parameter('y_zone_hi', 0.55).value)
+
+        # ---- D5: HSV 5색 슬롯 (자리표시자 — 야외 캘리브 필요) ----
+        # 미션 표식 색이 당일 공지되므로 5색 슬롯을 전부 열어둔다.
+        # ⚠️ 아래 값은 실내 캘리브 잔재/추정치다. 야외에서 subscriberhsv 로 재확정할 것.
+        self.color_ranges = {
+            "red":    [([0, 80, 200], [5, 255, 255]), ([165, 80, 200], [180, 255, 255])],
+            "orange": [([3, 130, 100], [20, 255, 255])],
+            "yellow": [([21, 120, 60], [37, 255, 255])],
+            "green":  [([28, 30, 235], [40, 100, 255])],
+            "blue":   [([130, 18, 160], [175, 60, 200])],
+            "white":  [([0, 0, 220], [180, 40, 255])],
+        }
 
 
     # ============================================
@@ -107,159 +157,146 @@ class ImageSubscriber(Node):
         self.mode_gate.update(msg.data, time.monotonic())
 
     def color_callback(self, msg):
+        # D1: 목표 표식이 유효하지 않으면(오타 등) 검출을 하지 않는다. 센티널만 발행.
+        #   '조용히 아무것도 못 찾는' 상태를 만들지 않는다 — 소비자는 INVALID 를 명확히 본다.
+        if not self._target_valid:
+            self.angle_pub.publish(Float32(data=IMAGE_ANGLE_INVALID))
+            return
+
         # 3-4: 내 차례가 아니면 **여기서 끝낸다.**
         #   cv_bridge 변환·HSV·컨투어를 전부 건너뛴다 → 비활성 노드의 CPU 는 거의 0.
         #   발행도 안 한다 → /image_angle 발행자 충돌이 원천 차단된다.
         now_m = time.monotonic()
         active, why = self.mode_gate.state(now_m)
         if not active:
-            # 조용히 멈추지 않는다. '내 차례가 아님' 은 정상이라 로그를 안 내지만,
-            # /wp_mode 자체가 없거나 끊긴 건 FSM 문제라 알린다.
             if why != ModeGate.R_OTHER_MODE and (now_m - self._last_gate_log) > 5.0:
                 self._last_gate_log = now_m
                 self.get_logger().warn(
                     f"비활성({why}) → 검출 정지. /wp_mode 가 오고 있나?")
             return
 
-
-        self.found_in_frame = False
-
         frame = self.br.imgmsg_to_cv2(msg, desired_encoding='bgr8')
         view_frame = frame.copy() if self.debug_view else None
 
-        self.process_image(frame, view_frame)
+        # 이번 프레임에서 목표 표식을 찾는다 → (각도, (색,형상)) 또는 (None, None)
+        angle_deg, key = self.process_image(frame, view_frame)
+
+        # D2: N프레임 시간 안정화. 같은 (색,형상)이 confirm_frames 연속일 때만 확정.
+        #   한 프레임 오탐이 그대로 조향에 튀는 것을 막는다.
+        confirmed = self.confirmer.update(key)
 
         if self.debug_view:
             cv2.imshow("Dock Detection", view_frame)
             cv2.waitKey(1)
 
-        # fallback 처리
         now = time.time()
 
         def publish(angle_val):
             self.angle_pub.publish(Float32(data=float(angle_val)))
 
-        if not self.found_in_frame:
-            if (
-                self.last_valid['time'] > 0 and
-                (now - self.last_valid['time']) <= self.grace_period_s and
-                self.last_valid['angle'] is not None
-            ):
+        if confirmed is not None and angle_deg is not None:
+            # 확정 + 이번 프레임 각도 있음 → 발행
+            self.last_valid['angle'] = float(angle_deg)
+            self.last_valid['time'] = now
+            publish(angle_deg)
+            if now - self.last_log_time > 0.5:
+                self.get_logger().info(
+                    f"[Dock] {confirmed[0]} {confirmed[1]}: angle={angle_deg:.1f}")
+                self.last_log_time = now
+        else:
+            # 미확정/미검출 → grace 기간이면 마지막 유효값, 아니면 센티널
+            if (self.last_valid['time'] > 0 and
+                    (now - self.last_valid['time']) <= self.grace_period_s and
+                    self.last_valid['angle'] is not None):
                 publish(self.last_valid['angle'])
             else:
                 publish(IMAGE_ANGLE_INVALID)
 
 
     # ============================================
-    # 이미지 처리 (도형 인식)
+    # 이미지 처리 (도형 인식) — 이번 프레임의 (각도, (색,형상)) 반환
     # ============================================
     def process_image(self, cv_image, view_frame):
         # V1(T2-3): depth 가드 제거 (뎁스 없는 카메라에서 콜백이 영원히 막히는 것 방지)
         hsv_image = cv2.cvtColor(cv_image, cv2.COLOR_BGR2HSV)
         img_h, img_w = cv_image.shape[:2]
-        cy = img_h // 2
 
-        # HSV 범위 (너가 준 그대로)
-       
-        color_ranges = {
-            "red":    [([0, 80, 200], [5, 255, 255]), ([165, 80, 200], [180, 255, 255])],
-            #"orange": [([3, 130, 100], [20, 255, 255])],
-            #"yellow": [([21, 120, 60], [37, 255, 255])],
-            "green":  [([28, 30, 235], [40, 100, 255])],
-            "blue":   [([130, 18, 160], [175, 60, 200])],
-            #"white":  [([0, 240, 240], [180, 255, 255])]
-                     }#도킹용)
+        ranges = self.color_ranges.get(self.target_color)
+        if ranges is None:
+            return None, None
 
+        mask = np.zeros(hsv_image.shape[:2], dtype=np.uint8)
+        for lower, upper in ranges:
+            mask |= cv2.inRange(hsv_image, np.array(lower), np.array(upper))
+        mask = cv2.medianBlur(mask, 3)
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-        for color, ranges in color_ranges.items():
-
-            if color != self.target_color:
+        # 목표 형상과 일치하는 후보 중 **가장 큰 것**을 고른다 (가까울수록 크다).
+        best = None   # (area, angle, vX, vY, approx)
+        for contour in contours:
+            area = cv2.contourArea(contour)
+            if area < self.min_area_px:
                 continue
 
-            mask = np.zeros(hsv_image.shape[:2], dtype=np.uint8)
-            for lower, upper in ranges:
-                mask |= cv2.inRange(hsv_image, np.array(lower), np.array(upper))
+            perimeter = cv2.arcLength(contour, True)
+            approx = cv2.approxPolyDP(contour, self.approx_epsilon * perimeter, True)
+            x, y, w, h = cv2.boundingRect(approx)
 
-            mask = cv2.medianBlur(mask, 3)
-            contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            # D3: 형상 분류는 순수 로직(원형도 보조). 임계는 전부 파라미터.
+            shape = classify_shape(
+                len(approx), area, perimeter, w, h,
+                min_area=self.min_area_px,
+                square_extent_min=self.square_extent_min,
+                square_aspect_lo=self.square_aspect_lo,
+                square_aspect_hi=self.square_aspect_hi,
+                circle_circularity_min=self.circle_circularity_min,
+                square_circularity_max=self.square_circularity_max)
+            if shape != self.target_shape:
+                continue
 
-            for contour in contours:
+            M = cv2.moments(contour)
+            if M["m00"] == 0:
+                continue
+            vertices = approx.reshape(-1, 2)
+            vX = int(np.mean(vertices[:, 0]))
+            vY = int(np.mean(vertices[:, 1]))
 
-                area = cv2.contourArea(contour)
-                if area < 80:
-                    continue
+            # y범위 필터 (파라미터화). ⚠️ 실측 필요 — 거리별 표식 화면 높이로 확정.
+            if not (img_h * self.y_zone_lo <= vY <= img_h * self.y_zone_hi):
+                continue
 
-                approx = cv2.approxPolyDP(contour, 0.0315 * cv2.arcLength(contour, True), True)
-                v_count = len(approx)
+            if best is None or area > best[0]:
+                best = (area, angle_from_pixel(vX, img_w, self.hfov_deg), vX, vY, approx)
 
-                shape = None
+        if best is None:
+            return None, None
 
-                # 기존 조건을 그대로 유지
-                if v_count == 3:
-                    shape = "Triangle"
+        _, angle_deg, vX, vY, approx = best
+        if self.debug_view:
+            cv2.drawContours(view_frame, [approx], -1, (0, 255, 0), 2)
+            cv2.circle(view_frame, (vX, vY), 4, (255, 255, 0), -1)
+            cv2.putText(view_frame,
+                        f"{self.target_color} {self.target_shape} {angle_deg:.1f}deg",
+                        (vX + 10, vY - 10),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
 
-                elif 4 <= v_count <= 6:
-                    x, y, w, h = cv2.boundingRect(approx)
-                    aspect_ratio = w / float(h)
-                    extent = area / float(w * h)
-
-                    if extent > 0.4:
-                        shape = "Square"
-
-                elif v_count >= 7:
-                    shape = "Circle"
-
-                # 목표 도형이 아니면 continue
-                if shape != self.target_shape:
-                    continue
-
-                # 중심 계산
-                M = cv2.moments(contour)
-                if M["m00"] == 0:
-                    continue
-
-                vertices = approx.reshape(-1, 2)
-                vX = int(np.mean(vertices[:, 0]))
-                vY = int(np.mean(vertices[:, 1]))
-
-                # y-coordinate filtering: valid detection zone only
-                if not (img_h * 0.15 <= vY <= img_h * 0.55):  #위쪽범위 <= vY <=아래쪽범위
-                    continue
-
-                # angle 계산 (depth 불필요 — 기존 식에서 distance 가 약분되어 값이 완전히 같다)
-                angle_deg = angle_from_pixel(vX, img_w, self.hfov_deg)
-
-                # 퍼블리시 갱신 (각도만)
-                self.angle_pub.publish(Float32(data=float(angle_deg)))
-
-                self.found_in_frame = True
-                self.last_valid['angle'] = float(angle_deg)
-                self.last_valid['time'] = time.time()
-
-                # 시각화 (디버그 창이 켜져 있을 때만)
-                if self.debug_view:
-                    cv2.drawContours(view_frame, [approx], -1, (0, 255, 0), 2)
-                    cv2.circle(view_frame, (vX, vY), 4, (255, 255, 0), -1)
-                    cv2.putText(view_frame,
-                                f"{color} {shape} {angle_deg:.1f}deg",
-                                (vX + 10, vY - 10),
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,255), 2)
-
-                if time.time() - self.last_log_time > 0.5:
-                    print(f"[Dock] {color} {shape}: angle={angle_deg:.1f}")
-                    self.last_log_time = time.time()
-
-        return
+        return angle_deg, (self.target_color, self.target_shape)
 
 
 
 def main(args=None):
     rclpy.init(args=args)
     node = ImageSubscriber()
-    rclpy.spin(node)
-    node.pipeline.stop()
-    node.destroy_node()
-    rclpy.shutdown()
+    try:
+        rclpy.spin(node)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        # D5: node.pipeline.stop() 제거 — 존재하지 않는 속성이라 종료 때마다 예외였다.
+        #     (RealSense pyrealsense 파이프라인 잔재. 이 노드는 ROS 이미지 구독이라 파이프라인이 없다.)
+        node.destroy_node()
+        if rclpy.ok():
+            rclpy.shutdown()
 
 
 if __name__ == '__main__':

@@ -72,6 +72,8 @@ CSV_HEADER = [
     "gps_vel_x", "gps_vel_y",         # ~/fix_velocity: 속도 성분 (프레임은 드라이버 규약 — ⚠️ 확인)
     # ---- T8 발열/전원 (경고 아님, 순수 기록 — 사후에 '그때 스로틀 걸렸나' 확인용) ----
     "cpu_temp_c", "cpu_clock_frac", "on_ac",
+    # ---- D6 median 기각수 (물보라 노이즈 대리 지표 — '노이즈 ↔ 기상' 상관 검증용) ----
+    "obstacle_reject_count",
 ]
 
 
@@ -139,6 +141,8 @@ class BlackBox(Node):
         self.create_subscription(LaserScan, scan_topic, self._cb_scan, OBSERVER_QOS)
         self.create_subscription(Float64, imu_yaw_topic, self._cb_imu_yaw, OBSERVER_QOS)
         self.create_subscription(
+            Int32, "/obstacle_reject_count", self._cb_reject, OBSERVER_QOS)
+        self.create_subscription(
             Float64, imu_raw_yaw_topic, self._cb_imu_yaw_raw, OBSERVER_QOS)
         self.create_subscription(Float32, yaw_error_topic, self._cb_yaw_error, OBSERVER_QOS)
         self.create_subscription(Float32, candidate_topic, self._cb_candidate, OBSERVER_QOS)
@@ -180,6 +184,7 @@ class BlackBox(Node):
         self._scan_prev_t = t
 
     def _cb_imu_yaw(self, msg): self.latest["imu_yaw"] = msg.data
+    def _cb_reject(self, msg): self.latest["obstacle_reject_count"] = msg.data
     def _cb_imu_yaw_raw(self, msg): self.latest["imu_yaw_raw"] = msg.data
     def _cb_yaw_error(self, msg): self.latest["yaw_error"] = msg.data
     def _cb_candidate(self, msg): self.latest["candidate_angle"] = msg.data

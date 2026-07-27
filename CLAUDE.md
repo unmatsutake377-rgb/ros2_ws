@@ -255,6 +255,25 @@ angle_deg = -degrees(atan((vX - cx) / fx))     # vision_geom.angle_from_pixel()
 **고정 IP 등 네트워크 설정** 필요. 카메라 도착 전까지의 절차는 `docs/oak_arrival_runbook.md`(V5) 에 적는다.
 연결 테스트는 **실물이 와야** 가능하다 — 이전 판의 "지금 노트북에 물려 테스트 가능" 은 미구매 상태에서 불가.
 
+### 3-3b. ✅ 도크 표식 인식 강건화 (2026-07-24 계획 / 2026-07-27 D1~D6 완료)
+
+근거·전체 계획: `docs/도크미션_작업계획.md`. 제어(`ship_dock`)는 특화 완료 수준이고 **인식이 병목**이었다.
+미션 표식 = 형상(삼각/원/사각) × 색 조합이 **당일 아침 공지**된다.
+
+- **D1 목표 파라미터화**: `target_color/target_shape` 하드코딩("red"/"Square") 제거 → 파라미터.
+  유효값 검증(색 6종·형상 3종 밖이면 ERROR + 발행 중단 — 오타로 조용히 못 찾는 것 방지).
+- **D2 N프레임 시간 안정화**: 같은 (색,형상)이 `confirm_frames`(기본 3) 연속일 때만 확정 발행.
+  한 프레임 오탐이 조향에 튀지 않는다. 순수 로직 `DetectionConfirmer`.
+- **D3 도형 분류 강건화**: 꼭짓점 수 단독 → **원형도(4πA/P²)** 보조. epsilon·면적·extent·종횡비·
+  y범위 전부 파라미터. 순수 로직 `classify_shape`.
+- **D4 하네스** `tools/dock_eval.py`: 형상×색 혼동행렬 CSV. rosbag 재생은 **골격**(작년 bag 자산 없음),
+  `--selftest`로 분류 로직 자체는 지금 검증(100%). rosbag 확보 시 `run_bag`만 채운다.
+- **D5 잔가지**: 죽은 `node.pipeline.stop()` 제거(종료 시 예외였다). HSV 5색 슬롯 전부 활성(자리표시자).
+- **D6 median 기각 카운트**: `/obstacle_reject_count`(신규, 관측 전용) — median 이 버린 고립 스파이크 수.
+  blackbox 기록. **제어에 안 쓴다.** '노이즈 수 ↔ 기상 열화' 상관 검증용.
+- 순수 로직 `dock_logic.py` + `test_dock_logic.py`(18), median 기각 테스트 6개 추가.
+- ⚠️ 실기 대기: HSV 5색 야외 캘리브, y범위 실측, D3 임계는 D4 혼동행렬 수치로 튜닝(감 금지).
+
 ### 3-4. ✅ subprocess 모드 전환 제거 (2026-07-23 완료)
 
 작년:

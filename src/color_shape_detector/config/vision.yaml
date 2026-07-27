@@ -55,3 +55,21 @@ image_subscriber_turn:
 image_subscriber_dock:
   ros__parameters:
     active_wp_modes: [7]        # 🚨 작년 매니저는 9 로 띄우고 7 은 비전 OFF 였다
+    # ---- D1: 목표 표식 (당일 아침 공지되면 여기만 바꾼다) ----
+    #   유효값: color = red/orange/yellow/green/blue/white,  shape = Triangle/Square/Circle
+    #   오타면 노드가 부팅 때 ERROR 로그 + 발행 중단(조용히 못 찾는 것 방지).
+    target_color: "red"
+    target_shape: "Square"
+    # ---- D2: N프레임 시간 안정화 (열화 환경에선 confirm_frames·grace 를 올린다) ----
+    confirm_frames: 3
+    grace_period_s: 2.0
+    # ---- D3: 도형 분류·검출 임계 (⚠️ 값은 D4 하네스 수치로 튜닝. 감으로 만지지 말 것) ----
+    approx_epsilon: 0.0315
+    min_area_px: 80.0
+    square_extent_min: 0.4
+    square_aspect_lo: 0.6
+    square_aspect_hi: 1.4
+    circle_circularity_min: 0.82
+    square_circularity_max: 0.60
+    y_zone_lo: 0.15            # ⚠️ 실측 필요 — 거리별 표식 화면 높이로 확정
+    y_zone_hi: 0.55

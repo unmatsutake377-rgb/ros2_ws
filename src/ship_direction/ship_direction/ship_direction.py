@@ -216,6 +216,9 @@ class ShipDirection(Node):
         # ----------------------
         self.pub_desired_angle = self.create_publisher(Float32, '/desired_angle', 10)
         self.pub_obstacle_distance = self.create_publisher(Float32MultiArray, '/obstacle_distance_array', 10)
+        # D6: median 필터가 버린 고립 스파이크 수 (관측 전용, 신규 토픽 — 계약 불변).
+        #   제어에 안 쓴다. blackbox 가 CSV 에 기록해 '노이즈 수 ↔ 기상 열화' 상관 검증용.
+        self.pub_reject = self.create_publisher(Int32, '/obstacle_reject_count', 10)
         self.pub_failsafe = self.create_publisher(Int32, '/failsafe_level', 10)
 
         # ----------------------
@@ -402,6 +405,7 @@ class ShipDirection(Node):
         obst = Float32MultiArray()
         if msg is None:
             obst.data = [float('inf'), float('nan')]
+            self.pub_reject.publish(Int32(data=0))     # D6: 스캔 없음 = 기각 0
             return obst
 
         angle_min = math.degrees(msg.angle_min)
@@ -411,6 +415,7 @@ class ShipDirection(Node):
         # [F] 0 나눗셈 방어 (scan_callback 이 이미 걸러내지만, 여기도 막아둔다)
         if not math.isfinite(angle_increment_deg) or angle_increment_deg <= 0.0:
             obst.data = [float('inf'), float('nan')]
+            self.pub_reject.publish(Int32(data=0))
             return obst
 
         min_index = int((0 - angle_min) / angle_increment_deg)
@@ -420,7 +425,10 @@ class ShipDirection(Node):
         # 작년엔 필터 없는 raw min 이라 물보라 반사 한 점(0.3m)이 그대로 motor_control 감속을
         # 물렸다. median 은 이웃과 어긋나는 고립 스파이크를 지운다.
         # ★ 여기(감속 신호)에만 건다 — _compute 의 회피 마스크는 손대지 않는다(접촉 성능 불변).
-        d, i = median_min(ranges, min_index, max_index, self.obst_median_kernel)
+        # D6: 기각수(rejected)를 함께 받아 /obstacle_reject_count 로 낸다. 관측 전용 — 제어 불변.
+        d, i, rejected = median_min(
+            ranges, min_index, max_index, self.obst_median_kernel, return_rejected=True)
+        self.pub_reject.publish(Int32(data=int(rejected)))
         if d is None:
             obst.data = [float('inf'), float('nan')]
         else:

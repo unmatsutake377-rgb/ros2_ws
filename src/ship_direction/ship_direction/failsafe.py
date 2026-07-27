@@ -11,8 +11,14 @@ import math
 from collections import deque
 
 
-def median_min(ranges, lo, hi, kernel=5, min_valid=3):
+def median_min(ranges, lo, hi, kernel=5, min_valid=3, return_rejected=False):
     """[lo,hi] 구간에 **공간 median** 을 걸고 최소거리를 찾는다. → (거리, 인덱스) 또는 (None, None).
+
+    return_rejected=True 면 (거리, 인덱스, 기각수) 를 돌려준다 (D6, 관측 전용).
+      기각수 = raw 로는 유효한 점(finite, >0)인데 median 창의 유효점이 min_valid 미만이라
+      고립 스파이크로 버려진 인덱스 개수. **물보라 노이즈의 대리 지표**다.
+      제어에는 쓰지 않는다 — blackbox 가 CSV 에 기록해 '노이즈 수 ↔ 기상 열화' 상관 검증용.
+      ⚠️ 기본값 False 로 두어 기존 호출부·테스트는 (거리, 인덱스) 2-튜플 그대로 받는다.
 
     ★ 왜 필요한가 — **감속 신호가 물보라 한 점에 속는다:**
       _closest_obstacle 이 필터 없는 raw min 이라, 물보라 반사 하나가 0.3m 로 튀면
@@ -32,11 +38,12 @@ def median_min(ranges, lo, hi, kernel=5, min_valid=3):
     lo = max(0, lo)
     hi = min(n - 1, hi)
     if lo > hi:
-        return None, None
+        return (None, None, 0) if return_rejected else (None, None)
 
     half = (kernel // 2) if (kernel and kernel > 1) else 0
 
     best_d, best_i = None, None
+    rejected = 0
     for i in range(lo, hi + 1):
         if half == 0:
             r = ranges[i]
@@ -48,14 +55,18 @@ def median_min(ranges, lo, hi, kernel=5, min_valid=3):
                 if math.isfinite(r) and r > 0.0:
                     w.append(r)
             if len(w) < min_valid:
-                continue                 # 고립 스파이크 → 무시
+                # 고립 스파이크 → 무시. raw 로는 유효했던 점이면 '기각'으로 센다(물보라 지표).
+                ri = ranges[i]
+                if math.isfinite(ri) and ri > 0.0:
+                    rejected += 1
+                continue
             w.sort()
             v = w[len(w) // 2]           # median (짝수면 위쪽)
         if v is None:
             continue
         if best_d is None or v < best_d:
             best_d, best_i = v, i
-    return best_d, best_i
+    return (best_d, best_i, rejected) if return_rejected else (best_d, best_i)
 
 
 class SensorWatch:

@@ -219,6 +219,53 @@ def test_index_returned_for_angle():
     assert i is not None and abs(d - 3.0) < 1e-9, f"d={d}, i={i}"
 
 
+# ─────────────────────── D6: 기각수 반환(관측 전용) ───────────────────────
+def test_return_rejected_backward_compatible():
+    """🚨 기본값 False 면 기존 호출부는 2-튜플 그대로 받아야 한다(회귀 방지)."""
+    r = [9.0, 9.0, 3.0, 9.0, 9.0]
+    res = median_min(r, 0, 4, kernel=5)
+    assert len(res) == 2, "기본 호출은 (거리,인덱스) 2-튜플이어야 한다"
+
+
+def test_return_rejected_shape():
+    r = [9.0, 9.0, 3.0, 9.0, 9.0]
+    res = median_min(r, 0, 4, kernel=5, return_rejected=True)
+    assert len(res) == 3, "return_rejected=True 면 (거리,인덱스,기각수) 3-튜플"
+
+
+def test_rejected_counts_isolated_spike():
+    """
+    고립 스파이크(주변에 유효점이 min_valid 미만)를 기각으로 센다.
+    한복판에 유효점 1개뿐이면 median 창 유효점 부족 → 기각.
+    """
+    # 전부 무한대인데 인덱스 3만 유효(0.3m) = 완전 고립 물보라
+    r = [INF, INF, INF, 0.3, INF, INF, INF]
+    d, i, rej = median_min(r, 0, 6, kernel=5, min_valid=3, return_rejected=True)
+    assert d is None, "고립점은 무시되어 최소거리 없음"
+    assert rej == 1, f"고립 스파이크 1개를 기각으로 세야 한다, got {rej}"
+
+
+def test_rejected_zero_when_dense():
+    """유효점이 촘촘하면 기각 0."""
+    r = [3.0, 3.0, 3.0, 3.0, 3.0]
+    d, i, rej = median_min(r, 0, 4, kernel=5, min_valid=3, return_rejected=True)
+    assert rej == 0 and abs(d - 3.0) < 1e-9
+
+
+def test_rejected_ignores_already_invalid():
+    """원래 무효(inf)였던 점은 기각으로 세지 않는다 — median 이 '버린' 게 아니다."""
+    r = [INF, INF, INF, INF, INF]
+    d, i, rej = median_min(r, 0, 4, kernel=5, min_valid=3, return_rejected=True)
+    assert rej == 0, "원래 inf 였던 점은 기각이 아니다"
+
+
+def test_rejected_kernel_off_no_reject():
+    """kernel 0/1(필터 OFF)이면 기각 개념이 없다 → 0."""
+    r = [INF, INF, 0.3, INF, INF]
+    d, i, rej = median_min(r, 0, 4, kernel=0, return_rejected=True)
+    assert rej == 0, "필터 OFF 면 아무것도 기각 안 한다"
+
+
 # ─────────────────────────── 러너 ───────────────────────────
 
 if __name__ == '__main__':
