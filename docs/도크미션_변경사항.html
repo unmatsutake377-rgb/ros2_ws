@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>도크 미션 인식 강건화 — 코드 변경 안내 (D1~D6)</title>
+<style>
+  :root{
+    --bg:#f7f8fa; --card:#fff; --ink:#1b1f24; --muted:#5b6673; --line:#e3e7ec;
+    --accent:#2563eb; --ok:#0f9d58; --warn:#c77700; --bad:#d13438;
+    --code:#f2f4f7; --codeink:#1b1f24; --del:#fbe9e9; --add:#e7f6ec;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{
+      --bg:#0f1216; --card:#171b21; --ink:#e6e9ee; --muted:#9aa4b0; --line:#2a3038;
+      --accent:#5b9bff; --ok:#41c07a; --warn:#e0a233; --bad:#ff6b6f;
+      --code:#0c0f13; --codeink:#d6dbe2; --del:#3a1e20; --add:#17301f;
+    }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans KR",sans-serif;
+       line-height:1.65;font-size:16px}
+  .wrap{max-width:960px;margin:0 auto;padding:32px 20px 80px}
+  header{border-bottom:2px solid var(--line);padding-bottom:20px;margin-bottom:28px}
+  h1{font-size:1.7rem;margin:0 0 8px}
+  h2{font-size:1.25rem;margin:36px 0 12px;padding-top:8px}
+  .sub{color:var(--muted);font-size:.95rem}
+  .pill{display:inline-block;font-size:.75rem;padding:2px 9px;border-radius:999px;
+        border:1px solid var(--line);color:var(--muted);margin-right:6px}
+  .pill.done{color:var(--ok);border-color:var(--ok)}
+  .lead{background:var(--card);border:1px solid var(--line);border-radius:12px;
+        padding:16px 18px;margin:18px 0}
+  .lead b{color:var(--accent)}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;
+        padding:18px 20px;margin:16px 0;overflow:hidden}
+  .card h3{margin:0 0 4px;font-size:1.1rem}
+  .tag{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.8rem;
+       color:#fff;background:var(--accent);border-radius:6px;padding:1px 8px;margin-right:8px}
+  .why{color:var(--muted);font-size:.92rem;margin:6px 0 12px}
+  .loc{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.82rem;
+       background:var(--code);color:var(--codeink);border:1px solid var(--line);
+       border-radius:8px;padding:10px 12px;margin:10px 0;overflow-x:auto;white-space:pre}
+  .loc b{color:var(--accent)}
+  .diff{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:12px 0}
+  @media (max-width:680px){.diff{grid-template-columns:1fr}}
+  .diff>div{border-radius:8px;padding:10px 12px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+            font-size:.8rem;overflow-x:auto;white-space:pre}
+  .before{background:var(--del);border:1px solid var(--bad)}
+  .after{background:var(--add);border:1px solid var(--ok)}
+  .lbl{display:block;font-family:-apple-system,sans-serif;font-size:.72rem;
+       font-weight:700;margin-bottom:6px;letter-spacing:.03em}
+  .before .lbl{color:var(--bad)}.after .lbl{color:var(--ok)}
+  table{width:100%;border-collapse:collapse;margin:12px 0;font-size:.9rem}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--muted);font-weight:600;font-size:.82rem}
+  code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.85em;
+       background:var(--code);padding:1px 5px;border-radius:4px}
+  .note{border-left:3px solid var(--warn);padding:8px 14px;margin:12px 0;
+        background:var(--card);color:var(--muted);font-size:.9rem}
+  .ok-note{border-left-color:var(--ok)}
+  footer{margin-top:40px;padding-top:16px;border-top:1px solid var(--line);
+         color:var(--muted);font-size:.85rem}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>도크 미션 인식 강건화 — 코드 변경 안내</h1>
+  <div class="sub">
+    <span class="pill done">D1~D6 완료</span>
+    <span class="pill">커밋 <code>a007eb0</code></span>
+    <span class="pill">2026-07-27</span>
+  </div>
+  <p class="sub" style="margin-top:12px">
+    근거 문서: <code>docs/도크미션_작업계획.md</code> · 정확한 기준: <code>CLAUDE.md</code> 3-3b<br>
+    이 페이지는 "무엇이 어디서 어떻게 바뀌었나"를 코드 위치와 함께 정리한 것입니다.
+  </p>
+</header>
+
+<div class="lead">
+  <b>한 줄 요약.</b> 도킹의 <b>제어</b>(<code>ship_dock</code>)는 이미 특화 완료 수준이었고,
+  <b>인식</b>(<code>basic_image_subscriberdock</code>)이 병목이었습니다. 미션 표식은
+  <b>형상(삼각/원/사각) × 색</b> 조합인데 <b>대회 당일 아침에 공지</b>됩니다. 그래서 목표가
+  코드에 박혀 있으면 그날 못 바꿉니다. 인식을 그 자리에서 바꿀 수 있고, 한 프레임 오탐에
+  안 흔들리며, 형상을 더 정확히 가르도록 고쳤습니다.
+</div>
+
+<h2>바뀐 파일 한눈에</h2>
+<table>
+  <tr><th>파일</th><th>역할</th><th>D 항목</th></tr>
+  <tr><td><code>src/color_shape_detector/color_shape_detector/basic_image_subscriberdock.py</code></td>
+      <td>도크 인식 노드 (실제 배선)</td><td>D1·D2·D3·D5</td></tr>
+  <tr><td><code>src/color_shape_detector/color_shape_detector/dock_logic.py</code> <span class="pill">신규</span></td>
+      <td>형상 분류·N프레임 확정 순수 로직 (배 없이 테스트 가능)</td><td>D2·D3</td></tr>
+  <tr><td><code>src/color_shape_detector/config/vision.yaml</code></td>
+      <td>도크 파라미터 (당일 여기만 바꾼다)</td><td>D1·D2·D3</td></tr>
+  <tr><td><code>tools/dock_eval.py</code> <span class="pill">신규</span></td>
+      <td>형상×색 혼동행렬 평가 하네스</td><td>D4</td></tr>
+  <tr><td><code>src/ship_direction/ship_direction/failsafe.py</code></td>
+      <td><code>median_min</code>에 기각수 반환 옵션</td><td>D6</td></tr>
+  <tr><td><code>src/ship_direction/ship_direction/ship_direction.py</code></td>
+      <td><code>/obstacle_reject_count</code> 발행</td><td>D6</td></tr>
+  <tr><td><code>src/ssf_tools/ssf_tools/blackbox.py</code></td>
+      <td>기각수 CSV 기록</td><td>D6</td></tr>
+</table>
+<div class="note ok-note">
+  기존 수정과 <b>충돌 없음</b>. 카메라 관련 이전 작업(<code>mode_gate</code>·<code>image_topic</code>·
+  <code>hfov</code>·<code>debug_view</code>·depth 제거) 위에 얹었습니다. 발행 토픽은
+  <code>/image_angle</code> 그대로, <code>/obstacle_reject_count</code>만 새로 추가.
+</div>
+
+<h2>항목별 변경</h2>
+
+<!-- D1 -->
+<div class="card">
+  <h3><span class="tag">D1</span>목표 표식 파라미터화</h3>
+  <p class="why"><b>문제:</b> 목표가 <code>"red"</code>/<code>"Square"</code>로 코드에 박혀 있었다.
+     당일 공지 조합이 다르면 코드를 고쳐야 했다. 게다가 오타를 내면 아무 에러 없이 조용히
+     아무것도 못 찾는다(침묵 실패).</p>
+  <div class="diff">
+    <div class="before"><span class="lbl">이전</span>self.target_color = "red"
+self.target_shape = "Square"</div>
+    <div class="after"><span class="lbl">이후</span>self.target_color = declare_parameter(
+    'target_color', 'red')
+self.target_shape = declare_parameter(
+    'target_shape', 'Square')
+# 유효값 검증: 색 6종·형상 3종 밖이면
+#   ERROR 로그 + 발행 중단</div>
+  </div>
+  <div class="loc"><b>위치</b>  basic_image_subscriberdock.py : L105–116  (검색어: <b>target_color</b>)
+<b>설정</b>  vision.yaml → image_subscriber_dock:  target_color / target_shape</div>
+</div>
+
+<!-- D2 -->
+<div class="card">
+  <h3><span class="tag">D2</span>N프레임 시간 안정화</h3>
+  <p class="why"><b>문제:</b> 한 프레임 판정을 즉시 발행 → 물방울·반사 한 프레임의 오탐이
+     그대로 조향에 튀었다.</p>
+  <p class="why"><b>바꾼 것:</b> 같은 (색,형상)이 <code>confirm_frames</code>(기본 3) <b>연속</b>일 때만
+     확정 발행. 중간에 오탐 1프레임이 끼면 그건 발행되지 않는다.</p>
+  <div class="loc"><b>순수 로직</b>  dock_logic.py : L96  <b>class DetectionConfirmer</b>
+<b>노드 배선</b>  basic_image_subscriberdock.py : L120–124, L184  (<b>confirmer</b>)
+<b>설정</b>      vision.yaml :  confirm_frames: 3   grace_period_s: 2.0</div>
+  <div class="note">열화 환경(비·물보라)에선 <code>confirm_frames</code>·<code>grace_period_s</code>를
+     올려서 대응 — 코드 수정 없이 yaml 로.</div>
+</div>
+
+<!-- D3 -->
+<div class="card">
+  <h3><span class="tag">D3</span>도형 분류 강건화</h3>
+  <p class="why"><b>문제:</b> 꼭짓점 수만으로 원/사각을 갈랐다. 경계가 취약하다
+     (원을 5각형으로 근사하면 사각으로 오인).</p>
+  <p class="why"><b>바꾼 것:</b> 꼭짓점 수를 1차로 쓰되 <b>원형도(circularity = 4πA/P²)</b>를 보조로.
+     완전한 원=1.0, 정사각형≈0.785, 정삼각형≈0.605. 임계·면적·y범위 전부 파라미터.</p>
+  <div class="diff">
+    <div class="before"><span class="lbl">이전</span>if v_count == 3:      shape="Triangle"
+elif 4<=v_count<=6:   shape="Square"
+elif v_count >= 7:    shape="Circle"
+# 꼭짓점 수 단독</div>
+    <div class="after"><span class="lbl">이후</span>shape = classify_shape(
+   v_count, area, perimeter, w, h,
+   circle_circularity_min=0.82, ...)
+# 원형도로 원/사각 경계 재확인</div>
+  </div>
+  <div class="loc"><b>순수 로직</b>  dock_logic.py : L28 <b>circularity</b> · L39 <b>classify_shape</b>
+<b>노드 배선</b>  basic_image_subscriberdock.py : L246  (<b>classify_shape</b>)
+<b>설정</b>      vision.yaml :  approx_epsilon / min_area_px / circle_circularity_min / y_zone_lo·hi</div>
+</div>
+
+<!-- D4 -->
+<div class="card">
+  <h3><span class="tag">D4</span>평가 하네스 (혼동행렬)</h3>
+  <p class="why"><b>목적:</b> D2·D3 파라미터를 <b>감이 아니라 수치로</b> 튜닝하기 위한 도구.
+     rosbag 을 프레임별로 재생해 형상×색 <b>혼동행렬(confusion matrix)</b> CSV 를 낸다.</p>
+  <div class="loc"><b>파일</b>  tools/dock_eval.py  (신규)
+<b>지금</b>  작년 rosbag 자산이 없어 재생부는 <b>골격</b>. `--selftest` 로 분류 로직 자체는 검증됨(100%).
+<b>나중</b>  rosbag 확보 시  run_bag()  함수만 채우면 된다.</div>
+  <div class="loc">$ python3 tools/dock_eval.py --selftest        # 지금 실행 가능
+$ python3 tools/dock_eval.py --bag &lt;bag&gt; --labels &lt;csv&gt;  # rosbag 확보 후</div>
+</div>
+
+<!-- D5 -->
+<div class="card">
+  <h3><span class="tag">D5</span>잔가지 정리</h3>
+  <div class="diff">
+    <div class="before"><span class="lbl">이전 — 종료 때마다 예외</span>rclpy.spin(node)
+node.pipeline.stop()   # 없는 속성!
+node.destroy_node()</div>
+    <div class="after"><span class="lbl">이후</span>try:
+    rclpy.spin(node)
+finally:
+    node.destroy_node()   # pipeline.stop 제거</div>
+  </div>
+  <p class="why"><b>HSV 5색 슬롯:</b> <code>red/green/blue</code>만 활성이던 것을 orange/yellow/white 까지
+     6색 전부 열었다(당일 공지 색 대응). <b>값은 자리표시자</b> — 야외 캘리브레이션 필요.</p>
+  <div class="loc"><b>위치</b>  basic_image_subscriberdock.py : L143 <b>color_ranges</b> · L295 (pipeline.stop 제거)</div>
+</div>
+
+<!-- D6 -->
+<div class="card">
+  <h3><span class="tag">D6</span>LiDAR 노이즈 카운트 기록</h3>
+  <p class="why"><b>무엇:</b> 감속 신호용 median 필터가 <b>버린 고립 스파이크(물보라 반사) 개수</b>를
+     새 토픽 <code>/obstacle_reject_count</code>로 내고 blackbox 가 CSV 에 기록한다.</p>
+  <div class="note"><b>🚨 관측 전용 — 제어에 쓰지 않는다.</b> "노이즈 수 ↔ 기상 열화" 상관을
+     실해역 데이터로 검증한 <b>뒤에만</b> 모드 전환을 논의한다. 지금은 기록만.</div>
+  <div class="loc"><b>순수 로직</b>  failsafe.py : L14  median_min(..., <b>return_rejected</b>=False)
+              (기본 False → 기존 호출부·테스트 2-튜플 그대로. 안 깨진다)
+<b>발행</b>      ship_direction.py : L221 <b>pub_reject</b> · L430  median_min(return_rejected=True)
+<b>기록</b>      blackbox.py : L76 CSV 컬럼 · L144 구독 (<b>obstacle_reject_count</b>)</div>
+</div>
+
+<h2>검증 (배 없이 지금 통과)</h2>
+<table>
+  <tr><th>테스트</th><th>결과</th><th>확인 내용</th></tr>
+  <tr><td><code>test_dock_logic.py</code></td><td class="pill done">18/18</td>
+      <td>3형상 분류·스케일 무관·원형도 오버라이드·N프레임 확정·glitch 무시</td></tr>
+  <tr><td><code>test_failsafe_logic.py</code></td><td class="pill done">27/27</td>
+      <td>median 기각수 6개 추가 (기존 21 불변)</td></tr>
+  <tr><td><code>dock_eval.py --selftest</code></td><td class="pill done">100%</td>
+      <td>합성 특징 혼동행렬 대각선만 (오분류 0)</td></tr>
+</table>
+
+<h2>실기(실제 배)가 와야 하는 것</h2>
+<table>
+  <tr><th>항목</th><th>왜 지금 못 하나</th></tr>
+  <tr><td>HSV 5색 야외 캘리브레이션 (맑음/흐림)</td><td>실내 조명값은 물 위에서 안 맞음. 소프트로 불가</td></tr>
+  <tr><td>y범위 필터 실측</td><td>거리별 표식 화면 높이를 재야 확정</td></tr>
+  <tr><td>D3 임계값 튜닝</td><td>D4 혼동행렬 수치로 결정 — <b>감으로 만지지 말 것</b></td></tr>
+  <tr><td>당일 아침</td><td>공지된 조합을 <code>vision.yaml</code>에 입력 → 인쇄물로 5m 검증 1회</td></tr>
+</table>
+
+<footer>
+  이 문서는 읽기용 요약입니다. 정확한 내용은 저장소의 코드와 <code>CLAUDE.md</code> 3-3b,
+  <code>docs/도크미션_작업계획.md</code>가 기준입니다.<br>
+  줄번호는 커밋 <code>a007eb0</code> 기준이며 이후 몇 줄 밀릴 수 있습니다 — 검색어로 찾으세요.
+</footer>
+
+</div>
+</body>
+</html>
