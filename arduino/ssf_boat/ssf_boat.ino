@@ -1,31 +1,31 @@
 // =====================================================================
-// SSF 자율운항선박 펌웨어 — Arduino Due + micro-ROS (humble)
-// 설계 근거: docs/펌웨어_설계문서.md (그 문서가 단일 출처, 여기 주석은 요약)
+// SSF 자율운항선박 펌웨어 — Arduino Due, 시리얼 브릿지 방식
+// 설계 근거: docs/전달용/펌웨어_설계문서.md (단일 출처, 여기 주석은 요약)
+//
+// [2026-07-25 아키텍처 변경] micro-ROS 제거 → 회로팀 브릿지 노드 수용.
+//   노트북 motor_control ──(ROS Motor_run)──▶ 브릿지 노드 ──USB 시리얼──▶ 이 펌웨어
+//   브릿지가 보내는 명령: "L1500,R1500\n" (µs 단위, 1500=중립, <1500=전진)
+//   이 펌웨어의 상태 보고: Native 포트로 "S,모드,워치독,배ID,비상정지,FL,FR,RL,RR\n" 10Hz
+//
+// 포트 역할 (Due):
+//   Programming 포트(Serial)   = 업로드 + 브릿지 명령 수신
+//   Native 포트(SerialUSB)     = 상태 보고 + 디버그 출력
 //
 // 대회 3모드 → 펌웨어 2상태:
-//   AUTO   = 노트북 /Motor_run 명령 (자율 본경기·자율 토너먼트)
+//   AUTO   = 브릿지 명령 (자율 본경기·자율 토너먼트)
 //   MANUAL = RC 조종 (수동 토너먼트 — 노트북 없이 단독 가동)
 //
-// 토픽 계약 (변경 금지):
-//   구독 Motor_run (Int32)          : data = pwm_r*10000 + pwm_l, 1500=중립
-//   발행 /firmware_status (Int32MultiArray, 10Hz):
-//     [0]=모드(0대기/1수동/2자율) [1]=워치독 [2]=배ID(0A/1B/2고장)
-//     [3]=비상정지 [4~7]=최종출력µs [선수L,선수R,선미L,선미R]
+// (Mega로 갈 경우 이식 포인트: SerialUSB→예비 UART+USB어댑터, 핀 재배정,
+//  RC 레벨시프트 불필요(5V 보드). 로직은 전부 그대로.)
 // =====================================================================
 
-#include <micro_ros_arduino.h>
-#include <rcl/rcl.h>
-#include <rclc/rclc.h>
-#include <rclc/executor.h>
-#include <std_msgs/msg/int32.h>
-#include <std_msgs/msg/int32_multi_array.h>
 #include <Servo.h>
 
 // =====================[ 1. 핀 배치 ]===================================
 // ⚠️ 전부 임시 배정 — 회로도 확정 후 이 표만 고치면 됨
-#define PIN_RC_THROTTLE  2    // RC 수신기 CH? 전후진 (⚠️5V→3.3V 분배 필수)
-#define PIN_RC_STEER     3    // RC 수신기 CH? 좌우   (⚠️분배 필수)
-#define PIN_RC_MODE      4    // RC 수신기 CH? 모드 스위치 (⚠️분배 필수)
+#define PIN_RC_THROTTLE  2    // RC 수신기 전후진 (⚠️Due 사용 시 5V→3.3V 분배 필수)
+#define PIN_RC_STEER     3    // RC 수신기 좌우   (⚠️분배 필수)
+#define PIN_RC_MODE      4    // RC 수신기 모드 스위치 (⚠️분배 필수)
 
 #define PIN_ESC_FL       5    // 선수 좌 ESC 신호
 #define PIN_ESC_FR       6    // 선수 우 ESC 신호
@@ -49,9 +49,9 @@
 // "⚠️벤치" = 벤치에서 확정 / "⚠️물" = 물 위에서 튜닝
 const unsigned long ARM_HOLD_MS      = 2000;  // ESC arm 유지 시간 ⚠️벤치(비프음)
 const unsigned long RC_TIMEOUT_MS    = 500;   // 수동: RC 무갱신→중립
-const unsigned long ROS_TIMEOUT_MS   = 500;   // 자율: 명령 무수신→중립 (워치독)
-const int RC_PULSE_MIN   = 900;               // 노이즈 수용 하한 (µs)
-const int RC_PULSE_MAX   = 2100;              // 노이즈 수용 상한
+const unsigned long CMD_TIMEOUT_MS   = 500;   // 자율: 브릿지 명령 무수신→중립 (워치독)
+const int RC_PULSE_MIN   = 900;               // 노이즈/유효성 수용 하한 (µs)
+const int RC_PULSE_MAX   = 2100;              // 상한
 const int ESC_OUT_MIN    = 1100;              // T200 출구 클램프
 const int ESC_OUT_MAX    = 1900;
 const int RC_DEADBAND_US = 20;                // 스틱 중립 데드밴드 ⚠️벤치
@@ -59,6 +59,8 @@ const int STEER_SCALE_N  = 10;                // 조향 감도 = N/10 (10=100%) 
 const bool STEER_INVERT_RC = false;           // RC 조향 좌우 반전 ⚠️벤치
 const int MODE_AUTO_THRESHOLD = 1500;         // 모드 펄스 < 1500 = AUTO (작년 관례 유지)
 const int TURN_SIGNAL_DIFF_US = 60;           // 좌우 차이 이만큼 크면 방향지시등
+const long CMD_BAUD    = 115200;              // 브릿지와 합의된 속도 (브릿지 기본값)
+const long STATUS_BAUD = 115200;              // 상태/디버그 포트
 
 // =====================[ 3. 모터 4개 설정표 ]===========================
 // 게인은 정수 연산: 출력편차 = 명령편차 × gain_num / 10
@@ -107,8 +109,7 @@ bool rcFresh(int idx) {                          // 최근 RC_TIMEOUT_MS 내 갱
 enum BoatId { BOAT_A = 0, BOAT_B = 1, BOAT_FAULT = 2 };
 BoatId boatId = BOAT_FAULT;
 
-// 반환형을 int로 둔 이유: Arduino IDE가 함수 목록을 enum 정의보다 앞에
-// 자동 생성해서, enum 반환형이면 컴파일 에러가 남 (IDE 특유의 함정)
+// 반환형 int: Arduino IDE가 함수 목록을 enum 정의보다 앞에 자동 생성하는 함정 회피
 int readBoatId() {
   bool aLow = (digitalRead(PIN_ID_A) == LOW);
   bool bLow = (digitalRead(PIN_ID_B) == LOW);
@@ -121,82 +122,40 @@ int readBoatId() {
 enum Mode { MODE_WAIT = 0, MODE_MANUAL = 1, MODE_AUTO = 2 };
 Mode mode = MODE_WAIT;              // 유효 모드 신호 받기 전 = 대기(중립)
 
-volatile long          autoCmdRaw   = 0;   // /Motor_run 원본 (콜백이 씀)
-volatile unsigned long autoCmdStamp = 0;   // 마지막 유효 수신 시각 (millis)
+int  autoCmdL = 1500, autoCmdR = 1500;   // 브릿지에서 온 마지막 유효 명령 (µs)
+unsigned long autoCmdStamp = 0;          // 그 수신 시각 (millis). 0 = 아직 없음
 bool watchdogActive = false;
 int  finalOut[4] = {1500, 1500, 1500, 1500};  // 최종 ESC 출력 (상태보고용)
-bool armed = false;
 
-// =====================[ 7. micro-ROS 객체 ]============================
-rcl_subscription_t subscriber;
-rcl_publisher_t    publisher;
-std_msgs__msg__Int32           msgCmd;
-std_msgs__msg__Int32MultiArray msgStatus;
-int32_t statusBuf[8];               // MultiArray가 쓸 실제 메모리
-rclc_executor_t  executor;
-rclc_support_t   support;
-rcl_allocator_t  allocator;
-rcl_node_t       node;
+// =====================[ 7. 브릿지 명령 수신 (시리얼 파서) ]=============
+// 브릿지 계약: 한 줄 = "L<좌µs>,R<우µs>\n"  (예: "L1400,R1600")
+// 형식이 조금이라도 어긋나거나 범위 밖이면 그 줄 통째로 폐기 —
+// 깨진 명령은 워치독을 먹이지 못한다 (통신 이상 = 침묵 취급, micro-ROS 때와 같은 원칙)
+char rxBuf[24];
+uint8_t rxLen = 0;
 
-// 에이전트 연결 상태기계 — ROS가 없어도 RC는 돌아야 하므로 전부 비블로킹
-enum RosState { ROS_WAITING, ROS_CONNECTED };
-RosState rosState = ROS_WAITING;
-unsigned long lastPingMs = 0;
-
-void motorCmdCallback(const void *msgin) {
-  const std_msgs__msg__Int32 *m = (const std_msgs__msg__Int32 *)msgin;
-  if (m->data > 10000000) {                    // 계약: 유효성 검사
-    long r = m->data / 10000;
-    long l = m->data - r * 10000;
-    if (r >= RC_PULSE_MIN && r <= RC_PULSE_MAX &&
-        l >= RC_PULSE_MIN && l <= RC_PULSE_MAX) {
-      autoCmdRaw = m->data;
-      autoCmdStamp = millis();                 // 유효 수신"만" 워치독을 먹임
-    }
-  }
+void parseCommandLine(const char *s) {
+  if (s[0] != 'L') return;
+  const char *comma = strchr(s, ',');
+  if (comma == NULL || comma[1] != 'R') return;
+  long l = atol(s + 1);
+  long r = atol(comma + 2);
+  if (l < RC_PULSE_MIN || l > RC_PULSE_MAX) return;
+  if (r < RC_PULSE_MIN || r > RC_PULSE_MAX) return;
+  autoCmdL = (int)l;
+  autoCmdR = (int)r;
+  autoCmdStamp = millis();
 }
 
-bool rosCreateEntities() {
-  allocator = rcl_get_default_allocator();
-  if (rclc_support_init(&support, 0, NULL, &allocator) != RCL_RET_OK) return false;
-  if (rclc_node_init_default(&node, "ssf_boat_firmware", "", &support) != RCL_RET_OK) return false;
-  if (rclc_subscription_init_default(&subscriber, &node,
-        ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32), "/Motor_run") != RCL_RET_OK) return false;
-  if (rclc_publisher_init_default(&publisher, &node,
-        ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32MultiArray), "/firmware_status") != RCL_RET_OK) return false;
-  if (rclc_executor_init(&executor, &support.context, 1, &allocator) != RCL_RET_OK) return false;
-  if (rclc_executor_add_subscription(&executor, &subscriber, &msgCmd,
-        &motorCmdCallback, ON_NEW_DATA) != RCL_RET_OK) return false;
-  return true;
-}
-
-void rosDestroyEntities() {
-  rcl_subscription_fini(&subscriber, &node);
-  rcl_publisher_fini(&publisher, &node);
-  rclc_executor_fini(&executor);
-  rcl_node_fini(&node);
-  rclc_support_fini(&support);
-}
-
-// 비블로킹 연결 관리: 1초마다 에이전트 ping, 끊기면 정리 후 재시도
-void rosSpin() {
-  unsigned long now = millis();
-  if (rosState == ROS_WAITING) {
-    if (now - lastPingMs > 1000) {
-      lastPingMs = now;
-      if (rmw_uros_ping_agent(50, 1) == RMW_RET_OK) {   // 50ms 제한 — 루프 안 막음
-        if (rosCreateEntities()) rosState = ROS_CONNECTED;
-        else rosDestroyEntities();
-      }
-    }
-  } else {
-    rclc_executor_spin_some(&executor, RCL_MS_TO_NS(2)); // 밀린 메시지 처리 (최대 2ms)
-    if (now - lastPingMs > 1000) {
-      lastPingMs = now;
-      if (rmw_uros_ping_agent(50, 1) != RMW_RET_OK) {    // 연결 끊김 감지
-        rosDestroyEntities();
-        rosState = ROS_WAITING;                          // → 워치독이 중립 출력 담당
-      }
+void pollCommandSerial() {
+  while (Serial.available() > 0) {
+    char c = (char)Serial.read();
+    if (c == '\n' || c == '\r') {
+      if (rxLen > 0) { rxBuf[rxLen] = '\0'; parseCommandLine(rxBuf); rxLen = 0; }
+    } else if (rxLen < sizeof(rxBuf) - 1) {
+      rxBuf[rxLen++] = c;
+    } else {
+      rxLen = 0;   // 버퍼 초과 = 쓰레기 줄 → 폐기하고 다음 줄부터
     }
   }
 }
@@ -260,20 +219,24 @@ void updateLeds(bool estopActive, int cmdL, int cmdR) {
 #endif
 }
 
-// =====================[ 10. 상태 보고 (10Hz) ]=========================
+// =====================[ 10. 상태 보고 (10Hz, Native 포트) ]============
+// 한 줄 = "S,모드,워치독,배ID,비상정지,FL,FR,RL,RR"
+// 나중에 노트북 쪽 수신 노드(신규 작성 예정)가 이 줄을 읽어 ROS 토픽으로 발행.
+// 디버그 문장도 같은 포트로 나감 — 수신 노드는 "S," 로 시작하는 줄만 취하면 됨.
 void publishStatus(bool estopActive) {
-  if (rosState != ROS_CONNECTED) return;
-  statusBuf[0] = (int32_t)mode;
-  statusBuf[1] = watchdogActive ? 1 : 0;
-  statusBuf[2] = (int32_t)boatId;
-  statusBuf[3] = estopActive ? 1 : 0;
-  for (int i = 0; i < 4; i++) statusBuf[4 + i] = finalOut[i];
-  rcl_publish(&publisher, &msgStatus, NULL);   // 실패해도 무시 (제어가 우선)
+  SerialUSB.print("S,");
+  SerialUSB.print((int)mode);          SerialUSB.print(',');
+  SerialUSB.print(watchdogActive ? 1 : 0); SerialUSB.print(',');
+  SerialUSB.print((int)boatId);        SerialUSB.print(',');
+  SerialUSB.print(estopActive ? 1 : 0);
+  for (int i = 0; i < 4; i++) { SerialUSB.print(','); SerialUSB.print(finalOut[i]); }
+  SerialUSB.println();
 }
 
 // =====================[ 11. setup / loop ]=============================
 void setup() {
-  SerialUSB.begin(115200);       // Native 포트 = 디버그 출력 (ROS는 Programming 포트)
+  Serial.begin(CMD_BAUD);        // Programming 포트 = 브릿지 명령 수신
+  SerialUSB.begin(STATUS_BAUD);  // Native 포트 = 상태 보고 + 디버그
 
   // 핀 모드
   pinMode(PIN_RC_THROTTLE, INPUT);
@@ -294,12 +257,12 @@ void setup() {
   // 배 ID 판독 + 표시 (고장이면 이후 루프에서 영구 중립)
   boatId = (BoatId)readBoatId();
   blinkBoatId();
-  SerialUSB.print("Boat ID: "); Serial.println(boatId == BOAT_A ? "A" : boatId == BOAT_B ? "B" : "FAULT");
+  SerialUSB.print("Boat ID: ");
+  SerialUSB.println(boatId == BOAT_A ? "A" : boatId == BOAT_B ? "B" : "FAULT");
 
   // ESC arm: 1500 출력 유지, 이 동안 모든 명령 무시 (설계 §2-5)
   for (int i = 0; i < 4; i++) { esc[i].attach(motors[i].pin); esc[i].writeMicroseconds(1500); }
   delay(ARM_HOLD_MS);
-  armed = true;
   SerialUSB.println("ESC armed.");
 
   // RC 인터럽트 연결 (arm 후 — arm 중 명령 무시를 구조로 보장)
@@ -307,16 +270,8 @@ void setup() {
   attachInterrupt(digitalPinToInterrupt(PIN_RC_STEER),    isrSteer,    CHANGE);
   attachInterrupt(digitalPinToInterrupt(PIN_RC_MODE),     isrMode,     CHANGE);
 
-  // micro-ROS transport 준비만 함 — 연결 시도는 loop()에서 비블로킹으로.
-  // 노트북(에이전트)이 없어도 RC 수동은 즉시 가동됨 (설계 §2-1, 수동 토너먼트)
-  // 라이브러리 기본 transport = Programming 포트(Serial) 사용.
-  // → 포트 역할: Programming = 업로드 + ROS 통신 / Native(SerialUSB) = 디버그 출력
-  set_microros_transports();
-
-  // /firmware_status 메시지 버퍼 연결 (MultiArray는 메모리 수동 지정 필요)
-  msgStatus.data.data = statusBuf;
-  msgStatus.data.size = 8;
-  msgStatus.data.capacity = 8;
+  // arm 대기 중 시리얼 버퍼에 쌓인 명령은 전부 버림 (부팅 직후 과거 명령 실행 방지)
+  while (Serial.available() > 0) Serial.read();
 
   SerialUSB.println("Setup done. Control loop start.");
 }
@@ -326,7 +281,7 @@ unsigned long lastStatusMs  = 0;
 
 void loop() {
   unsigned long now = millis();
-  rosSpin();   // ROS 연결관리 + 수신 처리 (비블로킹 — 없으면 그냥 지나감)
+  pollCommandSerial();   // 브릿지 명령 수신 (비블로킹 — 브릿지/노트북 없어도 그냥 지나감)
 
   // ---- 제어루프: 50ms(20Hz) ----
   if (now - lastControlMs >= 50) {
@@ -350,12 +305,11 @@ void loop() {
         if (rcFresh(0) && rcFresh(1)) mixManual(cmdL, cmdR);
       } else if (mode == MODE_AUTO) {
         // 자율: 워치독 — 유효 명령이 500ms 내에 있어야 구동
-        if (autoCmdStamp != 0 && (now - autoCmdStamp) < ROS_TIMEOUT_MS) {
-          long raw = autoCmdRaw;
-          cmdR = raw / 10000;          // 계약 디코딩 (패스스루 — 리매핑 없음)
-          cmdL = raw - (long)cmdR * 10000;
+        if (autoCmdStamp != 0 && (now - autoCmdStamp) < CMD_TIMEOUT_MS) {
+          cmdL = autoCmdL;
+          cmdR = autoCmdR;   // 패스스루 — 리매핑 없음
         } else {
-          watchdogActive = true;       // 노트북 침묵 → 중립 + LED 경보
+          watchdogActive = true;   // 브릿지/노트북 침묵 → 중립 + LED 경보
         }
       }
       // MODE_WAIT면 그대로 중립
@@ -365,7 +319,7 @@ void loop() {
     }
   }
 
-  // ---- 상태 보고: 100ms(10Hz), 연결돼 있을 때만 ----
+  // ---- 상태 보고: 100ms(10Hz) ----
   if (now - lastStatusMs >= 100) {
     lastStatusMs = now;
     publishStatus(digitalRead(PIN_ESTOP_SENSE) == LOW);
