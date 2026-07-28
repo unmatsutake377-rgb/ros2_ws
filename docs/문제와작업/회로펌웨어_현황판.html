@@ -32,16 +32,17 @@
 <div class="wrap">
 
 <h1>⚡ 회로/펌웨어 현황판</h1>
-<div class="sub">2026-07-28 기준 · 담당: 회로/펌웨어(소프트) · 상세 근거는 <b>docs/전달용/펌웨어_설계문서.md</b></div>
+<div class="sub">2026-07-28 저녁 기준 · 담당: 회로/펌웨어(소프트) · 상세 근거는 <b>docs/전달용/펌웨어_설계문서.md</b></div>
 
 <div class="card">
 <h2>📌 지금 시스템이 어떻게 생겼나 (아키텍처 확정본)</h2>
 <div class="flow">노트북 motor_control ──(ROS: Motor_run)──▶ 브릿지 노드(회로팀 제작·무수정)
-        ──USB 시리얼 "L1500,R1500"──▶ 아두이노 펌웨어(우리 제작) ──▶ ESC×4 ──▶ T200×4
+        ──USB 시리얼 "L1500,R1500"──▶ Mega 2560 펌웨어(우리 제작·완성) ──▶ ESC×4 ──▶ T200×4
 펌웨어 → 노트북: "S,모드,워치독,배ID,비상정지,FL,FR,RL,RR" (10Hz, 상태 보고)</div>
 <ul style="list-style:none">
+  <li style="border:none">보드 <b class="hl">Mega 2560 R3 확정</b> · 5V 보드라 레벨시프트 불필요 · 컴파일 통과 (프로그램 2%, RAM 5%)</li>
   <li style="border:none">micro-ROS는 <b>폐기</b> — 브릿지 수용으로 라이브러리·에이전트·패치 전부 불필요해짐</li>
-  <li style="border:none">스러스터 <b class="hl">4개 확정</b> (선수2 보조 + 선미2) · 좌/우 페어 제어 + 선수 게인 0.7 시작</li>
+  <li style="border:none">스러스터 <b class="hl">4개 확정</b> (선수2 보조 + 선미2) · 좌/우 페어 제어 + 선수 게인 0.7 시작 · 방향지시등 미채택 확정</li>
   <li style="border:none">모드: 자율(AUTO) / 수동(MANUAL) — CH 스위치. 수동 경기 땐 노트북 통째 하선 가능</li>
 </ul>
 </div>
@@ -51,32 +52,33 @@
 <ul>
   <li>작년 펌웨어 분석 → 결함 정리 (0µs arm, 무클램프 자율경로, 워치독 없음, It_is_Aship 죽은 분기)</li>
   <li>설계 7항목 확정 + 문서 4종 작성 (설계문서 / 회로 요구사항서 / 회로팀 설명서 / 부품 추천목록) — <b>docs/전달용/</b></li>
-  <li>펌웨어 <b>ssf_boat.ino</b> 작성, micro-ROS판 컴파일 통과 (2026-07-22)</li>
-  <li>회로팀 브릿지 노드 검토 → <b class="hl">브릿지 무수정 수용 결정</b>, 펌웨어를 시리얼 파서판으로 재작성 (2026-07-25)</li>
-  <li>회로팀 전원 문서 검토 — 충돌 9건 정리 (<b>docs/전달용/회로팀_전원문서_검토.md</b>), 그중 스러스터 4개 확정으로 #1 해소</li>
+  <li>펌웨어 <b>ssf_boat.ino</b> 작성 → micro-ROS판 → 시리얼 브릿지판 → <b class="hl">Mega 2560판 이식·컴파일 통과</b> (07-28)</li>
+  <li>회로팀 브릿지 노드 검토 → <b class="hl">브릿지 무수정 수용 결정</b> — 받는 쪽(펌웨어)은 우리 것으로 완성 상태</li>
+  <li>회로팀 전원 문서 검토 — 충돌 9건 정리 (<b>docs/전달용/회로팀_전원문서_검토.md</b>), 스러스터 4개 확정으로 #1 해소</li>
+  <li>확인된 정보: 조종기 FS-i6 / 방향지시등 미채택 / 보드 Mega 2560 R3</li>
 </ul>
 </div>
 
 <div class="card todo">
-<h2>내가 처리할 일 (우선순위 순)</h2>
+<h2>내일 회로팀에게 물어볼 것 (이 목록 그대로 들고 가면 됨)</h2>
 <ul>
-  <li><b>시리얼판 펌웨어 재컴파일</b> — IDE에서 ssf_boat.ino 다시 열고 ✓ 버튼. 결과(성공/에러 전문)를 Claude에 보고 <span class="tag t-me">나</span></li>
-  <li><b>회로팀 질문 ①</b>: 보드 확정 — 실제 배에 실을 게 <b class="hl">Mega냐 Due냐</b>? (한 단어 답이면 됨) <span class="tag t-cir">회로팀</span></li>
-  <li><b>회로팀 질문 ②</b>: 브릿지 신호("L,R")를 받는 <b class="hl">Mega 스케치 파일(.ino) 원본</b> 받아오기 — 안전 로직 합치기용 <span class="tag t-cir">회로팀</span></li>
-  <li><b>회로팀 리마인드</b>: ESC 모델 / 수신기 모델(FS-iA6 vs iA6B, 겉면 표기) / 핀 배정표(요구사항서 §7 빈 표) / 방향지시등 채택 여부 <span class="tag t-cir">회로팀</span></li>
-  <li><b>회로팀 회의 안건</b> (전원문서_검토.md §3 들고 가기): ESC 부재 / 컨버터를 추진경로에서 Due 5V쪽으로 이동 / <b class="hl">무선 비상정지 추가(규정 의무)</b> + 좌우 동시 차단 / 신호 GND 공통화 / Due 전원 출처 <span class="tag t-cir">회로팀</span></li>
-  <li><b>브릿지 실행법 전달</b>: Ubuntu에선 <code>--port /dev/ttyACM0</code> 인자로 실행 (코드 수정 아님) <span class="tag t-cir">회로팀</span></li>
+  <li><b>① Mega 스케치 실존 확인</b> — "L,R 텍스트를 <code>Serial.read()</code>로 파싱하는 .ino 파일이 실제로 있나요?" 판별법: 코드에 micro_ros 단어 없어야 하고 <code>setup()/loop()</code> + L/R 글자 처리가 있어야 함. <b class="hl">"없다"도 정답</b> — 그럼 우리 완성본이 그대로 들어가서 상황 종료 (지금까지 온 파일 2개는 브릿지 파이썬·작년 Due 코드로 둘 다 오답)</li>
+  <li><b>② ESC 모델명</b> — T200에 물릴 ESC. 기준: 양방향(1500 중립)·4S 지원·30A↑. 모델명만 받아오면 arm 절차/중립점 벤치 항목을 Claude가 정리</li>
+  <li><b>③ 수신기 상자 모델</b> — 배에 실리는 수신기 겉면 표기: <b>FS-iA6</b>냐 <b>FS-iA6B</b>냐 (조종기 FS-i6는 확인됨. 이건 수신기 쪽)</li>
+  <li><b>④ 핀 배정표</b> — 요구사항서 §7 빈 표 채워달라기. 🚨 <b class="hl">RC 3채널은 핀 2,3,18,19,20,21 중에서만</b> (Mega 인터럽트 제약) · 0,1번 핀 금지(USB 겹침)</li>
+  <li><b>⑤ 전원 설계 회의</b> (전원문서_검토.md §3 지참): ESC가 전원 사슬 어디 들어가는지 / MD-30A 컨버터는 추진경로에서 빼고 Mega 5V 공급용으로 / <b class="hl">무선 비상정지 추가(규정 의무)</b> + 버튼·무선 모두 좌우 동시 차단 / 신호 GND 한 가닥 공통 / Mega·수신기 전원 출처</li>
+  <li><b>⑥ 브릿지 실행법 전달</b> — Ubuntu에선 <code>python3 브릿지.py --port /dev/ttyACM0</code> (코드 수정 아님, 실행 인자)</li>
 </ul>
-<div class="small">※ 질문 ①②의 복붙용 문구는 Claude 대화에 있음 (2026-07-28)</div>
+<div class="small">※ ①~④는 답만 받아오면 됨. ⑤만 논의 필요. 답 받으면 Claude에게 전달 → 코드 반영</div>
 </div>
 
 <div class="card wait">
 <h2>답 오면 이어지는 작업 (Claude 담당)</h2>
 <ul>
-  <li>보드가 Mega로 확정되면 → 펌웨어 이식 (핀 번호 + 시리얼 이름만, 로직 무변경) <span class="tag t-cl">Claude</span></li>
-  <li>Mega 스케치 원본 받으면 → 내용 검토 + 우리 안전 로직과 병합 방안 <span class="tag t-cl">Claude</span></li>
-  <li>핀 배정표 받으면 → 코드 §1 반영 (5분) <span class="tag t-cl">Claude</span></li>
-  <li>상태 보고("S,...") 수신용 노트북 노드 신규 작성 → 블랙박스 연동 <span class="tag t-cl">Claude</span></li>
+  <li>①에서 스케치가 진짜 있으면 → 내용 검토 + 병합 방안 / 없으면 → 상황 종료 선언 <span class="tag t-cl">Claude</span></li>
+  <li>② ESC 모델 받으면 → arm 절차·중립점 확인 항목 정리, 필요 시 클램프 조정 <span class="tag t-cl">Claude</span></li>
+  <li>④ 핀 배정표 받으면 → 코드 §1 반영 (5분) + 재컴파일 <span class="tag t-cl">Claude</span></li>
+  <li>상태 보고("S,...") 수신 방안 — 브릿지에 읽기 추가를 회로팀과 협의 후 결정 <span class="tag t-cl">Claude</span></li>
   <li>이후: 벤치 검증 (설계문서 §6 목록 — ESC arm 시간, 모터 방향, RC failsafe 실측 등)</li>
 </ul>
 </div>
