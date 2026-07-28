@@ -41,7 +41,10 @@
 """
 
 import math
+import os
 import time
+
+import yaml
 
 import rclpy
 from rclpy.node import Node
@@ -49,21 +52,14 @@ from rclpy.qos import ReliabilityPolicy, QoSProfile
 from std_msgs.msg import Float32, Float32MultiArray, Int32, Float64
 from sensor_msgs.msg import NavSatFix
 from geopy import distance
+from ament_index_python.packages import get_package_share_directory
 
-# ⚠️ 실측 필요: 대회 코스 좌표. 작년 값이라 올해 다시 측정해야 한다.
-waypoints = [
-    [35.1862375, 128.5655118, 0, 3.0],      # WP0 게이트 시작
-    [35.1863642, 128.5657123, 1, 3.0],      # WP1 게이트 끝
-    [35.1868822, 128.5660465, 2, 3.0],      # WP2 위치유지
-    [35.1868638, 128.56582129999, 3, 3.0],  # WP3 초록
-    [35.1867763, 128.5658085, 3, 3.0],      # WP4 빨강
-    [35.1868645, 128.5656684, 3, 3.0],      # WP5 하양
-    [35.1866601, 128.5655597, 5, 50.0],     # WP6 회피 시작
-    [35.186396099999, 128.5653297, 5, 50.0],  # WP7 회피끝
-    [35.1859269, 128.5655428, 7, 60.0],     # WP8 도킹 시작
-    [35.1859269, 128.5655428, 7, 60.0],     # WP9 도킹
-    [35.1861956, 128.5660033, 8, 60.0],     # WP10 토너먼트 회피
-]
+from north_goal_angle.waypoint_loader import parse_waypoints, WaypointError
+
+# 🚨 대회 좌표는 코드가 아니라 config/waypoints.yaml 에서 읽는다 (비전공자도 편집 가능).
+#    대회장에서 GPS 좌표를 바꿀 사람은 그 파일의 lat/lon 만 고치면 된다 — 이 파일은 안 건드린다.
+#    로드/검증은 waypoint_loader.parse_waypoints (순수 로직, 테스트됨).
+#    파일이 없거나 형식이 틀리면 노드를 띄우지 않는다 — 틀린 좌표로 달리느니 멈춘다.
 
 CANDIDATE_INVALID = 20000.0
 ARRIVE_RADIUS_M = 3.0
@@ -82,6 +78,14 @@ class NorthGoalAngle(Node):
     def __init__(self):
         super().__init__('north_goal_angle')
         qos = QoSProfile(depth=2, reliability=ReliabilityPolicy.RELIABLE)
+
+        # ---- 웨이포인트(GPS 좌표) 로드 — config/waypoints.yaml 에서 읽는다 ----
+        # 파일 경로는 파라미터로도 바꿀 수 있다(기본: 패키지 share 의 config/waypoints.yaml).
+        default_wp = os.path.join(
+            get_package_share_directory('north_goal_angle'), 'config', 'waypoints.yaml')
+        self.waypoints_file = str(
+            self.declare_parameter('waypoints_file', default_wp).value)
+        self.waypoints = self._load_waypoints(self.waypoints_file)
 
         # ---- 파라미터 (config/north_goal_angle.yaml, CLAUDE.md 1-4) ----
         self.period_sec = float(self.declare_parameter('period_sec', 0.5).value)
@@ -139,6 +143,38 @@ class NorthGoalAngle(Node):
             f"north_goal_angle 시작: 폴백은 mode {FALLBACK_MODES} 에만 발행"
             f"(mode 7 폴백 제거 — ship_dock 과 충돌했다). geofence {gf}."
         )
+
+    # ───────────────────────── 웨이포인트 로드 ─────────────────────────
+    def _load_waypoints(self, path):
+        """config/waypoints.yaml 을 읽어 검증한다. 실패하면 노드를 세운다(예외).
+
+        🚨 '모르면 침묵 말고 알린다' — 파일이 없거나 좌표가 이상하면 조용히 기본값으로
+        넘어가지 않고, 어디가 왜 틀렸는지 ERROR 로그를 내고 예외를 던져 노드를 멈춘다.
+        틀린 좌표로 배가 달리는 것보다 출발 전에 멈추는 게 안전하다.
+        """
+        try:
+            with open(path, 'r', encoding='utf-8') as f:
+                raw = yaml.safe_load(f)
+        except FileNotFoundError:
+            self.get_logger().error(
+                f"🚨 웨이포인트 파일이 없다: {path}\n"
+                f"   config/waypoints.yaml 이 설치됐는지 확인하라(colcon build 필요).")
+            raise
+        except yaml.YAMLError as e:
+            self.get_logger().error(
+                f"🚨 waypoints.yaml 문법 오류(콤마·중괄호·들여쓰기 확인): {e}")
+            raise
+
+        try:
+            wps = parse_waypoints(raw)
+        except WaypointError as e:
+            self.get_logger().error(f"🚨 웨이포인트 내용 오류 → {e}")
+            raise
+
+        modes = [w[2] for w in wps]
+        self.get_logger().info(
+            f"웨이포인트 {len(wps)}개 로드: {path}\n   미션 순서(mode): {modes}")
+        return wps
 
     # ───────────────────────── 콜백 ─────────────────────────
     def gps_cb(self, msg):
@@ -231,10 +267,10 @@ class NorthGoalAngle(Node):
     def timer_cb(self):
         self._publish_geofence()             # 웨이포인트가 끝나도 경계 감시는 계속한다
 
-        if self.wp_idx >= len(waypoints):
+        if self.wp_idx >= len(self.waypoints):
             return
 
-        wp_lat, wp_lon, wp_mode, dwell = waypoints[self.wp_idx]
+        wp_lat, wp_lon, wp_mode, dwell = self.waypoints[self.wp_idx]
 
         dist = calc_dist(self.lat, self.lon, wp_lat, wp_lon)
         self.pub_dist.publish(Float32(data=dist))

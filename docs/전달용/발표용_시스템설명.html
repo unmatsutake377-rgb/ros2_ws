@@ -100,6 +100,7 @@
   <a href="#map">③ 전체 흐름</a>
   <a href="#nodes">④ 노드 상세(클릭)</a>
   <a href="#mission">⑤ 미션 진행</a>
+  <a href="#gps">🗺 GPS 좌표 입력</a>
   <a href="#whatif">⑥ 만약에?</a>
   <a href="#qa">⑦ 예상 질문</a>
   <a href="#glossary">⑧ 용어</a>
@@ -214,6 +215,57 @@
 </div>
 <div class="warn">발표 포인트: "미션마다 <b>다른 노드가 깨어나는 게 아니라, 모든 노드가 항상 켜져 있고
   자기 번호일 때만 일합니다.</b> 작년엔 켰다 껐다 해서 전환할 때 몇 초씩 멈췄는데, 그걸 고쳤습니다."</div>
+
+<!-- ================= 🗺 GPS 좌표 입력 ================= -->
+<h2 id="gps">🗺 대회 시작 전 — GPS 좌표 입력법 (비전공자용)</h2>
+<div class="lead">
+  배는 <b>정해진 지점들을 순서대로</b> 찾아갑니다. 그 지점들의 <b>GPS 좌표</b>를 대회장에서
+  입력해야 배가 어디로 갈지 압니다. <b>코드는 안 건드립니다</b> — 설정 파일 하나만 고칩니다.
+</div>
+
+<h3>① 어느 파일을 여나</h3>
+<p><code>src/north_goal_angle/config/waypoints.yaml</code> — 이 파일 하나입니다.</p>
+
+<h3>② 무엇을 바꾸나 / 무엇을 안 바꾸나</h3>
+<table>
+  <tr><th></th><th>항목</th><th>설명</th></tr>
+  <tr><td>✅ <b>바꾼다</b></td><td><code>lat</code> (위도)<br><code>lon</code> (경도)</td>
+      <td>대회장에서 잰 각 지점의 GPS 좌표</td></tr>
+  <tr><td>🚫 <b>안 바꾼다</b></td><td><code>mode</code> (미션번호)<br>순서 · <code>dwell</code></td>
+      <td>미션 진행 순서입니다. 바꾸면 미션이 엉킵니다</td></tr>
+</table>
+
+<h3>③ 이렇게 생겼습니다 (한 줄 = 한 지점)</h3>
+<div class="card" style="font-family:ui-monospace,Menlo,monospace;font-size:.82rem;overflow-x:auto">
+<div style="white-space:pre">waypoints:
+  - {구역: "WP0 게이트 시작", lat: <span style="color:var(--ok)">35.1862375</span>, lon: <span style="color:var(--ok)">128.5655118</span>, mode: <span style="color:var(--bad)">0</span>, dwell: 3.0}
+  - {구역: "WP8 도킹",       lat: <span style="color:var(--ok)">35.1859269</span>, lon: <span style="color:var(--ok)">128.5655428</span>, mode: <span style="color:var(--bad)">7</span>, dwell: 60.0}
+                                    <span style="color:var(--ok)">↑ 초록(위도·경도)만 바꾼다</span>          <span style="color:var(--bad)">↑ 빨강(미션번호)은 그대로</span></div>
+</div>
+
+<h3>④ mode(미션번호) 뜻</h3>
+<table>
+  <tr><th>번호</th><th>미션</th></tr>
+  <tr><td><code>0</code>·<code>1</code></td><td>게이트 통과</td></tr>
+  <tr><td><code>2</code></td><td>위치 유지</td></tr>
+  <tr><td><code>3</code></td><td>부표 돌기</td></tr>
+  <tr><td><code>5</code>·<code>8</code></td><td>회피 구간</td></tr>
+  <tr><td><code>7</code></td><td>도킹</td></tr>
+</table>
+
+<h3>⑤ 저장하면?</h3>
+<p>파일을 저장하고 배를 다시 실행하면 그 좌표로 움직입니다.</p>
+<div class="warn ok-note" style="border-left-color:var(--ok)">
+  <b>실수해도 안전합니다.</b> 위도·경도를 바꿔 넣거나(예: lat 자리에 경도), 오타를 내거나,
+  콤마·중괄호를 빠뜨리면 → <b>배가 출발하지 않고 화면에 "몇 번째 지점이 왜 틀렸는지"</b>를
+  알려줍니다. (틀린 좌표로 달리느니 멈추는 게 안전합니다.) 이 검사는 자동으로 이뤄지고,
+  로직은 <code>waypoint_loader.py</code> — 자동 테스트 15개로 확인돼 있습니다.
+</div>
+<div class="analogy">
+  <b>발표 대본:</b> “대회장에 가면 각 지점의 GPS 좌표를 설정 파일에 입력합니다. 코드는 안 건드리고,
+  위도·경도만 바꿉니다. 실수로 잘못 넣으면 배가 그냥 출발을 안 하고 어디가 틀렸는지 알려주도록
+  만들었습니다 — 틀린 좌표로 나가는 게 제일 위험하니까요.”
+</div>
 
 <!-- ================= ⑥ 만약에 ================= -->
 <h2 id="whatif">⑥ "만약에 ~하면?" — 안전 설계</h2>
@@ -344,22 +396,80 @@ const N = {
    out:["<code>/red_angle</code>,<code>/green_angle</code> (gate)","<code>/image_angle</code> (turn/dock)"],
    code:["<code>basic_image_subscriber{gate,turn,dock}.py</code>","분류 로직 <code>dock_logic.py</code>"],
    say:"“카메라로 부표가 어느 방향에 있는지 각도를 뽑습니다. 도킹은 형상×색 조합이 당일 공지돼서, 설정만 바꾸면 되게 만들었습니다.”"},
- shipgate:{t:"ship_gate — 게이트 통과 미션", role:"빨강·초록 부표 사이(문)를 통과하는 방향을 정합니다.",
+ shipgate:{t:"ship_gate — 게이트 통과 미션", role:"빨강·초록 부표 사이(문)를 통과. 단 '한가운데로'는 정상 케이스 하나일 뿐 — 실제론 여러 변수에 대응합니다. 카메라=방위, LiDAR=거리로 역할을 나눴고, 부표는 '점 물체'라 모양은 안 봅니다(모양 인식은 도킹 담당).",
    in:["<code>/red_angle</code>,<code>/green_angle</code>","<code>/scan</code>","<code>/wp_mode</code>"],
    out:["<code>/candidate_angle</code> 갈 방향","<code>/gates_passed</code> 통과 수"],
-   code:["<code>ship_gate.py</code>","<code>gate_logic.py</code>"],
-   say:"“두 부표 사이 한가운데로 지나가도록 방향을 잡습니다.”"},
- shipturn:{t:"ship_turn — 부표 돌기 미션", role:"부표를 중심으로 원을 그리며 도는 방향을 정합니다.",
-   in:["<code>/image_angle</code>","<code>/scan</code>","<code>/imu/yaw</code>","<code>/wp_mode</code>"],
+   code:["<code>ship_gate.py</code>","<code>gate_logic.py</code> (순수 로직, 테스트 14개)"],
+   say:"“게이트는 '중간으로 간다'가 전부가 아닙니다. 부표가 하나만 보이거나, 다음 게이트가 겹쳐 보이거나, 아예 안 보이는 상황을 각각 코드로 막았습니다.”",
+   vars:[
+     ["다음+이번 게이트가 겹쳐 보임","각도차 5~80°일 때만 쌍으로 인정. 벗어나면 가까운 쪽 하나만"],
+     ["한쪽 부표만 보임","보이는 쪽에서 게이트 중심으로 40° 틀어 진입 (single_offset)"],
+     ["빨강이 좌/우현?","red_on_port 파라미터로 트는 방향 결정 (⚠️벤치 검증)"],
+     ["둘 다 안 보임","CANDIDATE_INVALID → GPS 자율주행 (멈추지 않음)"],
+     ["다시 부표 보이면?","매 0.1초 재판정(stateless) → 보이면 즉시 게이트 복귀. 상태에 안 갇힘"],
+     ["잠깐 깜빡임","신선도 grace 0.7초 → 한두 프레임 사라져도 안 흔들림"],
+     ["먼 게이트 미리 카운트","LiDAR 거리 6m 안일 때만 카운트 준비. 거리 못 재면 안 막음"],
+     ["같은 게이트 중복 카운트","통과 후 재-arming. 다음 게이트 다시 봐야 카운트"],
+     ["통과 언제 인정?","부표가 ±75° 넘어 뒤로 가면 확정 (지나쳐야 함)"],
+     ["오래된/헛것 각도","센티널(10000=안보임) + 0.7초 신선도 검사"],
+     ["묵은 LiDAR로 조향","depth=1 — 항상 최신 스캔만"],
+     ["359°/1° 중점이 180°로 튐","원형 중점 계산(circular_mid)으로 wrap 안전"],
+     ["yellow 부표 오인","규정은 빨강-초록만 → 작년 yellow 폴백 제거"],
+   ]},
+ shipturn:{t:"ship_turn — 부표 돌기 미션", role:"부표를 중심으로 실제로 '한 바퀴 도는' orbit 기동. 작년엔 옆을 스쳐 지나가서 규정 위반이었습니다. 색=회전 방향, LiDAR=반경, IMU=한 바퀴 완료 판정. ship_gate(stateless)와 달리 상태기계(INIT→SEARCH→APPROACH→ORBIT→COOLDOWN)로 진행합니다.",
+   in:["<code>/image_angle</code>","<code>/buoy_color</code>","<code>/scan</code>","<code>/imu/yaw</code>","<code>/wp_mode</code>"],
    out:["<code>/candidate_angle</code>"],
-   code:["<code>ship_turn.py</code>","<code>orbit_logic.py</code>"],
-   say:"“부표 주위를 일정 반경으로 도는 궤도를 만듭니다.”"},
- shipdock:{t:"ship_dock — 도킹 미션", role:"공지된 표식(형상×색)을 찾아 그 도크에 접안합니다.",
+   code:["<code>ship_turn.py</code>","<code>orbit_logic.py</code> (순수 로직)"],
+   say:"“부표를 스쳐가는 게 아니라 실제로 한 바퀴 돕니다(규정). 색으로 방향을, LiDAR로 반경을, IMU로 한 바퀴 완료를 판정합니다. 방향을 모르면 틀린 쪽으로 돌지 않고 기다립니다.”",
+   vars:[
+     ["스쳐가기 vs 진짜 선회","작년은 옆을 offset 으로 비껴 지나감(규정 위반). 지금은 부표를 ±90°에 두고 원을 그림 (orbit_steer)"],
+     ["시계? 반시계?","빨강·초록=시계 / 흰색=반시계. /buoy_color 로 색을 받아 방향 결정"],
+     ["색을 못 받으면?","회전 방향을 모르니 SEARCH 에 머묾 — 틀린 방향으로 돌지 않는다 ('모르면 안 돈다')"],
+     ["원 반경 유지","도는 중 LiDAR 거리로 보정 — 너무 멀면 안쪽, 가까우면 바깥쪽으로 (k_radial)"],
+     ["거리를 못 잴 때","목표 반경을 가정하고 접선 방향만 유지 (멈추지 않음)"],
+     ["한 바퀴 완료 판정","IMU yaw 로 진행각 누적 → 360° 돌면 완료"],
+     ["IMU가 없어 진행각 못 잼","안전 타임아웃(orbit_max 60초)으로 다음으로 넘어감"],
+     ["부표를 놓치면?","2초(lost) 넘게 안 보이면 SEARCH 로 되돌아가 다시 잡음"],
+     ["SEARCH 무한 반복 방지","20초(search_timeout) 넘으면 포기하고 다음 부표로"],
+     ["부표 3개 순차","WP3·4·5 모두 wp_mode=3. 하나 돌고 COOLDOWN 동안 손 떼면 GPS가 다음 부표로 데려감 → 다시 SEARCH"],
+     ["거리는 어디서?","LiDAR (카메라 뎁스 폐기, OAK 에서 죽음). 부표=점 물체라 방위 매칭"],
+     ["묵은 데이터로 조향","각도·색·스캔 신선도 검사 + LiDAR depth=1(최신만)"],
+   ]},
+ shipdock:{t:"ship_dock — 도킹 미션", role:"표식(형상×색)이 있는 도크에 접안. 핵심 사상은 '정면 접근(head-on)' — 비스듬히 들어가면 표식이 작게 보이고 거리 정합이 어긋나 모든 문제의 근원이라, 정면을 맞춘 뒤에만 전진합니다. 표식 인식(형상×색)은 비전 검출기가 담당하고, 여기선 정면 정렬·접안 제어를 합니다. 상태기계: INIT→SEARCH→ALIGN→APPROACH→CONTACT→BACKOFF→DONE.",
    in:["<code>/image_angle</code>","<code>/scan</code>","<code>/wp_mode</code>"],
    out:["<code>/candidate_angle</code>"],
-   code:["<code>ship_dock.py</code>","<code>dock_logic.py</code> (형상 분류·N프레임 확정)"],
-   say:"“표식을 정면으로 맞추고 천천히 접안합니다. 표식은 대회 당일 공지되므로 설정으로 바꿉니다.”"},
- shipback:{t:"ship_back — 위치 유지 미션", role:"부표 옆 정해진 자리에 5초간 버팁니다(조류에 안 밀리게 능동 제어).",
+   code:["<code>ship_dock.py</code>","표식 분류는 <code>dock_logic.py</code>(비전 쪽)"],
+   say:"“도킹은 정확히 마주보고 밀고 들어가는 게 전부입니다. 비스듬히 들어가면 실패하니, 제자리 선회로 정면을 먼저 맞추고, 접안 직전에 한 번 더 정밀 정렬한 뒤 전진합니다.”",
+   vars:[
+     ["작년 1년간 침묵","담당 모드가 9로 잘못 박혀 도킹이 한 번도 안 깨어남 → 7로 수정(부활)"],
+     ["비스듬 접근 = 실패 근원","제자리 선회(ALIGN)로 표식을 정면 ±8°에 놓은 뒤에만 전진 (head-on FSM)"],
+     ["접안 직전 비뚤어짐","standoff(3m)에서 한 번 더 정밀 재정렬 (1회) — 마지막에 삐뚤게 안 들어감"],
+     ["가다가 크게 틀어짐","±25° 넘게 어긋나면 다시 ALIGN — 비스듬히 밀고 들어가지 않음"],
+     ["🚨 도크는 넓어서 표식 거리 매칭이 틀림","'표식까지 거리' 대신 'LiDAR 전방 ±15° 최소거리'만 사용 → 각도 정합 문제 통째 제거"],
+     ["거리를 못 잴 때","접근 중단하고 정지 — '눈 감고 도킹하지 않는다'"],
+     ["SPIN이 순항속도로 돌아 도크에 부딪힘(작년)","제자리 선회로 고침(2단계) → 도크 코앞에서도 안전하게 정렬"],
+     ["표식을 놓치면","SEARCH 로 되돌아가 다시 찾음"],
+     ["표식이 좌/우현?","image_positive_is_left 파라미터로 선회 방향 결정 (⚠️벤치 검증)"],
+     ["단계별 무한 대기 방지","SEARCH 25초·ALIGN 15초·APPROACH 30초·BACKOFF 8초 타임아웃"],
+     ["접안 후 빠져나오기","CONTACT 3초 유지 → 후진(상대 180°)으로 BACKOFF"],
+     ["mode 7 유일 발행자","매 틱 반드시 발행 — 침묵하면 ship_direction 이 묵은 값을 붙듦 (north 폴백 제거와 한 쌍)"],
+     ["묵은 데이터로 도킹","image·scan 신선도 검사 + LiDAR depth=1(최신만)"],
+   ]},
+ shipback:{t:"ship_back — 위치 유지 미션", role:"부표 5m 이내에 5초간 '연속으로' 머무는 미션. 작년엔 그냥 5초 정지라 조류에 떠밀려 실패했습니다(0.5m/s면 5초에 2.5m 밀림). 지금은 LiDAR로 거리를 재며 전진·후진으로 자리를 지킵니다(능동 제어). 상태기계: INIT→SEARCH→HOLD→DONE.",
+   vars:[
+     ["작년: 그냥 5초 정지 → 밀려남","LiDAR로 부표 거리를 재며 전·후진으로 능동 유지(bang-bang + 데드밴드)"],
+     ["너무 멀어지면","부표 방향으로 전진 (station_keep_action='forward')"],
+     ["조류에 너무 붙으면","후진으로 되돌림 (='reverse', 상대 180°)"],
+     ["목표 거리 부근(±0.4m)","중립 유지 — 데드밴드로 떨림 방지 (='hold')"],
+     ["규정 판정","keep_radius(5m) 이내에 hold_time(5s) '연속' 머물면 완료"],
+     ["부표를 어떻게 보나 ①","비전 방위(/image_angle) → 그 방위의 LiDAR 거리"],
+     ["부표를 어떻게 보나 ②","비전이 없으면 LiDAR 전방 ±30° 최근접점을 부표로 — 카메라 없이도 유지됨"],
+     ["부표를 놓치면","SEARCH 로 되돌아가 다시 잡음(2초 lost)"],
+     ["거리를 못 잴 때","함부로 전진하지 않고 중립 — '눈 감고 안 움직인다'"],
+     ["🚨 작년 이름 복붙 버그","자기를 'ship_turn'으로 등록 → 두 노드 이름 충돌 → yaml 값이 섞임. 'ship_back'으로 수정"],
+     ["SEARCH 무한 대기 방지","20초 넘으면 종료"],
+     ["묵은 데이터로 조향","각도·스캔 신선도 검사 + LiDAR depth=1(최신만)"],
+   ],
    in:["<code>/image_angle</code>","<code>/scan</code>","<code>/wp_mode</code>"],
    out:["<code>/candidate_angle</code>"],
    code:["<code>ship_back.py</code>","<code>hold_logic.py</code>"],
@@ -389,10 +499,19 @@ function show(k){
     + n.in.map(x=>'<li>'+x+'</li>').join('') + '</ul></div>'
     + '<div class="out"><span class="lbl">⬆ 출력 (내보내는 것)</span><ul>'
     + n.out.map(x=>'<li>'+x+'</li>').join('') + '</ul></div></div>';
+  let varsHtml = '';
+  if (n.vars) {
+    varsHtml = '<div class="cap" style="text-align:left;margin:14px 0 6px">🎯 대응하는 변수 → 차단 기능 '
+      + '<span style="color:var(--muted);font-weight:400">(\'한가운데로\'는 이 중 첫 줄일 뿐)</span></div>'
+      + '<table><tr><th>변수 (엉뚱해질 상황)</th><th>어떻게 막았나</th></tr>'
+      + n.vars.map(v=>'<tr><td>'+v[0]+'</td><td>'+v[1]+'</td></tr>').join('')
+      + '</table>';
+  }
   document.getElementById('dbody').innerHTML =
     '<h3>'+n.t+'</h3><p>'+n.role+'</p>'+io
     +'<p class="sub">📄 담당 코드: '+n.code.join(' · ')+'</p>'
-    +'<div class="script"><b>🎤 발표 대본:</b> '+n.say+'</div>';
+    +'<div class="script"><b>🎤 발표 대본:</b> '+n.say+'</div>'
+    +varsHtml;
   document.getElementById('detail').classList.add('open');
 }
 function hide(){document.getElementById('detail').classList.remove('open');}
