@@ -41,7 +41,7 @@ from rclpy.node import Node
 from ssf_tools import thermal
 from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy, HistoryPolicy
 
-from std_msgs.msg import Int32, Float32, Float64, Float32MultiArray
+from std_msgs.msg import Int32, Float32, Float64, Float32MultiArray, String
 from sensor_msgs.msg import LaserScan, NavSatFix, Imu
 from geometry_msgs.msg import TwistWithCovarianceStamped
 
@@ -55,6 +55,31 @@ OBSERVER_QOS = QoSProfile(
     history=HistoryPolicy.KEEP_LAST,
     depth=10,
 )
+
+class _Arrival:
+    """토픽 도착 간격 추적 (관찰 전용). '이 센서가 얼마나 자주/늦게 오나'를 잰다.
+
+    dt_max = 이 CSV 행 구간에서의 최대 도착 간격(=최대 공백). '얼마나 오래 끊겼나'가 핵심.
+    count  = 누적 콜백 수(행 간 평균 주기 산출용).
+    타이머가 행을 쓴 뒤 snapshot_reset() 으로 dt_max 를 리셋한다(다음 행은 다음 구간만 대표).
+    """
+    def __init__(self):
+        self.prev_t = None
+        self.count = 0
+        self.dt_max = None
+
+    def tick(self, t):
+        self.count += 1
+        if self.prev_t is not None:
+            dt = t - self.prev_t
+            self.dt_max = dt if self.dt_max is None else max(self.dt_max, dt)
+        self.prev_t = t
+
+    def snapshot_reset(self):
+        m = self.dt_max
+        self.dt_max = None
+        return self.count, m
+
 
 CSV_HEADER = [
     "t_wall", "t_mono", "wp_mode",
@@ -74,6 +99,12 @@ CSV_HEADER = [
     "cpu_temp_c", "cpu_clock_frac", "on_ac",
     # ---- D6 median 기각수 (물보라 노이즈 대리 지표 — '노이즈 ↔ 기상' 상관 검증용) ----
     "obstacle_reject_count",
+    # ---- 센서 도착 지연 (실기 지연 분석용). dt_max=구간 최대 공백, count=누적 콜백 ----
+    "imu_dt_max", "imu_count",       # /imu/yaw 도착 간격 (LiDAR 는 위 scan_* 로 이미 측정)
+    "gps_dt_max", "gps_count",       # /ublox_gps_node/fix 도착 간격
+    # ---- 카메라 결과 (이미지는 용량 때문에 rosbag 으로. 여기엔 '결과값'만) ----
+    "red_angle", "green_angle", "image_angle", "image_color",   # 카메라가 언제 뭘 봤나
+    "cam_dt_max", "cam_count",       # 카메라 결과(각도 토픽) 도착 간격 = 비전 파이프라인 생존
 ]
 
 
@@ -107,6 +138,11 @@ class BlackBox(Node):
         imu_topic = self.declare_parameter("imu_topic", "/imu/data").value                       # sensor_msgs/Imu
         gps_vel_topic = self.declare_parameter(
             "gps_vel_topic", "/ublox_gps_node/fix_velocity").value                                # TwistWithCovarianceStamped
+        # 카메라 결과 토픽 (이미지 아님 — 각도·색 '결과값'. 비전이 언제 뭘 봤나)
+        red_angle_topic = self.declare_parameter("red_angle_topic", "/red_angle").value
+        green_angle_topic = self.declare_parameter("green_angle_topic", "/green_angle").value
+        image_angle_topic = self.declare_parameter("image_angle_topic", "/image_angle").value
+        image_color_topic = self.declare_parameter("image_color_topic", "/image_color").value
 
         # ---- 최신값 저장소 (콜백이 갱신, 타이머가 읽어 기록) ----
         self.latest = {k: None for k in CSV_HEADER}
@@ -118,6 +154,11 @@ class BlackBox(Node):
         self._scan_prev_t = None      # 직전 콜백 시각(단조)
         self._scan_count = 0
         self._scan_dt_min = None      # 행 구간 누적. _on_timer 가 행을 쓴 뒤 리셋한다
+
+        # IMU·GPS·카메라 도착 추적 (관찰 전용). LiDAR 는 위 scan_* 가 이미 함.
+        self._imu_arr = _Arrival()
+        self._gps_arr = _Arrival()
+        self._cam_arr = _Arrival()
         self._scan_dt_max = None
 
         # ---- 로그 파일 준비 ----
@@ -154,6 +195,11 @@ class BlackBox(Node):
         # 동역학 역산용
         self.create_subscription(Imu, imu_topic, self._cb_imu, OBSERVER_QOS)
         self.create_subscription(TwistWithCovarianceStamped, gps_vel_topic, self._cb_gps_vel, OBSERVER_QOS)
+        # 카메라 결과 (Float32 각도 3종 + String 색). 도착하면 cam_arr.tick → 비전 생존 추적.
+        self.create_subscription(Float32, red_angle_topic, self._cb_red_angle, OBSERVER_QOS)
+        self.create_subscription(Float32, green_angle_topic, self._cb_green_angle, OBSERVER_QOS)
+        self.create_subscription(Float32, image_angle_topic, self._cb_image_angle, OBSERVER_QOS)
+        self.create_subscription(String, image_color_topic, self._cb_image_color, OBSERVER_QOS)
 
         # ---- 기록 타이머 ----
         period = 1.0 / self.rate_hz if self.rate_hz > 0 else 0.1
@@ -171,6 +217,7 @@ class BlackBox(Node):
         self.latest["gps_lat"] = msg.latitude
         self.latest["gps_lon"] = msg.longitude
         self.latest["gps_status"] = msg.status.status  # -1=NO_FIX, 0=FIX, 1=SBAS, 2=GBAS
+        self._gps_arr.tick(time.monotonic())   # fix 끊기면 GPS 항법 stale
 
     def _cb_scan(self, _msg):
         """도착 간격만 잰다. 스캔 내용은 안 본다(obstacle_min_dist 는 ship_direction 이 준다)."""
@@ -183,7 +230,9 @@ class BlackBox(Node):
             self._scan_dt_max = dt if self._scan_dt_max is None else max(self._scan_dt_max, dt)
         self._scan_prev_t = t
 
-    def _cb_imu_yaw(self, msg): self.latest["imu_yaw"] = msg.data
+    def _cb_imu_yaw(self, msg):
+        self.latest["imu_yaw"] = msg.data
+        self._imu_arr.tick(time.monotonic())   # yaw 갱신 끊기면 heading 제어가 stale
     def _cb_reject(self, msg): self.latest["obstacle_reject_count"] = msg.data
     def _cb_imu_yaw_raw(self, msg): self.latest["imu_yaw_raw"] = msg.data
     def _cb_yaw_error(self, msg): self.latest["yaw_error"] = msg.data
@@ -219,6 +268,22 @@ class BlackBox(Node):
         self.latest["gps_vel_x"] = msg.twist.twist.linear.x
         self.latest["gps_vel_y"] = msg.twist.twist.linear.y
 
+    # 카메라 결과: 값 저장 + 도착 tick. 어느 각도든 오면 '비전 살아있음'. 이미지는 rosbag.
+    def _cb_red_angle(self, msg):
+        self.latest["red_angle"] = msg.data
+        self._cam_arr.tick(time.monotonic())
+
+    def _cb_green_angle(self, msg):
+        self.latest["green_angle"] = msg.data
+        self._cam_arr.tick(time.monotonic())
+
+    def _cb_image_angle(self, msg):
+        self.latest["image_angle"] = msg.data
+        self._cam_arr.tick(time.monotonic())
+
+    def _cb_image_color(self, msg):
+        self.latest["image_color"] = msg.data   # String (예: "red"/"green"/"none")
+
     # ---- 10Hz 기록 ----
     def _on_timer(self):
         now = self.get_clock().now()
@@ -233,6 +298,17 @@ class BlackBox(Node):
             "" if self._scan_dt_min is None else f"{self._scan_dt_min:.4f}")
         self.latest["scan_dt_max"] = (
             "" if self._scan_dt_max is None else f"{self._scan_dt_max:.4f}")
+
+        # IMU·GPS·카메라 도착 통계. count=누적, dt_max=이 구간 최대 공백(빈칸=이 구간 무도착).
+        ic, idt = self._imu_arr.snapshot_reset()
+        gc, gdt = self._gps_arr.snapshot_reset()
+        cc, cdt = self._cam_arr.snapshot_reset()
+        self.latest["imu_count"] = ic
+        self.latest["imu_dt_max"] = "" if idt is None else f"{idt:.4f}"
+        self.latest["gps_count"] = gc
+        self.latest["gps_dt_max"] = "" if gdt is None else f"{gdt:.4f}"
+        self.latest["cam_count"] = cc
+        self.latest["cam_dt_max"] = "" if cdt is None else f"{cdt:.4f}"
 
         # T8: 발열/전원 (1초에 한 번만 갱신). 경고가 아니라 순수 기록 — 사후 분석용.
         if t_mono >= self._thermal_next_read:
