@@ -605,7 +605,8 @@ class ShipDirection(Node):
 
         binary = self.smooth_spikes(binary)
         binary = self.suppress_spike_edges(binary)
-        binary = self.dilate_obstacles(binary, distance_array, angle_increment_deg)
+        binary = self.dilate_obstacles(binary, distance_array, angle_increment_deg,
+                                       detection_distance)
 
         # ---- safe zone 탐색 ----
         safe_zones = []
@@ -698,7 +699,13 @@ class ShipDirection(Node):
                         break
         return suppressed
 
-    def dilate_obstacles(self, binary, distance_array, angle_increment_deg):
+    def dilate_obstacles(self, binary, distance_array, angle_increment_deg,
+                         detection_distance):
+        # 팀원 제안 버그2: 작년엔 여기서 self.detection_distance 를 직접 읽어, control_cb 가
+        #   lock 으로 뜬 스냅샷과 어긋날 수 있었다(wp_mode_cb 가 다른 스레드에서 바꾸므로).
+        #   실제 영향은 거의 없다 — r_edge 는 아래에서 유효 거리로 덮이는 폴백이라, binary=1 셀은
+        #   정의상 유효 거리가 있어 폴백이 안 쓰인다. 그래도 한 _compute 안에서 값이 하나로
+        #   유지되도록 스냅샷을 파라미터로 받는다(lock 일관성 원칙).
         n = len(binary)
         out = binary[:]
         i = 0
@@ -711,7 +718,7 @@ class ShipDirection(Node):
 
                 length = end - start + 1
                 if length >= self.min_obstacle_cells:
-                    r_edge = self.detection_distance
+                    r_edge = detection_distance
                     for k in range(start, end + 1):
                         r = distance_array[k]
                         if not math.isinf(r) and not math.isnan(r):
