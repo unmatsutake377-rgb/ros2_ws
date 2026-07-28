@@ -7,8 +7,9 @@
 
 - `ssf_boat/ssf_boat.ino` — 펌웨어 본체 (Arduino IDE로 열어서 업로드)
 - 업로드: Arduino IDE → 보드 "Arduino Due (Programming Port)" → Programming 포트에 USB 연결 → 업로드
-- 포트 역할: **Programming 포트 = 업로드 + 노트북 micro-ROS 에이전트 연결** / Native 포트 = 디버그 출력(시리얼 모니터)
-- 노트북과의 토픽 계약: `Motor_run` 구독(Int32, pwm_r*10000+pwm_l, 1500=중립), `/firmware_status` 발행(Int32MultiArray, 10Hz)
+- **[2026-07-25] micro-ROS 폐기 → 시리얼 브릿지 방식** (회로팀 브릿지 노드 수용). micro_ros_arduino 라이브러리·에이전트·platform.txt 패치 전부 불필요해짐
+- 포트 역할: **Programming 포트 = 업로드 + 브릿지 명령 수신(`L1500,R1500\n`)** / Native 포트 = 상태 보고(`S,...` 10Hz) + 디버그
+- 노트북측 `Motor_run` 토픽 계약은 무변경 — 브릿지가 번역 담당. 프로토콜 상세는 설계문서 §1-2
 - 배 A/B 구분은 코드가 아니라 **배에 달린 ID 핀(DIP 스위치)** 으로 자동 인식 — 펌웨어는 두 배 공용 1벌
 
 ## ⚠️ 새 컴퓨터에서 컴파일 시 필수 패치 (undefined reference 에러 대책)
