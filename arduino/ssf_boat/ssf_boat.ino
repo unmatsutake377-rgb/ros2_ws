@@ -1,31 +1,34 @@
 // =====================================================================
-// SSF 자율운항선박 펌웨어 — Arduino Due, 시리얼 브릿지 방식
+// SSF 자율운항선박 펌웨어 — Arduino Mega 2560 R3, 시리얼 브릿지 방식
 // 설계 근거: docs/전달용/펌웨어_설계문서.md (단일 출처, 여기 주석은 요약)
 //
-// [2026-07-25 아키텍처 변경] micro-ROS 제거 → 회로팀 브릿지 노드 수용.
+// [2026-07-28] 보드 확정: Mega 2560 R3 (Due에서 이식)
 //   노트북 motor_control ──(ROS Motor_run)──▶ 브릿지 노드 ──USB 시리얼──▶ 이 펌웨어
 //   브릿지가 보내는 명령: "L1500,R1500\n" (µs 단위, 1500=중립, <1500=전진)
-//   이 펌웨어의 상태 보고: Native 포트로 "S,모드,워치독,배ID,비상정지,FL,FR,RL,RR\n" 10Hz
+//   이 펌웨어의 상태 보고: 같은 USB로 "S,모드,워치독,배ID,비상정지,FL,FR,RL,RR\n" 10Hz
+//   (Mega는 USB 1개 — 명령 수신과 상태/디버그 송신이 같은 포트.
+//    브릿지는 수신을 안 하므로 상태 줄이 흘러가도 무해. 벤치에선 IDE 시리얼
+//    모니터로 그대로 보임. 추후 상태를 ROS로 올리려면 브릿지에 읽기 추가 필요.)
 //
-// 포트 역할 (Due):
-//   Programming 포트(Serial)   = 업로드 + 브릿지 명령 수신
-//   Native 포트(SerialUSB)     = 상태 보고 + 디버그 출력
+// Mega 이식 포인트 (Due 대비):
+//   · 5V 보드 → RC 수신기 신호 직결 가능 (레벨시프트 불필요 — 회로 단순해짐)
+//   · RC 입력은 반드시 인터럽트 가능 핀에: 2, 3, 18, 19, 20, 21 중에서만
+//   · 8비트 보드 → 4바이트 변수(unsigned long)를 ISR과 나눠 쓸 때
+//     읽는 순간 인터럽트를 잠깐 꺼서 스냅샷 (Due는 불필요했던 보호)
 //
 // 대회 3모드 → 펌웨어 2상태:
 //   AUTO   = 브릿지 명령 (자율 본경기·자율 토너먼트)
 //   MANUAL = RC 조종 (수동 토너먼트 — 노트북 없이 단독 가동)
-//
-// (Mega로 갈 경우 이식 포인트: SerialUSB→예비 UART+USB어댑터, 핀 재배정,
-//  RC 레벨시프트 불필요(5V 보드). 로직은 전부 그대로.)
 // =====================================================================
 
 #include <Servo.h>
 
 // =====================[ 1. 핀 배치 ]===================================
-// ⚠️ 전부 임시 배정 — 회로도 확정 후 이 표만 고치면 됨
-#define PIN_RC_THROTTLE  2    // RC 수신기 전후진 (⚠️Due 사용 시 5V→3.3V 분배 필수)
-#define PIN_RC_STEER     3    // RC 수신기 좌우   (⚠️분배 필수)
-#define PIN_RC_MODE      4    // RC 수신기 모드 스위치 (⚠️분배 필수)
+// ⚠️ 임시 배정 — 회로도 확정 후 이 표만 고치면 됨
+// ⚠️ RC 3개는 인터럽트 핀(2,3,18,19,20,21)만 가능. 회로팀에 전달됨
+#define PIN_RC_THROTTLE  2    // RC 수신기 전후진 (Mega 5V — 직결 OK)
+#define PIN_RC_STEER     3    // RC 수신기 좌우
+#define PIN_RC_MODE     18    // RC 수신기 모드 스위치
 
 #define PIN_ESC_FL       5    // 선수 좌 ESC 신호
 #define PIN_ESC_FR       6    // 선수 우 ESC 신호
@@ -36,14 +39,12 @@
 #define PIN_LED_YELLOW  24    // 룰 표시등: 자율
 #define PIN_LED_RED     26    // 룰 표시등: 비상정지
 #define PIN_LED_DEBUG   28    // 점검 LED (배ID 깜빡임/워치독 표시)
-#define PIN_LED_TURN_L  30    // 방향지시등 좌 (철회 가능 — 아래 스위치로 끔)
-#define PIN_LED_TURN_R  32    // 방향지시등 우
 
 #define PIN_ID_A        34    // 배 ID: A배면 이 핀을 GND에 (DIP 스위치)
 #define PIN_ID_B        36    // 배 ID: B배면 이 핀을 GND에
 #define PIN_ESTOP_SENSE 38    // 비상정지 릴레이 상태 감지 (LOW=차단됨 가정, 벤치 확인)
 
-#define ENABLE_TURN_SIGNALS 1 // 방향지시등: 회로판 협의로 취소되면 0으로
+// 방향지시등: 팀 결정으로 미채택 (2026-07-28). 부활 시 설계문서 §2-4 참고
 
 // =====================[ 2. 노브 (튜닝 값) ]============================
 // "⚠️벤치" = 벤치에서 확정 / "⚠️물" = 물 위에서 튜닝
@@ -58,9 +59,7 @@ const int RC_DEADBAND_US = 20;                // 스틱 중립 데드밴드 ⚠�
 const int STEER_SCALE_N  = 10;                // 조향 감도 = N/10 (10=100%) ⚠️물
 const bool STEER_INVERT_RC = false;           // RC 조향 좌우 반전 ⚠️벤치
 const int MODE_AUTO_THRESHOLD = 1500;         // 모드 펄스 < 1500 = AUTO (작년 관례 유지)
-const int TURN_SIGNAL_DIFF_US = 60;           // 좌우 차이 이만큼 크면 방향지시등
-const long CMD_BAUD    = 115200;              // 브릿지와 합의된 속도 (브릿지 기본값)
-const long STATUS_BAUD = 115200;              // 상태/디버그 포트
+const long SERIAL_BAUD = 115200;              // 브릿지와 합의된 속도 (브릿지 기본값)
 
 // =====================[ 3. 모터 4개 설정표 ]===========================
 // 게인은 정수 연산: 출력편차 = 명령편차 × gain_num / 10
@@ -80,7 +79,6 @@ Servo esc[4];
 
 // =====================[ 4. RC 캡처 (인터럽트) ]========================
 // 상승엣지=시작시각 기록, 하강엣지=HIGH 폭 계산 → LOW 구간 쓰레기 원천 차단
-// Due는 32비트 원자 읽기라 메인 루프에서 그냥 읽어도 안전
 volatile unsigned long rcRise[3]  = {0, 0, 0};   // [0]스로틀 [1]조향 [2]모드
 volatile unsigned long rcPulse[3] = {0, 0, 0};   // 마지막 유효 HIGH 폭 (µs)
 volatile unsigned long rcStamp[3] = {0, 0, 0};   // 마지막 유효 수신 시각 (millis)
@@ -100,8 +98,18 @@ void isrThrottle() { rcIsr(0, PIN_RC_THROTTLE); }
 void isrSteer()    { rcIsr(1, PIN_RC_STEER); }
 void isrMode()     { rcIsr(2, PIN_RC_MODE); }
 
+// Mega(8비트)는 4바이트 변수 읽기가 여러 명령으로 쪼개짐 —
+// 읽는 도중 ISR이 값을 바꾸면 반쪽짜리 값이 됨. 잠깐 인터럽트 끄고 스냅샷.
+unsigned long snapPulse(int idx) {
+  noInterrupts(); unsigned long v = rcPulse[idx]; interrupts(); return v;
+}
+unsigned long snapStamp(int idx) {
+  noInterrupts(); unsigned long v = rcStamp[idx]; interrupts(); return v;
+}
+
 bool rcFresh(int idx) {                          // 최근 RC_TIMEOUT_MS 내 갱신됐나
-  return rcStamp[idx] != 0 && (millis() - rcStamp[idx]) < RC_TIMEOUT_MS;
+  unsigned long st = snapStamp(idx);
+  return st != 0 && (millis() - st) < RC_TIMEOUT_MS;
 }
 
 // =====================[ 5. 배 ID (상보 2핀) ]==========================
@@ -130,7 +138,7 @@ int  finalOut[4] = {1500, 1500, 1500, 1500};  // 최종 ESC 출력 (상태보고
 // =====================[ 7. 브릿지 명령 수신 (시리얼 파서) ]=============
 // 브릿지 계약: 한 줄 = "L<좌µs>,R<우µs>\n"  (예: "L1400,R1600")
 // 형식이 조금이라도 어긋나거나 범위 밖이면 그 줄 통째로 폐기 —
-// 깨진 명령은 워치독을 먹이지 못한다 (통신 이상 = 침묵 취급, micro-ROS 때와 같은 원칙)
+// 깨진 명령은 워치독을 먹이지 못한다 (통신 이상 = 침묵 취급)
 char rxBuf[24];
 uint8_t rxLen = 0;
 
@@ -168,8 +176,8 @@ int applyDeadband(int dev) {
 
 // RC 스틱 2개 → 좌/우 명령 (아케이드 믹싱)
 void mixManual(int &cmdL, int &cmdR) {
-  int thr = applyDeadband((int)rcPulse[0] - 1500);
-  int str = applyDeadband((int)rcPulse[1] - 1500) * STEER_SCALE_N / 10;
+  int thr = applyDeadband((int)snapPulse(0) - 1500);
+  int str = applyDeadband((int)snapPulse(1) - 1500) * STEER_SCALE_N / 10;
   if (STEER_INVERT_RC) str = -str;
   cmdL = 1500 + thr + str;
   cmdR = 1500 + thr - str;   // 포화는 출구 클램프가 처리 (직진 최고속 보존)
@@ -200,7 +208,7 @@ void blinkBoatId() {
   }
 }
 
-void updateLeds(bool estopActive, int cmdL, int cmdR) {
+void updateLeds(bool estopActive) {
   // 룰 표시등 — 규정 의미 전용 (초록=수동, 노랑=자율, 빨강=비상정지)
   digitalWrite(PIN_LED_GREEN,  mode == MODE_MANUAL ? HIGH : LOW);
   digitalWrite(PIN_LED_YELLOW, mode == MODE_AUTO   ? HIGH : LOW);
@@ -209,34 +217,24 @@ void updateLeds(bool estopActive, int cmdL, int cmdR) {
   // 점검 LED — 워치독 발동/배ID 고장이면 점멸, 정상이면 소등
   bool alert = watchdogActive || (boatId == BOAT_FAULT);
   digitalWrite(PIN_LED_DEBUG, (alert && (millis() / 200) % 2) ? HIGH : LOW);
-
-#if ENABLE_TURN_SIGNALS
-  // 방향지시등 — 좌우 명령 차이가 크면 도는 중 (0.4초 주기 점멸)
-  bool blink = (millis() / 400) % 2;
-  int diff = cmdL - cmdR;
-  digitalWrite(PIN_LED_TURN_L, (diff < -TURN_SIGNAL_DIFF_US && blink) ? HIGH : LOW);
-  digitalWrite(PIN_LED_TURN_R, (diff >  TURN_SIGNAL_DIFF_US && blink) ? HIGH : LOW);
-#endif
 }
 
-// =====================[ 10. 상태 보고 (10Hz, Native 포트) ]============
+// =====================[ 10. 상태 보고 (10Hz, 같은 USB) ]===============
 // 한 줄 = "S,모드,워치독,배ID,비상정지,FL,FR,RL,RR"
-// 나중에 노트북 쪽 수신 노드(신규 작성 예정)가 이 줄을 읽어 ROS 토픽으로 발행.
-// 디버그 문장도 같은 포트로 나감 — 수신 노드는 "S," 로 시작하는 줄만 취하면 됨.
+// 벤치: IDE 시리얼 모니터에서 그대로 보임. 브릿지 가동 중엔 무시됨(브릿지는 안 읽음).
 void publishStatus(bool estopActive) {
-  SerialUSB.print("S,");
-  SerialUSB.print((int)mode);          SerialUSB.print(',');
-  SerialUSB.print(watchdogActive ? 1 : 0); SerialUSB.print(',');
-  SerialUSB.print((int)boatId);        SerialUSB.print(',');
-  SerialUSB.print(estopActive ? 1 : 0);
-  for (int i = 0; i < 4; i++) { SerialUSB.print(','); SerialUSB.print(finalOut[i]); }
-  SerialUSB.println();
+  Serial.print(F("S,"));
+  Serial.print((int)mode);              Serial.print(',');
+  Serial.print(watchdogActive ? 1 : 0); Serial.print(',');
+  Serial.print((int)boatId);            Serial.print(',');
+  Serial.print(estopActive ? 1 : 0);
+  for (int i = 0; i < 4; i++) { Serial.print(','); Serial.print(finalOut[i]); }
+  Serial.println();
 }
 
 // =====================[ 11. setup / loop ]=============================
 void setup() {
-  Serial.begin(CMD_BAUD);        // Programming 포트 = 브릿지 명령 수신
-  SerialUSB.begin(STATUS_BAUD);  // Native 포트 = 상태 보고 + 디버그
+  Serial.begin(SERIAL_BAUD);     // USB 1개: 브릿지 명령 수신 + 상태/디버그 송신
 
   // 핀 모드
   pinMode(PIN_RC_THROTTLE, INPUT);
@@ -249,21 +247,17 @@ void setup() {
   pinMode(PIN_LED_YELLOW, OUTPUT);
   pinMode(PIN_LED_RED,    OUTPUT);
   pinMode(PIN_LED_DEBUG,  OUTPUT);
-#if ENABLE_TURN_SIGNALS
-  pinMode(PIN_LED_TURN_L, OUTPUT);
-  pinMode(PIN_LED_TURN_R, OUTPUT);
-#endif
 
   // 배 ID 판독 + 표시 (고장이면 이후 루프에서 영구 중립)
   boatId = (BoatId)readBoatId();
   blinkBoatId();
-  SerialUSB.print("Boat ID: ");
-  SerialUSB.println(boatId == BOAT_A ? "A" : boatId == BOAT_B ? "B" : "FAULT");
+  Serial.print(F("Boat ID: "));
+  Serial.println(boatId == BOAT_A ? F("A") : boatId == BOAT_B ? F("B") : F("FAULT"));
 
   // ESC arm: 1500 출력 유지, 이 동안 모든 명령 무시 (설계 §2-5)
   for (int i = 0; i < 4; i++) { esc[i].attach(motors[i].pin); esc[i].writeMicroseconds(1500); }
   delay(ARM_HOLD_MS);
-  SerialUSB.println("ESC armed.");
+  Serial.println(F("ESC armed."));
 
   // RC 인터럽트 연결 (arm 후 — arm 중 명령 무시를 구조로 보장)
   attachInterrupt(digitalPinToInterrupt(PIN_RC_THROTTLE), isrThrottle, CHANGE);
@@ -273,7 +267,7 @@ void setup() {
   // arm 대기 중 시리얼 버퍼에 쌓인 명령은 전부 버림 (부팅 직후 과거 명령 실행 방지)
   while (Serial.available() > 0) Serial.read();
 
-  SerialUSB.println("Setup done. Control loop start.");
+  Serial.println(F("Setup done. Control loop start."));
 }
 
 unsigned long lastControlMs = 0;
@@ -292,8 +286,8 @@ void loop() {
       driveNeutral();
     } else {
       // 모드 판정: 유효한 모드 펄스가 온 적 있어야 대기 해제
-      if (rcStamp[2] != 0) {
-        mode = (rcPulse[2] < (unsigned long)MODE_AUTO_THRESHOLD) ? MODE_AUTO : MODE_MANUAL;
+      if (snapStamp(2) != 0) {
+        mode = (snapPulse(2) < (unsigned long)MODE_AUTO_THRESHOLD) ? MODE_AUTO : MODE_MANUAL;
       }
       // (모드 채널이 이후 끊겨도 마지막 모드 유지 — 팀 결정: RC 두절로 모드 전환 안 함)
 
@@ -315,7 +309,7 @@ void loop() {
       // MODE_WAIT면 그대로 중립
 
       driveMotors(cmdL, cmdR);
-      updateLeds(digitalRead(PIN_ESTOP_SENSE) == LOW, cmdL, cmdR);
+      updateLeds(digitalRead(PIN_ESTOP_SENSE) == LOW);
     }
   }
 
