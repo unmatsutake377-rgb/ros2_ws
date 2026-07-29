@@ -101,6 +101,7 @@
   <a href="#nodes">④ 노드 상세(클릭)</a>
   <a href="#mission">⑤ 미션 진행</a>
   <a href="#gps">🗺 GPS 좌표 입력</a>
+  <a href="#test">🧪 수조 테스트</a>
   <a href="#whatif">⑥ 만약에?</a>
   <a href="#qa">⑦ 예상 질문</a>
   <a href="#glossary">⑧ 용어</a>
@@ -265,6 +266,107 @@
   <b>발표 대본:</b> “대회장에 가면 각 지점의 GPS 좌표를 설정 파일에 입력합니다. 코드는 안 건드리고,
   위도·경도만 바꿉니다. 실수로 잘못 넣으면 배가 그냥 출발을 안 하고 어디가 틀렸는지 알려주도록
   만들었습니다 — 틀린 좌표로 나가는 게 제일 위험하니까요.”
+</div>
+
+<!-- ================= 🧪 수조 테스트 ================= -->
+<h2 id="test">🧪 수조 테스트 — 대회 전 검증 (새 코드 없이)</h2>
+<div class="lead">
+  대회 전, 작은 <b>테스트배</b>와 <b>수조</b>로 미리 확인합니다. 수조는 좁아서 대회 코스 전체는
+  못 만듭니다. 그래서 <b>각 부분이 제대로 도는지</b>를 따로따로 확인합니다.
+  <b>중요 — 테스트용 코드를 새로 만들지 않습니다.</b> 새로 만들면 대회 때 쓸 진짜 코드가 아니라
+  '테스트용 코드'를 확인하는 꼴이 됩니다. 그래서 <b>진짜 대회 코드를 그대로 돌리고</b>, ROS2에
+  이미 들어있는 점검 도구로 들여다봅니다. → 대회 코드·속도에 <b>영향 0</b>.
+</div>
+
+<h3>확인되는 것 / 수조로는 못 하는 것</h3>
+<table>
+  <tr><th></th><th>항목</th><th>방법</th></tr>
+  <tr><td>✅</td><td>장비·스러스터 작동</td><td>토픽이 나오나 / RC·명령으로 돎</td></tr>
+  <tr><td>✅</td><td>노드 연결·호환성, 토픽이 올바른가</td><td>ROS2 점검 도구(<code>node info</code>·<code>rqt_graph</code>)</td></tr>
+  <tr><td>✅</td><td>색·거리 측정 정확도</td><td>실측 위치 vs 토픽 값 대조</td></tr>
+  <tr><td>✅</td><td>미션 알고리즘(판단) 개별 검증</td><td>진짜 미션 노드에 실센서 → 조향값 확인</td></tr>
+  <tr><td>🚫</td><td>실제 GPS <b>주행</b>, 게이트 <b>통과 거리</b></td><td>공간이 없어 <b>대회장에서만</b>. 수조는 '판단'까지만</td></tr>
+</table>
+
+<h3>① 장비가 살아있나 — 토픽이 나오는지</h3>
+<p>센서 노드를 켠 뒤(기존 카메라·라이다 launch), 토픽이 실제로 발행되는지 <b>주기(Hz)</b>로 봅니다.</p>
+<div class="card" style="font-family:ui-monospace,Menlo,monospace;font-size:.82rem;overflow-x:auto">
+<div style="white-space:pre">ros2 topic hz /scan                          <span style="color:var(--muted)"># 라이다</span>
+ros2 topic hz /camera/camera/color/image_raw <span style="color:var(--muted)"># 카메라</span>
+ros2 topic hz /imu/data                       <span style="color:var(--muted)"># IMU</span>
+ros2 topic hz /ublox_gps_node/fix             <span style="color:var(--muted)"># GPS</span></div>
+</div>
+<p>숫자(예 <code>average rate: 10.0</code>)가 뜨면 살아있음. <b>아무것도 안 뜨면 그 장비가 죽은 것</b> — 배선·전원부터 확인.</p>
+
+<h3>② 노드 연결·호환성 — "토픽을 올바르게 주고받나" 🚨 우리 숙적</h3>
+<p>지금까지 우리를 제일 많이 괴롭힌 버그: <b>토픽 이름 오타·타입 불일치·이중 발행자</b>. 에러도 안 나고
+   조용히 죽습니다(침묵 실패). 이걸 <b>코드 없이</b> 잡습니다.</p>
+<div class="card" style="font-family:ui-monospace,Menlo,monospace;font-size:.82rem;overflow-x:auto">
+<div style="white-space:pre">ros2 node list                       <span style="color:var(--muted)"># 어떤 노드가 떠 있나</span>
+ros2 node info /ship_gate             <span style="color:var(--muted)"># 이 노드가 뭘 구독/발행하나</span>
+ros2 topic info -v /red_angle         <span style="color:var(--muted)"># ★ 발행자·구독자 수 + QoS</span>
+rqt_graph                             <span style="color:var(--muted)"># 전체 배선 그림으로</span></div>
+</div>
+<div class="warn ok-note" style="border-left-color:var(--ok)">
+  <b>핵심:</b> <code>ros2 topic info -v /red_angle</code> 에서 <b>Publisher count: 0</b> 이면 → 아무도 그 토픽을
+  안 보내는 것 = 이름 오타나 노드 미실행. <b>Subscription count: 0</b> 이면 → 아무도 안 받는 것.
+  QoS 가 안 맞아도 여기 표시됩니다. <b>이 한 줄로 침묵 실패가 눈에 보입니다.</b>
+</div>
+
+<h3>③ 색·거리가 정확한가 — 실측과 대조</h3>
+<p>부표를 <b>자로 잰 위치</b>(예: 정면에서 오른쪽 30°, 2.0m)에 두고, 토픽 값이 그와 맞는지 봅니다.</p>
+<div class="card" style="font-family:ui-monospace,Menlo,monospace;font-size:.82rem;overflow-x:auto">
+<div style="white-space:pre">ros2 topic echo /red_angle                 <span style="color:var(--muted)"># 빨강 부표 방위각(도)</span>
+ros2 topic echo /green_angle               <span style="color:var(--muted)"># 초록 부표</span>
+ros2 topic echo /obstacle_distance_array   <span style="color:var(--muted)"># [최근접거리(m), 각도]</span></div>
+</div>
+<p>실측 30°·2.0m 와 토픽 값이 크게 다르면 → 카메라 화각(fov)·라이다 정렬·색 임계값(HSV) 손봐야 함.
+   <span class="hl">실내조명은 햇빛과 달라 색 임계값은 대회장에서 재조정 필요</span> — 수조에선 "파이프라인이 도나"까지 봅니다.</p>
+
+<h3>④ 스러스터가 도나 — RC 먼저, 그다음 소프트</h3>
+<div class="timeline">
+  <div class="step"><b>1단계 RC</b> 조종기(하드웨어)로 직접. 스러스터 회전·방향·방수·선체. 컴퓨터 무관.</div>
+  <div class="step"><b>2단계 소프트</b> 우리 코드가 스러스터를 움직이나. 아래 명령.</div>
+</div>
+<p>미션 없이 <b>조향 명령만</b> 직접 쏴서 <code>motor_control</code>→브리지→스러스터 체인을 확인합니다.
+   (<code>-r 10</code> = 초당 10번. 우리 워치독이 0.5초 이상 명령이 끊기면 자동 중립이라, 반복 발행해야 돕니다.)</p>
+<div class="card" style="font-family:ui-monospace,Menlo,monospace;font-size:.82rem;overflow-x:auto">
+<div style="white-space:pre">ros2 topic pub -r 10 /desired_angle std_msgs/msg/Float32 "{data: 80.0}"   <span style="color:var(--muted)"># 직진</span>
+ros2 topic pub -r 10 /desired_angle std_msgs/msg/Float32 "{data: 110.0}"  <span style="color:var(--muted)"># 좌조향</span>
+ros2 topic pub -r 10 /desired_angle std_msgs/msg/Float32 "{data: 50.0}"   <span style="color:var(--muted)"># 우조향</span>
+<span style="color:var(--muted)"># Ctrl+C 로 멈추면 → 명령 끊김 → 워치독이 자동 중립(안전)</span></div>
+</div>
+<div class="warn">
+  <b>수조 안전:</b> 좁은 물이라 추력을 <b>낮게</b> 시작하세요. 테스트배 추력값은
+  <code>motor_control</code> 파라미터로 조절합니다(코드 수정 X):
+  <code>ros2 run motor_control motor_control --ros-args -p base_pwm:=1400 -p max_diff:=60</code>.
+  이 값은 <b>테스트배 전용</b>이라 대회배엔 안 씁니다 → 대회 코드에 영향 없음.
+</div>
+
+<h3>⑤ 미션 알고리즘 개별 검증 — 진짜 미션 노드로</h3>
+<p>미션 번호(<code>/wp_mode</code>)를 <b>손으로 발행</b>하면 <b>진짜 미션 노드</b>가 그대로 뜹니다.
+   새 코드가 아니라 대회에서 돌 바로 그 코드입니다.</p>
+<div class="card" style="font-family:ui-monospace,Menlo,monospace;font-size:.82rem;overflow-x:auto">
+<div style="white-space:pre"><span style="color:var(--muted)"># 1) 카메라·라이다 켜고  2) 수조에 빨강+초록 부표 놓고  3) 미션 번호 발행:</span>
+ros2 topic pub /wp_mode std_msgs/msg/Int32 "{data: 0}"    <span style="color:var(--muted)"># 0=게이트 (3=부표돌기, 7=도킹)</span>
+
+<span style="color:var(--muted)"># 4) 미션 노드가 내는 조향 결정을 확인:</span>
+ros2 topic echo /desired_angle</div>
+</div>
+<p>부표 사이로 가는 방향이 <code>/desired_angle</code> 로 나오면 게이트 <b>판단 로직 정상</b>.
+   <code>/wp_mode</code> 값만 바꾸면 turn·dock 도 같은 방식으로 각각 검증됩니다.
+   <b>실제 통과 거리·주행</b>은 수조론 못 보고 대회장에서 봅니다 — 여기선 "판단이 맞나"까지입니다.</p>
+
+<h3>⑥ 모든 것은 blackbox 에 자동 기록</h3>
+<p>위 테스트를 하는 동안 <code>blackbox</code> 가 <code>desired_angle · pwm · imu_yaw · red_angle ·
+   거리 · 센서 도착지연</code> 을 CSV 로 남깁니다. 나중에 <b>명령(<code>desired_angle</code>) 대비 실제
+   회전(<code>imu_yaw</code>)</b> 을 대조해 "명령대로 배가 도는가"를 숫자로 확인합니다. (별도 기록 코드 불필요)</p>
+
+<div class="analogy">
+  <b>발표 대본:</b> “수조가 좁아 대회 코스 전체는 못 만듭니다. 그래서 장비·토픽 연결·색과 거리 측정·미션
+  판단을 <b>각각 따로</b> 확인합니다. 이때 <b>테스트용 코드를 새로 짜지 않고</b>, ROS2에 이미 있는 점검
+  도구로 <b>대회에서 쓸 진짜 코드를 그대로</b> 들여다봅니다. 실제 주행 거리 같은 건 대회장에서 보고,
+  수조에선 '판단이 맞는지'까지 검증합니다.”
 </div>
 
 <!-- ================= ⑥ 만약에 ================= -->
