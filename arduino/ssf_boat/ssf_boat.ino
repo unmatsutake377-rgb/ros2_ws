@@ -23,6 +23,14 @@
 
 #include <Servo.h>
 
+// 룰 표시등 방식 선택 (2026-07-29 회로팀 그림 기준: WS2812 주소지정형 스트립)
+//   1 = WS2812 스트립 (현재 계획. IDE 라이브러리 매니저에서 "Adafruit NeoPixel" 설치 필요)
+//   0 = 단색 LED 3개 (예비 — 스트립 아닌 걸로 판명되면 이걸로 복귀)
+#define LED_USE_WS2812 1
+#if LED_USE_WS2812
+#include <Adafruit_NeoPixel.h>
+#endif
+
 // =====================[ 1. 핀 배치 ]===================================
 // ⚠️ 임시 배정 — 회로도 확정 후 이 표만 고치면 됨
 // ⚠️ RC 3개는 인터럽트 핀(2,3,18,19,20,21)만 가능. 회로팀에 전달됨
@@ -35,10 +43,11 @@
 #define PIN_ESC_RL       7    // 선미 좌 ESC 신호
 #define PIN_ESC_RR       8    // 선미 우 ESC 신호
 
-#define PIN_LED_GREEN   22    // 룰 표시등: 수동
-#define PIN_LED_YELLOW  24    // 룰 표시등: 자율
-#define PIN_LED_RED     26    // 룰 표시등: 비상정지
-#define PIN_LED_DEBUG   28    // 점검 LED (배ID 깜빡임/워치독 표시)
+#define PIN_LED_STRIP   40    // WS2812 스트립 Din (LED_USE_WS2812=1일 때 룰 표시등)
+#define PIN_LED_GREEN   22    // (예비) 단색 룰 표시등: 수동
+#define PIN_LED_YELLOW  24    // (예비) 단색 룰 표시등: 자율
+#define PIN_LED_RED     26    // (예비) 단색 룰 표시등: 비상정지
+#define PIN_LED_DEBUG   28    // 점검 LED (배ID 깜빡임/워치독 표시 — 스트립과 무관하게 항상 사용)
 
 #define PIN_ID_A        34    // 배 ID: A배면 이 핀을 GND에 (DIP 스위치)
 #define PIN_ID_B        36    // 배 ID: B배면 이 핀을 GND에
@@ -60,6 +69,8 @@ const int STEER_SCALE_N  = 10;                // 조향 감도 = N/10 (10=100%) 
 const bool STEER_INVERT_RC = false;           // RC 조향 좌우 반전 ⚠️벤치
 const int MODE_AUTO_THRESHOLD = 1500;         // 모드 펄스 < 1500 = AUTO (작년 관례 유지)
 const long SERIAL_BAUD = 115200;              // 브릿지와 합의된 속도 (브릿지 기본값)
+const int STRIP_NUM_PIXELS = 8;               // WS2812 픽셀 수 ⚠️실물 확정
+const int STRIP_BRIGHTNESS = 255;             // 0~255. 주광 시인성 위해 최대로 시작
 
 // =====================[ 3. 모터 4개 설정표 ]===========================
 // 게인은 정수 연산: 출력편차 = 명령편차 × gain_num / 10
@@ -198,6 +209,22 @@ void driveMotors(int cmdL, int cmdR) {
 void driveNeutral() { driveMotors(1500, 1500); }
 
 // =====================[ 9. LED ]=======================================
+#if LED_USE_WS2812
+Adafruit_NeoPixel strip(STRIP_NUM_PIXELS, PIN_LED_STRIP, NEO_GRB + NEO_KHZ800);
+uint32_t lastStripColor = 0xFFFFFFFF;   // 마지막으로 보낸 색 (불필요한 show() 방지)
+
+// 스트립 전체를 한 색으로. 색이 바뀔 때만 show() 호출 —
+// show()는 전송 중 인터럽트를 잠깐 꺼서 RC 펄스 측정을 흔들 수 있음.
+// 상태 색은 어쩌다 한 번 바뀌므로 실질 간섭 없음 (매 주기 호출 금지의 이유)
+void setRuleColor(uint8_t r, uint8_t g, uint8_t b) {
+  uint32_t c = strip.Color(r, g, b);
+  if (c == lastStripColor) return;
+  lastStripColor = c;
+  strip.fill(c);
+  strip.show();
+}
+#endif
+
 // 부팅 시 배 ID 표시: 1회=A, 2회=B, 빠른 연속 점멸=고장 (점검 LED)
 void blinkBoatId() {
   int n = (boatId == BOAT_A) ? 1 : (boatId == BOAT_B) ? 2 : 8;
@@ -210,9 +237,17 @@ void blinkBoatId() {
 
 void updateLeds(bool estopActive) {
   // 룰 표시등 — 규정 의미 전용 (초록=수동, 노랑=자율, 빨강=비상정지)
+  // 빨강(비상정지)이 모드 색보다 우선 — 규정 의미상 최상위 상태
+#if LED_USE_WS2812
+  if (estopActive)                 setRuleColor(255, 0, 0);     // 빨강
+  else if (mode == MODE_MANUAL)    setRuleColor(0, 255, 0);     // 초록
+  else if (mode == MODE_AUTO)      setRuleColor(255, 170, 0);   // 노랑
+  else                             setRuleColor(0, 0, 0);       // 대기 = 소등
+#else
   digitalWrite(PIN_LED_GREEN,  mode == MODE_MANUAL ? HIGH : LOW);
   digitalWrite(PIN_LED_YELLOW, mode == MODE_AUTO   ? HIGH : LOW);
   digitalWrite(PIN_LED_RED,    estopActive         ? HIGH : LOW);
+#endif
 
   // 점검 LED — 워치독 발동/배ID 고장이면 점멸, 정상이면 소등
   bool alert = watchdogActive || (boatId == BOAT_FAULT);
@@ -243,10 +278,16 @@ void setup() {
   pinMode(PIN_ID_A, INPUT_PULLUP);      // GND에 묶인 쪽만 LOW로 읽힘
   pinMode(PIN_ID_B, INPUT_PULLUP);
   pinMode(PIN_ESTOP_SENSE, INPUT_PULLUP);
+  pinMode(PIN_LED_DEBUG,  OUTPUT);
+#if LED_USE_WS2812
+  strip.begin();
+  strip.setBrightness(STRIP_BRIGHTNESS);
+  strip.show();                      // 전체 소등으로 시작
+#else
   pinMode(PIN_LED_GREEN,  OUTPUT);
   pinMode(PIN_LED_YELLOW, OUTPUT);
   pinMode(PIN_LED_RED,    OUTPUT);
-  pinMode(PIN_LED_DEBUG,  OUTPUT);
+#endif
 
   // 배 ID 판독 + 표시 (고장이면 이후 루프에서 영구 중립)
   boatId = (BoatId)readBoatId();
