@@ -80,6 +80,9 @@ public:
     tf_broadcaster = std::make_shared<tf2_ros::TransformBroadcaster>(this);
     imu_pub = this->create_publisher<sensor_msgs::msg::Imu>("imu/data", 10);
     yaw_pub = this->create_publisher<std_msgs::msg::Float64>(yaw_topic, 10);
+    // N4: 지자기 융합 절대방위(imu_yaw_cw)를 별도 토픽으로 관찰용 발행.
+    //     기존 yaw 경로(/imu/yaw_raw)는 안 건드린다 → 한 토픽 발행자 2개(침묵실패) 방지.
+    mag_heading_pub = this->create_publisher<std_msgs::msg::Float64>("/imu/mag_heading", 10);
 
     RCLCPP_INFO(this->get_logger(),
                 "iahrs_driver: yaw_topic=%s, zero_yaw_on_boot=%s, gps_override=%s",
@@ -113,6 +116,7 @@ public:
   rclcpp::Subscription<ublox_msgs::msg::NavPVT>::SharedPtr gps_sub;
   rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr imu_pub;
   rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr yaw_pub;
+  rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr mag_heading_pub;   // N4 지자기 절대방위(관찰용)
 
   // CLAUDE.md 3-5 — 기본 OFF. 아래 main 루프 ②③ 에서 읽는다.
   bool zero_yaw_on_boot = false;
@@ -222,6 +226,14 @@ int main(int argc, char** argv)
       //
       double imu_yaw_ccw = fmod(data[2] + 360.0, 360.0);    // 원본
       double imu_yaw_cw  = fmod(-imu_yaw_ccw + 360.0, 360.0); // 방향 뒤집기
+
+      // N4: 지자기 융합 절대방위(offset·override 적용 전 원값)를 관찰용으로 발행.
+      //     blackbox 가 /imu/mag_heading 을 GPS COG·yaw_raw 와 사후 대조한다.
+      {
+        std_msgs::msg::Float64 mag_msg;
+        mag_msg.data = imu_yaw_cw;
+        node->mag_heading_pub->publish(mag_msg);
+      }
 
       //
       // ② 부팅 offset 적용 — 🚨 기본 OFF (CLAUDE.md 3-5)
