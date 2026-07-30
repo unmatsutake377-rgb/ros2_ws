@@ -84,7 +84,7 @@ class _Arrival:
 CSV_HEADER = [
     "t_wall", "t_mono", "wp_mode",
     "gps_lat", "gps_lon", "gps_status",
-    "imu_yaw", "imu_yaw_raw", "yaw_error", "candidate_angle", "desired_angle",
+    "imu_yaw", "imu_yaw_raw", "imu_mag_heading", "yaw_error", "candidate_angle", "desired_angle",
     "pwm_r", "pwm_l", "obstacle_min_dist",
     "failsafe_level", "gate_pass_count",
     # ---- /scan 도착 간격 (QoS-B 전후 비교) ----
@@ -127,6 +127,9 @@ class BlackBox(Node):
         #     (COG 는 gps_vel_x/y 로 atan2 해서 얻는다 — 별도 토픽 불필요)
         imu_raw_yaw_topic = self.declare_parameter(
             "imu_raw_yaw_topic", "/imu/yaw_raw").value
+        # N4: iAHRS 지자기 절대방위(관찰용 — mag 신뢰도를 GPS COG 와 사후 대조)
+        imu_mag_heading_topic = self.declare_parameter(
+            "imu_mag_heading_topic", "/imu/mag_heading").value
         yaw_error_topic = self.declare_parameter("yaw_error_topic", "/yaw_error").value
         candidate_topic = self.declare_parameter("candidate_topic", "/candidate_angle").value
         desired_angle_topic = self.declare_parameter("desired_angle_topic", "/desired_angle").value
@@ -185,6 +188,8 @@ class BlackBox(Node):
             Int32, "/obstacle_reject_count", self._cb_reject, OBSERVER_QOS)
         self.create_subscription(
             Float64, imu_raw_yaw_topic, self._cb_imu_yaw_raw, OBSERVER_QOS)
+        self.create_subscription(
+            Float64, imu_mag_heading_topic, self._cb_imu_mag_heading, OBSERVER_QOS)
         self.create_subscription(Float32, yaw_error_topic, self._cb_yaw_error, OBSERVER_QOS)
         self.create_subscription(Float32, candidate_topic, self._cb_candidate, OBSERVER_QOS)
         self.create_subscription(Float32, desired_angle_topic, self._cb_desired, OBSERVER_QOS)
@@ -235,6 +240,7 @@ class BlackBox(Node):
         self._imu_arr.tick(time.monotonic())   # yaw 갱신 끊기면 heading 제어가 stale
     def _cb_reject(self, msg): self.latest["obstacle_reject_count"] = msg.data
     def _cb_imu_yaw_raw(self, msg): self.latest["imu_yaw_raw"] = msg.data
+    def _cb_imu_mag_heading(self, msg): self.latest["imu_mag_heading"] = msg.data
     def _cb_yaw_error(self, msg): self.latest["yaw_error"] = msg.data
     def _cb_candidate(self, msg): self.latest["candidate_angle"] = msg.data
     def _cb_desired(self, msg): self.latest["desired_angle"] = msg.data
