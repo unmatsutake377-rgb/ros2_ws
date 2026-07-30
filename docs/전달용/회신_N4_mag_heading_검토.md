@@ -10,6 +10,39 @@ N4(지자기 절대방위가 실제로 쓸만한가) 방향은 좋습니다. 정
 
 ---
 
+## ⚠️ 먼저 — 설명과 보내주신 파일이 다릅니다
+
+설명해 주신 내용:
+> "기존 `/imu/yaw_raw` 등 토픽·타이밍은 그대로 유지하고, 지자기 융합 방위값 `imu_yaw_cw` 를
+> `/imu/mag_heading`(Float64) 별도 토픽으로 추가 발행. **iahrs 드라이버를 수정**함."
+
+→ **이 설명(=우리 드라이버에 새 토픽 3줄 추가, A안)은 정확히 맞는 방식입니다.** 이대로면 바로 반영 가능합니다.
+
+**그런데 보내주신 `iahrs_driver.cpp` 는 그 설명이 아닙니다.** 우리 드라이버에 3줄 더한 게 아니라,
+**다른 드라이버 프로젝트 전체**입니다:
+- 다른 패키지 `iahrs_ros2_driver` + `iahrs_driver.hpp` 참조(그 헤더는 안 옴)
+- `imu_yaw_cw` 변수 **없음**, `/imu/yaw_raw` 발행 **없음**, `/imu/mag_heading` 문자열 **없음**, `publish` 자체가 .cpp 에 **없음**
+- accel/gyro/mag/쿼터니언 풀센서 파싱(우리 `"e"`-only 와 완전히 다름)
+
+**즉 말씀하신 "우리 드라이버에 imu_yaw_cw 를 mag_heading 으로 추가"가 이 파일엔 안 보입니다.**
+아마 **실제로는 우리 드라이버를 3줄 수정했는데, 보낼 때 개인 환경의 다른 드라이버 파일을 보내신 것** 같습니다.
+
+**확인 부탁:** 우리 `iahrs_driver_ros2-main/.../iahrs_driver.cpp` 를 base 로 한 **실제 diff** 를 브랜치로 주세요.
+```
+git checkout -b n4-mag-heading
+git commit -am "N4 mag_heading 추가"
+git push origin n4-mag-heading
+```
+그 브랜치 diff 가 "우리 파일 + `/imu/mag_heading` 발행 3줄"이면 → 설명대로 하신 게 맞고 바로 반영합니다.
+(지금 받은 '다른 드라이버 전체' 파일은 그것과 별개입니다.)
+
+**참고(A안의 미묘함):** `imu_yaw_cw` 를 mag_heading 으로 내면, `zero_yaw_on_boot` 가 OFF(기본)일 땐
+`/imu/yaw_raw` 와 값이 사실상 같습니다(`yaw_raw = imu_yaw_cw − offset`, offset 0). 즉 거의 중복입니다.
+무해하고 "offset 설정과 무관한 절대방위 라벨"로 쓸 수는 있지만, N4 의 "지자기가 GPS 와 얼마나 맞나"를
+제대로 보려면 융합값(A)엔 한계가 있고 **생 자기계 독립 계산(B)** 이 더 맞습니다(아래 §3).
+
+---
+
 ## 1. blackbox — ✅ 우리가 최신본에 이미 이식함 (손대지 마세요)
 
 - `/imu/mag_heading`(Float64) 구독 + `imu_mag_heading` 컬럼 추가 = 정확하고 수술적인 변경입니다.
