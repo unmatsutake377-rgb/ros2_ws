@@ -224,8 +224,54 @@
   입력해야 배가 어디로 갈지 압니다. <b>코드는 안 건드립니다</b> — 설정 파일 하나만 고칩니다.
 </div>
 
+<h3>🎯 좌표를 어떻게 얻나 — 대회장에서 직접 기록</h3>
+<p>대회 좌표를 <b>미리 못 받습니다.</b> 그래서 <b>대회장에서 배를 각 지점에 대고 GPS를 찍어</b> 좌표를 만듭니다.
+   손으로 <code>ros2 topic echo</code> 값을 옮겨 적을 수도 있지만, 오타가 나기 쉬워 <b>전용 기록 도구</b>를 만들었습니다.</p>
+
+<div class="card">
+  <b>🛰 waypoint_recorder — RC로 몰며 버튼으로 좌표 찍기</b>
+  <div style="margin:8px 0 4px"><b>중요:</b> 이건 <b>자율운항(AUTO)이 아닙니다.</b> 배는 <b>RC(수동)로 여러분이 직접 조종</b>하고,
+  도구는 GPS를 <b>읽어 기록만</b> 합니다(모터 명령 안 냄) → <b>배가 저절로 움직이지 않아</b> 안전하게 좌표를 찍을 수 있습니다.
+  (미션 스택은 이때 안 켭니다. 좌표가 비어 있어도 무방합니다.)</div>
+</div>
+
+<h4 style="margin:14px 0 6px">쓰는 순서</h4>
+<ol style="margin:6px 0;padding-left:22px;font-size:.92rem">
+  <li>GPS 켠 상태에서 도구 실행:
+    <div class="card" style="font-family:ui-monospace,Menlo,monospace;font-size:.82rem;margin:6px 0">ros2 run north_goal_angle waypoint_recorder</div></li>
+  <li><b>RC(MANUAL)로</b> 배를 첫 지점에 댄다</li>
+  <li><b>Enter</b> → 최근 2초 GPS를 평균해 기록 → <b>mode·dwell·이름</b>을 물어봄 (지점마다)</li>
+  <li>다음 지점으로 이동 → 반복</li>
+  <li><b>q</b> → 검증 후 <b>새 파일</b> <code>waypoints_recorded.yaml</code> 로 저장</li>
+  <li>내용 확인 후 <code>config/waypoints.yaml</code> 로 <b>옮기면</b> 미션에서 읽음</li>
+</ol>
+
+<h4 style="margin:14px 0 6px">기록 중 명령 (세부 수정도 가능)</h4>
+<table>
+  <tr><th>키</th><th>동작</th></tr>
+  <tr><td><code>Enter</code></td><td>현재 위치를 새 WP로 추가</td></tr>
+  <tr><td><code>l</code></td><td>지금까지 기록 목록 보기</td></tr>
+  <tr><td><code>d N</code></td><td>N번 WP 삭제</td></tr>
+  <tr><td><code>r N</code></td><td>N번 WP를 <b>현재 위치로 다시 찍기</b>(위치만 갱신, mode·dwell 유지) — 세부 조정용</td></tr>
+  <tr><td><code>q</code></td><td>저장하고 종료</td></tr>
+</table>
+
+<div class="warn ok-note" style="border-left-color:var(--ok)">
+  <b>안전 장치:</b> ① RC가 MANUAL이면 아두이노가 컴퓨터 명령을 무시 → 기록 중 배가 자동으로 안 감.
+  ② GPS fix가 없으면 캡처를 <b>거부</b>하고 알림. ③ 한 값만 낚지 않고 <b>2초 평균</b>(흔들림 방지).
+  ④ 저장 전 <b>한국 범위·미션번호를 자동 검증</b>(틀리면 기록 안 함). ⑤ <b>기존 파일을 안 건드리고</b>
+  새 파일에만 쓰므로 잘못 찍어도 복구됩니다.
+</div>
+
+<p style="font-size:.9rem;color:var(--muted)">
+  ※ 더 정밀하게 옮기고 싶으면: 저장된 <code>waypoints.yaml</code>의 숫자를 손으로 살짝 조정하거나,
+  그 지점에 다시 대고 <code>r N</code>으로 재캡처하면 됩니다. 조정은 항상 <b>수동(MANUAL)/편집</b>에서 하고,
+  자율운항(AUTO)은 좌표가 다 정해진 뒤 <b>마지막 주행 때만</b> 씁니다.
+</p>
+
 <h3>① 어느 파일을 여나</h3>
-<p><code>src/north_goal_angle/config/waypoints.yaml</code> — 이 파일 하나입니다.</p>
+<p><code>src/north_goal_angle/config/waypoints.yaml</code> — 이 파일 하나입니다.
+   (위 도구로 만든 <code>waypoints_recorded.yaml</code>을 확인 후 이 이름으로 옮깁니다.)</p>
 
 <h3>② 무엇을 바꾸나 / 무엇을 안 바꾸나</h3>
 <table>

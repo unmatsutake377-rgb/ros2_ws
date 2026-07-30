@@ -96,37 +96,99 @@ def _run_node(out_path, avg_window_sec, cov_warn):
     spin = threading.Thread(target=rclpy.spin, args=(node,), daemon=True)
     spin.start()
 
+    def capture_position():
+        """현재 위치를 평균해서 (lat, lon) 반환. fix 없으면 None."""
+        recent = node.snapshot()
+        if not recent:
+            print("  ⚠️ 최근 GPS fix 없음(status<0 또는 무수신). 취소 — GPS 상태 확인.")
+            return None
+        avg = average_fixes([(b[1], b[2]) for b in recent])
+        worst_cov = max(b[4] for b in recent)
+        print(f"  표본 {len(recent)}개 평균 → lat {avg[0]:.7f}, lon {avg[1]:.7f}"
+              f" (최대 공분산 {worst_cov:.2f})")
+        if worst_cov > cov_warn:
+            print(f"  ⚠️ 공분산 높음(>{cov_warn}) — RTK 불안정일 수 있음. 그래도 쓰려면 진행.")
+        return avg
+
+    def is_valid(lat, lon, mode, dwell):
+        """저장 전 범위·mode 검증(우리 loader 재사용)."""
+        try:
+            parse_waypoints({"waypoints": [
+                {"lat": lat, "lon": lon, "mode": mode, "dwell": dwell}]})
+            return True
+        except WaypointError as e:
+            print(f"  🚨 검증 실패: {e}")
+            return False
+
+    def list_wps():
+        if not node.recorded:
+            print("  (아직 기록 없음)")
+            return
+        for i, w in enumerate(node.recorded):
+            print(f"  [{i}] {w[4] or f'WP{i}'}  lat {w[0]:.7f} lon {w[1]:.7f}"
+                  f"  mode {int(w[2])}  dwell {w[3]}")
+
+    def parse_idx(arg):
+        """'d 2' / 'r0' 등에서 인덱스 파싱. 범위 밖이면 None."""
+        try:
+            idx = int(arg)
+        except ValueError:
+            print("  번호를 붙이세요 (예: d 2, r 0)")
+            return None
+        if not (0 <= idx < len(node.recorded)):
+            print(f"  범위 밖 — 0~{len(node.recorded) - 1} 사이")
+            return None
+        return idx
+
     print("\n=== 좌표 기록 시작 ===")
-    print("RC 로 지점에 배를 대고 Enter → 캡처. q + Enter → 저장·종료.\n")
+    print("RC 로 지점에 배를 대고 조작하세요. 명령:")
+    print("  Enter  = 현재 위치를 새 WP 로 추가")
+    print("  l      = 기록 목록 보기")
+    print("  d N    = N 번 WP 삭제")
+    print("  r N    = N 번 WP 를 현재 위치로 재캡처(위치만 갱신, mode/dwell 유지)")
+    print("  q      = 저장·종료\n")
     try:
         while True:
-            cmd = input("[Enter=캡처 / q=종료] > ").strip().lower()
-            if cmd == 'q':
-                break
-            recent = node.snapshot()
-            if not recent:
-                print("  ⚠️ 최근 GPS fix 없음(status<0 또는 무수신). 캡처 취소 — GPS 상태 확인.")
-                continue
-            avg = average_fixes([(b[1], b[2]) for b in recent])
-            worst_cov = max(b[4] for b in recent)
-            print(f"  표본 {len(recent)}개 평균 → lat {avg[0]:.7f}, lon {avg[1]:.7f}"
-                  f" (최대 공분산 {worst_cov:.2f})")
-            if worst_cov > cov_warn:
-                print(f"  ⚠️ 공분산 높음(>{cov_warn}) — RTK 불안정일 수 있음. 그래도 쓰려면 진행.")
-            mode = _ask_int("  mode(미션번호)? ")
-            dwell = _ask_float("  dwell(머무는 초)? ")
-            label = input("  구역 이름(엔터=자동)? ").strip()
+            raw = input("[Enter=추가 / l=목록 / d N=삭제 / r N=재캡처 / q=종료] > ").strip()
+            low = raw.lower()
 
-            cand = [[avg[0], avg[1], mode, dwell, label]]
-            # 즉시 검증 — 범위·mode 틀리면 저장 안 하고 알린다
-            try:
-                parse_waypoints({"waypoints": [
-                    {"lat": avg[0], "lon": avg[1], "mode": mode, "dwell": dwell}]})
-            except WaypointError as e:
-                print(f"  🚨 검증 실패 — 기록 안 함: {e}")
+            if low == 'q':
+                break
+            if low == 'l':
+                list_wps()
                 continue
-            node.recorded.append(cand[0])
-            print(f"  ✔ WP{len(node.recorded) - 1} 기록됨 (총 {len(node.recorded)}개)\n")
+            if low.startswith('d'):
+                idx = parse_idx(low[1:].strip())
+                if idx is not None:
+                    removed = node.recorded.pop(idx)
+                    print(f"  🗑 [{idx}] {removed[4] or f'WP{idx}'} 삭제 (남은 {len(node.recorded)}개)")
+                continue
+            if low.startswith('r'):
+                idx = parse_idx(low[1:].strip())
+                if idx is None:
+                    continue
+                avg = capture_position()
+                if not avg:
+                    continue
+                w = node.recorded[idx]
+                if not is_valid(avg[0], avg[1], w[2], w[3]):
+                    continue
+                node.recorded[idx] = [avg[0], avg[1], w[2], w[3], w[4]]
+                print(f"  ↻ [{idx}] 위치 갱신됨 (mode/dwell 유지)")
+                continue
+            if raw == '':
+                avg = capture_position()
+                if not avg:
+                    continue
+                mode = _ask_int("  mode(미션번호)? ")
+                dwell = _ask_float("  dwell(머무는 초)? ")
+                label = input("  구역 이름(엔터=자동)? ").strip()
+                if not is_valid(avg[0], avg[1], mode, dwell):
+                    continue
+                node.recorded.append([avg[0], avg[1], mode, dwell, label])
+                print(f"  ✔ WP{len(node.recorded) - 1} 추가됨 (총 {len(node.recorded)}개)\n")
+                continue
+            print("  알 수 없는 명령 — Enter/l/d N/r N/q")
     except (EOFError, KeyboardInterrupt):
         pass
 
