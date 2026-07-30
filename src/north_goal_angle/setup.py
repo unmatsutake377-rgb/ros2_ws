@@ -24,7 +24,8 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'north_goal_angle = north_goal_angle.north_goal_angle:main'
+            'north_goal_angle = north_goal_angle.north_goal_angle:main',
+            'waypoint_recorder = north_goal_angle.waypoint_recorder:main'
         ],
     },
 )
