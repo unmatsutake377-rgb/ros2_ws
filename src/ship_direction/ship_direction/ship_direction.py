@@ -198,7 +198,34 @@ class ShipDirection(Node):
         # ※ rear_obstacle_ignore_margin 은 제거했다 (파라미터 자체를 없앰). 위 [C] 참고.
         self.min_obstacle_cells = int(
             self.declare_parameter('min_obstacle_cells', 1).value)   # 3 이면 작은 부표가 무시된다
-        self.reverse_cooldown = float(self.declare_parameter('reverse_cooldown_sec', 3.0).value)
+
+        # ---- [L] 후진 후 재탐색 상태기계 ----
+        # 회피 경로가 없으면 reverse_duration 동안 후진하고,
+        # 이후 reverse_cooldown 동안 STOP_HOLD 상태로 재탐색한다.
+        self.reverse_duration = float(
+            self.declare_parameter('reverse_duration_sec', 0.5).value)
+        self.reverse_cooldown = float(
+            self.declare_parameter('reverse_cooldown_sec', 3.0).value)
+
+        # 잘못된 파라미터 방어
+        if not math.isfinite(self.reverse_duration) or self.reverse_duration <= 0.0:
+            self.get_logger().warn(
+                f"reverse_duration_sec={self.reverse_duration} 이상 → 기본값 0.5초 사용")
+            self.reverse_duration = 0.5
+        if not math.isfinite(self.reverse_cooldown) or self.reverse_cooldown < 0.0:
+            self.get_logger().warn(
+                f"reverse_cooldown_sec={self.reverse_cooldown} 이상 → 기본값 3.0초 사용")
+            self.reverse_cooldown = 3.0
+
+        # ---- [K] 조향각 변화율 제한 (rate limiter). 팀원 피드백으로 "0~160° 한정" 적용. ----
+        # 원안(전체 구간 적용)은 /desired_angle 이 각도+특수신호(260/5000/6000/20000/50000) 혼용
+        # 프로토콜이라, 정상값→특수신호 사이를 15°/tick 씩 기어가면 motor_control 이 그 경유값을
+        # 후진/선회/무효로 오해할 위험이 있었다(팀 지적). 0~160° 구간(정상 조향값)일 때만 제한을
+        # 걸고, 그 밖(특수신호 및 candidate 매핑의 범위 밖 부산물)은 그대로 통과시킨다.
+        # 덤: 180° 급반전(정후방 목표 → 좌우 zone 끝 선택)도 결과가 항상 0~160° 안이라 이 필터로
+        # 완화된다. 실제 각속도 = 이 값 / control_period(예: 15°, 0.1s 면 150°/s) — 실측 후 튜닝.
+        self.rate_limit_max_deg_per_tick = float(
+            self.declare_parameter('rate_limit_max_deg_per_tick', 15.0).value)
 
         self.detection_distance = self.detection_distance_default
 
@@ -230,7 +257,14 @@ class ShipDirection(Node):
         self.candidate_angle = CANDIDATE_INVALID
 
         self.latest_scan = None       # scan_cb 는 저장만 한다
-        self.last_reverse_time = time.monotonic()
+
+        # [L] 후진 상태기계
+        # READY: 새 후진 시작 가능 / REVERSING: 일정 시간 후진 / COOLDOWN: STOP 재탐색
+        self.reverse_state = 'READY'
+        self.reverse_start_time = None
+        self.reverse_cooldown_start_time = None
+
+        self.prev_final_angle = None  # [K] rate limiter 상태. None = "직전 값 없음/특수신호였음" → 다음 정상값에 즉시 스냅
 
         # geofence: (거리 m, 상대방위 deg) 또는 None. north 가 [inf,nan] 을 내면 None.
         self.geofence = None
@@ -363,6 +397,83 @@ class ShipDirection(Node):
         self.pub_failsafe.publish(Int32(data=int(level)))
 
     # =====================================================
+    # [K] RATE LIMITER — 0~160°(정상 조향값)에서만 변화율 제한
+    # =====================================================
+    def _apply_rate_limit(self, target_angle):
+        """0~160° 구간일 때만 한 tick당 변화폭을 제한한다.
+
+        특수신호는 즉시 통과시키고 상태를 초기화한다. NaN/inf는 STOP_HOLD로 바꾼다.
+        """
+        if not math.isfinite(target_angle):
+            self.prev_final_angle = None
+            return STOP_HOLD
+
+        in_range = 0.0 <= target_angle <= 160.0
+
+        if not in_range:
+            self.prev_final_angle = None
+            return target_angle
+
+        if self.prev_final_angle is None or not (0.0 <= self.prev_final_angle <= 160.0):
+            self.prev_final_angle = target_angle
+            return target_angle
+
+        limit = self.rate_limit_max_deg_per_tick
+        if not math.isfinite(limit) or limit <= 0.0:
+            self.prev_final_angle = target_angle
+            return target_angle
+
+        diff = target_angle - self.prev_final_angle
+        diff = max(-limit, min(limit, diff))
+        limited = self.prev_final_angle + diff
+        self.prev_final_angle = limited
+        return limited
+
+    # =====================================================
+    # [L] REVERSE STATE MACHINE
+    # =====================================================
+    def _apply_reverse_sequence(self, now):
+        """경로가 없을 때 일정 시간 후진한 뒤 STOP 재탐색을 수행한다."""
+        if self.reverse_state == 'REVERSING':
+            if now - self.reverse_start_time < self.reverse_duration:
+                return REVERSE_ANGLE
+
+            self.reverse_state = 'COOLDOWN'
+            self.reverse_start_time = None
+            self.reverse_cooldown_start_time = now
+            self.get_logger().info(
+                f"후진 {self.reverse_duration:.2f}초 완료 → "
+                f"STOP 재탐색 {self.reverse_cooldown:.2f}초 시작",
+                throttle_duration_sec=1.0)
+            return STOP_HOLD
+
+        if self.reverse_state == 'COOLDOWN':
+            if now - self.reverse_cooldown_start_time < self.reverse_cooldown:
+                return STOP_HOLD
+
+            self.reverse_state = 'REVERSING'
+            self.reverse_start_time = now
+            self.reverse_cooldown_start_time = None
+            self.get_logger().warn(
+                f"STOP 재탐색 {self.reverse_cooldown:.2f}초 후에도 경로 없음 → 후진 재시작",
+                throttle_duration_sec=1.0)
+            return REVERSE_ANGLE
+
+        self.reverse_state = 'REVERSING'
+        self.reverse_start_time = now
+        self.reverse_cooldown_start_time = None
+        self.get_logger().warn(
+            f"회피 경로 없음 → {self.reverse_duration:.2f}초 후진 시작",
+            throttle_duration_sec=1.0)
+        return REVERSE_ANGLE
+
+    def _reset_reverse_sequence(self):
+        """정상 경로나 외부 미션 명령이 생기면 후진/쿨다운 상태를 해제한다."""
+        self.reverse_state = 'READY'
+        self.reverse_start_time = None
+        self.reverse_cooldown_start_time = None
+
+    # =====================================================
     # CONTROL — 고정 주기, 스캔 유무와 무관하게 항상 발행
     # =====================================================
     def control_cb(self):
@@ -380,7 +491,8 @@ class ShipDirection(Node):
         # bad 를 여기서도 보는 이유: 워치독 틱(0.1s)을 기다리지 않고 즉시 멈추기 위해서다.
         if level >= 2 or bad:
             self.pub_obstacle_distance.publish(self._closest_obstacle(scan))
-            self.pub_desired_angle.publish(Float32(data=STOP_HOLD))
+            angle = self._apply_rate_limit(STOP_HOLD)   # [K] 범위 밖 값 → 통과 + 상태 리셋
+            self.pub_desired_angle.publish(Float32(data=angle))
             return
 
         # 스캔을 한 번도 못 받음(부팅 중) → 발행할 각도가 없다.
@@ -393,6 +505,7 @@ class ShipDirection(Node):
         # → motor_control 이 /failsafe_level 을 보고 상한(70%)을 건다.
         angle, obst = self._compute(scan, wp4_enter_time, candidate_angle,
                                     yaw_error, detection_distance)
+        angle = self._apply_rate_limit(angle)   # [K] 0~160° 안일 때만 실제로 제한됨
 
         self.pub_obstacle_distance.publish(obst)
         self.pub_desired_angle.publish(Float32(data=angle))
@@ -536,6 +649,7 @@ class ShipDirection(Node):
         # ---- (0) WP4 초기 5초 & STOP_HOLD 우선 처리 ----
         if (wp4_enter_time is not None and (now - wp4_enter_time) < 5.0) or \
            (candidate_angle == STOP_HOLD):
+            self._reset_reverse_sequence()
             return STOP_HOLD, obst
 
         # ---- [I] Geofence 하드 가드 ((A)SPIN/(B)candidate 전용) ----
@@ -545,16 +659,28 @@ class ShipDirection(Node):
             # 전진하려는 방향: candidate 는 그 상대각, SPIN(제자리)은 전방(0°)으로 본다.
             intended_rel = 0.0 if candidate_angle in (SPIN_RIGHT, SPIN_LEFT) else candidate_angle
             if self._geofence_blocks(intended_rel):
+                self._reset_reverse_sequence()
                 return STOP_HOLD, obst
 
         # ---- (A) PASS-THROUGH: 미션 노드가 선회를 직접 지시 ----
         if candidate_angle in (SPIN_RIGHT, SPIN_LEFT):
+            self._reset_reverse_sequence()
             return candidate_angle, obst
 
         # ---- (B) 일반 candidate_angle 매핑 (360° → 전방중심 80°) ----
         if candidate_angle != CANDIDATE_INVALID:
+            self._reset_reverse_sequence()
             c_raw = candidate_angle % 360.0
-            c_mapped = 80 + c_raw if c_raw <= 180 else 80 - (360 - c_raw)
+            c_mapped = 80.0 + c_raw if c_raw <= 180.0 else 80.0 - (360.0 - c_raw)
+
+            # 정상 조향값은 0~160°여야 한다. 범위를 벗어나면 motor_control이 후진으로
+            # 해석할 수 있으므로 안전하게 정지한다.
+            if not math.isfinite(c_mapped) or not (0.0 <= c_mapped <= 160.0):
+                self.get_logger().warn(
+                    f"candidate 매핑 범위 초과: raw={c_raw:.1f}°, "
+                    f"mapped={c_mapped:.1f}° → STOP_HOLD",
+                    throttle_duration_sec=1.0)
+                return STOP_HOLD, obst
             return c_mapped, obst
 
         # ---- (C) candidate == 20000 → yaw_error 기반 자율 회피 ----
@@ -652,12 +778,18 @@ class ShipDirection(Node):
             arc_length = angle_increment_rad * r_edge * (e - s)
             candidates.append((angle_diff, -arc_length, best_angle, s, e))
 
-        # ---- 회피 경로가 없으면 후진 ----
+        # ---- [L] 회피 경로가 없으면 후진. 팀원 피드백 C안 반영 ----
+        # 작년/2단계 코드는 여기서 매 tick 무조건 REVERSE_ANGLE 을 냈다 — reverse_cooldown 은
+        # 타임스탬프만 갱신할 뿐 final_angle 에 영향이 없었다(dead code, 팀 지적).
+        # ⚠️ north 광선은 전방 ±80° 만 봐서 후진 중 뒤쪽 경계는 못 본다([I] 참고).
+        #    즉 지금 구조로 '계속 후진'은 뒤를 못 보며 맹목 후진하는 것과 같다.
+        # → C안: 후진은 쿨다운마다 '한 번만' 짧게 내고, 그 사이(쿨다운 중)는 STOP_HOLD 로
+        #   멈춰서 재탐색한다. 쿨다운이 끝났는데도 여전히 후보가 없으면 다시 한 번 후진한다.
         if not candidates:
-            final_angle = REVERSE_ANGLE
-            if now - self.last_reverse_time >= self.reverse_cooldown:
-                self.last_reverse_time = now
+            # 일정 시간 후진 → 일정 시간 STOP 재탐색 → 필요하면 반복
+            final_angle = self._apply_reverse_sequence(now)
         else:
+            self._reset_reverse_sequence()
             candidates.sort(key=lambda x: (x[0], x[1]))
             final_angle = candidates[0][2]
 
