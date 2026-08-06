@@ -30,24 +30,35 @@
 # ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 # POSSIBILITY OF SUCH DAMAGE.
 
-"""Launch the ublox gps node in a composable container with c94-m8p configuration."""
+"""Launch the ublox gps node in a composable container. 배별 config 를 인자로 고른다.
+
+  ros2 launch ublox_gps ublox_gps_node-composed-launch.py                            # B배 (기본)
+  ros2 launch ublox_gps ublox_gps_node-composed-launch.py config:=c94_m8p_rover.yaml # A배
+
+🚨 여기도 c94_m8p_rover.yaml 이 하드코딩돼 있었다 (비하드코딩 launch 와 같은 사고).
+   ⚠️ 이 파일은 yaml 을 **Python 이 직접 읽어** 파라미터 dict 를 만든다. LaunchConfiguration
+      은 평가 시점이 늦어서 open() 에 그대로 못 쓴다 → OpaqueFunction 으로 평가를 미룬다.
+"""
 
 import os
 
 import ament_index_python.packages
 
 from launch import LaunchDescription
+from launch.actions import DeclareLaunchArgument, OpaqueFunction
+from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import ComposableNodeContainer
 from launch_ros.descriptions import ComposableNode
 
 import yaml
 
 
-def generate_launch_description():
+def _make_container(context, *args, **kwargs):
     config_directory = os.path.join(
         ament_index_python.packages.get_package_share_directory('ublox_gps'),
         'config')
-    param_config = os.path.join(config_directory, 'c94_m8p_rover.yaml')
+    config_name = LaunchConfiguration('config').perform(context)
+    param_config = os.path.join(config_directory, config_name)
     with open(param_config, 'r') as f:
         params = yaml.safe_load(f)['ublox_gps_node']['ros__parameters']
     container = ComposableNodeContainer(
@@ -64,5 +75,14 @@ def generate_launch_description():
             ],
             output='both',
     )
+    return [container]
 
-    return LaunchDescription([container])
+
+def generate_launch_description():
+    return LaunchDescription([
+        DeclareLaunchArgument(
+            'config',
+            default_value='zed_f9p_rover.yaml',
+            description='배별 GPS 설정 파일 (B배: zed_f9p_rover.yaml / A배: c94_m8p_rover.yaml)'),
+        OpaqueFunction(function=_make_container),
+    ])
