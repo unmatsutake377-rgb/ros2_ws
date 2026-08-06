@@ -11,7 +11,14 @@ setup(
     package_dir={'': 'src'},
     data_files=[
         ('share/ament_index/resource_index/packages', ['resource/' + package_name]),
-        (os.path.join('share', package_name), ['package.xml', *glob.glob('launch/*.py')]),
+        (os.path.join('share', package_name), ['package.xml']),
+        # 🚨 launch 파일은 share/<pkg>/launch/ 에 넣는다 (ROS2 관례이자 저장소 나머지 전 패키지의
+        #    방식). 예전엔 share/<pkg>/ 에 평평하게 깔려서 launch_files.launch.py 의
+        #      os.path.join(dir_ntrip, 'launch', 'ntrip_client_launch.py')
+        #    가 파일을 못 찾았고, **대회 실행 launch 가 통째로 죽었다**(2026-08-06 실기 발견).
+        #    IncludeLaunchDescription 은 파일이 없으면 예외를 던지고, 그 예외가 launch 전체를
+        #    내린다 — 이미 뜬 노드 15개까지 같이 SIGINT 로 종료된다.
+        (os.path.join('share', package_name, 'launch'), glob.glob('launch/*.py')),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
