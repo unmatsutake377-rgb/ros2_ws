@@ -55,6 +55,7 @@ from geopy import distance
 from ament_index_python.packages import get_package_share_directory
 
 from north_goal_angle.waypoint_loader import parse_waypoints, WaypointError
+from north_goal_angle.gps_guard import fix_is_usable
 
 # 🚨 대회 좌표는 코드가 아니라 config/waypoints.yaml 에서 읽는다 (비전공자도 편집 가능).
 #    대회장에서 GPS 좌표를 바꿀 사람은 그 파일의 lat/lon 만 고치면 된다 — 이 파일은 안 건드린다.
@@ -178,8 +179,28 @@ class NorthGoalAngle(Node):
 
     # ───────────────────────── 콜백 ─────────────────────────
     def gps_cb(self, msg):
+        # 🚨 status 를 반드시 본다. 드라이버는 fix 가 없어도 /fix 를 1Hz 로 계속 내며,
+        #    그때 lat/lon 은 0.0 이다. 예전 코드는 이걸 그대로 믿고 (0,0) 기준 방위를
+        #    계산해 발행했다 — 실측 47.96° = calc_angle(0, 0, WP0). 판정은 gps_guard 참고.
+        if not fix_is_usable(msg.status.status, msg.latitude, msg.longitude):
+            if self.have_fix:
+                self._log_fix_lost(msg.status.status)
+            self.have_fix = False
+            return
+        if not self.have_fix:
+            self._log_fix_acquired(msg.status.status)
         self.lat, self.lon = msg.latitude, msg.longitude
         self.have_fix = True
+
+    # ⚠️ 로거 호출 지점을 함수로 분리한 이유: rclpy 는 로그 호출을 **소스 위치**로 캐싱해서,
+    #    같은 줄이 warn/info 로 번갈아 불리면 ValueError 로 노드가 죽는다 (CLAUDE.md §5 사례 ②).
+    def _log_fix_lost(self, status):
+        self.get_logger().warn(
+            f"🛰️ GPS fix 상실(status={status}) → 목표 방위·거리 발행 중단. "
+            "모르면 입을 다문다 (소비자는 침묵을 처리하도록 설계돼 있다)")
+
+    def _log_fix_acquired(self, status):
+        self.get_logger().info(f"🛰️ GPS fix 확보(status={status}) → 항법 재개")
 
     def yaw_cb(self, msg):
         self.yaw = float(msg.data)
@@ -272,11 +293,23 @@ class NorthGoalAngle(Node):
 
         wp_lat, wp_lon, wp_mode, dwell = self.waypoints[self.wp_idx]
 
-        dist = calc_dist(self.lat, self.lon, wp_lat, wp_lon)
-        self.pub_dist.publish(Float32(data=dist))
+        # 🚨 위치에서 나오는 값(거리·방위)은 fix 가 유효할 때만 낸다.
+        #    fix 가 없으면 lat/lon 이 0 이거나 옛값이라 방위가 통째로 틀린다.
+        #    소비자(ship_goal_angle)는 침묵을 이미 처리한다 — /yaw_error 를 멈춘다.
+        #    ⚠️ /wp_mode 는 계속 낸다. 미션 단계는 '지금 위치' 에서 나오는 값이 아니고,
+        #       멈추면 비전 검출기 3종이 전부 비활성이 된다(CLAUDE.md 3-4) — 부작용이 더 크다.
+        #       대신 아래 도착 판정(wp_idx 전진)은 fix 없이는 하지 않는다.
+        if self.have_fix:
+            dist = calc_dist(self.lat, self.lon, wp_lat, wp_lon)
+            self.pub_dist.publish(Float32(data=dist))
 
-        bearing = calc_angle(self.lat, self.lon, wp_lat, wp_lon)
-        self.pub_bearing.publish(Float32(data=bearing))
+            bearing = calc_angle(self.lat, self.lon, wp_lat, wp_lon)
+            self.pub_bearing.publish(Float32(data=bearing))
+        else:
+            dist = None
+            self.get_logger().warn(
+                "🛰️ GPS fix 없음 → 목표 방위 미발행 (하늘이 안 보이거나 안테나 확인)",
+                throttle_duration_sec=5.0)
 
         self.pub_mode.publish(Int32(data=wp_mode))
 
@@ -308,7 +341,11 @@ class NorthGoalAngle(Node):
                 self.wp_enter_time = None
                 return
 
-        if dist < ARRIVE_RADIUS_M:
+        # fix 가 없으면 '도착했는지' 를 판단할 근거가 없다 → wp_idx 를 전진시키지 않는다.
+        # (시간 초과 전진은 위에서 이미 처리한다 — 그건 위치와 무관한 안전장치라 유지)
+        if dist is None:
+            self.t_start = None
+        elif dist < ARRIVE_RADIUS_M:
             if self.t_start is None:
                 self.t_start = now
             elif (now - self.t_start) >= dwell:
