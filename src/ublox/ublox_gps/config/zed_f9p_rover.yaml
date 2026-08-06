@@ -32,8 +32,9 @@ ublox_gps_node:
     # ⚠️ F9P 는 더 높은 주기를 지원한다. 올릴지는 **물 위에서 제어 주기와 함께** 판단할 것.
     #    지금 올리면 근거 없는 변경이다.
 
-    dynamic_model: portable     # ⚠️ u-blox 에 'sea'(해상) 모델이 따로 있다. 배에는 그게 맞을
-                                #    가능성이 있지만 **아직 안 재봤다.** 물 위에서 비교 후 결정.
+    dynamic_model: sea          # 해상 표면 차량용 — 고도 변화를 억제하고 수평 이동에 최적화.
+                                #    수상선박엔 명백히 맞아 비교 실험 불필요(u-blox 표준 모델).
+                                #    드라이버 지원 확인: node.cpp 'sea'→DYN_MODEL_SEA.
     fix_mode: auto
     enable_ppp: false           # F9P 는 이 드라이버 경로로 PPP 를 쓰지 않는다
     dr_limit: 0

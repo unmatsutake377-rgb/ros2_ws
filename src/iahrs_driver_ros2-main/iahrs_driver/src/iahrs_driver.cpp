@@ -96,8 +96,12 @@ public:
     }
 
     // GPS NAV-PVT 구독
+    // 🚨 토픽명은 ublox 노드 발행명과 정확히 일치해야 한다(/ublox_gps_node/navpvt).
+    //    작년 게이트(image_subscriber_gate↔ship_gate)와 같은 침묵실패: /ublox/navpvt 로
+    //    두면 gps_heading 이 영원히 안 오고, use_gps_heading_override 를 켜는 순간(대회장에서
+    //    헤딩 이상할 때) 조용히 실패한다. 지금 기본 OFF 라 무해하지만 그래서 더 위험하다.
     gps_sub = this->create_subscription<ublox_msgs::msg::NavPVT>(
-        "/ublox/navpvt", 10,
+        "/ublox_gps_node/navpvt", 10,
         std::bind(&IAHRS::gps_callback, this, std::placeholders::_1));
   }
 
