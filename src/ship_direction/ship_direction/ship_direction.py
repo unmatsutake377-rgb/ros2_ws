@@ -389,9 +389,18 @@ class ShipDirection(Node):
             worst = self.watch.worst
 
         if level != prev:
-            log = self.get_logger().warn if level > prev else self.get_logger().info
-            log(f"페일세이프 L{prev} → L{level}"
-                + (f"  (원인: {worst})" if worst else "  (복구)"))
+            # 🚨 로거 호출을 변수에 담아 한 줄에서 warn/info 를 번갈아 쓰면 안 된다.
+            #    rclpy 는 로그 호출을 **소스 위치(파일:줄)** 로 캐싱해서, 같은 줄이 다른 심각도로
+            #    불리면 ValueError('Logger severity cannot be changed between calls.') 를 던진다.
+            #    레벨 상승은 warn, 복구는 info 라서 **복구되는 순간 노드가 죽었다** (실물에서 발견).
+            #    → 센서가 고장나서가 아니라 '고장에서 회복해서' 배가 멈추는 최악의 형태였다.
+            #    호출 지점을 둘로 나눠서 각 줄이 한 가지 심각도만 쓰게 한다.
+            msg = (f"페일세이프 L{prev} → L{level}"
+                   + (f"  (원인: {worst})" if worst else "  (복구)"))
+            if level > prev:
+                self.get_logger().warn(msg)
+            else:
+                self.get_logger().info(msg)
 
         self.failsafe_level = level
         self.pub_failsafe.publish(Int32(data=int(level)))
