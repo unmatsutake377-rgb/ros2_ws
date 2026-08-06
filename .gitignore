@@ -22,3 +22,8 @@ transformStamped.transform.translation.z
 # Python cache
 __pycache__/
 *.pyc
+
+# NTRIP 계정 (실제 값은 저장소 밖 ~/.ssf/ntrip_credentials.yaml 에 둔다)
+# 혹시 저장소 안에 만들더라도 커밋되지 않도록 이중 방어. *.example.yaml 은 템플릿이라 커밋한다.
+ntrip_credentials.yaml
+**/config/ntrip_credentials.yaml

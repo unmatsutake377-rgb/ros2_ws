@@ -19,6 +19,8 @@ setup(
         #    IncludeLaunchDescription 은 파일이 없으면 예외를 던지고, 그 예외가 launch 전체를
         #    내린다 — 이미 뜬 노드 15개까지 같이 SIGINT 로 종료된다.
         (os.path.join('share', package_name, 'launch'), glob.glob('launch/*.py')),
+        # 계정 **템플릿**만 설치한다. 실제 값은 ~/.ssf/ntrip_credentials.yaml (저장소 밖).
+        (os.path.join('share', package_name, 'config'), glob.glob('config/*.yaml')),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
