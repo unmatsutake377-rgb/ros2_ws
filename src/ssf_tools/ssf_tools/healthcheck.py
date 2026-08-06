@@ -291,8 +291,15 @@ class HealthCheck(Node):
 
         lines.append(f"   → /health_ok = {health_ok}"
                      f"  (wp_mode={cur if cur is not None else '—'})")
-        log = self.get_logger()
-        (log.info if health_ok else log.warn)("\n".join(lines))
+        # 🚨 ship_direction 과 같은 rclpy 로거 심각도 캐싱 버그를 피한다.
+        #    같은 줄에서 info/warn 을 번갈아 쓰면 health_ok 토글 순간
+        #    ValueError('Logger severity cannot be changed between calls.') 로 노드가 죽는다.
+        #    호출 지점을 둘로 나눠 각 줄이 한 심각도만 쓰게 한다.
+        msg = "\n".join(lines)
+        if health_ok:
+            self.get_logger().info(msg)
+        else:
+            self.get_logger().warn(msg)
 
 
 def main(args=None):
