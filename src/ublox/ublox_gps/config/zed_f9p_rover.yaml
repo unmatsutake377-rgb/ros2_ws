@@ -1,0 +1,93 @@
+# ═══════════════════════════════════════════════════════════════════════════
+#  ZED-F9P 이동국(rover) 설정 — B배
+# ═══════════════════════════════════════════════════════════════════════════
+#
+#  ⚠️ 기존 zed_f9p.yaml 은 쓰지 마라. 헤더가 "C94-M8P" 이고 tmode3:1(Survey-In=기지국)
+#     이라 **배에 다는 이동국 설정이 아니다.** M8P 파일을 복사해 이름만 바꾼 미완성본이다.
+#
+#  이 파일의 값은 전부 **2026-08-06 실기에서 관측한 근거**가 있다. 추측으로 채운 값 없음.
+#  관측 기록: docs/결과분석/실기통합시험_LiDAR_IMU_20260806.md
+#
+#  실물 확인된 장치:
+#    MOD=ZED-F9P / FWVER=HPG 1.13 / PROTVER=27.12 / GPS;GLO;GAL;BDS / SBAS;QZSS
+# ═══════════════════════════════════════════════════════════════════════════
+
+ublox_gps_node:
+  ros__parameters:
+    debug: 0                    # 0=조용. 문제 추적할 땐 4 로 올리면 UBX 바이트까지 찍힌다
+
+    # ── 포트 ────────────────────────────────────────────────────────────────
+    # udev 규칙으로 고정한 이름. /dev/ttyACM0 은 꽂는 순서에 따라 바뀐다.
+    #   SUBSYSTEM=="tty", ATTRS{idVendor}=="1546", ATTRS{idProduct}=="01a9", SYMLINK+="ttyGPS"
+    device: /dev/ttyGPS
+    frame_id: gps
+
+    # 🚨 save 블록을 넣지 않는다.
+    #    c94_m8p_rover.yaml 에는 save:{mask:3103, device:4} 가 있어 **EEPROM 에 영구 저장**한다.
+    #    잘못된 설정이 수신기에 박히면 되돌리기 어렵다. 런타임(RAM)에만 적용한다.
+
+    # ── 측위 주기 ───────────────────────────────────────────────────────────
+    rate: 1.0                   # Hz. 실측에서 /fix·/fix_velocity 가 1.00Hz 로 안정 발행 확인
+    nav_rate: 1                 # 측정 사이클 수
+    # ⚠️ F9P 는 더 높은 주기를 지원한다. 올릴지는 **물 위에서 제어 주기와 함께** 판단할 것.
+    #    지금 올리면 근거 없는 변경이다.
+
+    dynamic_model: portable     # ⚠️ u-blox 에 'sea'(해상) 모델이 따로 있다. 배에는 그게 맞을
+                                #    가능성이 있지만 **아직 안 재봤다.** 물 위에서 비교 후 결정.
+    fix_mode: auto
+    enable_ppp: false           # F9P 는 이 드라이버 경로로 PPP 를 쓰지 않는다
+    dr_limit: 0
+
+    # ── TMODE3 ──────────────────────────────────────────────────────────────
+    # 0 = 비활성 = 이동국. 🚨 1(Survey-In)은 **기지국**이다 — 움직이는 배에 쓰면 안 된다.
+    # 실측: 이 값으로 드라이버가 "Disabling TMODE3" 로그를 남기고 정상 진행함(적용 확인됨).
+    tmode3: 0
+
+    # ── GNSS 별자리 ─────────────────────────────────────────────────────────
+    # F9P 는 BDS(BeiDou)를 지원한다. 실측에서 $GBGSV 문장을 실제로 수신했다.
+    # 🚨 c94_m8p_rover.yaml 은 beidou:false 다 (M8P 기준) — 그대로 쓰면 위성이 줄어든다.
+    gnss:
+      glonass: true
+      beidou: true
+      qzss: true
+
+    # ── UART1 ───────────────────────────────────────────────────────────────
+    # 🚨 우리는 USB 로 연결한다. RTCM 은 uart1 이 아니라 **드라이버가 같은 USB 포트로 직접
+    #    주입**한다: ntrip_client → /rtcm 토픽 → UbloxNode::rtcmCallback → Gps::sendRtcm.
+    #    (node.cpp:502, gps.cpp:583)
+    #    → uart1 설정은 이 구성에서 쓰이지 않는다. M8P 전용값(19200)을 물려받지 않도록
+    #      아예 두지 않는다. UART 로 배선을 바꾸는 날 여기에 실측값을 넣을 것.
+
+    # ── DGNSS ───────────────────────────────────────────────────────────────
+    # 🚨 dgnss_mode 를 일부러 넣지 않았다 — **이 장치에서는 적용되지 않기 때문이다.**
+    #    제품 클래스는 config 가 아니라 펌웨어 문자열로 결정된다(node.cpp:698):
+    #      FWVER="HPG 1.13" 은 길이가 정확히 8 → ref_rov="" → HpPosRecProduct 생성
+    #      (HpgRovProduct 가 아니다. dgnss_mode 를 읽는 코드는 거기에만 있다)
+    #    실측 확인: /navrelposned·/navheading(HpPosRecProduct) + /navsvin(상속한 HpgRefProduct)
+    #    → 적어도 에러는 안 나지만 **조용히 무시된다.** 적어두면 "설정했다" 는 착각만 남는다.
+    #
+    #    ⚠️ 이게 RTK 성능에 실제로 영향이 있는지는 **NTRIP 을 붙여봐야 안다.**
+    #       F9P 가 RTCM 만 들어오면 기본값으로 fixed 까지 갈 수도 있다. 지금은 계정이 없어
+    #       검증 불가 → 추측하지 않는다.
+    #    ✅ NTRIP 연결하는 날 확인법: /navrelposned 의 carrSoln 플래그(none/float/fixed)를 본다.
+    #       fixed 로 안 올라가면 그때 이 문제를 다시 판단할 것.
+
+    inf:
+      all: true                 # 수신기 INF 메시지를 콘솔에 표시
+
+    # ── 발행 메시지 ─────────────────────────────────────────────────────────
+    publish:
+      all: true
+
+      # 🚨 F9 세대는 UBX-AID 클래스를 지원하지 않는다 (UBX-MGA 로 대체됨).
+      #    켜두면 부팅 때마다 NACK 이 뜬다 — 실측으로 확정한 내용이다:
+      #      "Setting rate 0x0b, 0x30" → NACK   (AidALM  : CLASS 11 / ID 48)
+      #      "Setting rate 0x0b, 0x31" → NACK   (AidEPH  : CLASS 11 / ID 49)
+      #    c94_m8p_rover.yaml 은 aid.hui 만 껐고 alm/eph 는 publish.all 을 물려받아 켜져 있었다.
+      #    aid.all:false 한 줄이면 alm·eph·hui 가 전부 상속으로 꺼진다(node.cpp:436-439).
+      #    ★ 빨간 에러를 켜둔 채 두면 팀이 "저건 원래 빨간 거야" 를 배운다. 그게 최악이다.
+      aid:
+        all: false
+
+      nav:
+        posecef: false
