@@ -228,6 +228,9 @@ python3 src/ssf_heading/test/test_heading_logic.py
 
 **출발 전 체크리스트는 CLAUDE.md 7-2** (안전 스위치·벤치 실측 항목).
 
+> 📘 **세운 뒤 '매번 돌리는 방법' 은 `docs/절차/ros2_운용법.md` 에 있다.**
+> (소싱·launch 3터미널 구성·장비 없이 시험하는 법·자주 걸리는 것)
+
 ---
 
 ## 12. 자주 걸리는 것 (트러블슈팅)
