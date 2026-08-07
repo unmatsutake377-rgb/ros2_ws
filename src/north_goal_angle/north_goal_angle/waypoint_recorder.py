@@ -204,8 +204,14 @@ def _run_node(out_path, avg_window_sec, cov_warn):
         text = format_waypoints_yaml(node.recorded)
         with open(out_path, "w", encoding="utf-8") as f:
             f.write(text)
-        print(f"\n💾 {len(node.recorded)}개 저장 → {out_path}")
-        print("   확인 후 config/waypoints.yaml 로 옮기면 미션에서 읽습니다.")
+        print("\n" + "=" * 66)
+        print(f"💾 {len(node.recorded)}개 저장 완료")
+        print(f"   경로: {out_path}")
+        print("=" * 66)
+        print("   ▶ 복사하지 않고 바로 쓰려면 (기존 waypoints.yaml 을 안 건드린다):")
+        print(f"       ros2 launch north_goal_angle north_goal_angle_launch.py \\")
+        print(f"           waypoints_file:={out_path}")
+        print("   ▶ 이걸 실전 파일로 확정하려면 config/waypoints.yaml 로 복사한 뒤 재빌드.")
     else:
         print("\n(기록된 웨이포인트 없음 — 저장 안 함)")
 
@@ -230,9 +236,16 @@ def _ask_float(prompt):
 
 
 def main():
-    # 기본 출력: 패키지 config 옆 waypoints_recorded.yaml (실전 파일 안 건드림)
-    default_out = os.path.join(os.getcwd(), "waypoints_recorded.yaml")
-    out_path = sys.argv[1] if len(sys.argv) > 1 else default_out
+    # 🚨 기본 출력은 **고정 경로**다 (~/ssf_logs/waypoints_recorded.yaml).
+    #    예전엔 os.getcwd() 였는데, 실행한 폴더에 따라 파일이 어디 생길지 모른다.
+    #    배는 SSH 로 붙어 쓰므로 접속할 때마다 cwd 가 달라지고, 대회장에서 급할 때
+    #    "찍긴 찍었는데 파일이 어디 있지" 가 된다 (2026-08-07 야외 시험에서 실제로 겪음 —
+    #    세 군데를 뒤졌다). blackbox 로그(~/ssf_logs/)와 같은 자리에 모은다.
+    #    다른 곳에 쓰려면 인자로 경로를 준다:  ros2 run ... waypoint_recorder /경로.yaml
+    default_dir = os.path.join(os.path.expanduser("~"), "ssf_logs")
+    os.makedirs(default_dir, exist_ok=True)
+    default_out = os.path.join(default_dir, "waypoints_recorded.yaml")
+    out_path = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else default_out)
     _run_node(out_path, avg_window_sec=2.0, cov_warn=2.0)
 
 
