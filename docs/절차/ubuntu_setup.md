@@ -190,8 +190,35 @@ sudo udevadm control --reload-rules && sudo udevadm trigger
 ## 9. NTRIP (RTK GPS 보정) — 새 계정
 
 - NTRIP 계정(아이디/비번/캐스터 주소)을 **새로 발급**받는다(작년 것 폐기).
-- 설정 위치: `src/ntrip_client/` 의 launch/config. 발급받은 값으로 채운다.
-- ⚠️ 계정 정보도 GitHub에 없다(보안). 발급 후 여기 노트북 로컬에만.
+- 🚨 **계정 정보는 저장소에 넣지 않는다. `~/.ssf/ntrip_credentials.yaml`(저장소 밖)에 둔다.**
+
+```bash
+mkdir -p ~/.ssf
+cp ~/ros2_ws/src/ntrip_client/config/ntrip_credentials.example.yaml ~/.ssf/ntrip_credentials.yaml
+nano ~/.ssf/ntrip_credentials.yaml     # host / mountpoint / username / password 채우기
+chmod 600 ~/.ssf/ntrip_credentials.yaml
+```
+
+- 채울 것: `host`, `port`, `mountpoint`, `username`, `password`.
+  캐스터가 NTRIP 버전을 요구하면 `ntrip_version` 도(모르면 비워둔다).
+- **파일이 없거나 host/mountpoint 가 비면** `ntrip_client` 노드를 **띄우지 않고 안내 로그만**
+  남긴다. 나머지 노드(LiDAR·IMU·GPS·제어)는 정상 동작한다 — RTK 보정만 없는 상태다.
+- 경로를 바꾸려면 `export SSF_NTRIP_CREDENTIALS=/경로.yaml` 또는
+  `ros2 launch ntrip_client ntrip_client_launch.py credentials_file:=/경로.yaml`
+
+> ⚠️ **이전 판 안내(`src/ntrip_client/` 의 launch 를 직접 채운다)는 틀렸다.**
+> 실제로 그렇게 해서 **작년 계정(아이디·비밀번호 평문)이 공개 저장소에 커밋돼 있었다**
+> (2026-08-06 발견). 지금은 launch 가 저장소 밖 파일에서만 읽는다.
+> 이미 커밋 이력에 남은 옛 값은 파일을 고쳐도 지워지지 않는다 — 폐기된 계정이라 실질
+> 위험은 낮지만, 이력 정리는 팀과 상의해서 결정할 것.
+
+**연결 확인 (계정 넣은 뒤):**
+```bash
+ros2 topic hz /rtcm                      # 보정 데이터가 들어오나
+ros2 topic echo /navrelposned            # carrSoln 플래그: none → float → fixed 로 올라가나
+```
+⚠️ `carrSoln` 이 fixed 로 안 올라가면 `zed_f9p_rover.yaml` 의 `dgnss_mode` 주석을 볼 것
+(이 드라이버·펌웨어 조합에서 그 파라미터가 적용되지 않는 것을 실기에서 확인해 뒀다).
 
 ---
 

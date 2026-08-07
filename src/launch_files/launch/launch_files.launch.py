@@ -125,6 +125,19 @@ def generate_launch_description():
                 {"enable_infra1": False},
                 {"enable_infra2": False},
 
+                # 🚨 카메라 내장 IMU(자이로·가속도)를 끈다 — 안 끄면 노드가 예외로 죽는다.
+                #    librealsense 가 D455 의 HID/IIO 센서를 열려고 하는데 udev 규칙이 없어
+                #    Permission denied 가 나고, 그 예외가 rs_node_setup 의 센서 설정을 통째로
+                #    중단시킨다 (2026-08-07 실기 확인):
+                #      Failed to open .../iio:device1/scan_elements/in_anglvel_x_en
+                #      → Error updating the sensors
+                #    ⚠️ udev 규칙을 까는 방법도 있지만 **우리는 이 IMU 를 쓰지 않는다** —
+                #      헤딩은 iAHRS(/imu/yaw_raw → yaw_mux)가 담당한다(CLAUDE.md 3-5).
+                #      안 쓰는 센서 때문에 시스템에 규칙을 남기는 대신 명시적으로 끈다.
+                #    ※ OAK(PoE=이더넷)로 바꾸면 USB HID 자체가 없어져 이 줄은 불필요해진다.
+                {"enable_gyro": False},
+                {"enable_accel": False},
+
                 {"rgb_camera.controls.saturation": 120},
 
 

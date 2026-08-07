@@ -14,6 +14,7 @@ healthcheck — 2초마다 '배가 살아있나'를 점검하고 /health_ok(Bool
   * time.monotonic() 사용 (벽시계 점프에 안 속음, CLAUDE.md 1-5).
 """
 
+import math
 import time
 
 import rclpy
@@ -93,6 +94,8 @@ class HealthCheck(Node):
                       "imu_raw": None, "image": None}
         self._cur_wp_mode = None
         self._heading_status = None
+        self._gps_fix_ok = False      # /fix 가 와도 fix 가 유효한가 (NOFIX 구분용)
+        self._gps_status = None
 
         # ---- 구독 (센서 생존 감시 + 현재 모드) ----
         self.create_subscription(LaserScan, scan_topic, self._cb_scan, OBSERVER_QOS)
@@ -145,7 +148,22 @@ class HealthCheck(Node):
 
     def _cb_scan(self, _msg): self._last["scan"] = self._now()
     def _cb_imu(self, _msg): self._last["imu"] = self._now()
-    def _cb_gps(self, _msg): self._last["gps"] = self._now()
+    def _cb_gps(self, msg):
+        # 🚨 도착 시각만 보면 안 된다. 드라이버는 fix 가 없어도 /fix 를 1Hz 로 계속 낸다
+        #    (status=-1, lat=lon=0.0) → 예전엔 'GPS/fix ✅' 로 초록불이 떴다.
+        #    출발 전 진단이 "하늘이 안 보임" 을 못 잡으면 존재 이유가 없다
+        #    (설계 문서 docs/문제와작업/추가개선_판단과결과.md §2 가 이걸 차단 사유로 명시).
+        #    ⚠️ north_goal_angle/gps_guard.py 의 fix_is_usable 이 권위 있는 판정이지만,
+        #       그걸 import 하면 패키지 간 의존이 생긴다 → CLAUDE.md 3-9 "상수 공유 모듈화는
+        #       대회 전엔 하지 말 것". 여기는 진단 전용이라 핵심 조건만 인라인으로 본다.
+        self._last["gps"] = self._now()
+        self._gps_status = int(msg.status.status)
+        lat, lon = float(msg.latitude), float(msg.longitude)
+        self._gps_fix_ok = (
+            self._gps_status >= 0
+            and math.isfinite(lat) and math.isfinite(lon)
+            and not (abs(lat) < 1e-7 and abs(lon) < 1e-7)   # 드라이버 기본값 (0,0)
+        )
     def _cb_image(self, _msg): self._last["image"] = self._now()
     def _cb_candidate(self, _msg): self._last["candidate"] = self._now()
     def _cb_imu_raw(self, _msg): self._last["imu_raw"] = self._now()
@@ -167,6 +185,14 @@ class HealthCheck(Node):
         imu = self._sensor_state("imu")
         gps = self._sensor_state("gps")
         image = self._sensor_state("image", self.image_timeout)
+
+        # 메시지는 오는데 fix 가 없는 상태를 'NOFIX' 로 구분한다.
+        # '안 옴(DEAD)' 과 '와도 못 쓰는 값(NOFIX)' 은 원인도 조치도 다르다
+        #   DEAD  → 드라이버/USB/포트 문제
+        #   NOFIX → 하늘이 안 보임 / 안테나 / 아직 냉시작 중
+        if gps == "OK" and not self._gps_fix_ok:
+            gps = "NOFIX"
+
         sensors = {"LiDAR/scan": scan, "IMU/yaw": imu, "GPS/fix": gps,
                    "CAM/image": image}
 
@@ -174,7 +200,7 @@ class HealthCheck(Node):
         alive_nodes = set(self.get_node_names())
 
         lines = ["🩺 healthcheck"]
-        icon = {"OK": "✅", "DEAD": "❌", "WAIT": "…"}
+        icon = {"OK": "✅", "DEAD": "❌", "WAIT": "…", "NOFIX": "⚠️"}
         lines.append("   센서: " + "  ".join(
             f"{name} {icon[st]}" for name, st in sensors.items()))
 
@@ -260,7 +286,10 @@ class HealthCheck(Node):
         #   ⚠️ 단 /health_ok 는 현재 **구독자 0개(진단 전용)** 이라 거짓 정지 위험이 없어서
         #      이렇게 둔 것이다. 나중에 이걸 실제 제어(정지)에 물린다면 재검토할 것 —
         #      LiDAR 상실은 치명적이지만 카메라 3초 끊김은 그 정도가 아니다.
-        sensors_ok = all(st != "DEAD" for st in sensors.values())
+        # NOFIX 도 실패로 친다: fix 없이 출발하면 항법이 통째로 무의미하다.
+        # 설계 문서(docs/문제와작업/추가개선_판단과결과.md §2)가 "GPS fix 없음" 을
+        # 출발 차단 사유로 명시했는데 구현이 도착 시각만 보고 있었다 → 여기서 맞춘다.
+        sensors_ok = all(st not in ("DEAD", "NOFIX") for st in sensors.values())
         health_ok = sensors_ok and map_ok and cur_owner_ok and geofence_ok and gate_ok
 
         self.pub_health.publish(Bool(data=bool(health_ok)))
