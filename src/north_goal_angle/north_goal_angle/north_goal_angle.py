@@ -56,6 +56,8 @@ from ament_index_python.packages import get_package_share_directory
 
 from north_goal_angle.waypoint_loader import parse_waypoints, WaypointError
 from north_goal_angle.gps_guard import fix_is_usable
+from north_goal_angle import los_logic          # LOS 유도 (순수, 테스트됨)
+from north_goal_angle.gps_filter import GPSFilter  # 공분산·점프·스무딩 (순수, 테스트됨)
 
 # 🚨 대회 좌표는 코드가 아니라 config/waypoints.yaml 에서 읽는다 (비전공자도 편집 가능).
 #    대회장에서 GPS 좌표를 바꿀 사람은 그 파일의 lat/lon 만 고치면 된다 — 이 파일은 안 건드린다.
@@ -90,6 +92,18 @@ class NorthGoalAngle(Node):
 
         # ---- 파라미터 (config/north_goal_angle.yaml, CLAUDE.md 1-4) ----
         self.period_sec = float(self.declare_parameter('period_sec', 0.5).value)
+
+        # ---- LOS 유도 (경로선 추종 + 조류 보상 ILOS) ----
+        # 직접 방위(현위치→목표)는 조류·초기오차로 밀리면 비스듬히 접근한다. LOS 는 이전 WP→목표
+        # '경로 선'으로 되돌아오게 하고, ILOS 적분항이 지속 외란(조류·바람)을 상쇄한다.
+        self.los_min_lookahead_m = float(self.declare_parameter('los_min_lookahead_m', 2.0).value)
+        self.los_max_lookahead_m = float(self.declare_parameter('los_max_lookahead_m', 6.0).value)
+        self.los_speed_gain = float(self.declare_parameter('los_speed_gain', 1.2).value)
+        self.ilos_ki = float(self.declare_parameter('ilos_ki', 0.02).value)
+        self.ilos_max = float(self.declare_parameter('ilos_integral_max', 50.0).value)  # anti-windup
+        # GPS 필터 (fix_is_usable 통과분에 품질·이상치·지터 처리)
+        self.gps_cov_threshold = float(self.declare_parameter('gps_cov_threshold', 2.0).value)
+        self.gps_max_speed_mps = float(self.declare_parameter('gps_max_speed_mps', 15.0).value)
         # 경기장 폴리곤: [lat1, lon1, lat2, lon2, ...] 평탄 배열.
         # ⚠️ 실측 필요 — 대회장 경계 좌표를 아직 모른다. 비어 있으면 geofence 는 꺼진다.
         self.geofence_polygon = list(
@@ -135,6 +149,13 @@ class NorthGoalAngle(Node):
         self.t_start = None
         self.wp_enter_time = None
         self.t0 = time.monotonic()
+
+        # LOS 상태
+        self.gps_filter = GPSFilter(
+            cov_threshold=self.gps_cov_threshold, max_speed_mps=self.gps_max_speed_mps)
+        self.integral_xte = 0.0          # ILOS 적분 (WP 전환 시 리셋)
+        self.prev_lat = None             # 경로선 시작점(이전 WP). None=첫 구간
+        self.prev_lon = None
 
         self.create_timer(self.period_sec, self.timer_cb)
 
@@ -187,9 +208,20 @@ class NorthGoalAngle(Node):
                 self._log_fix_lost(msg.status.status)
             self.have_fix = False
             return
+
+        # fix 는 유효하다 → 품질·이상치·지터를 GPSFilter 로 거른다. 여기서 버리는 건 '한 프레임'만
+        # (공분산 큼 / 순간이동)이지 fix 상실이 아니다 → have_fix·이전 위치는 유지한다.
+        cov = msg.position_covariance[0] if len(msg.position_covariance) > 0 else None
+        accepted, reason = self.gps_filter.update(
+            msg.latitude, msg.longitude, cov, time.monotonic())
+        if not accepted:
+            self.get_logger().warn(f"🛰️ GPS fix 한 프레임 버림: {reason}",
+                                   throttle_duration_sec=2.0)
+            return
         if not self.have_fix:
             self._log_fix_acquired(msg.status.status)
-        self.lat, self.lon = msg.latitude, msg.longitude
+        self.lat = self.gps_filter.filtered_lat
+        self.lon = self.gps_filter.filtered_lon
         self.have_fix = True
 
     # ⚠️ 로거 호출 지점을 함수로 분리한 이유: rclpy 는 로그 호출을 **소스 위치**로 캐싱해서,
@@ -300,10 +332,23 @@ class NorthGoalAngle(Node):
         #       멈추면 비전 검출기 3종이 전부 비활성이 된다(CLAUDE.md 3-4) — 부작용이 더 크다.
         #       대신 아래 도착 판정(wp_idx 전진)은 fix 없이는 하지 않는다.
         if self.have_fix:
-            dist = calc_dist(self.lat, self.lon, wp_lat, wp_lon)
+            # 첫 구간은 이전점이 없다 → 현 위치를 경로 시작으로(=직접 접근). 이후엔 완료한 WP.
+            if self.prev_lat is None:
+                self.prev_lat, self.prev_lon = self.lat, self.lon
+
+            dist = los_logic.calc_dist(self.lat, self.lon, wp_lat, wp_lon)
             self.pub_dist.publish(Float32(data=dist))
 
-            bearing = calc_angle(self.lat, self.lon, wp_lat, wp_lon)
+            # LOS: 경로선(prev→wp)에서 벗어난 만큼 전방주시거리 안에서 되돌아오는 방위.
+            lookahead = los_logic.get_dynamic_lookahead(
+                self.gps_filter.estimated_speed_mps, self.los_speed_gain,
+                self.los_min_lookahead_m, self.los_max_lookahead_m)
+            bearing, xte = los_logic.calc_los_bearing(
+                self.prev_lat, self.prev_lon, wp_lat, wp_lon, self.lat, self.lon,
+                lookahead, self.integral_xte, self.ilos_ki)
+            # ILOS 적분 + anti-windup 클램프
+            self.integral_xte += xte * self.period_sec
+            self.integral_xte = max(-self.ilos_max, min(self.ilos_max, self.integral_xte))
             self.pub_bearing.publish(Float32(data=bearing))
         else:
             dist = None
@@ -336,6 +381,8 @@ class NorthGoalAngle(Node):
 
             if remain <= 0:
                 self.get_logger().warn(f"🕒 WP{self.wp_idx} 시간 초과 → 다음 WP 이동")
+                self.prev_lat, self.prev_lon = wp_lat, wp_lon   # 새 경로선 시작점
+                self.integral_xte = 0.0                          # ILOS 적분 리셋
                 self.wp_idx += 1
                 self.t_start = None
                 self.wp_enter_time = None
@@ -343,13 +390,19 @@ class NorthGoalAngle(Node):
 
         # fix 가 없으면 '도착했는지' 를 판단할 근거가 없다 → wp_idx 를 전진시키지 않는다.
         # (시간 초과 전진은 위에서 이미 처리한다 — 그건 위치와 무관한 안전장치라 유지)
+        # 도착 반경은 속도·모드에 따라 동적(빠르면 넓게 오버슈트 방지, 도킹은 좁게).
+        arrive_r = los_logic.get_dynamic_arrive_radius(
+            wp_mode, self.gps_filter.estimated_speed_mps)
         if dist is None:
             self.t_start = None
-        elif dist < ARRIVE_RADIUS_M:
+        elif dist < arrive_r:
             if self.t_start is None:
                 self.t_start = now
             elif (now - self.t_start) >= dwell:
-                self.get_logger().info(f"✔ WP{self.wp_idx} 완료 → 다음 WP 이동")
+                self.get_logger().info(
+                    f"✔ WP{self.wp_idx} 완료 (반경 {arrive_r:.1f}m) → 다음 WP 이동")
+                self.prev_lat, self.prev_lon = wp_lat, wp_lon   # 새 경로선 시작점
+                self.integral_xte = 0.0                          # ILOS 적분 리셋
                 self.wp_idx += 1
                 self.t_start = None
                 self.wp_enter_time = None

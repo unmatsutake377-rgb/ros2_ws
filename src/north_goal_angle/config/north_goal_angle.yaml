@@ -3,6 +3,16 @@
   ros__parameters:
     period_sec: 0.5
 
+    # ---- LOS 유도 (경로선 추종 + 조류 보상 ILOS) ----
+    los_min_lookahead_m: 2.0       # 전방주시 최소(느릴 때 민첩)
+    los_max_lookahead_m: 6.0       # 최대(빠를 때 완만 — 오버슈트 방지)
+    los_speed_gain: 1.2            # 전방주시 = 속도 x 이 값 (min/max 클램프). 실측 후 튜닝
+    ilos_ki: 0.02                  # 적분 이득 — 조류·바람 상쇄. 너무 크면 진동, 작으면 상쇄 느림
+    ilos_integral_max: 50.0        # anti-windup 클램프
+    # ---- GPS 필터 (fix_is_usable 통과분에 품질·이상치·지터 처리) ----
+    gps_cov_threshold: 2.0         # position_covariance 이보다 크면 그 프레임 버림 (RTK 품질)
+    gps_max_speed_mps: 15.0        # 두 fix 간 속도 상한 — 넘으면 순간이동(멀티패스)으로 버림
+
     # ---- Geofence (경계 이탈 = 실격) ----
     # 경기장 폴리곤: [lat1, lon1, lat2, lon2, ...] 평탄 배열. 최소 3점(=6개 수).
     # ⚠️ 실측 필요 — 대회장 경계 좌표를 아직 모른다. 비어 있으면 geofence 는 꺼진다(=빈 배열).
