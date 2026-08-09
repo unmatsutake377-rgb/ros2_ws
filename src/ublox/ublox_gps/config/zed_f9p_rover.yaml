@@ -67,11 +67,12 @@ ublox_gps_node:
     #    실측 확인: /navrelposned·/navheading(HpPosRecProduct) + /navsvin(상속한 HpgRefProduct)
     #    → 적어도 에러는 안 나지만 **조용히 무시된다.** 적어두면 "설정했다" 는 착각만 남는다.
     #
-    #    ⚠️ 이게 RTK 성능에 실제로 영향이 있는지는 **NTRIP 을 붙여봐야 안다.**
-    #       F9P 가 RTCM 만 들어오면 기본값으로 fixed 까지 갈 수도 있다. 지금은 계정이 없어
-    #       검증 불가 → 추측하지 않는다.
-    #    ✅ NTRIP 연결하는 날 확인법: /navrelposned 의 carrSoln 플래그(none/float/fixed)를 본다.
-    #       fixed 로 안 올라가면 그때 이 문제를 다시 판단할 것.
+    #    ✅ **[2026-08-07 야외 검증 — 문제 아님으로 종결]**
+    #       NTRIP(SEJN-RTCM32, 11.3km) 을 붙이고 실측: **carrSoln=2(FIXED), 수평 ±0.015m,
+    #       위성 18개, pDOP 1.63.** dgnss_mode 가 적용되지 않는데도 fixed 까지 올라간다.
+    #       → F9P 펌웨어 기본값이 이미 RTK Fixed 라 드라이버가 안 보내도 무방하다.
+    #       ⚠️ float → FIXED 에 수십 초 걸린다. 처음 60초는 float(±0.10m) 였다 — 성급히 판단 말 것.
+    #       확인법(다시 볼 일이 생기면): /navrelposned 또는 /ublox_gps_node/navpvt 의 carrSoln.
 
     inf:
       all: true                 # 수신기 INF 메시지를 콘솔에 표시
