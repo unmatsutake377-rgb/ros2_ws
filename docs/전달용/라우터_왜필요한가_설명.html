@@ -98,6 +98,51 @@
 <p class="small">필요 부품 목록·설계 상세: <b>docs/전달용/부품_추천목록.md §9-2</b> / 진행 상태: <b>docs/문제와작업/회로펌웨어_현황판.html</b></p>
 </div>
 
+<div class="card">
+<h2>5. 웨이포인트를 물가에서 찍는 원리 (폰 온보드 기준)</h2>
+<div class="flow">배:      [폰 LTE] ─ 인터넷 ─┐
+                             ├─ Tailscale VPN 터널 ─ SSH (거리 무관)
+물가: [노트북+테더링폰] ─────┘</div>
+<ul style="list-style:none">
+  <li style="border:none">· 배 핫스팟에 <b>직접</b> 붙는 건 배 기준 20~30m 안에서만 — 코스 먼 지점에선 불가. <b class="hl">Tailscale 경유가 정답</b> (양쪽이 각자 인터넷에만 있으면 됨)</li>
+  <li style="border:none">· 그래서 <b>폰 2대 체제</b>: 1대는 배에(핫스팟), 1대는 조작자 주머니에(노트북 테더링)</li>
+  <li style="border:none">· 운용: 사람 A가 RC로 배를 지점까지 몰고, 사람 B가 SSH로 Enter 눌러 좌표 기록 — <b>2인 1조 권장</b></li>
+  <li style="border:none">· 선행 조건: 노트북측 SSH/Tailscale 환경 구축 (docs/문제와작업/SSH환경구축_프롬프트.md — 현재 보류 중 작업)</li>
+</ul>
+</div>
+
+<div class="card">
+<h2>6. 대안 비교 — 왜 이 방식인가</h2>
+<table>
+<tr><th></th><th>폰 LTE + Tailscale<br>(0트랙 — 채택)</th><th>지향성 WiFi AP<br>(물가 설치 — 플랜 B)</th><th>무선 시리얼 컨버터<br>(RF 모듈 — 기각)</th></tr>
+<tr><td>NTRIP</td><td>✅</td><td>✅ (물가 AP도 인터넷 필요)</td><td>⚠️ 배관 전부 수제작</td></tr>
+<tr><td>SSH/웨이포인트</td><td>✅</td><td>✅ 직결이라 지연 최소</td><td>❌ 시리얼 파이프일 뿐</td></tr>
+<tr><td>거리</td><td>셀 커버리지 내 무제한</td><td>100~300m</td><td>수백 m~km</td></tr>
+<tr><td>치명 약점</td><td><b>대회장 셀 안 터지면 전멸</b></td><td>이동하는 배 조준 · 현장 설치 수고</td><td>표준 스택과 안 맞음</td></tr>
+<tr><td>비용</td><td><b>0원</b></td><td>수만~십수만</td><td>저렴하나 개발비 큼</td></tr>
+</table>
+<div class="flow">0트랙(폰) 검증 → 대회장 셀 OK? ──예──▶ 폰/라우터 노선 유지
+                            └─아니오─▶ 지향성 AP (플랜 B) 등판</div>
+<p class="small">폰이든 수십만원 라우터든 <b>같은 기지국 전파</b>를 씀 — 셀이 안 되면 둘 다 전멸. 그래서 장비 구매 전에 답사 실측이 먼저다.</p>
+</div>
+
+<div class="card">
+<h2>7. "셀이 터진다"가 무슨 말인가 + 답사 때 확인법 (5분)</h2>
+<p><b>셀 = 통신사 기지국의 LTE 전파. "터진다" = 그 전파가 닿아서 휴대폰 인터넷이 된다는 뜻.</b></p>
+<ul style="list-style:none">
+  <li style="border:none">· 기지국은 사람 사는 곳 위주로 세워짐 — 대회장(외곽 저수지·항만)은 멀 수 있음</li>
+  <li style="border:none">· 배는 <b>물 위</b>: 기지국 안테나는 육지를 향해 조준돼 있어 수면 커버가 약한 경우 있음. 방파제 안쪽·다리 밑 = 전파 그늘</li>
+  <li style="border:none">· 안 터지면: 인터넷 없음 → NTRIP 끊김(GPS ±1.5cm→±3~5m) + SSH 불가 → <b>무선 계획 전체 무효</b></li>
+</ul>
+<p><b>답사 확인 절차:</b></p>
+<ul style="list-style:none">
+  <li style="border:none">① 물가에서 폰 안테나 표시 확인</li>
+  <li style="border:none">② 속도 측정 앱으로 숫자 기록 — NTRIP은 느려도 되지만(초당 1KB 수준) <b>끊기면 안 됨</b></li>
+  <li style="border:none">③ 코스 여러 지점(출발점·최원점 근처 물가)에서 반복 — 한 곳만 재면 물 위 상황을 못 봄</li>
+</ul>
+<p class="small">이 5분 측정이 라우터/폰 계획 전체의 생사를 정한다.</p>
+</div>
+
 </div>
 </body>
 </html>
