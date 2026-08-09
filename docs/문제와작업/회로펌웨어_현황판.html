@@ -32,7 +32,7 @@
 <div class="wrap">
 
 <h1>⚡ 회로/펌웨어 현황판</h1>
-<div class="sub">2026-07-28 저녁 기준 · 담당: 회로/펌웨어(소프트) · 상세 근거는 <b>docs/전달용/펌웨어_설계문서.md</b></div>
+<div class="sub">2026-08-10 기준 · 담당: 회로/펌웨어(소프트) · 상세 근거는 <b>docs/전달용/펌웨어_설계문서.md</b></div>
 
 <div class="card">
 <h2>📌 지금 시스템이 어떻게 생겼나 (아키텍처 확정본)</h2>
@@ -40,10 +40,10 @@
         ──USB 시리얼 "L1500,R1500"──▶ Mega 2560 펌웨어(우리 제작·완성) ──▶ ESC×4 ──▶ T200×4
 펌웨어 → 노트북: "S,모드,워치독,배ID,비상정지,FL,FR,RL,RR" (10Hz, 상태 보고)</div>
 <ul style="list-style:none">
-  <li style="border:none">보드 <b class="hl">Mega 2560 R3 확정</b> · 5V 보드라 레벨시프트 불필요 · 컴파일 통과 (프로그램 2%, RAM 5%)</li>
-  <li style="border:none">micro-ROS는 <b>폐기</b> — 브릿지 수용으로 라이브러리·에이전트·패치 전부 불필요해짐</li>
-  <li style="border:none">스러스터 <b class="hl">4개 확정</b> (선수2 보조 + 선미2) · 좌/우 페어 제어 + 선수 게인 0.7 시작 · 방향지시등 미채택 확정</li>
-  <li style="border:none">모드: 자율(AUTO) / 수동(MANUAL) — CH 스위치. 수동 경기 땐 노트북 통째 하선 가능</li>
+  <li style="border:none">보드 <b class="hl">Mega 2560 R3</b> · ESC <b class="hl">BlueRobotics Basic ESC</b> · 수신기 <b class="hl">FS-iA6</b> · 스러스터 <b class="hl">4개</b> — 주요 하드웨어 전부 확정</li>
+  <li style="border:none">micro-ROS <b>폐기</b> → 시리얼 브릿지 (작년 발굴본 되살리기 채택 — 노트북측 작업 대기)</li>
+  <li style="border:none">룰 표시등 = <b class="hl">WS2812 스트립</b> (코드 반영됨, 컴파일 확인 대기) · 방향지시등 미채택</li>
+  <li style="border:none">무선 링크: LTE 라우터 후보 확정 — A트랙 M1(검증용) / B트랙 RUTX11. 급전·안테나 설계안 완료 (부품목록 §9-2)</li>
 </ul>
 </div>
 
@@ -52,45 +52,44 @@
 <ul>
   <li>작년 펌웨어 분석 → 결함 정리 (0µs arm, 무클램프 자율경로, 워치독 없음, It_is_Aship 죽은 분기)</li>
   <li>설계 7항목 확정 + 문서 4종 작성 (설계문서 / 회로 요구사항서 / 회로팀 설명서 / 부품 추천목록) — <b>docs/전달용/</b></li>
-  <li>펌웨어 <b>ssf_boat.ino</b> 작성 → micro-ROS판 → 시리얼 브릿지판 → <b class="hl">Mega 2560판 이식·컴파일 통과</b> (07-28)</li>
-  <li>회로팀 브릿지 노드 검토 → <b class="hl">브릿지 무수정 수용 결정</b> — 받는 쪽(펌웨어)은 우리 것으로 완성 상태</li>
-  <li>회로팀 전원 문서 검토 — 충돌 9건 정리 (<b>docs/전달용/회로팀_전원문서_검토.md</b>), 스러스터 4개 확정으로 #1 해소</li>
-  <li>확인된 정보: 조종기 FS-i6 / 방향지시등 미채택 / 보드 Mega 2560 R3</li>
+  <li>펌웨어 <b>ssf_boat.ino</b>: micro-ROS판 → 시리얼 브릿지판 → Mega 2560판 컴파일 통과(07-28) → <b class="hl">WS2812 표시등 지원 추가</b>(07-29)</li>
+  <li>브릿지 = 작년(2025) 발굴본 판명 → <b class="hl">되살리기 채택 회신</b> (docs/기준/2025브리지_결정_회로AI회신.md). 받는 쪽 펌웨어는 우리 완성본</li>
+  <li>회로팀 전원 문서 검토 — 충돌 9건 정리, 스러스터 4개·배터리 2개 확정. 납땜 그림(PDF) 해독 + 질의 완료</li>
+  <li>하드웨어 확정 누적: Mega 2560 R3 / Basic ESC / FS-i6+FS-iA6 / T200×4 / WS2812(잠정) / 방향지시등 미채택</li>
+  <li>LTE 라우터: 구매 조사 → 후보 2종 확정 → <b class="hl">급전(비상정지 앞단 분기·전용 UBEC)·안테나(50cm~1m 이격)·발열 설계안 완료</b> (08-10)</li>
 </ul>
 </div>
 
 <div class="card todo">
-<h2>내일 회로팀에게 물어볼 것 (이 목록 그대로 들고 가면 됨)</h2>
+<h2>내가 처리할 일 (우선순위 순)</h2>
 <ul>
-  <li><b>① Mega 스케치 — 상황 대부분 종료됨 (참고 확인만)</b> — 브릿지가 <b class="hl">작년(2025) 자료 발굴 코드</b>로 판명(노트북 세션 검증). 받는 쪽은 우리 완성본이 그대로 담당. 회로팀엔 가볍게만: "혹시 작년 자료에 L,R 받는 아두이노 코드도 있었나요? 있으면 참고로 보고 싶어요" (없어도 무방)</li>
-  <li><b>② ESC 모델명</b> — T200에 물릴 ESC. 기준: 양방향(1500 중립)·4S 지원·30A↑. 모델명만 받아오면 arm 절차/중립점 벤치 항목을 Claude가 정리</li>
-  <li><b>③ ~~수신기 상자 모델~~ 해결됨</b> — <b class="hl">FS-iA6 확정</b> (08-07). PWM 전용, 텔레메트리 없음 → 통신거리 실측 항목이 소프트팀 체크리스트에 등재됨</li>
-  <li><b>④ 핀 배정표</b> — 요구사항서 §7 빈 표 채워달라기. 🚨 <b class="hl">RC 3채널은 핀 2,3,18,19,20,21 중에서만</b> (Mega 인터럽트 제약) · 0,1번 핀 금지(USB 겹침)</li>
-  <li><b>⑤ 전원 설계 회의</b> (전원문서_검토.md §3 지참): ESC가 전원 사슬 어디 들어가는지 / MD-30A 컨버터는 추진경로에서 빼고 Mega 5V 공급용으로 / <b class="hl">무선 비상정지 추가(규정 의무)</b> + 버튼·무선 모두 좌우 동시 차단 / 신호 GND 한 가닥 공통 / Mega·수신기 전원 출처</li>
-  <li><b>⑥ 브릿지 실행법 전달</b> — Ubuntu에선 <code>python3 브릿지.py --port /dev/ttyACM0</code> (코드 수정 아님, 실행 인자)</li>
-  <li><b>⑦ 무선 링크 관련 (SSH 문서 연계, 08-10 추가)</b> — LTE 라우터 탑재 검토 중: 확정 시 <b>급전(전원 소비자 추가)·방수·안테나 위치</b>는 회로팀 몫. 🚨 <b class="hl">라우터 안테나와 RC 수신기(2.4GHz) 안테나는 떨어뜨려 장착</b> (대역 경쟁 — 수동/비상 조종 신뢰성). 통신 거리 실측은 RC 시험과 같은 세션에서 동시 진행</li>
+  <li><b>① NeoPixel 라이브러리 설치 → 재컴파일</b> — IDE 라이브러리 매니저에서 "Adafruit NeoPixel" 설치 후 ✓. <b class="hl">가장 오래 밀린 항목</b> — 결과(성공/에러 전문)를 Claude에 보고 <span class="tag t-me">나</span></li>
+  <li><b>② 회로팀 전달 4건</b>: ESC 신호선은 펌웨어 핀표(5/6/7/8) 기준 납땜 / MD-30A가 추진 경로에 있는지 확인(컨버터는 Mega 5V용으로 이동) / <b class="hl">라우터 전원 분기는 비상정지 릴레이 앞단</b> / 라우터·RC 안테나 50cm~1m 이격 배치 <span class="tag t-cir">회로팀</span></li>
+  <li><b>③ 전원 설계 회의 잔여</b> (전원문서_검토.md §3): <b class="hl">무선 비상정지(규정 의무)</b> + 좌우 동시 차단 / 신호 GND 한 가닥 공통 / Mega·수신기 전원 출처 <span class="tag t-cir">회로팀</span></li>
+  <li><b>④ A트랙 라우터 부품 구매</b> (부품목록 §9-2 목록 7종) → M1 배터리 제거 상시전원 벤치 검증 → 대회장 답사 때 셀 커버리지 확인 <span class="tag t-me">나</span></li>
+  <li><b>⑤ WS2812 스트립 실물 확인</b> — 픽셀 수·전원 위치 (STRIP_NUM_PIXELS 노브 반영용) <span class="tag t-cir">회로팀</span></li>
+  <li><b>⑥ 브릿지 실행법 전달</b> — Ubuntu에선 <code>python3 브릿지.py --port /dev/ttyACM0</code> <span class="tag t-cir">회로팀</span></li>
 </ul>
-<div class="small">※ ①~④는 답만 받아오면 됨. ⑤만 논의 필요. 답 받으면 Claude에게 전달 → 코드 반영</div>
+<div class="small">※ 해결 완료로 목록에서 빠진 것: 보드 확정(Mega), ESC 모델(Basic ESC), 수신기(FS-iA6), Mega 스케치(작년 발굴본 판명 — 우리 완성본이 담당), 핀표(펌웨어 §1 표 기준으로 역전 확정)</div>
 </div>
 
 <div class="card wait">
 <h2>답 오면 이어지는 작업 (Claude 담당)</h2>
 <ul>
-  <li>①에서 스케치가 진짜 있으면 → 내용 검토 + 병합 방안 / 없으면 → 상황 종료 선언 <span class="tag t-cl">Claude</span></li>
-  <li>② ESC 모델 받으면 → arm 절차·중립점 확인 항목 정리, 필요 시 클램프 조정 <span class="tag t-cl">Claude</span></li>
-  <li>④ 핀 배정표 받으면 → 코드 §1 반영 (5분) + 재컴파일 <span class="tag t-cl">Claude</span></li>
-  <li>상태 보고("S,...") 수신 방안 — 브릿지에 읽기 추가를 회로팀과 협의 후 결정 <span class="tag t-cl">Claude</span></li>
-  <li>이후: 벤치 검증 (설계문서 §6 목록 — ESC arm 시간, 모터 방향, RC failsafe 실측 등)</li>
+  <li>WS2812 컴파일 결과 받으면 → 에러 시 수정 / 통과 시 벤치 준비 단계 진입 <span class="tag t-cl">Claude</span></li>
+  <li>브릿지 되살리기(패키징·udev·상태피드백 읽기) — 노트북 세션 작업 목록에 등재됨, 완료 시 계약 대조 <span class="tag t-cl">Claude</span></li>
+  <li>스트립 픽셀 수 확정 시 노브 반영 / 라우터 기종 최종 확정 시 부품목록 갱신 <span class="tag t-cl">Claude</span></li>
+  <li>이후: <b>벤치 검증</b> (설계문서 §6 — ESC arm 시간, 모터 4개 방향, RC failsafe·조향 부호, M1 상시전원) → 수조 → 물 위 튜닝(선수 게인)</li>
 </ul>
 </div>
 
 <div class="card">
 <h2>🚧 양보 불가 4건 (회의 때 물러서면 안 되는 것 — 물리/규정)</h2>
 <ul style="list-style:none">
-  <li style="border:none">1. <b>ESC 존재</b> — T200은 브러시리스, ESC 없이 안 돎</li>
-  <li style="border:none">2. <b>신호 GND 공통</b> — 좌우 전원 분리는 유지하되 GND 한 가닥은 연결 (안 하면 신호 오동작)</li>
-  <li style="border:none">3. <b>무선 비상정지</b> — 룰북 의무. 버튼식만으론 규정 미달</li>
-  <li style="border:none">4. <b>스러스터 4개</b> — 확정 완료, 전원 설계에 반영돼야 함</li>
+  <li style="border:none">1. <b>ESC 존재</b> ✅ Basic ESC 확정 — 남은 건 전원 사슬 내 위치가 회로도에 반영되는 것</li>
+  <li style="border:none">2. <b>신호 GND 공통</b> ⏳ — 좌우 전원 분리는 유지하되 GND 한 가닥은 연결 (안 하면 신호 오동작)</li>
+  <li style="border:none">3. <b>무선 비상정지</b> ⏳ — 룰북 의무. 버튼식만으론 규정 미달. + 라우터 전원은 그 앞단 분기</li>
+  <li style="border:none">4. <b>스러스터 4개</b> ✅ 확정 — 전원 설계 반영 확인만 남음</li>
 </ul>
 <div class="small">그 외(배터리 2개 독립 구조, 부품 선정, 배치)는 회로팀 재량 존중</div>
 </div>
