@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LTE 라우터 — 왜 필요하고 왜 단순하지 않은가</title>
+<style>
+  :root { --bg:#f6f7f9; --card:#fff; --line:#e0e3e8; --tx:#22272e; --acc:#0a58ca; --warn:#c62828; --ok:#2e7d32; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:'Malgun Gothic','Apple SD Gothic Neo',sans-serif; background:var(--bg); color:var(--tx); padding:24px; line-height:1.7; }
+  .wrap { max-width:880px; margin:0 auto; }
+  h1 { font-size:1.45em; margin-bottom:4px; }
+  .sub { color:#667; font-size:.9em; margin-bottom:20px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:18px 20px; margin-bottom:16px; }
+  .card h2 { font-size:1.1em; margin-bottom:12px; padding-bottom:8px; border-bottom:2px solid var(--acc); }
+  .card.warn h2 { border-color:var(--warn); }
+  .flow { background:#22272e; color:#d5dce4; border-radius:8px; padding:14px 16px; font-family:Consolas,monospace; font-size:.84em; overflow-x:auto; white-space:pre; margin:10px 0; }
+  table { border-collapse:collapse; width:100%; margin:10px 0; font-size:.92em; }
+  th,td { border:1px solid var(--line); padding:7px 10px; text-align:left; }
+  th { background:#f0f2f5; }
+  b.hl { background:#fff3cd; padding:0 4px; border-radius:3px; }
+  .num { display:inline-block; background:var(--acc); color:#fff; border-radius:50%; width:22px; height:22px; text-align:center; line-height:22px; font-size:.8em; margin-right:8px; flex-shrink:0; }
+  .warn .num { background:var(--warn); }
+  .item { display:flex; align-items:flex-start; padding:8px 0; border-bottom:1px dashed #eef0f3; }
+  .item:last-child { border-bottom:none; }
+  .small { font-size:.85em; color:#667; margin-top:8px; }
+  .ok { color:var(--ok); font-weight:bold; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>📡 LTE 라우터 — 왜 필요하고, 왜 단순하지 않은가</h1>
+<div class="sub">2026-08-10 · 팀 공유용 · 근거 문서: docs/문제와작업/SSH환경구축_프롬프트.md, docs/전달용/부품_추천목록.md §9-2</div>
+
+<div class="card">
+<h2>한 문장 요약</h2>
+<p><b>배가 경기 내내 인터넷이 필요한데(핵심은 GPS 정밀도), 핫스팟은 코스의 1/4도 못 덮어서 배에 LTE 라우터를 싣는다.</b><br>
+다만 이건 부품 하나 추가가 아니라 — 규정(비상정지)·안전(RC 조종)·정밀도(GPS)·환경(열/방수) 4개 제약이 얽힌 통합 문제다.</p>
+</div>
+
+<div class="card">
+<h2>1. 왜 필요한가</h2>
+
+<p><b>① 진짜 이유 = NTRIP (GPS 보정 데이터)</b></p>
+<div class="flow">인터넷의 보정 서버 ──▶ 배 노트북 ──▶ GPS 수신기     ※ 경기 내내 초당 5회씩 계속
+</div>
+<table>
+<tr><th>상태</th><th>GPS 오차</th><th>결과</th></tr>
+<tr><td>보정 수신 중 (RTK FIXED)</td><td class="ok">±1.5cm</td><td>도킹·게이트 정밀 통과 가능</td></tr>
+<tr><td>인터넷 끊김</td><td style="color:var(--warn)"><b>±3~5m로 추락</b></td><td>배가 <b>엉뚱한 곳을 "정확한 위치"로 믿고</b> 주행 — 에러 없이 조용히 틀리는 최악 유형</td></tr>
+</table>
+
+<p><b>② 물가에서 배를 조작해야 함 (SSH)</b> — 배 노트북은 방수 박스 안이라 화면·키보드 접근 불가. launch 실행, 로그 확인, 그리고 <b class="hl">웨이포인트 녹화(코스 각 지점에 배를 몰고 가서 좌표를 찍는 작업)</b>가 전부 원격으로 이뤄져야 함.</p>
+
+<p><b>③ 핫스팟으로는 안 되는 이유 — 숫자</b></p>
+<table>
+<tr><th></th><th>거리</th></tr>
+<tr><td>대회 코스 (실측 waypoints 기준)</td><td>남북 106m · 동서 65m · <b>최대 116m</b></td></tr>
+<tr><td>휴대폰 핫스팟 실외 실효</td><td><b>약 20~30m</b></td></tr>
+</table>
+<p class="small">※ 안전은 라우터에 안 걸려 있음: RC 조종기는 별도 무선, 블랙박스는 배 안에 저장. 라우터가 죽어도 배는 자율로 계속 가고 RC로 회수 가능. 죽는 건 "정밀도"와 "보이는 것".</p>
+</div>
+
+<div class="card warn">
+<h2>2. 소프트 쪽이 단순하지 않은 이유 (4)</h2>
+
+<div class="item"><span class="num">1</span><div><b>끊김의 결과가 종류별로 다름.</b> SSH 끊김 = 안 보일 뿐(무해). NTRIP 끊김 = GPS가 조용히 부정확해짐(위험). 같은 링크의 두 역할이라 "링크 살았나"만 보면 안 되고, 각각의 실패를 따로 감시·대응해야 함.</div></div>
+
+<div class="item"><span class="num">2</span><div><b>통신사 LTE는 밖에서 배로 못 들어옴 (CGNAT).</b> 배가 인터넷으로 나가는 건 됨(NTRIP OK). 근데 물가에서 배로 접속(SSH)하려면 주소가 없음 → <b>Tailscale VPN 한 겹 추가</b>가 필수고, 물가 기기도 인터넷이 있어야 함.</div></div>
+
+<div class="item"><span class="num">3</span><div><b>주소·세션 불안정.</b> IP가 재접속마다 바뀌고, 원격 터미널에서 launch·키 입력(웨이포인트 녹화) 전부 실제로 되는지 검증 필요. "설치했으니 되겠지"가 안 통하는 영역.</div></div>
+
+<div class="item"><span class="num">4</span><div><b>검증 불가 변수 하나에 계획 전체가 걸림.</b> 대회장 물 위의 셀 신호 세기는 <b class="hl">답사 실측 전까지 아무도 모름.</b> 그래서 비싼 장비부터 사면 안 되고, 싼 걸로 검증 먼저(아래 전략).</div></div>
+</div>
+
+<div class="card warn">
+<h2>3. 회로 쪽이 단순하지 않은 이유 (4)</h2>
+
+<div class="item"><span class="num">1</span><div><b>전원 — 두 가지 함정.</b> ⓐ LTE 송신 전류는 스파이크성이라 아두이노와 같은 5V를 쓰면 순간 전압 강하로 <b>제어기가 리셋될 수 있음</b> → 라우터 전용 변환기(UBEC) 분리. ⓑ 분기 위치가 규정과 얽힘 — 비상정지는 "추진 전원" 차단인데, 라우터를 그 뒤에 물리면 <b class="hl">비상정지 순간 통신까지 죽어서 배 회수·진단이 불가</b> → 비상정지 릴레이 <b>앞단</b>에서 분기해야 함.</div></div>
+
+<div class="item"><span class="num">2</span><div><b>좁은 배에 전파 3개 공존.</b> RC 조종기(2.4GHz — 수동·비상의 생명선) + LTE + WiFi. 라우터가 RC를 간섭하면 <b>안전 계층이 흔들림.</b> 대책: 안테나 50cm~1m 이격(선수/선미 반대편), WiFi는 5GHz만 켜기. 근데 이격하려고 안테나 케이블을 길게 빼면 신호 손실 — <b class="hl">이격은 배치로, 케이블은 1m 이내로</b> 상충을 조율해야 함.</div></div>
+
+<div class="item"><span class="num">3</span><div><b>열.</b> 한여름 밀폐 방수박스 + ESC 4개(주 발열원)와 동거 불가 → 구획 분리. 검증용 M1은 "배터리 제거 후 상시전원" 개조가 전제인데 <b>기종·개체별로 부팅 거부 사례가 있음</b> → 구매 후 벤치 검증 전까진 미확정.</div></div>
+
+<div class="item"><span class="num">4</span><div><b>방수 관통.</b> 안테나를 박스 밖으로 빼려면 벽에 구멍 = 방수 취약점. SMA 벌크헤드 커넥터로 처리하되 관통부가 늘수록 침수 위험도 늘어남.</div></div>
+</div>
+
+<div class="card">
+<h2>4. 그래서 전략 — 싸게 검증하고, 되면 투자</h2>
+<table>
+<tr><th></th><th>A트랙 (지금)</th><th>B트랙 (검증 후)</th></tr>
+<tr><td>기종</td><td>Netgear M1 (중고 수만원대)</td><td>Teltonika RUTX11 (산업용)</td></tr>
+<tr><td>목적</td><td><b>개념 검증</b>: 대회장 셀 커버리지·NTRIP 유지·상시전원 개조 성공 여부</td><td>본격 운용: 4S 직결·외장 SMA·알루미늄 방열</td></tr>
+<tr><td>판단 기준</td><td colspan="2">A트랙 검증(답사 실측 포함) 통과 후에만 B 투자 — <b>미검증 전제에 큰돈 안 박는다</b></td></tr>
+</table>
+<p class="small">필요 부품 목록·설계 상세: <b>docs/전달용/부품_추천목록.md §9-2</b> / 진행 상태: <b>docs/문제와작업/회로펌웨어_현황판.html</b></p>
+</div>
+
+</div>
+</body>
+</html>
