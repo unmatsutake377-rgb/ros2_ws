@@ -72,6 +72,22 @@ TURN_TIMEOUT = 90.0
 # 담당 노드가 없는 모드 = 순수 회피 구간. 여기서만 폴백을 낸다. (CLAUDE.md 3-6)
 FALLBACK_MODES = (5, 8)
 
+# 🚀 자율 시작 게이트: 아두이노 모드(ssf_bridge /boat_mode, Int32). 0=WAIT 1=MANUAL 2=AUTO.
+#    상수 공유 모듈화는 대회 전 금지(CLAUDE.md 3-9) → 여기 인라인(값은 ssf_bridge status_parser 와 일치).
+MODE_AUTO = 2
+
+
+def mission_should_run(boat_mode, require_auto, mode_auto=MODE_AUTO):
+    """미션 FSM(웨이포인트 전진)을 돌려도 되나 — ROS 비의존 순수 판정.
+
+    require_auto=False → 항상 True (아두이노 없이 벤치 테스트용).
+    require_auto=True  → boat_mode 가 AUTO(2)일 때만. WAIT/MANUAL/None(모름) 이면 False.
+      → 기본이 '안 돈다'라 안전하다: RC 를 AUTO 로 넘기기 전엔 미션이 전진하지 않는다.
+    """
+    if not require_auto:
+        return True
+    return boat_mode == mode_auto
+
 # 위경도 → 로컬 미터 근사
 M_PER_DEG_LAT = 110540.0
 M_PER_DEG_LON_EQ = 111320.0
@@ -104,6 +120,10 @@ class NorthGoalAngle(Node):
         # GPS 필터 (fix_is_usable 통과분에 품질·이상치·지터 처리)
         self.gps_cov_threshold = float(self.declare_parameter('gps_cov_threshold', 2.0).value)
         self.gps_max_speed_mps = float(self.declare_parameter('gps_max_speed_mps', 15.0).value)
+
+        # 🚀 자율 시작 게이트: True 면 RC 모드가 AUTO(/boat_mode==2) 여야 미션이 전진한다.
+        #    기본 True = 안전(수동 이동 중 미션 스킵 방지). 벤치(아두이노 없음)는 false 로.
+        self.require_auto = bool(self.declare_parameter('require_boat_mode_auto', True).value)
         # 경기장 폴리곤: [lat1, lon1, lat2, lon2, ...] 평탄 배열.
         # ⚠️ 실측 필요 — 대회장 경계 좌표를 아직 모른다. 비어 있으면 geofence 는 꺼진다.
         self.geofence_polygon = list(
@@ -139,6 +159,8 @@ class NorthGoalAngle(Node):
         # ---- 구독 ----
         self.create_subscription(NavSatFix, '/ublox_gps_node/fix', self.gps_cb, qos)
         self.create_subscription(Float64, '/imu/yaw', self.yaw_cb, qos)   # 경계 상대방위 계산용
+        # 🚀 아두이노 모드(ssf_bridge 발행). AUTO 일 때만 미션 전진. RELIABLE 발행이라 qos 호환.
+        self.create_subscription(Int32, '/boat_mode', self.boat_mode_cb, qos)
 
         # ---- 상태 ----
         self.lat, self.lon = 0.0, 0.0
@@ -156,6 +178,7 @@ class NorthGoalAngle(Node):
         self.integral_xte = 0.0          # ILOS 적분 (WP 전환 시 리셋)
         self.prev_lat = None             # 경로선 시작점(이전 WP). None=첫 구간
         self.prev_lon = None
+        self.boat_mode = None            # ssf_bridge /boat_mode (0 WAIT/1 MANUAL/2 AUTO). None=아직 모름
 
         self.create_timer(self.period_sec, self.timer_cb)
 
@@ -237,6 +260,13 @@ class NorthGoalAngle(Node):
     def yaw_cb(self, msg):
         self.yaw = float(msg.data)
         self.last_yaw_t = time.monotonic()
+
+    def boat_mode_cb(self, msg):
+        # 0=WAIT 1=MANUAL 2=AUTO. AUTO 로 바뀌면 미션이 WP0 부터 시작한다(timer_cb 게이트).
+        prev = self.boat_mode
+        self.boat_mode = int(msg.data)
+        if prev != self.boat_mode and self.boat_mode == MODE_AUTO:
+            self.get_logger().info("🚀 AUTO 전환 감지 → 미션 시작 (WP0 부터)")
 
     # ───────────────────────── Geofence ─────────────────────────
     def _local_xy(self, lat, lon):
@@ -363,6 +393,21 @@ class NorthGoalAngle(Node):
         #     도킹 중 조향이 GPS 방위로 튄다. 원자적 한 쌍이라 같은 커밋에서 고친다.
         if wp_mode in FALLBACK_MODES:
             self.pub_candidate.publish(Float32(data=CANDIDATE_INVALID))
+
+        # 🚀 자율 시작 게이트 — AUTO 가 아니면 미션을 '전진'시키지 않는다(WP0 에서 대기).
+        #    수동(RC)으로 시작점까지 몰고 가는 동안 GPS 도착/타임아웃으로 wp_idx 가 새는 걸 막는다.
+        #    (위에서 방위·거리·wp_mode 는 계속 낸다 — 정보용. 모터는 아두이노 MANUAL 이 무시한다.)
+        #    RC 모드를 AUTO 로 넘기는 순간부터 아래 도착/타임아웃 로직이 살아나 WP0 부터 진짜 시작한다.
+        if not mission_should_run(self.boat_mode, self.require_auto):
+            self.wp_enter_time = None         # 타임아웃 시계 리셋 → AUTO 시작 시점부터 카운트
+            self.t_start = None               # dwell 리셋
+            self.integral_xte = 0.0           # LOS 적분 리셋
+            self.prev_lat = self.prev_lon = None   # 경로선 시작점 = AUTO 전환 시점 위치
+            self.get_logger().info(
+                "🕹 AUTO 대기 — RC 모드를 AUTO 로 넘기면 WP0 부터 자율 시작 "
+                "(벤치는 require_boat_mode_auto:=false 또는 /boat_mode 2 발행)",
+                throttle_duration_sec=5.0)
+            return
 
         now = time.monotonic()               # 벽시계 금지 (CLAUDE.md 1-5)
 

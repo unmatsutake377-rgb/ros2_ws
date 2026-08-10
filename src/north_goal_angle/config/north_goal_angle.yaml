@@ -13,6 +13,10 @@
     gps_cov_threshold: 2.0         # position_covariance 이보다 크면 그 프레임 버림 (RTK 품질)
     gps_max_speed_mps: 15.0        # 두 fix 간 속도 상한 — 넘으면 순간이동(멀티패스)으로 버림
 
+    # ---- 🚀 자율 시작 게이트 ----
+    require_boat_mode_auto: true   # true=RC 모드 AUTO(/boat_mode==2)여야 미션 전진(수동 이동 중 스킵 방지).
+                                   #   벤치(아두이노 없음)는 false 로, 또는 ros2 topic pub /boat_mode 2
+
     # ---- Geofence (경계 이탈 = 실격) ----
     # 경기장 폴리곤: [lat1, lon1, lat2, lon2, ...] 평탄 배열. 최소 3점(=6개 수).
     # ⚠️ 실측 필요 — 대회장 경계 좌표를 아직 모른다. 비어 있으면 geofence 는 꺼진다(=빈 배열).
