@@ -518,6 +518,35 @@ super().__init__('ship_turn')   # ← 복붙 실수. 파일은 ship_back 인데 
 | `/gates_passed` | `Int32` | `ship_gate` | **5단계** | `blackbox` |
 | `/geofence_state` | `Float32MultiArray` | `north_goal_angle` (**6a**) | **6a 발행 / 6a-2 구독** | `ship_direction` (**6a-2**) |
 | `/buoy_color` | `String` | **비전(5단계)** | 6c 구독 | `ship_turn` (**6c**) |
+| `/boat_mode` | `Int32` | `ssf_bridge` | **2026-08-10** | `mission_monitor` |
+| `/boat_cmd_watchdog` | `Bool` | `ssf_bridge` | **2026-08-10** | `mission_monitor` |
+| `/boat_estop` | `Bool` | `ssf_bridge` | **2026-08-10** | `mission_monitor` |
+| `/boat_id` | `Int32` | `ssf_bridge` | **2026-08-10** | `mission_monitor` |
+
+#### 🔒 `/boat_*` 계약 — 펌웨어 enum 과 **값까지** 같다
+
+`ssf_bridge` 가 펌웨어 상태 줄 `S,mode,watchdog,boatId,estop,FL,FR,RL,RR`(10Hz)을 파싱해 발행한다.
+
+| 토픽 | 값 |
+|---|---|
+| `/boat_mode` | **0=WAIT(대기·중립) 1=MANUAL(RC) 2=AUTO(브릿지 명령)** |
+| `/boat_id` | **0=A 1=B 2=FAULT**(ID 핀 이상 → 펌웨어가 무조건 중립) |
+| `/boat_cmd_watchdog` | `true` = 명령 500ms 무수신 → 펌웨어가 중립으로 잡는 중 |
+| `/boat_estop` | `true` = 비상정지 눌림 |
+
+🚨 **번호를 여기서 새로 매기지 않는다.** `ssf_boat.ino` 의 `enum Mode`·`enum BoatId` 와
+값을 그대로 쓴다. 변환표를 하나 끼우면 펌웨어가 바뀌었을 때 **두 곳이 조용히 어긋난다** —
+`ship_dock` 의 `9 vs 7` 과 같은 유형이다.
+
+🚨 **발행 QoS 는 RELIABLE 이다** (관찰 토픽인데도). BEST_EFFORT 로 두면
+`ros2 topic echo /boat_mode` 가 기본 RELIABLE 구독이라 **아무것도 안 나온다** —
+장비를 붙여놓고 "브릿지가 죽었나" 를 한참 뒤지게 된다. 구현 중 실제로 겪었다.
+RELIABLE 발행자는 BEST_EFFORT 구독자와도 호환되므로 잃는 게 없다.
+
+🚨 **모드 전환 통로는 조종기뿐이다.** 노트북에서 `/boat_mode` 를 **바꾸는** 경로는
+일부러 만들지 않았다. 두 곳에서 모드를 정하면 조종기 스위치 위치가 배 상태를 뜻하지 않게 된다.
+넣게 된다면 **단방향(자율 해제만, AUTO 전환 불가) + 조종기 우선**이 유일하게 안전한 모양이다.
+근거와 대안은 `docs/절차/boat_launch_checklist.md` §"배 세우는 법 3가지".
 
 **🚨 `/buoy_color`** (String: `"red"`/`"green"`/`"white"`): `ship_turn`(6c)이 회전 방향을 정하는 데 쓴다
 (빨강·초록=시계, 흰색=반시계). **아직 발행자가 없다** — 5단계 비전이 발행해야 한다. 없으면 ship_turn 은

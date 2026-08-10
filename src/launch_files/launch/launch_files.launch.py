@@ -16,6 +16,7 @@ def generate_launch_description():
     dir_ship_direction = get_package_share_directory('ship_direction')
     dir_ship_goal = get_package_share_directory('ship_goal_angle')
     dir_realsense = get_package_share_directory('realsense2_camera')
+    dir_bridge = get_package_share_directory('ssf_bridge')
 
     # 비전 공통 설정 (image_topic, hfov_deg, debug_view).
     # 3-4 이후로는 launch 가 노드를 직접 띄우므로 파라미터가 **그대로 닿는다** —
@@ -201,5 +202,19 @@ def generate_launch_description():
             executable='motor_control',
             name='motor_control',
             output='screen'
+        ),
+
+        # ============================================================
+        # 12) 시리얼 브릿지 (Motor_run → 아두이노 Mega, 상태 → /boat_mode)
+        # ============================================================
+        # 🚨 이게 없으면 motor_control 이 Motor_run 을 내도 **받는 쪽이 없다.**
+        #    사슬의 마지막 조각이다: motor_control → Motor_run → [브릿지] → Mega
+        # 아두이노가 아직 없어도 안전하다 — 브릿지 launch 가 포트 존재를 먼저 보고
+        # 없으면 노드를 안 띄우고 넘어간다(예외를 던지면 launch 전체가 죽는다.
+        # ntrip_client 가 파일 하나 못 찾아 노드 15개를 같이 죽인 사고가 실제로 있었다).
+        IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(
+                os.path.join(dir_bridge, 'launch', 'ssf_bridge.launch.py')
+            )
         ),
     ])

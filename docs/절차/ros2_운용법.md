@@ -128,11 +128,23 @@ ros2 launch launch_files launch_files.launch.py
 ros2 launch ssf_tools ssf_tools.launch.py
 ```
 
-아두이노 통신(micro-ROS):
+미션 모니터 — 지금 무슨 미션이고 배가 무슨 모드인가 (2026-08-10 신설):
 ```bash
-ros2 run micro_ros_agent micro_ros_agent serial --dev /dev/ttyACM0
+ros2 run ssf_tools mission_monitor
 ```
-⚠️ 포트(`/dev/ttyACM0`)는 실제 연결 후 확인.
+**구독 전용이라 두 대에서 동시에 띄워도 안전하다.**
+🚨 `healthcheck` 는 `/health_ok` 를 **발행**하므로 두 대에서 띄우면 안 된다(발행자 2개).
+
+~~아두이노 통신(micro-ROS)~~ → **이제 필요 없다.**
+**[2026-08-10 정정]** 여기에 `micro_ros_agent` 를 띄우라고 적혀 있었는데,
+**micro-ROS 는 2026-07-25 에 폐기됐다**(→ 시리얼 브릿지 방식, `arduino/README.md`).
+그대로 따라 하면 없는 패키지를 찾다가 시간만 버린다.
+지금은 **`ssf_bridge` 가 메인 launch 에 들어 있어 자동으로 뜬다.** 따로 띄울 필요 없다.
+따로 띄우고 싶을 때만:
+```bash
+ros2 launch ssf_bridge ssf_bridge.launch.py
+```
+⚠️ 포트는 udev 로 `/dev/ttyMEGA` 에 고정할 것. 없으면 **노드를 안 띄우고 건너뛴다**(launch 는 안 죽는다).
 
 ※ `basic_image_subscriberhsv` 는 HSV 튜닝 전용이라 일부러 launch 에서 뺐다. 튜닝할 때만 따로 띄운다.
 

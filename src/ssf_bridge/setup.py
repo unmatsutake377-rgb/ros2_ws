@@ -2,7 +2,7 @@ from setuptools import setup
 import os
 from glob import glob
 
-package_name = 'ssf_tools'
+package_name = 'ssf_bridge'
 
 setup(
     name=package_name,
@@ -12,22 +12,20 @@ setup(
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
+        # 🚨 glob('launch/*') 로 두면 __pycache__ 까지 잡혀 빌드가 깨진다
+        #    (ntrip_client 에서 실제로 겪음). 확장자를 명시한다.
         (os.path.join('share', package_name, 'launch'), glob('launch/*.launch.py')),
-        (os.path.join('share', package_name, 'config'), glob('config/*.yaml')),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
     maintainer='SSF',
     maintainer_email='you@example.com',
-    description='SSF 검증 도구: blackbox(10Hz CSV 로깅) + healthcheck. 둘 다 구독 전용.',
+    description='Motor_run ↔ Arduino Mega 시리얼 브릿지 (명령 송신 + 상태 수신).',
     license='MIT',
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'blackbox = ssf_tools.blackbox:main',
-            'healthcheck = ssf_tools.healthcheck:main',
-            # 🚨 구독 전용(발행 0). healthcheck 와 달리 **두 대에서 동시에 띄워도 안전**하다.
-            'mission_monitor = ssf_tools.mission_monitor:main',
+            'bridge = ssf_bridge.bridge:main',
         ],
     },
 )
