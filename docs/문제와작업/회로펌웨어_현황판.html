@@ -68,9 +68,8 @@
   <li><b>③ 전원 설계 회의 잔여</b> (전원문서_검토.md §3): <b class="hl">무선 비상정지(규정 의무)</b> + 좌우 동시 차단 / 신호 GND 한 가닥 공통 / Mega·수신기 전원 출처 <span class="tag t-cir">회로팀</span></li>
   <li><b>④ A트랙 라우터 부품 구매</b> (부품목록 §9-2 목록 7종) → M1 배터리 제거 상시전원 벤치 검증 → 대회장 답사 때 셀 커버리지 확인 <span class="tag t-me">나</span></li>
   <li><b>⑤ WS2812 스트립 실물 확인</b> — 픽셀 수·전원 위치 (STRIP_NUM_PIXELS 노브 반영용) <span class="tag t-cir">회로팀</span></li>
-  <li><b>⑥ 브릿지 실행법 전달</b> — Ubuntu에선 <code>python3 브릿지.py --port /dev/ttyACM0</code> <span class="tag t-cir">회로팀</span></li>
 </ul>
-<div class="small">※ 해결 완료로 목록에서 빠진 것: 보드 확정(Mega), ESC 모델(Basic ESC), 수신기(FS-iA6), Mega 스케치(작년 발굴본 판명 — 우리 완성본이 담당), 핀표(펌웨어 §1 표 기준으로 역전 확정)</div>
+<div class="small">※ 해결 완료로 목록에서 빠진 것: 보드 확정(Mega), ESC 모델(Basic ESC), 수신기(FS-iA6), Mega 스케치(작년 발굴본 판명 — 우리 완성본이 담당), 핀표(펌웨어 §1 표 기준으로 역전 확정), <b>브릿지(08-10 — 회로팀 전달 불필요해짐)</b>: 작년 발굴본을 우리가 <code>src/ssf_bridge/</code> 패키지로 되살려 <b>메인 launch 에 연결</b>했다. 실행법은 <code>ros2 launch ssf_bridge ssf_bridge.launch.py</code> 이고 포트는 udev 로 <code>/dev/ttyMEGA</code> 에 고정한다(<code>--port /dev/ttyACM0</code> 방식 아님). 아두이노가 없으면 그 노드만 건너뛴다. 아두이노 없이 검증: <code>python3 tools/fake_mega.py</code></div>
 </div>
 
 <div class="card wait">
