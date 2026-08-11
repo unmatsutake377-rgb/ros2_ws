@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>회로팀용 — 아두이노 Mega 업로드 안내</title>
+<style>
+  :root { --bg:#f6f7f9; --card:#fff; --line:#e0e3e8; --tx:#22272e; --acc:#0a58ca; --warn:#c62828; --ok:#2e7d32; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:'Malgun Gothic','Apple SD Gothic Neo',sans-serif; background:var(--bg); color:var(--tx); padding:24px; line-height:1.7; }
+  .wrap { max-width:900px; margin:0 auto; }
+  h1 { font-size:1.45em; margin-bottom:4px; }
+  .sub { color:#667; font-size:.9em; margin-bottom:20px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:18px 20px; margin-bottom:16px; }
+  .card h2 { font-size:1.1em; margin-bottom:12px; padding-bottom:8px; border-bottom:2px solid var(--acc); }
+  .card.warn h2 { border-color:var(--warn); }
+  .card.ok h2 { border-color:var(--ok); }
+  .flow { background:#22272e; color:#d5dce4; border-radius:8px; padding:14px 16px; font-family:Consolas,monospace; font-size:.85em; overflow-x:auto; white-space:pre; margin:10px 0; }
+  table { border-collapse:collapse; width:100%; margin:10px 0; font-size:.92em; }
+  th,td { border:1px solid var(--line); padding:7px 10px; text-align:left; vertical-align:top; }
+  th { background:#f0f2f5; }
+  code { background:#eef1f5; padding:1px 5px; border-radius:4px; font-family:Consolas,monospace; font-size:.92em; }
+  b.hl { background:#fff3cd; padding:0 4px; border-radius:3px; }
+  .step { display:flex; align-items:flex-start; padding:8px 0; border-bottom:1px dashed #eef0f3; }
+  .step:last-child { border-bottom:none; }
+  .n { display:inline-block; background:var(--acc); color:#fff; border-radius:50%; width:24px; height:24px; text-align:center; line-height:24px; font-size:.82em; margin-right:10px; flex-shrink:0; }
+  .warn .n { background:var(--warn); }
+  .small { font-size:.85em; color:#667; margin-top:8px; }
+  .yes { color:var(--ok); font-weight:bold; }
+  .no { color:var(--warn); font-weight:bold; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>🔌 회로팀용 — 아두이노 Mega 업로드 안내</h1>
+<div class="sub">2026-08-11 · 펌웨어 파일은 소프트팀 제공, <b>업로드·배선은 회로팀</b> · 파일: <code>arduino/ssf_boat/ssf_boat.ino</code></div>
+
+<div class="card warn">
+<h2>0. 🚨 먼저 — 무엇을 아두이노에 넣는가</h2>
+<table>
+<tr><th>파일</th><th>언어</th><th>어디서 도나</th><th>아두이노에 넣나</th></tr>
+<tr><td><b><code>ssf_boat.ino</code></b></td><td>C++</td><td><b>아두이노 Mega</b></td><td class="yes">✅ 이것만</td></tr>
+<tr><td>브릿지 (<code>src/ssf_bridge/</code>)</td><td>파이썬</td><td>배 노트북 (Ubuntu, ROS2)</td><td class="no">❌ 넣을 수 없음</td></tr>
+</table>
+<p>브릿지는 <b>파이썬</b>이라 아두이노 IDE에서 컴파일 자체가 불가능하다. 라이브러리를 빼고 넣어도 안 되는 이유가 이것이다.
+둘은 <b>짝</b>이지 대체재가 아니다:</p>
+<div class="flow">노트북:   ROS2 토픽 ──브릿지(파이썬)──▶ USB로 "L1500,R1500" 전송
+아두이노: 그 글자를 받아 ──ssf_boat.ino──▶ ESC 4개 구동</div>
+<p><b>브릿지 쪽은 회로팀이 손댈 게 없다.</b> 2026-08-10 에 소프트팀이 패키지로 만들어 메인 launch 에 연결해 뒀다
+(<code>ros2 launch ssf_bridge ssf_bridge.launch.py</code>, 포트는 udev 로 <code>/dev/ttyMEGA</code> 고정).
+<b class="hl">회로팀이 할 일은 .ino 업로드와 배선뿐이다.</b></p>
+<p class="small">참고: <b>Mega 2560 에는 micro-ROS 를 올릴 수 없다.</b> 8비트 AVR이라 RAM이 8KB뿐인데 micro-ROS는 수십 KB가 필요하다. 그래서 시리얼 텍스트 방식으로 설계했다.</p>
+</div>
+
+<div class="card">
+<h2>1. 준비 (한 번만)</h2>
+<div class="step"><span class="n">1</span><div>Arduino IDE 설치</div></div>
+<div class="step"><span class="n">2</span><div><b>툴 → 보드 → Arduino AVR Boards → "Arduino Mega or Mega 2560"</b> 선택<br><span class="small">프로세서: "ATmega2560 (Mega 2560)"</span></div></div>
+<div class="step"><span class="n">3</span><div><b>라이브러리 — 둘 중 하나</b><br>
+· <b>(권장)</b> 라이브러리 매니저에서 <b>"Adafruit NeoPixel"</b> 설치 → WS2812 표시등 사용<br>
+· <b>(스트립 아직 없으면)</b> <code>ssf_boat.ino</code> 상단의 <code>#define LED_USE_WS2812 1</code> 을 <b class="hl">0 으로</b> 바꾸면 외부 라이브러리 없이 컴파일된다 (표시등만 단색 LED 방식으로 전환, 나머지 동작 동일)</div></div>
+</div>
+
+<div class="card">
+<h2>2. 업로드</h2>
+<div class="flow">파일 → 열기 → arduino/ssf_boat/ssf_boat.ino
+✓ 버튼(검증)으로 컴파일 확인  →  → 버튼(업로드)</div>
+<p>정상이면 <b>"프로그램 저장 공간 7420바이트(2%) 사용"</b> 비슷한 메시지가 나온다.</p>
+<p class="small">에러가 나면 <b>에러 메시지 전문</b>을 소프트팀에 전달할 것 (추측하지 말고 원문 그대로).</p>
+</div>
+
+<div class="card ok">
+<h2>3. 출력 확인 (시리얼 모니터)</h2>
+<p><b>툴 → 시리얼 모니터</b>, 속도 <b class="hl">115200</b> 선택.</p>
+<p>부팅 시:</p>
+<div class="flow">Boat ID: FAULT          ← 배 ID 스위치를 아직 안 달았으면 정상 (달면 A 또는 B)
+ESC armed.
+Setup done. Control loop start.</div>
+<p>이후 0.1초마다 상태 줄이 계속 나온다:</p>
+<div class="flow">S,0,0,2,0,1500,1500,1500,1500
+  │ │ │ │ └─────────────┴── 모터 4개 출력 µs (선수L,선수R,선미L,선미R)
+  │ │ │ └─ 비상정지 감지 (0/1)
+  │ │ └─── 배 ID (0=A, 1=B, 2=고장/미배선)
+  │ └───── 통신 워치독 발동 (0/1)
+  └─────── 모드 (0=대기, 1=수동RC, 2=자율)</div>
+<p><b>이 줄이 계속 나오면 펌웨어는 정상 동작 중이다.</b></p>
+</div>
+
+<div class="card warn">
+<h2>4. ⚠️ 벤치에서 모터가 안 도는 게 정상인 경우</h2>
+<p>부팅 직후 모드는 <b>0(대기)</b> 이고, 이때는 안전을 위해 <b class="hl">모든 모터가 중립(1500) 고정</b>이다.
+모터를 움직이려면 아래 중 하나가 필요하다:</p>
+<table>
+<tr><th>하려는 것</th><th>필요한 것</th></tr>
+<tr><td>수동 조종 시험</td><td><b>RC 수신기 연결 + 조종기 켜기</b> — 모드 스위치가 잡혀야 모드 1(수동)로 들어간다</td></tr>
+<tr><td>자율 명령 시험</td><td>모드 스위치를 자율 쪽(펄스 &lt; 1500µs)에 두고, 노트북 브릿지 또는 시리얼 모니터로 명령 전송</td></tr>
+</table>
+<p>시리얼 모니터로 직접 명령을 흉내낼 수도 있다 — 입력창에 <code>L1400,R1600</code> 입력 후 전송.
+(단 모드가 2(자율)일 때만 반영되고, 0.5초 안에 다음 명령이 안 오면 워치독이 중립으로 되돌린다)</p>
+<p><b>"모터가 안 돈다 = 고장" 이 아니다.</b> 상태 줄의 <b>첫 숫자(모드)</b>를 먼저 확인할 것.</p>
+</div>
+
+<div class="card">
+<h2>5. 핀 배정 (이 표대로 납땜)</h2>
+<table>
+<tr><th>신호</th><th>Mega 핀</th><th>비고</th></tr>
+<tr><td>RC 전후진 / 좌우 / 모드</td><td><b>2 / 3 / 18</b></td><td>🚨 이 셋은 <b>인터럽트 핀(2,3,18,19,20,21)</b>에서만 가능 — 바꾸려면 그 안에서</td></tr>
+<tr><td>ESC 선수L / 선수R / 선미L / 선미R</td><td>5 / 6 / 7 / 8</td><td></td></tr>
+<tr><td>WS2812 스트립 Din</td><td>40</td><td>스트립 사용 시</td></tr>
+<tr><td>(예비) 단색 LED 초록/노랑/빨강</td><td>22 / 24 / 26</td><td><code>LED_USE_WS2812 0</code> 일 때</td></tr>
+<tr><td>점검 LED</td><td>28</td><td></td></tr>
+<tr><td>배 ID A / B</td><td>34 / 36</td><td>DIP 스위치 → GND. <b>정확히 하나만 ON</b> (둘 다 / 둘 다 아님 = 고장 판정)</td></tr>
+<tr><td>비상정지 감지</td><td>38</td><td>릴레이 차단 시 LOW</td></tr>
+<tr><td class="no">사용 금지</td><td class="no">0, 1</td><td>USB 통신과 겹침</td></tr>
+</table>
+<ul style="list-style:none">
+  <li style="border:none">· Mega는 <b>5V 보드</b>라 RC 수신기 신호 직결 가능 (레벨 시프트 불필요)</li>
+  <li style="border:none">· <b>모든 GND(수신기·아두이노·ESC·전원) 공통 연결 필수</b></li>
+</ul>
+</div>
+
+<div class="card">
+<h2>6. 막히면 알려줄 것</h2>
+<table>
+<tr><th>증상</th><th>보내줄 정보</th></tr>
+<tr><td>컴파일 에러</td><td>에러 <b>메시지 전문</b></td></tr>
+<tr><td>업로드 에러</td><td>보드/포트 선택 상태 + 메시지</td></tr>
+<tr><td>시리얼 모니터에 아무것도 안 나옴</td><td>속도 115200 확인 → 그래도 없으면 알려줄 것</td></tr>
+<tr><td>상태 줄은 나오는데 모터가 안 돔</td><td><b>모드 숫자(첫 값)</b></td></tr>
+</table>
+</div>
+
+</div>
+</body>
+</html>
