@@ -9,6 +9,7 @@ from color_shape_detector.mode_gate import ModeGate
 from color_shape_detector.vision_geom import (
     DEFAULT_HFOV_DEG, angle_from_pixel,
 )
+from color_shape_detector import hsv_ranges
 
 import cv2
 import numpy as np
@@ -103,6 +104,13 @@ class ImageSubscriber(Node):
         self.hfov_deg = float(
             self.declare_parameter('hfov_deg', DEFAULT_HFOV_DEG).value)
 
+        # HSV 색 범위 — config/vision.yaml 의 hsv.* 가 단일 출처(hsv_ranges.py).
+        # 잘못된 값이면 기본값으로 되돌리고 ERROR 로 알린다(조용히 못 찾는 것 방지).
+        self.color_ranges = hsv_ranges.load(
+            lambda n, d: self.declare_parameter(n, d).value,
+            ("red", "green", "white"),
+            on_error=self.get_logger().error)
+
         self.found_in_frame = False
 
         # ★ 추가: WP 모드 초기값
@@ -175,13 +183,11 @@ class ImageSubscriber(Node):
         # =============================
         # 지원 색상
         # =============================
-        color_ranges = {
-            "red":     [([0, 140, 80], [5, 255, 255]),
-                       ([165, 140, 80], [180, 255, 255])],
-            "green":   [([60, 120,120], [85, 255, 255])],
-            "white":   [([5, 2, 230], [33, 30, 255]),
-                        ([75, 7, 60], [105, 45, 140])]
-        		}#부표용)
+        # HSV 범위는 **여기 없다** — config/vision.yaml 의 hsv.* 가 단일 출처다.
+        # 🚨 white 는 예전에 색상대 2개(5~33, 75~105)였는데, 그건 특정 조명 색조에
+        #    맞춘 흔적으로 보여 '색상 무관 + 저채도 + 고명도' 정의로 통일했다.
+        #    옛 값은 hsv_ranges.SUPERSEDED["white@turn"] 에 남겨 뒀다 — 실외에서 비교할 것.
+        color_ranges = self.color_ranges
 
 
         # ★ 현재 WP에서 사용할 색만 선택

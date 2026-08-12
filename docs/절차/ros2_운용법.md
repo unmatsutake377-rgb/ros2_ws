@@ -84,6 +84,30 @@ ros2 launch ssf_tools ssf_tools.launch.py
 CSV 에 값이 들어오는지로 **배선이 맞는지**를 눈으로 확인할 수 있다.
 (검증 예: `/imu/mag_heading` 를 쏘면 `imu_mag_heading` 컬럼이 찬다. 안 차면 이름이 어긋난 것이다.)
 
+**🎨 HSV 색 튜닝** (2026-08-12 도구 재작성):
+```bash
+ros2 run color_shape_detector basic_image_subscriberhsv --ros-args --params-file $(ros2 pkg prefix color_shape_detector)/share/color_shape_detector/config/vision.yaml
+```
+마스크를 **보면서** 잡는다 — 흰 부분이 검출되는 영역이다.
+
+| 조작 | 하는 일 |
+|---|---|
+| **마우스 클릭** | 그 픽셀이 들어오도록 범위를 넓힌다(여백 포함) |
+| 트랙바 | H/S/V 하한·상한 직접 조정 |
+| `c` / `n` | 다음 색 / 같은 색의 다음 범위(빨강은 2개) |
+| **`p`** | **vision.yaml 에 붙여넣을 줄을 출력** |
+| `r` / `q` | 원래값 복귀 / 종료(종료 시 전체 값을 찍어준다) |
+
+🚨 **값은 `config/vision.yaml` 의 `hsv.*` 한 곳에만 있다.** 파이썬 코드에 없다.
+   (예전엔 검출기 3개 파일에 따로, 게다가 **서로 다른 값**으로 박혀 있었다)
+
+⚠️ **실내에서 잡은 값은 실외에서 안 맞는다.** 햇빛에서 S·V 가 통째로 달라진다.
+   실내 튜닝은 '파이프라인이 도는지' 확인용이고, 최종값은 **실제 부표·실제 조명**에서 잡는다.
+
+🚨 검출기 시험은 **대회 launch 말고 카메라+검출기만** 띄운다.
+   전체 launch 를 켠 채 `/wp_mode` 를 손으로 쏘면 `north_goal_angle` 과 **발행자가 2개**가 되어
+   값이 섞인다.
+
 **순수 로직 테스트는 ROS 없이도 돈다** — 소싱조차 필요 없다:
 ```bash
 python3 src/ship_direction/test/test_failsafe_logic.py

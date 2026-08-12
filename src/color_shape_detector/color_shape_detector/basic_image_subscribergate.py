@@ -9,6 +9,7 @@ from color_shape_detector.mode_gate import ModeGate
 from color_shape_detector.vision_geom import (
     DEFAULT_HFOV_DEG, angle_from_pixel,
 )
+from color_shape_detector import hsv_ranges
 
 import cv2
 import numpy as np
@@ -105,6 +106,13 @@ class ImageSubscriber(Node):
         self.hfov_deg = float(
             self.declare_parameter('hfov_deg', DEFAULT_HFOV_DEG).value)
 
+        # HSV 색 범위 — config/vision.yaml 의 hsv.* 가 단일 출처(hsv_ranges.py).
+        # 잘못된 값이면 기본값으로 되돌리고 ERROR 로 알린다(조용히 못 찾는 것 방지).
+        self.color_ranges = hsv_ranges.load(
+            lambda n, d: self.declare_parameter(n, d).value,
+            ("red", "green"),
+            on_error=self.get_logger().error)
+
         # 내부 상태
         self.last_log_time = time.time()
         self.found_in_frame = {'red': False, 'green': False}
@@ -180,15 +188,9 @@ class ImageSubscriber(Node):
         img_h, img_w = cv_image.shape[:2]
 
         # ----------------------------
-        # HSV ranges (NEVER remove lines)
-        # ----------------------------
-        color_ranges = {
-            "red":     [([0, 140, 80], [5, 255, 255]),
-                       ([165, 140, 80], [180, 255, 255])],
-            "green":   [([60, 120,120], [85, 255, 255])]
-            #"white":   [([5, 2, 230], [33, 30, 255]),
-                        #([75, 7, 60], [105, 45, 140])]
-        		}#부표용)
+        # HSV 범위는 **여기 없다** — config/vision.yaml 의 hsv.* 파라미터가 단일 출처다.
+        # (2026-08-12: 같은 색이 검출기 3개에 서로 다른 값으로 박혀 있었다. hsv_ranges.py 주석 참고)
+        color_ranges = self.color_ranges
         # 색상별 best 후보
         # V1: 'distance' → 'area'. 후보 선택 기준을 '가장 가까운 것(depth)' 에서
         #     '가장 큰 것(면적)' 으로 바꾼다 — 같은 크기 표식이면 큰 쪽이 가까운 쪽이다.

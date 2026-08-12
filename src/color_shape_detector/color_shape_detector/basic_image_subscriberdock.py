@@ -9,6 +9,7 @@ from color_shape_detector.mode_gate import ModeGate
 from color_shape_detector.vision_geom import (
     DEFAULT_HFOV_DEG, angle_from_pixel,
 )
+from color_shape_detector import hsv_ranges
 from color_shape_detector.dock_logic import (
     VALID_COLORS, VALID_SHAPES, classify_shape, DetectionConfirmer,
 )
@@ -137,17 +138,16 @@ class ImageSubscriber(Node):
         self.y_zone_lo = float(self.declare_parameter('y_zone_lo', 0.15).value)
         self.y_zone_hi = float(self.declare_parameter('y_zone_hi', 0.55).value)
 
-        # ---- D5: HSV 5색 슬롯 (자리표시자 — 야외 캘리브 필요) ----
-        # 미션 표식 색이 당일 공지되므로 5색 슬롯을 전부 열어둔다.
-        # ⚠️ 아래 값은 실내 캘리브 잔재/추정치다. 야외에서 subscriberhsv 로 재확정할 것.
-        self.color_ranges = {
-            "red":    [([0, 80, 200], [5, 255, 255]), ([165, 80, 200], [180, 255, 255])],
-            "orange": [([3, 130, 100], [20, 255, 255])],
-            "yellow": [([21, 120, 60], [37, 255, 255])],
-            "green":  [([28, 30, 235], [40, 100, 255])],
-            "blue":   [([130, 18, 160], [175, 60, 200])],
-            "white":  [([0, 0, 220], [180, 40, 255])],
-        }
+        # ---- D5: HSV 6색 슬롯 — config/vision.yaml 의 hsv.* 가 단일 출처 ----
+        # 미션 표식 색이 당일 아침 공지되므로 슬롯을 전부 열어둔다.
+        # 🚨 [2026-08-12] 여기 박혀 있던 값 중 red·green 이 gate/turn 과 **달랐다**:
+        #    red 는 V≥200 이라 어두운 빨강을 놓쳤고, green 은 H 28~40(연두)에 S≤100 이라
+        #    **선명한 초록을 오히려 거부**했다 — 같은 부표를 게이트는 보고 도킹은 못 봤다.
+        #    버린 값은 hsv_ranges.SUPERSEDED 에 남겨 뒀다.
+        self.color_ranges = hsv_ranges.load(
+            lambda n, d: self.declare_parameter(n, d).value,
+            hsv_ranges.VALID_COLORS,
+            on_error=self.get_logger().error)
 
 
     # ============================================
