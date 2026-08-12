@@ -53,12 +53,32 @@
 <p class="small">참고: <b>Mega 2560 에는 micro-ROS 를 올릴 수 없다.</b> 8비트 AVR이라 RAM이 8KB뿐인데 micro-ROS는 수십 KB가 필요하다. 그래서 시리얼 텍스트 방식으로 설계했다.</p>
 </div>
 
+<div class="card ok">
+<h2>✅ [2026-08-12] 소프트팀이 이미 업로드했다 — 아래는 다시 올릴 때의 절차</h2>
+<p>실물 Mega 가 도착해 <b>컴파일·업로드·동작 확인까지 끝냈다. 회로팀이 지금 할 일은 없다.</b><br>
+결과: <code>Sketch 9130 bytes (3%)</code>, <code>RAM 507 bytes (6%)</code> — WS2812 켠 상태로 통과.
+보드에서 상태 줄이 10Hz 로 나오고, 노트북 브릿지가 그걸 읽어 ROS 토픽으로 올리는 것까지 확인했다.</p>
+<p>🚨 <b>문서에 빠져 있던 의존이 하나 있었다: <code>Servo</code> 라이브러리.</b>
+Arduino IDE 는 기본 포함이라 IDE 로 하면 안 걸리지만, 명령줄로 하면 걸린다 (<code>fatal error: Servo.h</code>).</p>
+<p><b>명령줄로 하는 법 (IDE 없이 — 08-12 실측):</b></p>
+<div class="flow">curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh | BINDIR=$HOME/bin sh
+export PATH=$HOME/bin:$PATH
+arduino-cli core update-index
+arduino-cli core install arduino:avr
+arduino-cli lib install "Adafruit NeoPixel"
+arduino-cli lib install Servo                 # 🚨 IDE 는 기본 포함, CLI 는 따로
+arduino-cli compile --fqbn arduino:avr:mega arduino/ssf_boat
+arduino-cli upload -p /dev/ttyMEGA --fqbn arduino:avr:mega arduino/ssf_boat</div>
+<p class="small">⚠️ 업로드 전 <b>ESC·배터리를 떼둘 것.</b> 부팅 때 <code>ESC armed.</code> 로 중립 펄스를 쏜다.</p>
+</div>
+
 <div class="card">
-<h2>1. 준비 (한 번만)</h2>
+<h2>1. 준비 (IDE 로 할 경우 — 한 번만)</h2>
 <div class="step"><span class="n">1</span><div>Arduino IDE 설치</div></div>
 <div class="step"><span class="n">2</span><div><b>툴 → 보드 → Arduino AVR Boards → "Arduino Mega or Mega 2560"</b> 선택<br><span class="small">프로세서: "ATmega2560 (Mega 2560)"</span></div></div>
 <div class="step"><span class="n">3</span><div><b>라이브러리 — 둘 중 하나</b><br>
 · <b>(권장)</b> 라이브러리 매니저에서 <b>"Adafruit NeoPixel"</b> 설치 → WS2812 표시등 사용<br>
+<span class="small">(IDE 는 <code>Servo</code> 를 기본 포함하므로 추가 설치 불필요. CLI 는 따로 깔아야 한다)</span><br>
 · <b>(스트립 아직 없으면)</b> <code>ssf_boat.ino</code> 상단의 <code>#define LED_USE_WS2812 1</code> 을 <b class="hl">0 으로</b> 바꾸면 외부 라이브러리 없이 컴파일된다 (표시등만 단색 LED 방식으로 전환, 나머지 동작 동일)</div></div>
 </div>
 
@@ -74,11 +94,12 @@
 <h2>3. 출력 확인 (시리얼 모니터)</h2>
 <p><b>툴 → 시리얼 모니터</b>, 속도 <b class="hl">115200</b> 선택.</p>
 <p>부팅 시:</p>
-<div class="flow">Boat ID: FAULT          ← 배 ID 스위치를 아직 안 달았으면 정상 (달면 A 또는 B)
+<div class="flow">Boat ID: A  (ID pins open -> default)   ← ID 스위치 미배선 = 기본 A (08-12 변경)
 ESC armed.
 Setup done. Control loop start.</div>
+<p class="small">스위치를 달면 <code>(from ID pins)</code> 로 찍힌다. <b>두 핀 모두 GND</b> 는 여전히 <code>FAULT</code> — 그건 미배선이 아니라 <b>배선 실수</b>라 일부러 구분해 둔 것이다.</p>
 <p>이후 0.1초마다 상태 줄이 계속 나온다:</p>
-<div class="flow">S,0,0,2,0,1500,1500,1500,1500
+<div class="flow">S,0,0,0,0,1500,1500,1500,1500
   │ │ │ │ └─────────────┴── 모터 4개 출력 µs (선수L,선수R,선미L,선미R)
   │ │ │ └─ 비상정지 감지 (0/1)
   │ │ └─── 배 ID (0=A, 1=B, 2=고장/미배선)
@@ -110,7 +131,7 @@ Setup done. Control loop start.</div>
 <tr><td>WS2812 스트립 Din</td><td>40</td><td>스트립 사용 시</td></tr>
 <tr><td>(예비) 단색 LED 초록/노랑/빨강</td><td>22 / 24 / 26</td><td><code>LED_USE_WS2812 0</code> 일 때</td></tr>
 <tr><td>점검 LED</td><td>28</td><td></td></tr>
-<tr><td>배 ID A / B</td><td>34 / 36</td><td>DIP 스위치 → GND. <b>정확히 하나만 ON</b> (둘 다 / 둘 다 아님 = 고장 판정)</td></tr>
+<tr><td>배 ID A / B</td><td>34 / 36</td><td><b>미배선이면 기본 A</b> (08-12 변경 — 스위치를 안 달기로 한 팀 결정 반영). 달 경우 DIP 스위치 → GND, <b>정확히 하나만 ON</b>. <b>둘 다 GND = 배선 실수 → 고장 판정(모터 중립 고정)</b><br>⚠️ 두 척을 동시에 운용하면 스위치를 달거나 B배 펌웨어의 <code>DEFAULT_BOAT_ID</code> 를 <code>BOAT_B</code> 로 바꿔야 한다</td></tr>
 <tr><td>비상정지 감지</td><td>38</td><td>릴레이 차단 시 LOW</td></tr>
 <tr><td class="no">사용 금지</td><td class="no">0, 1</td><td>USB 통신과 겹침</td></tr>
 </table>
