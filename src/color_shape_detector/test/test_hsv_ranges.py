@@ -9,7 +9,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from color_shape_detector.hsv_ranges import (  # noqa: E402
     DEFAULT_RANGES, SUPERSEDED, VALID_COLORS, HsvRangeError,
-    default_flat, flatten, format_yaml, load, parse_flat, widen_to_include,
+    default_flat, flatten, format_yaml, load, parse_flat,
 )
 
 
@@ -139,53 +139,6 @@ class TestFormatYaml(unittest.TestCase):
             inner = line.split("[", 1)[1].rsplit("]", 1)[0]
             vals = [int(x) for x in inner.replace(" ", "").split(",")]
             self.assertEqual(parse_flat(vals, c), DEFAULT_RANGES[c])
-
-
-class TestWiden(unittest.TestCase):
-
-    def test_이미_들어오는_픽셀이면_거의_안_변한다(self):
-        base = [((60, 120, 120), (85, 255, 255))]
-        out = widen_to_include(base, (70, 200, 200), margin=(0, 0, 0))
-        self.assertEqual(out, base)
-
-    def test_밖의_픽셀을_품도록_넓어진다(self):
-        base = [((60, 120, 120), (85, 255, 255))]
-        out = widen_to_include(base, (50, 100, 100), margin=(5, 10, 10))
-        lo, hi = out[0]
-        self.assertLessEqual(lo[0], 50)
-        self.assertLessEqual(lo[1], 100)
-        self.assertLessEqual(lo[2], 100)
-
-    def test_경계를_안_넘는다(self):
-        base = [((0, 0, 0), (180, 255, 255))]
-        out = widen_to_include(base, (0, 0, 0), margin=(50, 50, 50))
-        lo, hi = out[0]
-        self.assertGreaterEqual(lo[0], 0)
-        self.assertGreaterEqual(lo[1], 0)
-        self.assertLessEqual(hi[1], 255)
-        self.assertLessEqual(hi[2], 255)
-
-    def test_두_범위중_가까운_쪽을_넓힌다(self):
-        """빨강처럼 범위가 둘이면 엉뚱한 쪽을 넓히면 안 된다.
-
-        H=160 은 두 범위 **밖**이고 165~180 쪽에 더 가깝다(거리 5 vs 20).
-        """
-        base = parse_flat(default_flat("red"), "red")
-        out = widen_to_include(base, (160, 200, 200), margin=(5, 10, 10))
-        self.assertEqual(out[0], base[0], "0~5 쪽 범위는 건드리지 말아야 한다")
-        self.assertNotEqual(out[1], base[1], "165~180 쪽이 넓어져야 한다")
-        self.assertLessEqual(out[1][0][0], 160, "H 하한이 160 을 품어야 한다")
-
-    def test_이미_품고_있으면_그대로_둔다(self):
-        """H=170 은 이미 165~180 안이다 — 괜히 넓히면 인접색을 끌어온다."""
-        base = parse_flat(default_flat("red"), "red")
-        out = widen_to_include(base, (170, 200, 200), margin=(5, 10, 10))
-        self.assertEqual(out, base)
-
-    def test_빈_범위는_거부(self):
-        with self.assertRaises(HsvRangeError):
-            widen_to_include([], (10, 10, 10))
-
 
 
 class TestSyncWithDockLogic(unittest.TestCase):

@@ -6,7 +6,7 @@
 🚨 [2026-08-12 재작성] 예전 판은 **마우스 위치의 HSV 숫자만 찍었다.**
    그걸로는 "내가 정한 범위가 실제로 뭘 잡는지" 를 볼 수 없어서, 값을 넣고 → 검출기를
    재시작하고 → 각도가 나오나 보고 → 다시 고치는 왕복을 해야 했다.
-   이제 마스크를 실시간으로 보여주고, 클릭 한 번으로 범위를 넓히고,
+   이제 마스크를 실시간으로 보여주고, 트랙바로 범위를 잡고,
    `p` 키로 **vision.yaml 에 그대로 붙여넣을 줄**을 찍는다.
 
 ⚠️ 이 노드는 튜닝 전용이다. **대회 launch 에 넣지 마라.**
@@ -14,8 +14,7 @@
    실제 부표로, 실제 조명에서 다시 잡을 것.
 
 조작
-    마우스 클릭   그 픽셀이 들어오도록 현재 범위를 넓힌다 (여백 포함)
-    트랙바        H/S/V 하한·상한 직접 조정
+    트랙바        H/S/V 하한·상한 조정 — **조작은 이것 하나뿐이다**
     c            다음 색 (red→green→white→orange→yellow→blue)
     n            같은 색의 다음 범위 (빨강은 색상환 0을 넘어 범위가 2개다)
     p            현재 색의 yaml 줄 출력  ← 이걸 vision.yaml 에 붙여넣는다
@@ -72,7 +71,6 @@ class HSVSubscriber(Node):
         self.colors = list(hsv_ranges.VALID_COLORS)
         self.ci = 0          # 현재 색 인덱스
         self.ri = 0          # 현재 범위 인덱스 (빨강은 2개)
-        self._pending = None  # 트랙바 → 범위 반영용
         self.br = CvBridge()
 
         self.create_subscription(Image, self.image_topic,
@@ -83,7 +81,6 @@ class HSVSubscriber(Node):
             cv2.resizeWindow(WIN, 900, 700)
             cv2.namedWindow(WIN_MASK, cv2.WINDOW_NORMAL)
             cv2.resizeWindow(WIN_MASK, 640, 480)
-            cv2.setMouseCallback(WIN, self.mouse_callback)
             for name, hi in _BARS:
                 cv2.createTrackbar(name, WIN, 0, hi, lambda _v: None)
             self._push_trackbars()
@@ -129,10 +126,6 @@ class HSVSubscriber(Node):
         self._set_cur(lo, hi)
 
     # ── 입력 ────────────────────────────────────────────────────
-    def mouse_callback(self, event, x, y, flags, param):
-        if event == cv2.EVENT_LBUTTONDOWN:
-            self._pending = (x, y)
-
     def _handle_key(self, k):
         if k in (ord('q'), 27):
             raise KeyboardInterrupt
@@ -164,19 +157,7 @@ class HSVSubscriber(Node):
         frame = self.br.imgmsg_to_cv2(msg, desired_encoding="bgr8")
         hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
 
-        # 클릭한 픽셀을 품도록 넓힌다 (검출기와 같은 순수 로직을 쓴다)
-        if self._pending is not None:
-            x, y = self._pending
-            self._pending = None
-            if 0 <= x < frame.shape[1] and 0 <= y < frame.shape[0]:
-                px = hsv[y, x]
-                self.ranges[self.color] = hsv_ranges.widen_to_include(
-                    self.ranges[self.color], px)
-                self._push_trackbars()
-                print(f"🖱 클릭 HSV({px[0]},{px[1]},{px[2]}) → [{self.color}] 범위 확장")
-                self._announce()
-        else:
-            self._pull_trackbars()
+        self._pull_trackbars()
 
         # 현재 색 전체 범위로 마스크 (검출기와 동일: OR 결합 + medianBlur 3)
         mask = np.zeros(hsv.shape[:2], dtype=np.uint8)
@@ -201,7 +182,7 @@ class HSVSubscriber(Node):
             f"[{self.color}] range {self.ri + 1}/{len(self.ranges[self.color])}",
             f"lo {lo}  hi {hi}",
             f"mask {pct:5.1f}%   blobs>{int(self.min_area)}px: {len(big)}",
-            "click=widen  c=color  n=range  p=print yaml  r=reset  q=quit",
+            "trackbars=adjust  c=color  n=range  p=print yaml  r=reset  q=quit",
         ]
         for i, t in enumerate(hud):
             cv2.putText(view, t, (8, 22 + i * 22), cv2.FONT_HERSHEY_SIMPLEX,
