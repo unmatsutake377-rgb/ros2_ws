@@ -159,6 +159,29 @@ ros2 topic echo /imu/yaw
 ros2 topic echo /health_ok
 ```
 
+### 🕹 "미션이 안 넘어가요" — 고장이 아니다 (2026-08-12 추가)
+
+`wp_mode` 가 **0 에서 안 움직이고** 이 로그가 계속 뜨면 정상이다:
+
+```
+🕹 AUTO 대기 — RC 모드를 AUTO 로 넘기면 WP0 부터 자율 시작
+```
+
+**자율 시작 게이트**가 잡고 있는 것이다. RC 로 시작점까지 몰고 가는 동안 GPS 도착·타임아웃으로
+웨이포인트가 새는 걸 막는다. **조종기를 AUTO 로 넘기는 순간 WP0 부터 시작**한다.
+
+⚠️ 방위·거리·`/wp_mode` 는 **계속 발행된다**(비전 검출기가 죽지 않게). 전진만 막힌다.
+
+**아두이노 없이 벤치에서 시험할 때**는 `/boat_mode` 가 아무도 안 내므로 영원히 대기한다.
+둘 중 하나로 푼다:
+```bash
+ros2 topic pub -r 10 /boat_mode std_msgs/Int32 "{data: 2}"
+```
+또는 `north_goal_angle.yaml` 의 `require_boat_mode_auto: false`.
+🚨 **후자를 대회 설정에 남기지 말 것** — 안전장치가 꺼진 채 나간다.
+
+---
+
 🚨 **`/health_ok` 가 `true` 인지 반드시 보고 출발한다.**
 빨간불을 켜둔 채 출발하는 습관이 최악이다 — CLAUDE.md 7-2.
 벤치 편의 스위치(`cog_require_reverse_gate` 등)가 대회 설정에 남아 있으면 여기서 `false` 로 잡힌다.
