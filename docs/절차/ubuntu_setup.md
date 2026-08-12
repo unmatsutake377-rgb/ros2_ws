@@ -182,8 +182,33 @@ SUBSYSTEM=="tty", ATTRS{idVendor}=="XXXX", ATTRS{serial}=="ZZZZ", SYMLINK+="IMU"
 ```bash
 sudo udevadm control --reload-rules && sudo udevadm trigger
 ```
-- 목표 심볼릭명: `/dev/ttyLiDAR`(RPLIDAR A3), `/dev/IMU`(iAHRS). GPS는 ublox launch 설정 확인.
+- 목표 심볼릭명: `/dev/ttyLiDAR`(RPLIDAR A3), `/dev/IMU`(iAHRS), `/dev/ttyGPS`(u-blox),
+  **`/dev/ttyMEGA`(Arduino Mega 2560)**
 - ⚠️ 이건 **오픈소스가 아니라 이 장비 고유값**이라 GitHub에 없다. 장비 오면 새로 만든다.
+  ↓ 아래는 **이 노트북에서 실측한 값**이다. 장비가 그대로면 이걸 그대로 쓰면 된다.
+
+### 실측값 (2026-08-06 · Mega 는 08-12)
+
+```
+# RPLIDAR A3 — 시리얼번호가 고유하다
+SUBSYSTEM=="tty", ATTRS{idVendor}=="10c4", ATTRS{idProduct}=="ea60", ATTRS{serial}=="0addfc38c7f9f5498e7724af8de7b0cb", SYMLINK+="ttyLiDAR"
+
+# iAHRS IMU — 🚨 시리얼이 "0001"(공장 기본값)이라 고유하지 않다 → product 문자열까지 본다
+SUBSYSTEM=="tty", ATTRS{idVendor}=="10c4", ATTRS{idProduct}=="ea60", ATTRS{serial}=="0001", ATTRS{product}=="CP2102 USB to UART Bridge Controller", SYMLINK+="IMU"
+
+# u-blox ZED-F9P — 시리얼 속성을 안 내놓는다 → VID/PID 로만
+SUBSYSTEM=="tty", ATTRS{idVendor}=="1546", ATTRS{idProduct}=="01a9", SYMLINK+="ttyGPS"
+
+# Arduino Mega 2560 R3 (정품) — 시리얼번호까지 본다
+SUBSYSTEM=="tty", ATTRS{idVendor}=="2341", ATTRS{idProduct}=="0042", ATTRS{serial}=="03536383236351C07273", SYMLINK+="ttyMEGA"
+```
+
+🚨 **Mega 와 GPS 는 둘 다 `/dev/ttyACM*` 로 잡혀 번호를 서로 빼앗는다.**
+실제로 Mega 를 꽂았더니 GPS 가 쓰던 `ttyACM0` 를 그대로 가져갔다.
+그래서 Mega 규칙은 VID/PID 만으로 두면 안 되고 **시리얼번호까지** 봐야 한다.
+
+⚠️ `ssf_bridge` 의 기본 포트가 `/dev/ttyMEGA` 다. 규칙이 없으면 launch 가
+   **그 노드만 건너뛴다**(전체는 정상 기동).
 
 ---
 
