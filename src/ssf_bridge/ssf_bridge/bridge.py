@@ -21,6 +21,8 @@
    이 프로젝트는 "테스트 통과 = 안전" 이 아니라는 걸 8건으로 배웠다 — 벤치에서 반드시 확인할 것.
 """
 
+import time
+
 import rclpy
 from rclpy.node import Node
 from std_msgs.msg import Bool, Int32
@@ -56,14 +58,31 @@ class SsfBridge(Node):
             self.declare_parameter("publish_status", True).value)
 
         import serial  # pyserial. 임포트를 여기 두어 파서 테스트가 의존을 안 탄다
-        self._ser = serial.Serial(port, baud, timeout=0.0,
-                                  write_timeout=write_timeout)
-
+        self._serial_mod = serial
+        self._port, self._baud, self._wtimeout = port, baud, write_timeout
+        self._ser = None
         self._rx = bytearray()
         self._bad_lines = 0
+        self._reconnect_at = 0.0
 
-        # 부팅 즉시 중립을 한 번 박는다. 이전 실행의 마지막 PWM 이 남아 있을 수 있다.
-        self._send(1500, 1500)
+        # 🚨 [2026-08-12] USB 재연결 대응. 실물에서 **아두이노가 USB 에서 떨어졌다가
+        #    즉시 다시 붙는** 일이 있었다(커널: `USB disconnect, device number 24` →
+        #    `new full-speed USB device number 25`). 그때 이 노드는 **죽은 핸들을 계속 붙잡고**
+        #    `[Errno 5] Input/output error` 만 무한히 뱉었다 — 장치는 돌아왔는데 영영 못 쓴다.
+        #    물 위에서 이러면 모터 명령이 다시는 안 나간다(펌웨어 워치독이 중립으로 잡아
+        #    안전하긴 하나, 그 회차는 끝이다). → 끊기면 닫고, 주기적으로 다시 연다.
+        self._reconnect_sec = float(
+            self.declare_parameter("reconnect_interval_sec", 1.0).value)
+
+        # 🚨 [2026-08-12] 포트를 열면 아두이노가 **리셋**된다(DTR 토글).
+        #    그 뒤 1~2초는 부트로더가 도는데, 이때 바이트를 쓰면 부트로더가 그걸
+        #    프로그래밍 명령으로 오해해 **스케치가 안 뜬다** → 상태 줄이 영영 안 온다.
+        #    작년 발굴본에는 `time.sleep(1.0)` 이 있었는데 **재작성하면서 내가 뺐다.**
+        #    단독 실행에선 3/3 통과해 못 잡았고, 전체 launch(18노드)에서 재현됐다 —
+        #    프로세스 기동이 느려지며 쓰기 시점이 부트로더 창 안으로 밀린 것이다.
+        #    Mega 는 Uno 보다 부트로더가 길어 기본값을 2.0s 로 잡는다.
+        self._boot_wait = float(self.declare_parameter("boot_wait_sec", 2.0).value)
+        self._open()          # 실패해도 죽지 않는다 — 타이머가 계속 재시도한다
 
         self.pub_mode = self.create_publisher(Int32, "/boat_mode", STATUS_QOS)
         self.pub_watchdog = self.create_publisher(Bool, "/boat_cmd_watchdog", STATUS_QOS)
@@ -80,6 +99,49 @@ class SsfBridge(Node):
             f"ssf_bridge 시작 — {port} @ {baud}  "
             f"Motor_run 구독 / 상태발행={'on' if self._publish_status else 'off'}")
 
+    # ───────────────────────── 포트 관리 ─────────────────────────
+
+    def _open(self):
+        """포트를 열고 부팅을 기다린 뒤 중립을 박는다. 실패하면 False."""
+        try:
+            self._ser = self._serial_mod.Serial(
+                self._port, self._baud, timeout=0.0, write_timeout=self._wtimeout)
+        except Exception as e:                       # noqa: BLE001
+            self._ser = None
+            self._reconnect_at = time.monotonic() + self._reconnect_sec
+            self.get_logger().warn(
+                f"포트 열기 실패({self._port}): {e} — {self._reconnect_sec:.0f}s 뒤 재시도",
+                throttle_duration_sec=10.0)
+            return False
+
+        # 🚨 포트를 열면 아두이노가 **리셋**된다(DTR 토글). 그 뒤 1~2초는 부트로더가 도는데,
+        #    이때 바이트를 쓰면 부트로더가 프로그래밍 명령으로 오해해 **스케치가 안 뜬다**.
+        #    작년 발굴본에는 `time.sleep(1.0)` 이 있었는데 재작성하면서 내가 뺐다.
+        #    Mega 는 Uno 보다 부트로더가 길어 기본 2.0s.
+        if self._boot_wait > 0:
+            time.sleep(self._boot_wait)
+        try:
+            self._ser.reset_input_buffer()           # 부트로더 잡음 버리기
+        except Exception:                            # noqa: BLE001
+            pass
+        self._rx = bytearray()
+        self._send(1500, 1500)                       # 이전 실행의 마지막 PWM 이 남을 수 있다
+        return True
+
+    def _drop(self, why):
+        """입출력 오류 → 핸들을 버리고 재연결 대기로 넘어간다."""
+        if self._ser is not None:
+            try:
+                self._ser.close()
+            except Exception:                        # noqa: BLE001
+                pass
+        self._ser = None
+        self._rx = bytearray()
+        self._reconnect_at = time.monotonic() + self._reconnect_sec
+        # 심각도별로 호출 지점을 나눈다 — 같은 줄에서 severity 를 바꾸면 rclpy 가 죽는다
+        # (CLAUDE.md 5장, ship_direction 이 실제로 그렇게 죽었다)
+        self.get_logger().error(f"시리얼 끊김: {why} — 재연결 시도")
+
     # ───────────────────────── 내보내기 ─────────────────────────
 
     def _on_motor_run(self, msg):
@@ -87,21 +149,28 @@ class SsfBridge(Node):
         self._send(pwm_l, pwm_r)
 
     def _send(self, pwm_l, pwm_r):
+        if self._ser is None:
+            return                                   # 재연결 대기 중 — 조용히 버린다
         try:
             self._ser.write(sp.format_command(pwm_l, pwm_r).encode('ascii'))
         except Exception as e:                       # noqa: BLE001 — 어떤 시리얼 오류든 죽지 않는다
-            # 여기서 예외로 노드가 죽으면 펌웨어 워치독(500ms)이 중립으로 잡는다.
-            # 죽는 것보다 계속 살아서 재시도하는 편이 낫다 — 케이블이 잠깐 튄 것일 수 있다.
-            self.get_logger().error(f"시리얼 쓰기 실패: {e}", throttle_duration_sec=2.0)
+            # 노드는 죽이지 않는다 — 펌웨어 워치독(500ms)이 중립으로 잡아 안전하고,
+            # 살아 있어야 장치가 돌아왔을 때 다시 붙는다. 핸들을 버리고 재연결로 넘긴다.
+            self._drop(f"쓰기 {e}")
 
     # ───────────────────────── 읽어오기 ─────────────────────────
 
     def _poll_serial(self):
         """입력 버퍼를 비우고(=리뷰 2-3 ②) 온전한 줄만 골라 처리한다."""
+        if self._ser is None:
+            # 재연결 대기 중 — 시간이 되면 다시 연다
+            if time.monotonic() >= self._reconnect_at and self._open():
+                self.get_logger().info(f"시리얼 재연결됨: {self._port}")
+            return
         try:
             chunk = self._ser.read(4096)
         except Exception as e:                       # noqa: BLE001
-            self.get_logger().error(f"시리얼 읽기 실패: {e}", throttle_duration_sec=2.0)
+            self._drop(f"읽기 {e}")
             return
         if not chunk:
             return
@@ -150,11 +219,13 @@ class SsfBridge(Node):
         """
         try:
             self._send(1500, 1500)
-            self._ser.flush()
+            if self._ser is not None:
+                self._ser.flush()
         except Exception:                            # noqa: BLE001
             pass
         try:
-            self._ser.close()
+            if self._ser is not None:
+                self._ser.close()
         except Exception:                            # noqa: BLE001
             pass
 

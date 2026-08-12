@@ -17,6 +17,8 @@ pty(가상 시리얼)로 Mega 를 흉내내서, 브릿지가 실제로 쓰고 �
   3) 펌웨어 상태 줄 → /boat_mode·/boat_id 발행
   4) 깨진 줄 무시
   5) 종료 시 중립 발신 (SIGTERM 포함)
+  6) **USB 재연결 복구** — 실물에서 아두이노가 떨어졌다 붙는 일이 있었고,
+     그때 브릿지가 죽은 핸들을 붙잡고 Errno 5 만 무한히 뱉었다. 그 시나리오를 재현한다.
 """
 import os
 import pty
@@ -112,6 +114,79 @@ proc.terminate()
 tail = read_master(3.0)
 proc.wait(timeout=10)
 results.append(("종료 시 중립 발신", "L1500,R1500" in tail, repr(tail[:60])))
+
+# ── 6) USB 재연결 복구 ────────────────────────────────────────────────
+# 🚨 실물에서 겪은 그대로를 흉내낸다: 장치가 사라졌다가 **다른 노드로 다시** 나타난다.
+#    심링크를 새 pty 로 옮겨 재연결을 만든다(실제 udev 가 하는 일과 같다).
+import os as _os
+LINK = "/tmp/fake_mega_link"
+m2, s2 = pty.openpty()
+try:
+    _os.unlink(LINK)
+except OSError:
+    pass
+_os.symlink(_os.ttyname(s2), LINK)
+
+proc2 = subprocess.Popen(
+    [os.path.expanduser("~/ros2_ws/install/ssf_bridge/lib/ssf_bridge/bridge"),
+     "--ros-args", "-r", "__node:=bridge_rc",
+     "-p", f"port:={LINK}", "-p", "boot_wait_sec:=0.5",
+     "-p", "reconnect_interval_sec:=0.5"],
+    stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+_os.set_blocking(m2, False)
+
+stop2 = threading.Event()
+
+
+def feed(fd):
+    while not stop2.is_set():
+        try:
+            _os.write(fd, b"S,1,0,0,0,1500,1500,1500,1500\n")
+        except OSError:
+            return
+        time.sleep(0.1)
+
+
+t2 = threading.Thread(target=feed, args=(m2,), daemon=True)
+t2.start()
+e = subprocess.run(["ros2", "topic", "echo", "/boat_mode", "std_msgs/Int32", "--once"],
+                   capture_output=True, text=True, timeout=25)
+results.append(("재연결 전 수신", "data: 1" in e.stdout, e.stdout.strip()[:50]))
+
+# ── 장치 뽑기: master 를 닫으면 slave 쪽 입출력이 깨진다 ──
+stop2.set(); time.sleep(0.3)
+_os.close(m2); _os.close(s2)
+time.sleep(2.0)                      # 브릿지가 끊김을 감지할 시간
+
+# ── 장치 다시 꽂기: **다른 pty** 로 나타나고 심링크가 그쪽을 가리킨다 ──
+m3, s3 = pty.openpty()
+_os.unlink(LINK); _os.symlink(_os.ttyname(s3), LINK)
+stop3 = threading.Event()
+
+
+def feed3():
+    while not stop3.is_set():
+        try:
+            _os.write(m3, b"S,2,0,1,0,1400,1400,1400,1400\n")
+        except OSError:
+            return
+        time.sleep(0.1)
+
+
+threading.Thread(target=feed3, daemon=True).start()
+e = subprocess.run(["ros2", "topic", "echo", "/boat_mode", "std_msgs/Int32", "--once"],
+                   capture_output=True, text=True, timeout=30)
+results.append(("🚨 USB 재연결 후 자동 복구", "data: 2" in e.stdout, e.stdout.strip()[:50]))
+stop3.set()
+proc2.terminate()
+try:
+    proc2.wait(timeout=10)
+except Exception:
+    proc2.kill()
+try:
+    _os.unlink(LINK)
+except OSError:
+    pass
 
 print("\n" + "=" * 70)
 fail = 0
