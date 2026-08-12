@@ -124,17 +124,34 @@ bool rcFresh(int idx) {                          // 최근 RC_TIMEOUT_MS 내 갱
 }
 
 // =====================[ 5. 배 ID (상보 2핀) ]==========================
-// A배: PIN_ID_A만 GND / B배: PIN_ID_B만 GND / 그 외 = 고장 → 전 모터 중립 고정
+// A배: PIN_ID_A만 GND / B배: PIN_ID_B만 GND
 enum BoatId { BOAT_A = 0, BOAT_B = 1, BOAT_FAULT = 2 };
 BoatId boatId = BOAT_FAULT;
+bool boatIdDefaulted = false;   // 스위치가 없어 기본값을 쓴 것인가
+
+// 🚨 [2026-08-12] ID 스위치 미배선 시의 기본값.
+//    이전엔 '둘 다 open' 도 FAULT 로 봐서 **모터가 영구 중립**이었다.
+//    지금 배에는 ID 스위치를 달 수 없다(팀 결정) → 스위치가 없으면 이 값으로 돈다.
+//    ⚠️ 두 척을 동시에 운용하게 되면 **스위치를 달거나 B배는 이 줄을 BOAT_B 로** 바꿔야 한다.
+//       안 그러면 두 배가 같은 설정으로 돈다 — 작년 `It_is_Aship` 오타로 B배 분기가
+//       죽어 있던 것과 **결과가 같은** 사고다.
+#define DEFAULT_BOAT_ID  BOAT_A
 
 // 반환형 int: Arduino IDE가 함수 목록을 enum 정의보다 앞에 자동 생성하는 함정 회피
 int readBoatId() {
-  bool aLow = (digitalRead(PIN_ID_A) == LOW);
+  bool aLow = (digitalRead(PIN_ID_A) == LOW);   // INPUT_PULLUP → GND 에 묶인 쪽만 LOW
   bool bLow = (digitalRead(PIN_ID_B) == LOW);
-  if (aLow && !bLow) return BOAT_A;
-  if (!aLow && bLow) return BOAT_B;
-  return BOAT_FAULT;   // 둘 다 open(선 빠짐) 또는 둘 다 GND(배선 실수)
+
+  // 🚨 '둘 다 GND' 는 여전히 FAULT 다 — 이건 **배선 실수**이지 미배선이 아니다.
+  //    미배선(둘 다 open)과 구분해서 남긴다. 실수를 조용히 넘기면 안 된다.
+  if (aLow && bLow) return BOAT_FAULT;
+
+  if (aLow) return BOAT_A;
+  if (bLow) return BOAT_B;
+
+  // 둘 다 open = 스위치를 안 달았다 → 기본값
+  boatIdDefaulted = true;
+  return DEFAULT_BOAT_ID;
 }
 
 // =====================[ 6. 상태 변수 ]=================================
@@ -293,7 +310,10 @@ void setup() {
   boatId = (BoatId)readBoatId();
   blinkBoatId();
   Serial.print(F("Boat ID: "));
-  Serial.println(boatId == BOAT_A ? F("A") : boatId == BOAT_B ? F("B") : F("FAULT"));
+  Serial.print(boatId == BOAT_A ? F("A") : boatId == BOAT_B ? F("B") : F("FAULT"));
+  // 스위치로 정해진 값인지, 미배선이라 기본값을 쓴 것인지 구분해서 찍는다.
+  // 나중에 두 척을 돌릴 때 "왜 둘 다 A 지" 를 여기서 바로 알 수 있어야 한다.
+  Serial.println(boatIdDefaulted ? F("  (ID pins open -> default)") : F("  (from ID pins)"));
 
   // ESC arm: 1500 출력 유지, 이 동안 모든 명령 무시 (설계 §2-5)
   for (int i = 0; i < 4; i++) { esc[i].attach(motors[i].pin); esc[i].writeMicroseconds(1500); }
