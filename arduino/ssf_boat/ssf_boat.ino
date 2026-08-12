@@ -161,6 +161,7 @@ Mode mode = MODE_WAIT;              // 유효 모드 신호 받기 전 = 대기(
 int  autoCmdL = 1500, autoCmdR = 1500;   // 브릿지에서 온 마지막 유효 명령 (µs)
 unsigned long autoCmdStamp = 0;          // 그 수신 시각 (millis). 0 = 아직 없음
 bool watchdogActive = false;
+bool rcLostAlert    = false;   // 수동 모드인데 RC 가 끊겨 중립인 상태 (점검 LED 경보용)
 int  finalOut[4] = {1500, 1500, 1500, 1500};  // 최종 ESC 출력 (상태보고용)
 
 // =====================[ 7. 브릿지 명령 수신 (시리얼 파서) ]=============
@@ -242,8 +243,16 @@ void setRuleColor(uint8_t r, uint8_t g, uint8_t b) {
 }
 #endif
 
-// 부팅 시 배 ID 표시: 1회=A, 2회=B, 빠른 연속 점멸=고장 (점검 LED)
+// 부팅 시 배 ID 표시 (점검 LED)
+//   긴 점등 1초 → 짧게 N회 = ID 핀이 아니라 **기본값**으로 정해진 것 (미배선)
+//   짧게 1회 = A(핀 확정) / 짧게 2회 = B(핀 확정) / 빠른 8회 = 고장(배선 실수)
+// ★ 물 위에선 시리얼 로그를 못 본다. 두 척을 돌릴 때 "왜 둘 다 A 지"를
+//   눈으로 구분할 수 있어야 해서 기본값 여부를 앞머리 긴 점등으로 표시한다.
 void blinkBoatId() {
+  if (boatIdDefaulted) {                                   // 기본값 경고 머리표
+    digitalWrite(PIN_LED_DEBUG, HIGH); delay(1000);
+    digitalWrite(PIN_LED_DEBUG, LOW);  delay(300);
+  }
   int n = (boatId == BOAT_A) ? 1 : (boatId == BOAT_B) ? 2 : 8;
   int ms = (boatId == BOAT_FAULT) ? 120 : 400;
   for (int i = 0; i < n; i++) {
@@ -266,8 +275,11 @@ void updateLeds(bool estopActive) {
   digitalWrite(PIN_LED_RED,    estopActive         ? HIGH : LOW);
 #endif
 
-  // 점검 LED — 워치독 발동/배ID 고장이면 점멸, 정상이면 소등
-  bool alert = watchdogActive || (boatId == BOAT_FAULT);
+  // 점검 LED — 아래 중 하나면 점멸, 정상이면 소등
+  //   · 자율 워치독 발동 (노트북/브릿지 침묵)
+  //   · 수동인데 RC 끊김 (조종기 꺼짐·전파 두절) ← 물가에서 "왜 안 움직이지"의 답
+  //   · 배 ID 고장 (배선 실수)
+  bool alert = watchdogActive || rcLostAlert || (boatId == BOAT_FAULT);
   digitalWrite(PIN_LED_DEBUG, (alert && (millis() / 200) % 2) ? HIGH : LOW);
 }
 
@@ -342,9 +354,12 @@ void loop() {
   if (now - lastControlMs >= 50) {
     lastControlMs = now;
 
+    bool estopActive = (digitalRead(PIN_ESTOP_SENSE) == LOW);
+
     // 배 ID 고장 = 무조건 중립 (설계 §2-2: 시끄럽게 멈춘다)
     if (boatId == BOAT_FAULT) {
       driveNeutral();
+      rcLostAlert = false;
     } else {
       // 모드 판정: 유효한 모드 펄스가 온 적 있어야 대기 해제
       if (snapStamp(2) != 0) {
@@ -354,10 +369,12 @@ void loop() {
 
       int cmdL = 1500, cmdR = 1500;
       watchdogActive = false;
+      rcLostAlert    = false;
 
       if (mode == MODE_MANUAL) {
         // 수동: 스로틀·조향 둘 다 신선해야 구동. 아니면 중립 (RC failsafe)
         if (rcFresh(0) && rcFresh(1)) mixManual(cmdL, cmdR);
+        else                          rcLostAlert = true;   // 점검 LED 로 알린다
       } else if (mode == MODE_AUTO) {
         // 자율: 워치독 — 유효 명령이 500ms 내에 있어야 구동
         if (autoCmdStamp != 0 && (now - autoCmdStamp) < CMD_TIMEOUT_MS) {
@@ -370,8 +387,12 @@ void loop() {
       // MODE_WAIT면 그대로 중립
 
       driveMotors(cmdL, cmdR);
-      updateLeds(digitalRead(PIN_ESTOP_SENSE) == LOW);
     }
+
+    // 🚨 표시등은 분기 밖에서 항상 갱신한다.
+    //    예전엔 else 안에만 있어서 **배 ID 고장이면 룰 표시등이 영영 꺼진 채**였다
+    //    (비상정지를 눌러도 빨간등이 안 켜짐 = 규정 위반 + 조용한 고장).
+    updateLeds(estopActive);
   }
 
   // ---- 상태 보고: 100ms(10Hz) ----

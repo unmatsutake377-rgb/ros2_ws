@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>펌웨어 코드 재검토 — 2026-08-13</title>
+<style>
+  :root { --bg:#f6f7f9; --card:#fff; --line:#e0e3e8; --tx:#22272e; --acc:#0a58ca; --warn:#c62828; --mid:#e65100; --ok:#2e7d32; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:'Malgun Gothic','Apple SD Gothic Neo',sans-serif; background:var(--bg); color:var(--tx); padding:24px; line-height:1.7; }
+  .wrap { max-width:920px; margin:0 auto; }
+  h1 { font-size:1.45em; margin-bottom:4px; }
+  .sub { color:#667; font-size:.9em; margin-bottom:20px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:18px 20px; margin-bottom:16px; }
+  .card h2 { font-size:1.08em; margin-bottom:12px; padding-bottom:8px; border-bottom:2px solid var(--acc); }
+  .card.red h2 { border-color:var(--warn); } .card.mid h2 { border-color:var(--mid); } .card.ok h2 { border-color:var(--ok); }
+  table { border-collapse:collapse; width:100%; margin:10px 0; font-size:.92em; }
+  th,td { border:1px solid var(--line); padding:7px 10px; text-align:left; vertical-align:top; }
+  th { background:#f0f2f5; }
+  code { background:#eef1f5; padding:1px 5px; border-radius:4px; font-family:Consolas,monospace; font-size:.92em; }
+  pre { background:#22272e; color:#d5dce4; border-radius:8px; padding:12px 14px; font-family:Consolas,monospace; font-size:.82em; overflow-x:auto; margin:10px 0; line-height:1.5; }
+  pre .bad { color:#ff8a8a; } pre .good { color:#8ce99a; } pre .cm { color:#8b98a8; }
+  b.hl { background:#fff3cd; padding:0 4px; border-radius:3px; }
+  .sev { display:inline-block; font-size:.75em; padding:1px 9px; border-radius:10px; color:#fff; margin-right:8px; vertical-align:middle; }
+  .s-red { background:var(--warn); } .s-mid { background:var(--mid); } .s-blue { background:var(--acc); }
+  .small { font-size:.85em; color:#667; margin-top:8px; }
+  ul { margin-left:18px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>🔍 펌웨어 코드 재검토 — 2026-08-13</h1>
+<div class="sub">대상: <code>arduino/ssf_boat/ssf_boat.ino</code> · 계기: 08-12 에 다른 세션이 배 ID 로직을 고친 뒤 전체 재검토 · 결과: <b>버그 1건 + 개선 2건 수정 완료</b></div>
+
+<div class="card ok">
+<h2>한눈에</h2>
+<table>
+<tr><th>#</th><th>등급</th><th>내용</th><th>조치</th></tr>
+<tr><td>1</td><td><span class="sev s-red">버그</span></td><td>배 ID 고장 시 <b>표시등이 갱신되지 않음</b> — 비상정지 눌러도 빨간등 안 켜짐</td><td>✅ 수정</td></tr>
+<tr><td>2</td><td><span class="sev s-mid">개선</span></td><td>수동 모드에서 RC 끊겨도 <b>경보 표시 없음</b></td><td>✅ 수정</td></tr>
+<tr><td>3</td><td><span class="sev s-mid">개선</span></td><td>ID 기본값 A 와 핀으로 확정된 A 를 <b>LED로 구분 불가</b></td><td>✅ 수정</td></tr>
+<tr><td>4</td><td><span class="sev s-blue">확인</span></td><td>오버플로·롤오버·파서·매핑 — <b>이상 없음</b></td><td>기록만</td></tr>
+</table>
+<p class="small">🚨 수정했으므로 <b>재업로드 필요</b>: <code>arduino-cli compile --fqbn arduino:avr:mega arduino/ssf_boat</code> → <code>upload -p /dev/ttyMEGA</code></p>
+</div>
+
+<div class="card red">
+<h2><span class="sev s-red">버그</span> 1. 배 ID 고장 시 표시등이 죽는다</h2>
+<p><b>증상</b> — 배 ID 판정이 <code>FAULT</code>(두 핀 모두 GND = 배선 실수)가 되면 모터는 중립으로 잘 잠기지만,
+<b class="hl">룰 표시등(WS2812)이 영영 꺼진 채</b>가 되고 점검 LED 경보 점멸도 안 된다.</p>
+<p><b>왜 위험한가</b> — ① 대회 규정은 "비상정지 시 빨강"을 요구하는데 이 상태에선 <b>비상정지를 눌러도 빨간등이 안 켜진다</b>(규정 위반).
+② 물 위에서 <b>아무 표시 없이 조용히 멈춰 있는</b> 배가 된다 — 이 프로젝트가 가장 경계하는 "조용한 고장" 유형.
+부팅 때 8회 빠른 점멸은 나오지만 지나가는 신호라 놓치기 쉽다.</p>
+<pre><span class="cm">// 수정 전 — updateLeds 가 else 안에만 있었다</span>
+if (boatId == BOAT_FAULT) {
+  driveNeutral();                <span class="bad">// ← 여기서 끝. 표시등 갱신 없음</span>
+} else {
+  ...
+  driveMotors(cmdL, cmdR);
+  updateLeds(...);               <span class="bad">// ← 정상일 때만 갱신</span>
+}
+
+<span class="cm">// 수정 후 — 분기 밖에서 항상 갱신</span>
+bool estopActive = (digitalRead(PIN_ESTOP_SENSE) == LOW);
+if (boatId == BOAT_FAULT) { driveNeutral(); rcLostAlert = false; }
+else                      { ... driveMotors(cmdL, cmdR); }
+updateLeds(estopActive);         <span class="good">// ← 고장이어도 룰 표시등·경보가 산다</span></pre>
+</div>
+
+<div class="card mid">
+<h2><span class="sev s-mid">개선</span> 2. 수동 모드 RC 소실 경보 추가</h2>
+<p><b>이전</b> — 점검 LED 경보는 <b>자율 워치독</b>과 <b>배 ID 고장</b>에만 반응했다.
+수동 조종 중 조종기가 꺼지거나 전파가 끊기면 안전하게 중립으로 가지만 <b>아무 표시가 없다.</b>
+물가에서는 "왜 안 움직이지?"의 원인이 안 보인다 (배터리? 펌웨어? 전파?).</p>
+<p><b>수정</b> — 수동 모드인데 RC 가 신선하지 않으면 <code>rcLostAlert</code> 를 세워 점검 LED 를 점멸시킨다.
+대기 모드(아직 RC 신호를 한 번도 못 받음)에서는 점멸하지 않는다 — 그건 고장이 아니라 정상 초기 상태다.</p>
+<pre>if (mode == MODE_MANUAL) {
+  if (rcFresh(0) &amp;&amp; rcFresh(1)) mixManual(cmdL, cmdR);
+  else                          <span class="good">rcLostAlert = true;   // 점검 LED 로 알린다</span>
+}
+...
+bool alert = watchdogActive || <span class="good">rcLostAlert</span> || (boatId == BOAT_FAULT);</pre>
+<p class="small">경보 3종 정리: ① 자율 워치독(노트북·브릿지 침묵) ② 수동 RC 소실 ③ 배 ID 고장</p>
+</div>
+
+<div class="card mid">
+<h2><span class="sev s-mid">개선</span> 3. "기본값 A" 와 "핀 확정 A" 를 눈으로 구분</h2>
+<p><b>배경</b> — 08-12 변경으로 ID 핀 미배선 시 기본값 <code>A</code> 로 돈다. 그런데 부팅 LED 는 두 경우 모두 "짧게 1회"라 구분이 안 됐다.
+시리얼 로그에는 구분되어 찍히지만 <b class="hl">물 위에선 시리얼을 못 본다.</b>
+두 척을 동시에 돌릴 때 "왜 둘 다 A 로 도는가"를 현장에서 잡을 수단이 필요하다.</p>
+<table>
+<tr><th>점검 LED 신호</th><th>뜻</th></tr>
+<tr><td>짧게 1회</td><td>A배 — ID 핀으로 확정</td></tr>
+<tr><td>짧게 2회</td><td>B배 — ID 핀으로 확정</td></tr>
+<tr><td><b>긴 점등 1초 → 짧게 N회</b></td><td><b>기본값으로 정해짐 (ID 핀 미배선)</b></td></tr>
+<tr><td>빠른 8회 점멸</td><td>고장 — 두 핀 모두 GND = 배선 실수</td></tr>
+</table>
+</div>
+
+<div class="card">
+<h2><span class="sev s-blue">확인</span> 4. 문제없음으로 확인한 것들</h2>
+<ul>
+  <li><b>정수 오버플로 없음</b> — 편차 최대 ±600, 게인 곱해도 ±6000 이라 <code>int</code> 범위 안전</li>
+  <li><b><code>millis()</code> 롤오버 안전</b> — 시간 비교가 전부 뺄셈 방식이라 49일 롤오버에도 정상</li>
+  <li><b>모터 매핑 일치</b> — 명령 배열 <code>{L,R,L,R}</code> ↔ 설정표 <code>[FL,FR,RL,RR]</code></li>
+  <li><b>시리얼 파서 견고</b> — 형식 불일치·범위 초과·음수 전부 폐기, 깨진 명령이 워치독을 먹이지 못함</li>
+  <li><b>ISR 공유변수 보호</b> — 8비트 보드의 비원자 읽기를 <code>snapPulse/snapStamp</code> 로 차단</li>
+</ul>
+<p><b>🔵 알아두되 조치 불필요:</b> WS2812 전송(<code>show()</code>) 중에는 인터럽트가 잠깐 꺼져 이론상 ESC 펄스 하나가 흔들리거나 RC 엣지 하나를 놓칠 수 있다.
+<b>색이 바뀔 때만 전송</b>하는 설계로 이미 완화돼 있고(상태 색은 드물게 바뀜), ESC 는 펄스 하나 튀는 것을 걸러낸다.
+벤치 절차서 §6 에 확인 항목으로 넣어 뒀다.</p>
+</div>
+
+<div class="card">
+<h2>같이 갱신한 문서</h2>
+<table>
+<tr><th>문서</th><th>내용</th></tr>
+<tr><td><code>docs/전달용/펌웨어_설계문서.md</code></td><td>§2-2 부팅 LED 표 신설(기본값 머리표) · §2-4 경보 3종 + 표시등 항상 갱신 명시</td></tr>
+<tr><td><code>docs/절차/펌웨어_벤치검증_절차서.md</code></td><td>§6 기대값 갱신 — 기본값 LED 신호, 수동 RC 소실 경보, ID 고장 재현 시 표시등 생존 확인 추가</td></tr>
+</table>
+<p class="small">같은 날 별도 작업: 설계문서에서 Due·micro-ROS 잔재 제거(제목·§1-2·§2-1·§2-7·§3·§4), 벤치 검증 절차서 신규 작성.</p>
+</div>
+
+</div>
+</body>
+</html>
