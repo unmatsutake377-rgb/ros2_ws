@@ -63,13 +63,12 @@
 <div class="card todo">
 <h2>내가 처리할 일 (우선순위 순)</h2>
 <ul>
-  <li><b>① NeoPixel 라이브러리 설치 → 재컴파일</b> — IDE 라이브러리 매니저에서 "Adafruit NeoPixel" 설치 후 ✓. <b class="hl">가장 오래 밀린 항목</b> — 결과(성공/에러 전문)를 Claude에 보고 <span class="tag t-me">나</span></li>
   <li><b>② 회로팀 전달 4건</b>: ESC 신호선은 펌웨어 핀표(5/6/7/8) 기준 납땜 / MD-30A가 추진 경로에 있는지 확인(컨버터는 Mega 5V용으로 이동) / <b class="hl">라우터 전원 분기는 비상정지 릴레이 앞단</b> / 라우터·RC 안테나 50cm~1m 이격 배치 <span class="tag t-cir">회로팀</span></li>
   <li><b>③ 전원 설계 회의 잔여</b> (전원문서_검토.md §3): <b class="hl">무선 비상정지(규정 의무)</b> + 좌우 동시 차단 / 신호 GND 한 가닥 공통 / Mega·수신기 전원 출처 <span class="tag t-cir">회로팀</span></li>
   <li><b>④ A트랙 라우터 부품 구매</b> (부품목록 §9-2 목록 7종) → M1 배터리 제거 상시전원 벤치 검증 → 대회장 답사 때 셀 커버리지 확인 <span class="tag t-me">나</span></li>
   <li><b>⑤ WS2812 스트립 실물 확인</b> — 픽셀 수·전원 위치 (STRIP_NUM_PIXELS 노브 반영용) <span class="tag t-cir">회로팀</span></li>
 </ul>
-<div class="small">※ 해결 완료로 목록에서 빠진 것: 보드 확정(Mega), ESC 모델(Basic ESC), 수신기(FS-iA6), Mega 스케치(작년 발굴본 판명 — 우리 완성본이 담당), 핀표(펌웨어 §1 표 기준으로 역전 확정), <b>브릿지(08-10 — 회로팀 전달 불필요해짐)</b>: 작년 발굴본을 우리가 <code>src/ssf_bridge/</code> 패키지로 되살려 <b>메인 launch 에 연결</b>했다. 실행법은 <code>ros2 launch ssf_bridge ssf_bridge.launch.py</code> 이고 포트는 udev 로 <code>/dev/ttyMEGA</code> 에 고정한다(<code>--port /dev/ttyACM0</code> 방식 아님). 아두이노가 없으면 그 노드만 건너뛴다. 아두이노 없이 검증: <code>python3 tools/fake_mega.py</code></div>
+<div class="small">※ <b>08-12 추가 해결</b>: ① NeoPixel 재컴파일(가장 오래 밀렸던 항목) — arduino-cli 로 <b>컴파일·업로드·동작확인까지 완료</b>. 보드에서 상태 줄 10Hz 확인, 브릿지가 <code>/boat_mode</code> 등 4토픽을 실물값으로 발행. 🚨 문서에 빠져 있던 <code>Servo</code> 라이브러리 의존도 발견해 안내서에 반영.<br>※ 해결 완료로 목록에서 빠진 것: 보드 확정(Mega), ESC 모델(Basic ESC), 수신기(FS-iA6), Mega 스케치(작년 발굴본 판명 — 우리 완성본이 담당), 핀표(펌웨어 §1 표 기준으로 역전 확정), <b>브릿지(08-10 — 회로팀 전달 불필요해짐)</b>: 작년 발굴본을 우리가 <code>src/ssf_bridge/</code> 패키지로 되살려 <b>메인 launch 에 연결</b>했다. 실행법은 <code>ros2 launch ssf_bridge ssf_bridge.launch.py</code> 이고 포트는 udev 로 <code>/dev/ttyMEGA</code> 에 고정한다(<code>--port /dev/ttyACM0</code> 방식 아님). 아두이노가 없으면 그 노드만 건너뛴다. 아두이노 없이 검증: <code>python3 tools/fake_mega.py</code></div>
 </div>
 
 <div class="card wait">
