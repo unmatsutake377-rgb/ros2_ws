@@ -113,8 +113,14 @@ def generate_launch_description():
         ),
 
         # ============================================================
-        # 7) RealSense Camera (Auto Exposure/WhiteBalance OFF)
+        # 7) RealSense Camera
         # ============================================================
+        # 🚨 [2026-08-12 정정] 이 절 제목이 "Auto Exposure/WhiteBalance OFF" 였는데
+        #    **둘 다 켜져 있었다.** 실측으로 확인:
+        #      rgb_camera.enable_auto_white_balance = True   (아래 줄이 True 로 주고 있었다)
+        #      rgb_camera.enable_auto_exposure      = True   (설정 자체가 없어 드라이버 기본값)
+        #    제목만 보고 "고정돼 있구나" 로 읽으면 색 캘리브레이션의 전제가 통째로 틀린다.
+        #    → 제목을 지우고, 실제 값을 **명시**한다. 기본값에 기대지 않는다.
         Node(
             package='realsense2_camera',
             executable='realsense2_camera_node',
@@ -122,7 +128,19 @@ def generate_launch_description():
             namespace='camera',
             output='screen',
             parameters=[
+                # ── 색 안정성에 직결되는 값. 현재는 **자동** 이고, 그 상태로 검증했다 ──
+                # ⚠️ 색 기반 검출에서 자동 WB 는 원리상 위험하다 — 화면에 뭐가 들어오냐에
+                #    따라 같은 부표의 H 가 밀린다(흰 배가 지나가면 색조가 변한다).
+                #    그래서 끄려고 했는데, **실측이 그 주장을 뒷받침하지 않았다**:
+                #      정지 장면 A/B (auto ON vs OFF 4600K) → ΔH 0.0, ΔS 0.2, ΔV 0.2
+                #    자동 WB 가 고정값과 거의 같은 곳에 수렴했다. 측정 근거 없이 바꾸지 않는다.
+                # 🚨 **실외에서 다시 판정할 것.** 해가 움직이고 큰 물체가 드나드는 환경이
+                #    진짜 시험이다. 절차: 부표를 고정해 두고 화면에 밝은 물체를 넣었다 뺐다
+                #    하며 `tools/vision_probe.py --log-csv` 로 H 가 밀리는지 본다.
+                #    밀리면 auto_white_balance:=False + white_balance 고정(주간 5500~6500K).
                 {"rgb_camera.enable_auto_white_balance": True},
+                {"rgb_camera.enable_auto_exposure": True},
+
                 {"enable_infra1": False},
                 {"enable_infra2": False},
 
@@ -139,7 +157,16 @@ def generate_launch_description():
                 {"enable_gyro": False},
                 {"enable_accel": False},
 
-                {"rgb_camera.controls.saturation": 120},
+                # 🚨 [2026-08-12] 여기 `rgb_camera.controls.saturation: 120` 이 있었는데
+                #    **그런 파라미터는 존재하지 않는다.** 실물로 확인:
+                #      ros2 param set … rgb_camera.controls.saturation
+                #        → "cannot be set because it was not declared"
+                #      실제 이름은 `rgb_camera.saturation` 이고, 값은 계속 기본값 **64** 였다.
+                #    즉 **120 은 한 번도 먹은 적이 없다.** 에러도 안 났다(조용히 무시).
+                #    → 지금 120 으로 고치면 '검증된 적 없는 값' 으로 동작이 바뀐다.
+                #      오늘 검출 검증(빨강·초록 100%)은 전부 **64 에서** 나온 결과다.
+                #      그래서 실제로 돌던 값 64 를 **명시**만 한다. 120 이 나은지는 측정 후에.
+                {"rgb_camera.saturation": 64},
 
 
                 # 🎥 30FPS, 640x480

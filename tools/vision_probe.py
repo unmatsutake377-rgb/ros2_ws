@@ -19,6 +19,8 @@
 """
 
 import argparse
+import csv
+import datetime
 import os
 import sys
 import time
@@ -81,6 +83,26 @@ def draw_labels(sheet_bgr, items, font):
     return cv2.cvtColor(np.array(pil), cv2.COLOR_RGB2BGR)
 
 
+def circ_hue_stats(h_arr):
+    """색상(H)의 중앙값·5/95% — **원형통계**로 낸다.
+
+    🚨 빨강은 색상환 0 을 넘어간다(H 178 과 2 는 이웃이다).
+       일반 백분위를 쓰면 p5=0, p95=179 처럼 **색상환 전체**가 나와 무의미하다
+       (실측에서 실제로 그렇게 나왔다).
+       yaw_mux 가 방위 평균에 쓴 것과 같은 방법이다: 단위벡터로 평균을 구해
+       그쪽으로 회전시킨 뒤 백분위를 재고 되돌린다.
+    """
+    h = np.asarray(h_arr, dtype=float)
+    if h.size == 0:
+        return None, None, None
+    th = h * (2.0 * np.pi / 180.0)          # 0~180 → 0~2π
+    mean_th = np.arctan2(np.sin(th).mean(), np.cos(th).mean())
+    d = np.angle(np.exp(1j * (th - mean_th)))          # 평균 기준 -π~π
+    lo, med, hi = np.percentile(d, [5, 50, 95])
+    to_h = lambda x: int(round(((x + mean_th) % (2 * np.pi)) * 180.0 / (2 * np.pi))) % 180
+    return to_h(med), to_h(lo), to_h(hi)
+
+
 def load_vision_yaml():
     """vision.yaml 에서 hsv.*·hfov_deg·min_area 를 읽는다. 못 읽으면 기본값."""
     try:
@@ -98,7 +120,7 @@ def load_vision_yaml():
 
 class Probe(Node):
 
-    def __init__(self, colors, seconds, min_area):
+    def __init__(self, colors, seconds, min_area, log_csv=None, log_every=5.0):
         super().__init__('vision_probe')
         params, path = load_vision_yaml()
         self.hfov = float(params.get('hfov_deg', 80.32))
@@ -126,6 +148,28 @@ class Probe(Node):
         self.last_shot_t = -1e9
         self.event_counts = {}   # 종류별 총 발생 수(사진을 못 남겨도 센다)
         self.shots = []          # (우선순위, 한글라벨, 영문라벨, 이미지)
+
+        # ── 연습기간 실측 로깅 ──────────────────────────────────
+        # 🚨 사람이 기억해야 하는 절차는 결국 잊힌다(blackbox 와 같은 발상).
+        #    연습 나갈 때 그냥 켜두면 시간대별 HSV 가 CSV 로 쌓인다.
+        #    ⚠️ 부표만이 아니라 **화면 전체 밝기(frame_v_med)와 마스크 비율**도 남긴다 —
+        #       "이 범위가 안전한가" 는 부표 색이 아니라 **배경과 갈리는가** 로 정해진다.
+        self.log_path = log_csv
+        self.log_every = log_every
+        self._last_log = -1e9
+        self._csv = None
+        self._w = None
+        if log_csv:
+            new = not os.path.exists(log_csv)
+            self._csv = open(log_csv, 'a', newline='', encoding='utf-8')
+            self._w = csv.writer(self._csv)
+            if new:
+                self._w.writerow([
+                    "iso_time", "elapsed_s", "color", "detected", "n_blobs",
+                    "top_area", "angle_deg", "bias_deg", "mask_pct", "frame_v_med",
+                    "h_med", "h_p5", "h_p95", "s_med", "s_p5", "s_p95",
+                    "v_med", "v_p5", "v_p95"])
+            print(f"📝 로깅: {log_csv}  ({log_every}초 간격)")
 
         self.create_subscription(Image, topic, self.cb, QOS)
 
@@ -156,8 +200,21 @@ class Probe(Node):
             wsum += a2
             asum += a2 * g
         wmean = asum / wsum if wsum > 0 else None
+        # 검출된 '가장 큰 덩어리' 안쪽 픽셀의 HSV 분포 — 연습기간 시간대별 실측용
+        mm = np.zeros(hsv.shape[:2], np.uint8)
+        cv2.drawContours(mm, [top], -1, 255, -1)
+        px = hsv[mm > 0]
+        st = {}
+        if px.size:
+            # H 만 원형통계 — S·V 는 선형이라 그냥 백분위로 낸다
+            st["h_med"], st["h_p5"], st["h_p95"] = circ_hue_stats(px[:, 0])
+            for i, nm in ((1, "s"), (2, "v")):
+                arr = px[:, i]
+                st[nm + "_med"] = int(np.median(arr))
+                st[nm + "_p5"] = int(np.percentile(arr, 5))
+                st[nm + "_p95"] = int(np.percentile(arr, 95))
         return ((cx, cy, cv2.contourArea(top),
-                 angle_from_pixel(cx, width, self.hfov), angs, wmean), big, mask)
+                 angle_from_pixel(cx, width, self.hfov), angs, wmean, st), big, mask)
 
     def cb(self, msg):
         now = time.monotonic()
@@ -186,7 +243,7 @@ class Probe(Node):
                 pv.update(seen=False, angle=None, blobs=0)
                 continue
 
-            cx, cy, area, ang, angs, wmean = res
+            cx, cy, area, ang, angs, wmean, hstat = res
             st["hit"] += 1
             st["angles"].append(ang)
             st["areas"].append(area)
@@ -222,6 +279,28 @@ class Probe(Node):
             else:
                 pv["pend_blobs"], pv["pend_n"] = None, 0
             pv.update(seen=True, angle=ang)
+
+        if self._w is not None and now - self._last_log >= self.log_every:
+            self._last_log = now
+            iso = datetime.datetime.now().isoformat(timespec='seconds')
+            fv = int(np.median(hsv[:, :, 2]))
+            for c in self.colors:
+                r2, big2, m2 = self.analyze(hsv, c, w)
+                pct = 100.0 * int(m2.sum() // 255) / m2.size
+                if r2 is None:
+                    self._w.writerow([iso, f"{now-self.t0:.1f}", c, 0, len(big2),
+                                      "", "", "", f"{pct:.3f}", fv] + [""] * 9)
+                else:
+                    _cx, _cy, a2, g2, ags, wm, hs = r2
+                    bias = (g2 - wm) if wm is not None else ""
+                    self._w.writerow([
+                        iso, f"{now-self.t0:.1f}", c, 1, len(big2), int(a2),
+                        f"{g2:.2f}", (f"{bias:.2f}" if bias != "" else ""),
+                        f"{pct:.3f}", fv,
+                        hs.get("h_med", ""), hs.get("h_p5", ""), hs.get("h_p95", ""),
+                        hs.get("s_med", ""), hs.get("s_p5", ""), hs.get("s_p95", ""),
+                        hs.get("v_med", ""), hs.get("v_p5", ""), hs.get("v_p95", "")])
+            self._csv.flush()
 
         if not events:
             return
@@ -322,17 +401,23 @@ def main():
     ap.add_argument('--colors', default='red,green')
     ap.add_argument('--min-area', type=float, default=40.0)
     ap.add_argument('--out', default='/tmp')
+    ap.add_argument('--log-csv', default=None,
+                    help='연습기간 실측 로그를 이어붙일 CSV 경로(없으면 로깅 안 함)')
+    ap.add_argument('--log-every', type=float, default=5.0)
     a = ap.parse_args()
 
     rclpy.init()
     node = Probe([c.strip() for c in a.colors.split(',') if c.strip()],
-                 a.sec, a.min_area)
+                 a.sec, a.min_area, a.log_csv, a.log_every)
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
         pass
     finally:
         node.report(a.out)
+        if node._csv:
+            node._csv.close()
+            print(f"  📝 로그 저장: {node.log_path}")
         node.destroy_node()
         if rclpy.ok():
             rclpy.shutdown()
