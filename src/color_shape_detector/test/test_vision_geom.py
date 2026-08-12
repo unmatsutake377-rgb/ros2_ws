@@ -11,7 +11,8 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from color_shape_detector.vision_geom import (  # noqa: E402
-    DEFAULT_HFOV_DEG, EXACT_LEGACY_HFOV_DEG, LEGACY_PIXEL_TO_ANGLE_K,
+    DEFAULT_HFOV_DEG, EXACT_LEGACY_HFOV_DEG, LEGACY_HFOV_DEG,
+    LEGACY_PIXEL_TO_ANGLE_K, MEASURED_D455_640x480,
     angle_from_pixel, fx_from_hfov, legacy_angle_from_pixel,
 )
 
@@ -114,19 +115,54 @@ def test_regression_exact_hfov_is_bit_equal():
     assert worst < 1e-9, f"최대오차 {worst}"
 
 
-def test_regression_default_hfov_within_pixel_noise():
+def test_legacy_constant_rounding_within_pixel_noise():
     """
-    기본값 71.5 로 반올림했을 때의 오차가 '픽셀 잡음 이하' 인지 못 박는다.
-    중심부 1픽셀 = 0.129°. 그 10% 인 0.013° 를 상한으로 잡는다.
+    71.5(작년 등가 화각)를 **그 목적으로 쓸 때**의 반올림 오차만 본다.
+
+    ⚠️ [2026-08-12] 예전엔 이 테스트가 `DEFAULT_HFOV_DEG` 를 검사했다.
+       기본값이 71.5 였고, "작년 동작을 그대로 재현한다" 를 고정하는 게 목적이었다.
+       **그런데 그 작년 동작 자체가 틀렸다는 게 밝혀졌다** — camera_info 실측 fx 는
+       379.19(HFOV 80.32°)인데 작년 매직넘버는 444.44(71.5°)였다.
+       그래서 검사 대상을 `DEFAULT_HFOV_DEG` → `LEGACY_HFOV_DEG` 로 바꿨다.
+       이 테스트는 이제 '역사 기록' 이지 '올바름의 근거' 가 아니다.
     """
-    one_px_deg = abs(angle_from_pixel(321, 640, DEFAULT_HFOV_DEG)
-                     - angle_from_pixel(320, 640, DEFAULT_HFOV_DEG))
-    worst = max(abs(angle_from_pixel(vx, 640, DEFAULT_HFOV_DEG)
+    one_px_deg = abs(angle_from_pixel(321, 640, LEGACY_HFOV_DEG)
+                     - angle_from_pixel(320, 640, LEGACY_HFOV_DEG))
+    worst = max(abs(angle_from_pixel(vx, 640, LEGACY_HFOV_DEG)
                     - legacy_angle_from_pixel(vx, 640))
                 for vx in range(0, 641))
     assert worst < one_px_deg * 0.1, \
         f"최대오차 {worst:.6f}° 가 1픽셀({one_px_deg:.4f}°)의 10% 를 넘는다"
     assert worst < 0.005, f"{worst:.6f}°"
+
+
+def test_default_hfov_matches_measured_camera_info():
+    """
+    🚨 기본 화각이 **카메라가 스스로 보고한 값**과 맞는지 못 박는다.
+
+    근거는 벤치 캘리브레이션이 아니라 `camera_info`(공장 캘리브레이션)다.
+    D455 S/N 117122250518, 640x480 에서 fx=379.189 → HFOV 80.32°.
+    누가 이 값을 옛날 71.5 로 되돌리면 여기서 걸린다.
+    """
+    fx_measured = MEASURED_D455_640x480["fx"]
+    fx_default = fx_from_hfov(640, DEFAULT_HFOV_DEG)
+    # 80.32° 는 소수 둘째 자리 반올림값이라 fx 가 정확히 일치하진 않는다.
+    # 0.1px 이내면 각도로는 1e-3° 수준이라 무해하다.
+    assert abs(fx_default - fx_measured) < 0.1, \
+        f"기본 화각 fx={fx_default:.3f} vs 실측 {fx_measured:.3f}"
+
+
+def test_default_is_not_the_old_wrong_value():
+    """
+    🚨 71.5 로 되돌아가는 것을 막는다.
+
+    그 값이면 화면 가장자리에서 각도가 4.4° 틀린다 — align_tol_deg(5°)의 88%다.
+    에러가 안 나고 조용히 틀리는 종류라 테스트로 박아둔다.
+    """
+    assert DEFAULT_HFOV_DEG != LEGACY_HFOV_DEG
+    edge_err = abs(angle_from_pixel(0, 640, DEFAULT_HFOV_DEG)
+                   - angle_from_pixel(0, 640, LEGACY_HFOV_DEG))
+    assert edge_err > 4.0, f"가장자리 차이가 {edge_err:.2f}° 밖에 안 된다 — 상수를 확인할 것"
 
 
 def test_legacy_was_broken_at_other_resolutions():
