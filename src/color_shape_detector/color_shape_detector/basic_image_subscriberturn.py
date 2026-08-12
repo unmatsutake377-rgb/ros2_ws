@@ -10,6 +10,7 @@ from color_shape_detector.vision_geom import (
     DEFAULT_HFOV_DEG, angle_from_pixel,
 )
 from color_shape_detector import hsv_ranges
+from color_shape_detector.dock_logic import DetectionConfirmer
 
 import cv2
 import numpy as np
@@ -110,6 +111,18 @@ class ImageSubscriber(Node):
             lambda n, d: self.declare_parameter(n, d).value,
             ("red", "green", "white"),
             on_error=self.get_logger().error)
+
+        # 최소 면적[px²] — 예전엔 `if area < 40:` 로 코드에 박혀 있었다(gate 와 각각).
+        # ⚠️ 40 은 근거 없는 값이다. 실측에서 41px² 노이즈가 통과했다. 야외에서 확정할 것.
+        self.min_area_px = float(
+            self.declare_parameter('min_area_px', 40.0).value)
+
+        # 확인-N프레임. 기본 1 = 꺼짐 — 측정 없이 동작을 바꾸지 않는다.
+        # 🚨 여기 key 는 **색**이다. 색이 바뀌면(빨강→흰색) 카운트가 리셋된다 —
+        #    ship_turn 이 색으로 회전 방향을 정하므로(빨강·초록=시계, 흰색=반시계)
+        #    색이 흔들리는 채로 발행하면 **배가 반대로 돈다.**
+        cf = int(self.declare_parameter('confirm_frames', 1).value)
+        self.confirm = DetectionConfirmer(cf)
 
         self.found_in_frame = False
 
@@ -219,7 +232,7 @@ class ImageSubscriber(Node):
 
             for cnt in contours:
                 area = cv2.contourArea(cnt)
-                if area < 40:
+                if area < self.min_area_px:
                     continue
 
                 approx = cv2.approxPolyDP(cnt, 0.0315 * cv2.arcLength(cnt, True), True)
@@ -263,7 +276,12 @@ class ImageSubscriber(Node):
                 if self.debug_view:
                     cv2.drawContours(view_frame, [approx], -1, (0, 255, 0), 2)
 
-        if best['angle'] is not None:
+        if best['angle'] is None:
+            self.confirm.update(None)
+        elif self.confirm.update(best['color']) is None:
+            # 확정 전 — found_in_frame 을 세우지 않아 fallback 이 이어받는다
+            pass
+        else:
             self.found_in_frame = True
             now = time.time()
 

@@ -10,6 +10,7 @@ from color_shape_detector.vision_geom import (
     DEFAULT_HFOV_DEG, angle_from_pixel,
 )
 from color_shape_detector import hsv_ranges
+from color_shape_detector.dock_logic import DetectionConfirmer
 
 import cv2
 import numpy as np
@@ -113,6 +114,24 @@ class ImageSubscriber(Node):
             ("red", "green"),
             on_error=self.get_logger().error)
 
+        # 최소 면적[px²] — 이보다 작은 덩어리는 무시한다.
+        # 🚨 예전엔 `if area < 40:` 로 **코드에 박혀** 있었다(gate·turn 각각).
+        #    야외에서 값을 바꾸려면 파이썬을 고쳐야 했다 — CLAUDE.md 1-4 위반.
+        #    ⚠️ 40 은 근거가 없는 값이다. 실측에서 **41px² 짜리 노이즈가 부표로 통과**했다.
+        #       그렇다고 올리면 먼 부표를 놓친다(20cm 부표는 8m 에서 70px²).
+        #       부표 실제 지름을 모르면 못 정한다 → 야외에서 확정.
+        self.min_area_px = float(
+            self.declare_parameter('min_area_px', 40.0).value)
+
+        # 확인-N프레임 — 연속 N프레임 잡혀야 발행한다(CLAUDE.md 6-2 [F]).
+        # 🚨 기본값 1 = **꺼짐**. 오늘 실측(빨강 1220/1220, 초록 520/520)은 전부
+        #    확인 없이 나온 결과다. 측정 없이 동작을 바꾸지 않는다
+        #    (시간투표 필터를 근거 없이 켰다가 무익으로 판명난 전례가 있다 — CLAUDE.md 6장).
+        #    ⚠️ dock 은 이미 3 을 쓴다. 야외에서 물보라·윤슬 노이즈를 재본 뒤
+        #       여기도 3 으로 올릴지 정한다. yaml 한 줄이면 된다.
+        cf = int(self.declare_parameter('confirm_frames', 1).value)
+        self.confirm = {c: DetectionConfirmer(cf) for c in ('red', 'green')}
+
         # 내부 상태
         self.last_log_time = time.time()
         self.found_in_frame = {'red': False, 'green': False}
@@ -212,7 +231,7 @@ class ImageSubscriber(Node):
             for cnt in contours:
 
                 area = cv2.contourArea(cnt)
-                if area < 40:
+                if area < self.min_area_px:
                     continue
 
                 # polygon approx
@@ -282,6 +301,13 @@ class ImageSubscriber(Node):
         for c in ['red', 'green']:
             cand = best[c]
             if cand['angle'] is None:      # V1: distance 센티널 → angle 센티널
+                self.confirm[c].update(None)
+                continue
+
+            # 확정 전이면 발행하지 않는다. found_in_frame 을 세우지 **않으므로**
+            # 아래 fallback 이 이어받아 grace 기간 동안 마지막 유효값을 낸다
+            # → 토픽이 침묵하지 않는다(침묵은 소비자에게 '사라졌다' 로 읽힌다).
+            if self.confirm[c].update(c) is None:
                 continue
 
             self.found_in_frame[c] = True
