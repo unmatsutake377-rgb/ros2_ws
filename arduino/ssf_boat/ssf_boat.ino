@@ -23,6 +23,18 @@
 
 #include <Servo.h>
 
+// ── RC 배선 진단 (기본 꺼짐) ─────────────────────────────────────────────
+// 🚨 "모드가 대기(0)에서 안 바뀐다" 를 디버깅할 때만 켠다.
+//    모드는 핀 18 만 보므로, 평소엔 **어느 핀까지 배선이 됐는지 알 수가 없다.**
+//    켜면 1초마다 세 채널의 펄스 폭을 찍어 배선을 눈으로 확인할 수 있다.
+//    켜는 법(코드 수정 없이):
+//      arduino-cli compile --fqbn arduino:avr:mega \
+//        --build-property compiler.cpp.extra_flags=-DRC_DEBUG=1 arduino/ssf_boat
+//    ⚠️ 대회 펌웨어에는 **끈 채로** 올릴 것 — 브릿지가 이 줄을 못 알아본다(경고만 나지만 시끄럽다).
+#ifndef RC_DEBUG
+#define RC_DEBUG 0
+#endif
+
 // 룰 표시등 방식 선택 (2026-07-29 회로팀 그림 기준: WS2812 주소지정형 스트립)
 //   1 = WS2812 스트립 (현재 계획. IDE 라이브러리 매니저에서 "Adafruit NeoPixel" 설치 필요)
 //   0 = 단색 LED 3개 (예비 — 스트립 아닌 걸로 판명되면 이걸로 복귀)
@@ -35,8 +47,15 @@
 // ⚠️ 임시 배정 — 회로도 확정 후 이 표만 고치면 됨
 // ⚠️ RC 3개는 인터럽트 핀(2,3,18,19,20,21)만 가능. 회로팀에 전달됨
 #define PIN_RC_THROTTLE  2    // RC 수신기 전후진 (Mega 5V — 직결 OK)
-#define PIN_RC_STEER     3    // RC 수신기 좌우
-#define PIN_RC_MODE     18    // RC 수신기 모드 스위치
+// 🚨 [2026-08-12] 조향·모드 핀을 **맞바꿨다** (3↔18). 실기 배선에 코드를 맞춘 것이다.
+//    실측으로 확인한 상태: CH5(SWA) 가 핀 3 에, 조향(CH2)이 핀 11 에 꽂혀 있었다.
+//    · 핀 3 은 인터럽트 핀이라 **모드를 여기로 옮기면 배선 그대로 동작**한다
+//    · 🚨 핀 11 은 외부 인터럽트 핀이 아니다(2,3,18,19,20,21 만 가능) →
+//      `attachInterrupt` 가 안 붙는다. **어떤 설정으로도 못 읽는다** → 그 선은 옮겨야 한다.
+//      (PCINT 로는 가능하나 RC 캡처는 안전 경로라 검증 안 된 두 번째 체계를 붙이지 않는다)
+//    ⇒ 결론: 코드 2줄 + 조향선 한 가닥(11→18) = 최소 작업.
+#define PIN_RC_STEER    18    // RC 수신기 좌우   (구 3)
+#define PIN_RC_MODE      3    // RC 수신기 모드 스위치 (구 18)
 
 #define PIN_ESC_FL       5    // 선수 좌 ESC 신호
 #define PIN_ESC_FR       6    // 선수 우 ESC 신호
@@ -400,4 +419,25 @@ void loop() {
     lastStatusMs = now;
     publishStatus(digitalRead(PIN_ESTOP_SENSE) == LOW);
   }
+
+#if RC_DEBUG
+  // ---- RC 배선 진단: 1초마다 세 채널의 펄스 폭 ----
+  static unsigned long lastRcDbg = 0;
+  if (now - lastRcDbg >= 1000) {
+    lastRcDbg = now;
+    Serial.print(F("RC "));
+    const char *nm[3] = {"thr(p2)", "str(p18)", "mode(p3)"};
+    for (int i = 0; i < 3; i++) {
+      Serial.print(nm[i]); Serial.print('=');
+      unsigned long st = snapStamp(i);
+      if (st == 0) {
+        Serial.print(F("없음"));            // 펄스를 한 번도 못 받음 = 배선/전원/바인딩
+      } else {
+        Serial.print(snapPulse(i));
+        Serial.print(F("us(")); Serial.print(now - st); Serial.print(F("ms전)"));
+      }
+      Serial.print(i < 2 ? F("  ") : F("\n"));
+    }
+  }
+#endif
 }
