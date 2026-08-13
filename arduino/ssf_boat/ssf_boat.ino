@@ -35,6 +35,30 @@
 #define RC_DEBUG 0
 #endif
 
+// ── RC 핀 전수 스캔 (기본 꺼짐) ─────────────────────────────────────────
+// 🚨 "선이 어느 핀에 연결됐는지 모르겠다" 를 풀기 위한 **진단 전용** 빌드다.
+//    만능기판에 납땜된 배선은 눈으로 추적이 안 된다(08-13 사진으로 확인 실패).
+//    → 인터럽트 가능 핀 **6개 전부**에 인터럽트를 걸고 어디에 펄스가 들어오는지 찍는다.
+//    켜는 법:
+//      arduino-cli compile --fqbn arduino:avr:mega \
+//        --build-property compiler.cpp.extra_flags=-DRC_SCAN=1 arduino/ssf_boat
+//    ⚠️ 스캔 중에는 **정상 RC 경로가 동작하지 않는다**(같은 핀에 인터럽트를 덮어쓴다).
+//       모드는 대기(0)에 머문다 — 고장이 아니다. 확인이 끝나면 반드시 끄고 재업로드할 것.
+#ifndef RC_SCAN
+#define RC_SCAN 0
+#endif
+
+// ── 전 디지털 핀 사냥 (기본 꺼짐) ───────────────────────────────────────
+// 🚨 RC_SCAN 은 **인터럽트 가능 핀 6개만** 본다. 거기 다 없으면 선이 다른 핀에 있다는 뜻이라
+//    더 넓게 훑어야 한다. 이건 `pulseIn` 폴링으로 **모든 디지털 핀**에서 RC 펄스를 찾는다.
+//    켜는 법: --build-property compiler.cpp.extra_flags=-DPIN_HUNT=1
+//    ⚠️ 스윕 한 번에 최대 1.5초 블로킹이라 **제어 루프가 멈춘다.** 순수 진단 전용.
+//    ⚠️ ESC 출력 핀(5~8)과 스트립 핀은 건드리지 않는다 — 출력 핀을 INPUT 으로 바꾸면
+//       ESC 신호가 끊긴다.
+#ifndef PIN_HUNT
+#define PIN_HUNT 0
+#endif
+
 // 룰 표시등 방식 선택 (2026-07-29 회로팀 그림 기준: WS2812 주소지정형 스트립)
 //   1 = WS2812 스트립 (현재 계획. IDE 라이브러리 매니저에서 "Adafruit NeoPixel" 설치 필요)
 //   0 = 단색 LED 3개 (예비 — 스트립 아닌 걸로 판명되면 이걸로 복귀)
@@ -57,7 +81,15 @@
 #define PIN_RC_STEER    18    // RC 수신기 좌우   (구 3)
 #define PIN_RC_MODE      3    // RC 수신기 모드 스위치 (구 18)
 
-#define PIN_ESC_FL       5    // 선수 좌 ESC 신호
+// 🚨 [2026-08-13 임시] 핀 5 를 놓는다 — **출력끼리 충돌**하고 있었다.
+//    기판 실측: 핀 5 에 **RC 수신기 출력**이 물려 있는데, 펌웨어는 같은 핀을
+//    ESC 출력으로 몰고 있었다(`esc[0].attach(5)` → 부팅부터 1500us 송출).
+//    두 출력이 맞부딪히면 아두이노 핀이나 수신기 출력단이 상한다.
+//    ⚠️ **이건 임시 회피다.** 기판의 ESC 는 핀 10(우)·13(좌) 에 있고 6·7·8 엔 아무것도 없다.
+//       즉 지금 펌웨어의 ESC 출력은 **어디에도 연결돼 있지 않다**(모터가 안 도는 게 정상).
+//       핀표 확정은 `docs/전달용/회로팀_최종본_회신.md` §8 의 답이 나온 뒤에 한 번에 한다.
+//       그때 ESC 는 2채널(좌/우)로 줄고, 핀도 기판에 맞춘다.
+#define PIN_ESC_FL       9    // (구 5) 선수 좌 ESC 신호 — 임시로 미사용 핀
 #define PIN_ESC_FR       6    // 선수 우 ESC 신호
 #define PIN_ESC_RL       7    // 선미 좌 ESC 신호
 #define PIN_ESC_RR       8    // 선미 우 ESC 신호
@@ -127,6 +159,46 @@ void rcIsr(int idx, int pin) {
 void isrThrottle() { rcIsr(0, PIN_RC_THROTTLE); }
 void isrSteer()    { rcIsr(1, PIN_RC_STEER); }
 void isrMode()     { rcIsr(2, PIN_RC_MODE); }
+
+#if RC_SCAN
+// 인터럽트 가능 핀 전부. 이 순서가 아래 출력 순서다.
+const uint8_t SCAN_PINS[6] = {2, 3, 18, 19, 20, 21};
+volatile unsigned long scRise[6] = {0}, scPulse[6] = {0}, scStamp[6] = {0};
+void scIsr(uint8_t i) {
+  uint8_t pin = SCAN_PINS[i];
+  if (digitalRead(pin) == HIGH) {
+    scRise[i] = micros();
+  } else {
+    unsigned long w = micros() - scRise[i];
+    if (w >= (unsigned long)RC_PULSE_MIN && w <= (unsigned long)RC_PULSE_MAX) {
+      scPulse[i] = w; scStamp[i] = millis();
+    }
+  }
+}
+void sc0(){scIsr(0);} void sc1(){scIsr(1);} void sc2(){scIsr(2);}
+void sc3(){scIsr(3);} void sc4(){scIsr(4);} void sc5(){scIsr(5);}
+#endif
+
+#if PIN_HUNT
+// 모든 디지털 핀을 훑어 RC 펄스(900~2100us)가 살아있는 핀을 찾는다.
+void pinHuntSweep() {
+  Serial.print(F("HUNT "));
+  bool found = false;
+  for (uint8_t p = 2; p <= 53; p++) {
+    if (p >= 5 && p <= 8) continue;            // ESC 출력 — 건드리면 신호가 끊긴다
+    if (p == PIN_LED_STRIP) continue;          // 스트립 Din
+    pinMode(p, INPUT);
+    unsigned long w = pulseIn(p, HIGH, 30000UL);   // RC 프레임 20ms → 30ms 면 한 발은 잡힌다
+    if (w >= (unsigned long)RC_PULSE_MIN && w <= (unsigned long)RC_PULSE_MAX) {
+      Serial.print('p'); Serial.print(p); Serial.print('=');
+      Serial.print(w); Serial.print(F("us  "));
+      found = true;
+    }
+  }
+  if (!found) Serial.print(F("(어느 핀에도 유효 펄스 없음)"));
+  Serial.println();
+}
+#endif
 
 // Mega(8비트)는 4바이트 변수 읽기가 여러 명령으로 쪼개짐 —
 // 읽는 도중 ISR이 값을 바꾸면 반쪽짜리 값이 됨. 잠깐 인터럽트 끄고 스냅샷.
@@ -356,6 +428,18 @@ void setup() {
   attachInterrupt(digitalPinToInterrupt(PIN_RC_STEER),    isrSteer,    CHANGE);
   attachInterrupt(digitalPinToInterrupt(PIN_RC_MODE),     isrMode,     CHANGE);
 
+#if RC_SCAN
+  // 🚨 위 3개를 **덮어쓴다** — 스캔 빌드에서는 정상 RC 경로가 죽는다(의도된 것).
+  {
+    void (*fns[6])() = {sc0, sc1, sc2, sc3, sc4, sc5};
+    for (uint8_t i = 0; i < 6; i++) {
+      pinMode(SCAN_PINS[i], INPUT);
+      attachInterrupt(digitalPinToInterrupt(SCAN_PINS[i]), fns[i], CHANGE);
+    }
+    Serial.println(F("RC SCAN mode: pins 2,3,18,19,20,21 (normal RC disabled)"));
+  }
+#endif
+
   // arm 대기 중 시리얼 버퍼에 쌓인 명령은 전부 버림 (부팅 직후 과거 명령 실행 방지)
   while (Serial.available() > 0) Serial.read();
 
@@ -419,6 +503,30 @@ void loop() {
     lastStatusMs = now;
     publishStatus(digitalRead(PIN_ESTOP_SENSE) == LOW);
   }
+
+#if PIN_HUNT
+  // ---- 전 디지털 핀 사냥: 3초마다 한 바퀴 ----
+  static unsigned long lastHunt = 0;
+  if (now - lastHunt >= 3000) { lastHunt = now; pinHuntSweep(); }
+#endif
+
+#if RC_SCAN
+  // ---- 핀 전수 스캔: 1초마다 6개 핀 상태 ----
+  static unsigned long lastScan = 0;
+  if (now - lastScan >= 1000) {
+    lastScan = now;
+    Serial.print(F("SCAN "));
+    for (uint8_t i = 0; i < 6; i++) {
+      noInterrupts();
+      unsigned long pw = scPulse[i], stp = scStamp[i];
+      interrupts();
+      Serial.print(F("p")); Serial.print(SCAN_PINS[i]); Serial.print('=');
+      if (stp == 0) Serial.print(F("-"));
+      else { Serial.print(pw); Serial.print(F("us")); }
+      Serial.print(i < 5 ? F("  ") : F("\n"));
+    }
+  }
+#endif
 
 #if RC_DEBUG
   // ---- RC 배선 진단: 1초마다 세 채널의 펄스 폭 ----
