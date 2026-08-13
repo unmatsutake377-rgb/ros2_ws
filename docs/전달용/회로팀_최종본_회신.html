@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>회로팀께 — 소프트팀 회신 (2026-08-13)</title>
+<style>
+  :root { --bg:#f6f7f9; --card:#fff; --line:#e0e3e8; --tx:#22272e; --acc:#0a58ca; --warn:#c62828; --ok:#2e7d32; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:'Malgun Gothic','Apple SD Gothic Neo',sans-serif; background:var(--bg); color:var(--tx); padding:24px; line-height:1.7; }
+  .wrap { max-width:900px; margin:0 auto; }
+  h1 { font-size:1.45em; margin-bottom:4px; }
+  .sub { color:#667; font-size:.9em; margin-bottom:20px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:18px 20px; margin-bottom:16px; }
+  .card h2 { font-size:1.1em; margin-bottom:12px; padding-bottom:8px; border-bottom:2px solid var(--acc); }
+  .card.warn h2 { border-color:var(--warn); }
+  .card.ok h2 { border-color:var(--ok); }
+  .flow { background:#22272e; color:#d5dce4; border-radius:8px; padding:14px 16px; font-family:Consolas,monospace; font-size:.85em; overflow-x:auto; white-space:pre; margin:10px 0; }
+  table { border-collapse:collapse; width:100%; margin:10px 0; font-size:.92em; }
+  th,td { border:1px solid var(--line); padding:7px 10px; text-align:left; vertical-align:top; }
+  th { background:#f0f2f5; }
+  code { background:#eef1f5; padding:1px 5px; border-radius:4px; font-family:Consolas,monospace; font-size:.92em; }
+  b.hl { background:#fff3cd; padding:0 4px; border-radius:3px; }
+  .small { font-size:.85em; color:#667; margin-top:8px; }
+  .yes { color:var(--ok); font-weight:bold; }
+  .no { color:var(--warn); font-weight:bold; }
+  .q { background:#fff8e1; border-left:4px solid #f9a825; padding:10px 14px; margin:12px 0; border-radius:0 6px 6px 0; }
+  ul { margin:8px 0 8px 20px; }
+  li { margin:4px 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>📮 회로팀께 — 소프트팀 회신</h1>
+<div class="sub">2026-08-13 · 검토 자료: 「회로 최종 정리」(글) + <b>시스템 블록도 · 배치 손그림</b> · 이전 회신: 2026-07-25</div>
+
+<div class="card ok">
+<h2>들어가며</h2>
+<p>문서 잘 봤습니다. 용어 설명부터 조립 순서·점검 체크리스트까지 <b>처음 보는 사람이 따라갈 수 있게</b>
+쓰여 있어서 좋았습니다. 블록도도 전체 구조가 한눈에 들어옵니다.</p>
+<p style="margin-top:8px">아래는 <b>소프트팀이 펌웨어를 확정하려면 답이 필요한 것들</b>입니다.
+저희가 임의로 정하면 나중에 실물과 어긋나서 지금 여쭙습니다.</p>
+</div>
+
+<div class="card warn">
+<h2>Q1. 🚨 MD-30A 는 지금 <u>어디에</u> 있습니까? <span style="font-size:.85em;color:#667">— 가장 중요</span></h2>
+
+<p>두 자료가 서로 다릅니다.</p>
+<table>
+<tr><th>자료</th><th>MD-30A 위치</th></tr>
+<tr><td>글 문서 §3</td><td><code>릴레이 → <b>MD-30A</b> → 스러스터</code> — <b class="no">추진 경로 안</b></td></tr>
+<tr><td>블록도</td><td><code>4s Lipo → 전원차단회로 → ESC</code> — <b>안 나옴</b></td></tr>
+</table>
+<p><b class="hl">어느 쪽이 현재 설계인가요?</b> 이 답에 따라 뒤가 정반대로 갈립니다.</p>
+
+<h3 style="margin-top:14px;font-size:1em">추진 경로에 있다면 — 전류가 부족합니다</h3>
+<table>
+<tr><th>MD-30A 허용</th><td><b>30 A</b></td></tr>
+<tr><th>T200 개당 순간 (14.8V)</th><td>약 <b>25 A</b></td></tr>
+<tr><th>계통당 스러스터</th><td><b>2개</b></td></tr>
+<tr><th>계통당 필요</th><td><b class="no">약 50 A</b></td></tr>
+</table>
+<p>필요량이 한계의 <b>1.7배</b>입니다. 풀스로틀에서 컨버터가 전류 제한에 걸리거나 보호 차단됩니다.
+그게 <b class="no">경기 중에</b> 일어납니다.</p>
+
+<h3 style="margin-top:14px;font-size:1em">그리고 애초에 필요가 없습니다</h3>
+<p><b>T200 + ESC 는 배터리 14.8V 직결이 정상</b>입니다. 속도 조절은 <b>ESC 가</b> 합니다 —
+전압을 낮춰서 조절하는 방식이 아닙니다. 아두이노가 ESC 에 <code>1100~1900µs</code> 펄스를 보내면
+ESC 가 출력을 만듭니다.</p>
+<p><b>컨버터가 실제로 필요한 곳은 아두이노·수신기의 5V</b> 입니다. 거긴 전류가 작아 충분합니다.</p>
+<div class="flow">권장 : 배터리 → EC5 → 릴레이 → ESC → T200        (14.8V 직결)
+                        └→ MD-30A → 아두이노·수신기 5V</div>
+
+<div class="q">
+<b>소프트팀이 이 답을 기다리는 이유</b><br>
+기판의 <b>M 커넥터(아두이노 핀 18)</b> 가 <i>"컨버터에 신호를 보내 스러스터 전압을 조절"</i> 하는 용도로 배선돼 있습니다.
+<ul>
+<li><b>컨버터를 옮기면</b> → M 은 <b class="yes">필요 없어집니다.</b> 핀 18이 비어 RC 배선이 쉬워집니다</li>
+<li><b>그대로 두면</b> → M 제어 기능을 <b>펌웨어에 새로 만들어야</b> 합니다</li>
+</ul>
+지금은 <b>만들지 않았습니다.</b> 없어질 기능을 미리 만들면 잘못된 구조를 코드로 굳히게 되어서요.
+</div>
+</div>
+
+<div class="card warn">
+<h2>Q2. 🚨 신호 GND 를 공통으로 이을 수 있습니까?</h2>
+
+<p>글 문서 §13-⑤ 에 이렇게 적혀 있습니다:</p>
+<div class="q"><i>"좌우 전원선을 서로 연결해서는 안 된다"</i></div>
+<p><b>굵은 전원선은 그 말이 맞습니다.</b> 분리 유지가 좋습니다.
+그런데 <b class="hl">신호 GND 는 반대로 반드시 이어야 합니다.</b></p>
+
+<h3 style="margin-top:14px;font-size:1em">왜 그런가</h3>
+<p>아두이노가 ESC 에 보내는 건 <b>PWM 펄스</b>입니다. 그런데 "전압" 은 혼자 존재하지 않습니다 —
+항상 <b>어떤 기준점에 대해 몇 V</b> 이고, 그 기준점이 GND 입니다.</p>
+<div class="flow">아두이노가 "5V 펄스" 를 보낸다
+   ↓
+좌측 ESC 는 "자기 GND 기준으로" 그 전압을 읽는다
+   ↓
+두 GND 가 안 이어져 있으면 → 기준이 다르다 → 읽은 값에 의미가 없다</div>
+<p class="small">전압계 탐침 한쪽을 아무 데도 안 대고 전압을 재는 것과 같습니다.</p>
+
+<h3 style="margin-top:14px;font-size:1em">배선</h3>
+<div class="flow">   배터리A (+) ━━━━━━┓
+                     ┃   ┌──────────┐
+   배터리A (−) ━━━━━━┻━━━┥ 좌 ESC ×2 ┝━━━ 좌 스러스터 2개
+                         └────┬─────┘
+                              │ 신호선 + 신호GND ────┐
+                                                     │
+                                           ┌─────────┴─────────┐
+                                           │   Mega 2560       │ ← GND 가 여기서 만난다
+                                           │   + LED 스트립 GND │
+                                           └─────────┬─────────┘
+                              ┌ 신호선 + 신호GND ────┘
+                         ┌────┴─────┐
+   배터리B (−) ━━━━━━┳━━━┥ 우 ESC ×2 ┝━━━ 우 스러스터 2개
+                     ┃   └──────────┘
+   배터리B (+) ━━━━━━┛
+
+   ━━━  굵은 전원선 : 좌우 분리 유지   ✅ 문서대로
+   ───  가는 신호선 : GND 공통         🚨 반드시</div>
+<p>ESC 3핀 커넥터(신호 / ＋ / GND) 중 <b>GND 를 Mega GND 에</b> 연결하면 됩니다.
+전류가 흐르는 굵은 선이 아니라 <b>가는 신호선 한 가닥</b>입니다.</p>
+
+<h3 style="margin-top:14px;font-size:1em">🚨 LED 스트립도 같습니다</h3>
+<p>LED 전원을 <code>AA×3(4.5V)</code> 로 분리하신 건 좋은 판단인데,
+<b>데이터선의 기준점은 여전히 공통</b>이어야 합니다.</p>
+<div class="flow">AA×3 (+)  ──→ 스트립 +
+AA×3 (−)  ──┬─→ 스트립 GND
+            └─→ Mega GND      🚨 이게 빠지면 색이 틀어지거나 안 켜진다
+Mega 핀 40 ──→ 스트립 Din</div>
+
+<div class="q">
+<b>부탁</b> — 문서 §13-⑤ 를 <b>"굵은 전원선에 한정"</b> 으로 고쳐 주십시오.
+지금 문장 그대로면 조립하는 사람이 신호 GND 도 안 잇습니다.
+그러면 <b class="no">ESC 가 안 돌고, 원인 찾기도 어렵습니다.</b>
+</div>
+</div>
+
+<div class="card warn">
+<h2>Q3. 🚨 무선 비상정지 부품을 확보하셨습니까? <span style="font-size:.85em;color:#667">— 규정</span></h2>
+<p>블록도에는 <code>전원 차단 회로</code> 하나만 있어 <b>버튼식인지 무선식인지 구분이 안 됩니다.</b>
+손그림에 <code>원격</code> 이라 적힌 모듈이 그것인가요?</p>
+<p><b class="hl">룰북 §8 은 버튼식 + 무선식 둘 다 의무</b>입니다. 성능이 아니라 <b>출전 자격</b> 문제입니다.</p>
+<div class="flow">FS-i6 여유 채널 → RC 스위치 모듈 → 고전류 릴레이 → 추진 전원 차단</div>
+<p>🚨 <b>아두이노를 거치지 않아야 합니다.</b> 제어기가 죽어도 작동해야 하기 때문입니다.
+아두이노는 <b>릴레이 상태를 감지만</b> 합니다(핀 38) — 차단은 회로가 직접 합니다.</p>
+<p class="small">부품 후보: <code>docs/전달용/부품_추천목록.md</code> §3</p>
+</div>
+
+<div class="card warn">
+<h2>Q4. 🚨 비상정지 버튼 하나가 <u>양쪽을 동시에</u> 끊습니까?</h2>
+<p>배터리가 2개이므로 차단 회로도 2개입니다.</p>
+<p><b class="no">한쪽만 끊기면 살아있는 쪽 추력만 남아 배가 제자리에서 돕니다.</b>
+비상정지가 오히려 위험을 만드는 상황이 됩니다.</p>
+<p>→ 버튼 1개(그리고 무선 1채널)가 <b>좌·우 차단 회로를 함께</b> 열도록 배선되어야 합니다.</p>
+</div>
+
+<div class="card">
+<h2>■ 그림에서 고쳐 주셨으면 하는 것 <span style="font-size:.85em;color:#667">(답변 불필요)</span></h2>
+
+<h3 style="font-size:1em;margin-bottom:6px">① 블록도가 배터리를 1개로 그렸습니다</h3>
+<div class="flow">실제(팀 확인) : 배터리 2개, 좌우 독립
+블록도        : 4s Lipo 1개, 전원 차단 회로 1개</div>
+<p><b>2계통으로</b> 고쳐 주십시오. Q4(동시 차단)가 그림에 드러나야 합니다.</p>
+
+<h3 style="font-size:1em;margin:14px 0 6px"><code>② Arduino Due</code> → <b>Mega 2560</b></h3>
+<p><b>2026-07-28 에 Mega 2560 R3 으로 확정</b>됐고 지금 실물도 Mega 입니다. 그림만 낡았습니다.</p>
+<p>Due 는 3.3V 보드라 RC 신호에 <b>레벨시프트가 필요</b>했는데, Mega 는 5V 라 <b>직결 가능</b>합니다.
+<b>부품이 달라지므로</b> 표기를 맞춰야 합니다.</p>
+
+<h3 style="font-size:1em;margin:14px 0 6px">③ LED 4.5V 가 빠듯합니다</h3>
+<table>
+<tr><th>풀백색 소비 (8픽셀)</th><td>8 × 60mA = <b>480 mA</b></td></tr>
+<tr><th>AA 알칼라인 3개</th><td>4.8V(새것) → <b class="no">3.6V(소진)</b></td></tr>
+</table>
+<p><b>전압이 떨어지면 색이 틀어지거나 아예 안 켜집니다.</b> 480mA면 AA 가 빨리 닳습니다.
+<b class="no">경기 중 규정 표시등이 꺼지면 문제</b>가 됩니다.</p>
+<p>→ <b>4s Lipo 에서 5V UBEC</b> 로 따는 편이 안정적입니다. (라우터 전원용 UBEC 를 검토 중이니 함께 보시면 좋겠습니다)</p>
+</div>
+
+<div class="card ok">
+<h2>■ 좋았던 점 — 블록도에서 확인된 것</h2>
+<table>
+<tr><th>항목</th><th></th></tr>
+<tr><td><code>ESC × 4</code> 명시</td><td class="yes">✅ 이전 회신의 지적이 반영됐습니다</td></tr>
+<tr><td><code>T200 × 4</code></td><td class="yes">✅ 스러스터 4개로 정리됐습니다</td></tr>
+<tr><td>LED 전원 분리 (<code>AA×3</code>)</td><td class="yes">✅ 추진 전원과 섞이지 않아 좋습니다</td></tr>
+<tr><td><b>모터 제어 PWM × 2 → ESC × 4</b></td><td class="yes">✅ 펌웨어의 <b>좌/우 페어 제어</b>와 정확히 일치합니다</td></tr>
+</table>
+<p class="small">특히 마지막 항목 — <b>신호 2개로 4개를 모는 구조</b>가 저희 펌웨어 설계와 맞아떨어집니다.
+좌 명령이 좌측 2개로, 우 명령이 우측 2개로 갑니다.</p>
+</div>
+
+<div class="card">
+<h2>■ 소프트팀 쪽 진행 상황 <span style="font-size:.85em;color:#667">(참고 — 조치 불필요)</span></h2>
+<p>실물 Mega 로 확인한 배선입니다.</p>
+<table>
+<tr><th>Mega 핀</th><th>기판 실제</th><th>상태</th></tr>
+<tr><td>2, 3</td><td>RC 수신기</td><td class="yes">✅ 정상 수신 중</td></tr>
+<tr><td>4 (·5)</td><td>RC 수신기</td><td class="no">🚨 읽을 수 없는 핀 — 아래 참고</td></tr>
+<tr><td>10</td><td>ESC 우(R)</td><td>신호 대기</td></tr>
+<tr><td>13</td><td>ESC 좌(L)</td><td>신호 대기</td></tr>
+<tr><td>18</td><td>M (컨버터 제어)</td><td>Q1 답에 따라 결정</td></tr>
+</table>
+<p>🚨 <b>Mega 에서 RC 펄스 폭을 잴 수 있는 핀은 <code>2, 3, 18, 19, 20, 21</code> 뿐입니다.</b>
+나머지 핀은 코드가 읽을 방법이 없습니다(외부 인터럽트 미지원).</p>
+<p>→ RC 3채널이 저 6개 안에 있어야 하므로 <b>RC 선 한 가닥을 옮겨야 합니다.</b>
+목적지는 Q1 답에 달려 있습니다(M 이 없어지면 핀 18, 남으면 19/20/21).</p>
+<p><b>ESC 출력 핀은 아무 핀이나 되므로</b> 펌웨어를 기판(10·13)에 맞추겠습니다.
+핀표 확정은 <b>Q1 답이 오면</b> 한 번에 하겠습니다.</p>
+
+<h3 style="font-size:1em;margin:14px 0 6px">이미 처리한 것</h3>
+<ul>
+<li>🚨 <b>핀 5 출력 충돌 제거</b> — 기판에서 핀 5 에 RC 신호가 들어오는데 펌웨어가 같은 핀을
+ESC 출력으로 몰고 있었습니다(출력끼리 마주 봄). 펌웨어 쪽을 비워 해소했습니다.</li>
+<li>펌웨어 업로드·동작 확인 완료. RC 모드 채널로 <b>자율/수동 전환</b>까지 실물 검증했습니다.</li>
+</ul>
+</div>
+
+<div class="card warn">
+<h2>요약</h2>
+<p><b class="hl">Q1(MD-30A 위치)만 답을 주셔도 나머지가 크게 정리됩니다.</b></p>
+<p>Q2~Q4 는 안전·규정 항목이라 별도로 확인 부탁드립니다.</p>
+</div>
+
+</div>
+</body>
+</html>
