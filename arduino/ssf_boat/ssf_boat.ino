@@ -52,11 +52,27 @@
 // 🚨 RC_SCAN 은 **인터럽트 가능 핀 6개만** 본다. 거기 다 없으면 선이 다른 핀에 있다는 뜻이라
 //    더 넓게 훑어야 한다. 이건 `pulseIn` 폴링으로 **모든 디지털 핀**에서 RC 펄스를 찾는다.
 //    켜는 법: --build-property compiler.cpp.extra_flags=-DPIN_HUNT=1
-//    ⚠️ 스윕 한 번에 최대 1.5초 블로킹이라 **제어 루프가 멈춘다.** 순수 진단 전용.
-//    ⚠️ ESC 출력 핀(5~8)과 스트립 핀은 건드리지 않는다 — 출력 핀을 INPUT 으로 바꾸면
-//       ESC 신호가 끊긴다.
+//    ⚠️ 첫 몇 바퀴는 전체를 훑느라 한 번에 최대 2.7초 블로킹이다. 순수 진단 전용.
+//       살아있는 핀을 찾으면 그 핀만 보므로 5Hz 넘게 나온다(스틱을 움직이며 볼 수 있다).
+//    ⚠️ ESC 출력 핀과 스트립 핀은 건드리지 않는다 — 출력 핀을 INPUT 으로 바꾸면 신호가 끊긴다.
+//       제외 목록은 `huntSkip()` 이 **PIN_ESC_* 정의에서 가져온다**(핀 번호를 두 번 적지 않는다).
 #ifndef PIN_HUNT
 #define PIN_HUNT 0
+#endif
+
+// ── i-BUS 수신 확인 (기본 꺼짐) ─────────────────────────────────────────
+// FS-iA6B 는 **모든 채널을 선 한 가닥**으로 내보내는 i-BUS 포트를 갖고 있다
+// (UART 115200 8N1, 32바이트 프레임, 약 7ms 주기).
+// 이걸 쓰면 "Mega 에서 RC 를 읽을 수 있는 핀은 2·3·18·19·20·21 뿐" 이라는 제약이 사라진다.
+// 인터럽트 3개 대신 **시리얼 포트 하나**면 6채널이 다 들어온다.
+//
+// 배선: 수신기의 `i-BUS`(SERVO) 포트 신호선 → Mega **핀 19 (Serial1 RX)**
+//       GND 는 공통. 수신기 전원은 기존대로.
+// 켜는 법: --build-property compiler.cpp.extra_flags=-DIBUS_PROBE=1
+// ⚠️ 확인 전용이다. 프레임이 오는지/채널값이 맞는지만 찍고 제어에는 쓰지 않는다.
+//    실제 채택은 프레임이 확인된 뒤에 별도로 한다.
+#ifndef IBUS_PROBE
+#define IBUS_PROBE 0
 #endif
 
 // 룰 표시등 방식 선택 (2026-07-29 회로팀 그림 기준: WS2812 주소지정형 스트립)
@@ -70,16 +86,25 @@
 // =====================[ 1. 핀 배치 ]===================================
 // ⚠️ 임시 배정 — 회로도 확정 후 이 표만 고치면 됨
 // ⚠️ RC 3개는 인터럽트 핀(2,3,18,19,20,21)만 가능. 회로팀에 전달됨
-#define PIN_RC_THROTTLE  2    // RC 수신기 전후진 (Mega 5V — 직결 OK)
-// 🚨 [2026-08-12] 조향·모드 핀을 **맞바꿨다** (3↔18). 실기 배선에 코드를 맞춘 것이다.
-//    실측으로 확인한 상태: CH5(SWA) 가 핀 3 에, 조향(CH2)이 핀 11 에 꽂혀 있었다.
-//    · 핀 3 은 인터럽트 핀이라 **모드를 여기로 옮기면 배선 그대로 동작**한다
-//    · 🚨 핀 11 은 외부 인터럽트 핀이 아니다(2,3,18,19,20,21 만 가능) →
-//      `attachInterrupt` 가 안 붙는다. **어떤 설정으로도 못 읽는다** → 그 선은 옮겨야 한다.
-//      (PCINT 로는 가능하나 RC 캡처는 안전 경로라 검증 안 된 두 번째 체계를 붙이지 않는다)
-//    ⇒ 결론: 코드 2줄 + 조향선 한 가닥(11→18) = 최소 작업.
-#define PIN_RC_STEER    18    // RC 수신기 좌우   (구 3)
-#define PIN_RC_MODE      3    // RC 수신기 모드 스위치 (구 18)
+// 🚨 2026-08-17 실측으로 세 채널을 전부 재배정했다. 그 전까지 셋 다 어긋나 있었다.
+//    조작을 하나씩 격리해서 어느 핀이 반응하는지 측정한 결과(`tools/rc_watch.py` 방식):
+//      오른쪽 스틱 좌우(조향)   → 핀 2      (펌웨어는 스로틀로 읽고 있었다)
+//      왼쪽 스틱 위아래(스로틀) → 핀 3      (펌웨어는 모드로 읽고 있었다)
+//      스위치(모드)             → 핀 5      🚨 인터럽트 불가 → 핀 18 로 이설 필요
+//    🚨 그 전 상태에서는 **스로틀 위치가 자율/수동을 결정**하고 있었다.
+//       속도를 올리는 것만으로 모드가 바뀌는 상태였다 — 물 위에서 그대로 나갔으면 사고다.
+#define PIN_RC_THROTTLE  3    // 왼쪽 스틱 위아래 (구 2) — 2026-08-17 실측
+// ⚠️ [2026-08-12 기록 — 지금은 무효] 그때는 "CH5(SWA)가 핀 3, 조향이 핀 11" 로 보고
+//    조향·모드를 3↔18 로 맞바꿨다. 08-17 격리 측정에서 **그 배정이 틀렸음이 드러났다.**
+//    남겨두는 이유: 같은 착각을 다시 하지 않기 위해서다. 근거는 위 08-17 블록이 맞다.
+//
+// 🚨 인터럽트 제약은 그대로다 — Mega 에서 `attachInterrupt` 가 붙는 핀은
+//    **2, 3, 18, 19, 20, 21 뿐**이다. 모드가 실측된 핀 5 는 여기 없다.
+//    (PCINT 로는 가능하나, RC 캡처는 안전 경로라 검증 안 된 두 번째 체계를 붙이지 않는다)
+#define PIN_RC_STEER     2    // 오른쪽 스틱 좌우 (구 18) — 2026-08-17 실측
+#define PIN_RC_MODE     18    // 모드 스위치 (구 3) — 🚨 실측 위치는 핀 5인데 인터럽트가 안 된다.
+                              //    수신기 그 선을 기판의 `M` 소켓(= 핀 18)으로 옮겨야 모드가 산다.
+                              //    옮기기 전까지는 신호가 없어 모드가 `대기` 에 머문다(= 모터 중립, 안전측).
 
 // 🚨 [2026-08-13 임시] 핀 5 를 놓는다 — **출력끼리 충돌**하고 있었다.
 //    기판 실측: 핀 5 에 **RC 수신기 출력**이 물려 있는데, 펌웨어는 같은 핀을
@@ -180,22 +205,106 @@ void sc3(){scIsr(3);} void sc4(){scIsr(4);} void sc5(){scIsr(5);}
 #endif
 
 #if PIN_HUNT
-// 모든 디지털 핀을 훑어 RC 펄스(900~2100us)가 살아있는 핀을 찾는다.
+// 훑지 말아야 할 핀 — 🚨 번호를 다시 적지 않고 **정의에서 가져온다.**
+//   구판은 `p >= 5 && p <= 8` 이라고 손으로 적어뒀는데, 그 뒤 ESC_FL 을 5 -> 9 로 옮기면서
+//   낡았다. 결과: 비어 있는 핀 5 를 계속 건너뛰고(= RC 후보인데 한 번도 안 훑음),
+//   출력이 된 핀 9 를 pinMode(INPUT) 으로 조용히 끊었다. 같은 상수를 두 곳에 적은 대가다.
+static bool huntSkip(uint8_t p) {
+  if (p == PIN_ESC_FL || p == PIN_ESC_FR ||
+      p == PIN_ESC_RL || p == PIN_ESC_RR) return true;   // 출력 — INPUT 으로 바꾸면 신호가 끊긴다
+  if (p == PIN_LED_STRIP || p == PIN_LED_DEBUG ||
+      p == PIN_LED_GREEN || p == PIN_LED_YELLOW ||
+      p == PIN_LED_RED)   return true;                   // 출력
+  // 🚨 풀업을 쓰는 입력도 건드리면 안 된다. `pinMode(p, INPUT)` 은 **풀업을 끈다** —
+  //    핀이 붕 떠서 아무 값이나 읽히고, 그 값을 진짜 신호로 착각하게 된다.
+  //    2026-08-17 실제로 당했다: 아무것도 안 꽂힌 핀 38이 LOW 로 읽혀
+  //    "비상정지 작동" 으로 보고됐고, 그 값을 놓고 세 번 다르게 해석했다.
+  if (p == PIN_ID_A || p == PIN_ID_B || p == PIN_ESTOP_SENSE) return true;
+  return false;
+}
+
+// 살아있는 핀을 기억해 뒀다가 그 핀만 훑는다.
+//   전체 훑기는 신호 없는 핀마다 30ms 씩 까먹어서 한 바퀴에 2.7초가 걸린다 —
+//   그 속도로는 "스틱을 움직여 어느 핀이 반응하는지" 를 볼 수 없다(사람이 조작하는 사이에
+//   한 번밖에 안 찍힌다). 잠근 뒤엔 4핀만 보므로 5Hz 넘게 나온다.
+static uint8_t huntLocked[8];        // 비트맵: 살아있다고 확인된 핀
+static uint8_t huntFullSweeps = 0;   // 전체 훑기 횟수
+#define HUNT_LOCK_AFTER   3          // 이만큼 전체를 훑고 나면 잠근다
+#define HUNT_RESCAN_EVERY 40         // 잠근 뒤에도 가끔 전체를 다시 훑는다(새로 꽂은 선 발견)
+
+static bool huntIsLocked(uint8_t p) { return huntLocked[p >> 3] & (1 << (p & 7)); }
+static void huntLock(uint8_t p)     { huntLocked[p >> 3] |= (1 << (p & 7)); }
+
+// 디지털 핀을 훑어 RC 펄스(900~2100us)가 살아있는 핀을 찾는다.
 void pinHuntSweep() {
-  Serial.print(F("HUNT "));
+  static uint16_t call = 0;
+  // 잠금 여부: 초반 몇 번은 전체를 훑고, 그 뒤엔 주기적으로만 전체를 훑는다
+  bool full = (huntFullSweeps < HUNT_LOCK_AFTER) || (call % HUNT_RESCAN_EVERY == 0);
+  call++;
+  if (full && huntFullSweeps < 255) huntFullSweeps++;
+
+  Serial.print(full ? F("HUNT* ") : F("HUNT  "));   // * = 전체 훑기
   bool found = false;
   for (uint8_t p = 2; p <= 53; p++) {
-    if (p >= 5 && p <= 8) continue;            // ESC 출력 — 건드리면 신호가 끊긴다
-    if (p == PIN_LED_STRIP) continue;          // 스트립 Din
+    if (huntSkip(p)) continue;
+    if (!full && !huntIsLocked(p)) continue;        // 잠긴 핀만
     pinMode(p, INPUT);
     unsigned long w = pulseIn(p, HIGH, 30000UL);   // RC 프레임 20ms → 30ms 면 한 발은 잡힌다
     if (w >= (unsigned long)RC_PULSE_MIN && w <= (unsigned long)RC_PULSE_MAX) {
+      huntLock(p);
       Serial.print('p'); Serial.print(p); Serial.print('=');
       Serial.print(w); Serial.print(F("us  "));
       found = true;
     }
   }
   if (!found) Serial.print(F("(어느 핀에도 유효 펄스 없음)"));
+  Serial.println();
+}
+#endif
+
+#if IBUS_PROBE
+// i-BUS 프레임: [0]=0x20(길이 32) [1]=0x40(명령) [2..29]=14채널 ×2바이트 리틀엔디언
+//               [30..31]=체크섬(0xFFFF - 앞 30바이트 합), 리틀엔디언
+static uint8_t  ibusBuf[32];
+static uint8_t  ibusLen = 0;
+static uint16_t ibusCh[14];
+static unsigned long ibusFrames = 0, ibusBadSum = 0, ibusLastFrame = 0;
+
+void ibusPoll() {
+  while (Serial1.available()) {
+    uint8_t b = Serial1.read();
+    // 헤더 두 바이트로 프레임 경계를 잡는다. 어긋나면 버리고 다시 찾는다.
+    if (ibusLen == 0 && b != 0x20) continue;
+    if (ibusLen == 1 && b != 0x40) { ibusLen = 0; continue; }
+    ibusBuf[ibusLen++] = b;
+    if (ibusLen < 32) continue;
+    ibusLen = 0;
+
+    uint16_t sum = 0xFFFF;
+    for (uint8_t i = 0; i < 30; i++) sum -= ibusBuf[i];
+    uint16_t got = (uint16_t)ibusBuf[30] | ((uint16_t)ibusBuf[31] << 8);
+    if (sum != got) { ibusBadSum++; continue; }   // 깨진 프레임은 쓰지 않는다
+
+    for (uint8_t c = 0; c < 14; c++)
+      ibusCh[c] = (uint16_t)ibusBuf[2 + c * 2] | ((uint16_t)ibusBuf[3 + c * 2] << 8);
+    ibusFrames++;
+    ibusLastFrame = millis();
+  }
+}
+
+void ibusReport() {
+  Serial.print(F("IBUS "));
+  if (ibusFrames == 0) {
+    Serial.println(F("(프레임 없음 — 수신기 i-BUS 포트가 핀19에 연결됐는지, GND 공통인지 확인)"));
+    return;
+  }
+  Serial.print(F("frames=")); Serial.print(ibusFrames);
+  Serial.print(F(" bad="));   Serial.print(ibusBadSum);
+  Serial.print(F(" age="));   Serial.print(millis() - ibusLastFrame); Serial.print(F("ms"));
+  for (uint8_t c = 0; c < 6; c++) {             // i6 는 6채널까지만 실제 값이 온다
+    Serial.print(F("  ch")); Serial.print(c + 1);
+    Serial.print('='); Serial.print(ibusCh[c]);
+  }
   Serial.println();
 }
 #endif
@@ -443,6 +552,11 @@ void setup() {
   // arm 대기 중 시리얼 버퍼에 쌓인 명령은 전부 버림 (부팅 직후 과거 명령 실행 방지)
   while (Serial.available() > 0) Serial.read();
 
+#if IBUS_PROBE
+  Serial1.begin(115200);                       // 수신기 i-BUS → 핀 19 (Serial1 RX)
+  Serial.println(F("IBUS PROBE: Serial1(pin19) 115200 — i-BUS 프레임 확인 전용"));
+#endif
+
   Serial.println(F("Setup done. Control loop start."));
 }
 
@@ -507,7 +621,16 @@ void loop() {
 #if PIN_HUNT
   // ---- 전 디지털 핀 사냥: 3초마다 한 바퀴 ----
   static unsigned long lastHunt = 0;
-  if (now - lastHunt >= 3000) { lastHunt = now; pinHuntSweep(); }
+  // 잠기기 전(전체 훑기)은 한 바퀴가 2.7초라 3초 간격이 맞다. 잠긴 뒤엔 4핀뿐이라
+  // 200ms 로 당긴다 — 스틱을 움직이며 어느 핀이 반응하는지 눈으로 따라가려면 이 정도는 나와야 한다.
+  unsigned long huntPeriod = (huntFullSweeps < HUNT_LOCK_AFTER) ? 3000UL : 200UL;
+  if (now - lastHunt >= huntPeriod) { lastHunt = now; pinHuntSweep(); }
+#endif
+
+#if IBUS_PROBE
+  ibusPoll();                                   // 매 루프 — 32바이트 프레임을 놓치지 않게
+  static unsigned long lastIbus = 0;
+  if (now - lastIbus >= 500) { lastIbus = now; ibusReport(); }
 #endif
 
 #if RC_SCAN
@@ -534,15 +657,24 @@ void loop() {
   if (now - lastRcDbg >= 1000) {
     lastRcDbg = now;
     Serial.print(F("RC "));
-    const char *nm[3] = {"thr(p2)", "str(p18)", "mode(p3)"};
+    // 🚨 핀 번호를 문자열에 박지 않는다 — 정의에서 가져온다.
+    //    구판은 "thr(p2)" 처럼 적어둬서, 08-17 에 배정을 바꾼 뒤 **이름표가 거짓말을 했다.**
+    //    진단 도구가 틀린 이름을 대면 없느니만 못하다.
+    const char *nm[3] = {"thr", "str", "mode"};
+    const uint8_t np[3] = {PIN_RC_THROTTLE, PIN_RC_STEER, PIN_RC_MODE};
     for (int i = 0; i < 3; i++) {
-      Serial.print(nm[i]); Serial.print('=');
+      Serial.print(nm[i]); Serial.print(F("(p")); Serial.print(np[i]); Serial.print(F(")="));
       unsigned long st = snapStamp(i);
       if (st == 0) {
         Serial.print(F("없음"));            // 펄스를 한 번도 못 받음 = 배선/전원/바인딩
       } else {
+        // ⚠️ `now` 는 루프 앞에서 찍은 값이라, 그 사이 ISR 이 st 를 갱신하면
+        //    `now - st` 가 음수로 돌아 4294967xxx 로 찍힌다(08-17 실제로 봤다).
+        //    여기서 다시 읽고, 뒤집히면 0 으로 본다.
+        unsigned long tn = millis();
+        unsigned long age = (tn >= st) ? (tn - st) : 0;
         Serial.print(snapPulse(i));
-        Serial.print(F("us(")); Serial.print(now - st); Serial.print(F("ms전)"));
+        Serial.print(F("us(")); Serial.print(age); Serial.print(F("ms전)"));
       }
       Serial.print(i < 2 ? F("  ") : F("\n"));
     }
