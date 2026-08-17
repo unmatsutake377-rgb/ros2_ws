@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SSF 자율운항선박 — 회로도 (2026-08-17)</title>
+<style>
+  :root{--ink:#1a1a1a;--dim:#666;--line:#ddd;--bg:#fff;--warn:#b3261e;--warnbg:#fdecea;--ok:#0f6e56;--okbg:#e1f5ee;--note:#854f0b;--notebg:#faeeda}
+  @media (prefers-color-scheme: dark){
+    :root{--ink:#e8e8e8;--dim:#aaa;--line:#3a3a3a;--bg:#1a1a1a;--warn:#ff8a80;--warnbg:#3a1f1d;--ok:#7fd6b8;--okbg:#12332a;--note:#f0c274;--notebg:#3a2c14}
+  }
+  *{box-sizing:border-box}
+  body{margin:0;padding:2rem 1.2rem 4rem;background:var(--bg);color:var(--ink);
+       font-family:-apple-system,"Segoe UI","Noto Sans KR",sans-serif;line-height:1.75;
+       max-width:960px;margin-inline:auto;font-size:16px}
+  h1{font-size:1.7rem;font-weight:600;margin:0 0 .3rem}
+  h2{font-size:1.25rem;font-weight:600;margin:2.6rem 0 .8rem;padding-top:.8rem;border-top:2px solid var(--line)}
+  h3{font-size:1.05rem;font-weight:600;margin:1.6rem 0 .5rem}
+  .sub{color:var(--dim);margin:0 0 1.5rem}
+  table{border-collapse:collapse;width:100%;margin:1rem 0;font-size:.92rem}
+  th,td{border:1px solid var(--line);padding:.5rem .6rem;text-align:left;vertical-align:top}
+  th{background:rgba(128,128,128,.1);font-weight:600}
+  code{font-family:ui-monospace,"SF Mono",Menlo,monospace;font-size:.9em;
+       background:rgba(128,128,128,.13);padding:.1rem .35rem;border-radius:3px}
+  .warn{background:var(--warnbg);border-left:4px solid var(--warn);padding:.9rem 1.1rem;margin:1.2rem 0}
+  .warn b{color:var(--warn)}
+  .ok{background:var(--okbg);border-left:4px solid var(--ok);padding:.9rem 1.1rem;margin:1.2rem 0}
+  .note{background:var(--notebg);border-left:4px solid var(--note);padding:.9rem 1.1rem;margin:1.2rem 0}
+  .scroll{overflow-x:auto;margin:1.2rem 0}
+  svg{display:block;max-width:100%;height:auto}
+  .cap{color:var(--dim);font-size:.88rem;margin:.3rem 0 0}
+  ol li,ul li{margin:.35rem 0}
+</style>
+</head>
+<body>
+
+<h1>SSF 자율운항선박 — 회로도</h1>
+<p class="sub">2026-08-17 · 소프트팀 작성 · <b>지금 보유한 부품만으로 구성</b></p>
+
+<div class="ok">
+<b>이 문서의 범위</b><br>
+알려주신 <b>보유 부품만</b>으로 그렸습니다. 퓨즈·UBEC 등 <b>지금 없는 부품은 넣지 않았습니다.</b><br>
+그로 인해 생기는 빈틈은 <a href="#gap">§6 지금 없어서 못 하는 것</a> 에 따로 적었습니다 — 숨기지 않되, 도면에는 섞지 않았습니다.
+</div>
+
+<div class="warn">
+<b>🚨 작업 전 필수 — 현재 배선을 그대로 두면 안 됩니다.</b><br>
+지금 <code>MD-30a</code> 의 <code>1번</code>·<code>2번</code>에 <b>배터리 B 의 (+)와 (−)가 각각</b> 물려 있습니다.
+<code>1번</code>과 <code>2번</code>은 <b>같은 접점의 양쪽 끝</b>이라, 접촉기가 닫히는 순간 배터리 B 가 단락됩니다.
+14.8V 리포 단락은 수백 A 가 흘러 발화합니다. <b>배터리를 먼저 분리하고 이 배선을 전부 푸십시오.</b>
+</div>
+
+<h2>1. 보유 부품</h2>
+<table>
+<tr><th>부품</th><th>모델</th><th>수량</th></tr>
+<tr><td>배터리</td><td>LI-POLY 7200mAh 100C</td><td>2</td></tr>
+<tr><td>ESC</td><td>BlueRobotics <code>BESC30-R3</code></td><td>4</td></tr>
+<tr><td>스러스터</td><td>T200</td><td>4</td></tr>
+<tr><td>차단기</td><td>LS Metasol <code>MD-30a</code> (DC, 2극, 보조 2NO+2NC)</td><td>1</td></tr>
+<tr><td>비상정지 버튼</td><td>한영넉스 제어용 스위치 접점 블록</td><td>1</td></tr>
+<tr><td>DC-DC 컨버터</td><td><code>GTWave XW-12-24-240W</code></td><td>1</td></tr>
+<tr><td>릴레이 모듈</td><td>12V DC RELAY MODULE</td><td>1</td></tr>
+<tr><td>표시등</td><td>LED 스트립 (<code>+5V</code>·<code>Din</code>·<code>GND</code>)</td><td>1</td></tr>
+<tr><td>제어보드</td><td>Arduino Mega 2560 (노트북 USB 전원)</td><td>1</td></tr>
+<tr><td>조종기 · 수신기</td><td>FS-i6 · FS-iA6B</td><td>1</td></tr>
+</table>
+
+<h2>2. 주 전력</h2>
+
+<div class="scroll">
+<svg viewBox="0 0 780 300" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="주 전력 구성">
+<defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,1 L9,5 L0,9 z" fill="#5a9"/></marker></defs>
+<g font-family="sans-serif" font-size="13" fill="currentColor">
+<rect x="10" y="30" width="112" height="44" rx="4" fill="none" stroke="currentColor"/>
+<text x="66" y="49" text-anchor="middle">배터리A</text><text x="66" y="66" text-anchor="middle" font-size="11">4S 7200mAh</text>
+<rect x="10" y="150" width="112" height="44" rx="4" fill="none" stroke="currentColor"/>
+<text x="66" y="169" text-anchor="middle">배터리B</text><text x="66" y="186" text-anchor="middle" font-size="11">4S 7200mAh</text>
+
+<line x1="122" y1="45" x2="152" y2="45" stroke="#5a9" stroke-width="2" marker-end="url(#ah)"/>
+<line x1="122" y1="165" x2="152" y2="165" stroke="#5a9" stroke-width="2" marker-end="url(#ah)"/>
+
+<rect x="158" y="16" width="150" height="196" rx="6" fill="none" stroke="currentColor" stroke-dasharray="5 4"/>
+<text x="233" y="12" text-anchor="middle" font-size="12">MD-30a (2극)</text>
+<rect x="166" y="30" width="134" height="44" rx="4" fill="none" stroke="currentColor"/>
+<text x="233" y="57" text-anchor="middle" font-size="12">극1 : 2번 → 1번</text>
+<rect x="166" y="150" width="134" height="44" rx="4" fill="none" stroke="currentColor"/>
+<text x="233" y="177" text-anchor="middle" font-size="12">극2 : 5번 → 6번</text>
+<text x="233" y="112" text-anchor="middle" font-size="12">코일 A1·A2 하나가</text>
+<text x="233" y="130" text-anchor="middle" font-size="12">두 극을 동시에</text>
+
+<line x1="308" y1="45" x2="338" y2="45" stroke="#5a9" stroke-width="2" marker-end="url(#ah)"/>
+<line x1="308" y1="165" x2="338" y2="165" stroke="#5a9" stroke-width="2" marker-end="url(#ah)"/>
+<rect x="344" y="26" width="120" height="52" rx="4" fill="none" stroke="currentColor"/>
+<text x="404" y="47" text-anchor="middle" font-size="12">ESC 좌 ×2</text><text x="404" y="65" text-anchor="middle" font-size="11">BESC30-R3</text>
+<rect x="344" y="146" width="120" height="52" rx="4" fill="none" stroke="currentColor"/>
+<text x="404" y="167" text-anchor="middle" font-size="12">ESC 우 ×2</text><text x="404" y="185" text-anchor="middle" font-size="11">BESC30-R3</text>
+
+<line x1="464" y1="52" x2="494" y2="52" stroke="#5a9" stroke-width="2" marker-end="url(#ah)"/>
+<line x1="464" y1="172" x2="494" y2="172" stroke="#5a9" stroke-width="2" marker-end="url(#ah)"/>
+<rect x="500" y="26" width="130" height="52" rx="4" fill="none" stroke="currentColor"/>
+<text x="565" y="47" text-anchor="middle" font-size="12">스러스터 좌 ×2</text><text x="565" y="65" text-anchor="middle" font-size="11">T200</text>
+<rect x="500" y="146" width="130" height="52" rx="4" fill="none" stroke="currentColor"/>
+<text x="565" y="167" text-anchor="middle" font-size="12">스러스터 우 ×2</text><text x="565" y="185" text-anchor="middle" font-size="11">T200</text>
+
+<rect x="10" y="238" width="620" height="44" rx="4" fill="none" stroke="currentColor" stroke-dasharray="5 4"/>
+<text x="24" y="258" font-size="12">배터리A (−) → ESC 좌 ×2 직결 &#160;·&#160; 배터리B (−) → ESC 우 ×2 직결</text>
+<text x="24" y="275" font-size="11">접촉기를 지나지 않는다. (+) 한 가닥만 끊으면 전류가 흐를 길이 없다.</text>
+</g>
+</svg>
+</div>
+
+<div class="ok">
+<b>왜 (+) 만 끊는가</b><br>
+배터리를 격리하는 데는 두 가닥 중 <b>한 가닥만</b> 끊으면 됩니다. <code>(+)</code> 가 끊기면 전류가 흐를 길이 없습니다.
+그래서 <b>2극이면 배터리 2개에 딱 맞습니다</b> — 접촉기를 하나 더 살 필요가 없습니다.
+</div>
+
+<h2>3. 차단(비상정지) 회로</h2>
+
+<div class="scroll">
+<svg viewBox="0 0 780 190" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="비상정지 코일 회로">
+<g font-family="sans-serif" font-size="13" fill="currentColor">
+<rect x="10" y="20" width="120" height="46" rx="4" fill="none" stroke="currentColor"/>
+<text x="70" y="40" text-anchor="middle" font-size="12">배터리A</text><text x="70" y="57" text-anchor="middle" font-size="11">접촉기 앞에서 분기</text>
+<line x1="130" y1="43" x2="158" y2="43" stroke="#5a9" stroke-width="2" marker-end="url(#ah)"/>
+<rect x="164" y="20" width="120" height="46" rx="4" fill="none" stroke="currentColor"/>
+<text x="224" y="40" text-anchor="middle" font-size="12">GTWave 컨버터</text><text x="224" y="57" text-anchor="middle" font-size="11">코일 정격 전압으로</text>
+<line x1="284" y1="43" x2="312" y2="43" stroke="#5a9" stroke-width="2" marker-end="url(#ah)"/>
+<rect x="318" y="20" width="136" height="46" rx="4" fill="none" stroke="currentColor"/>
+<text x="386" y="40" text-anchor="middle" font-size="12">비상정지 버튼</text><text x="386" y="57" text-anchor="middle" font-size="11">NC 접점 (한영넉스)</text>
+<line x1="454" y1="43" x2="482" y2="43" stroke="#5a9" stroke-width="2" marker-end="url(#ah)"/>
+<rect x="488" y="20" width="140" height="46" rx="4" fill="none" stroke="currentColor"/>
+<text x="558" y="48" text-anchor="middle" font-size="12">접촉기 코일 A1·A2</text>
+
+<rect x="318" y="80" width="136" height="34" rx="4" fill="none" stroke="currentColor" stroke-dasharray="4 3"/>
+<text x="386" y="102" text-anchor="middle" font-size="11">무선 스위치 자리 (없음)</text>
+<line x1="386" y1="66" x2="386" y2="78" stroke="currentColor" stroke-width="1" stroke-dasharray="3 3"/>
+<text x="466" y="102" font-size="11">확보되면 버튼과 직렬로 이 자리에 넣는다</text>
+
+<text x="10" y="140" font-size="12">버튼이 열리면 코일이 꺼지고 두 극이 함께 열린다. 아두이노는 이 회로에 없다.</text>
+
+<rect x="10" y="152" width="190" height="34" rx="4" fill="none" stroke="currentColor"/>
+<text x="105" y="174" text-anchor="middle" font-size="12">보조접점 21-22 (NC)</text>
+<line x1="200" y1="169" x2="226" y2="169" stroke="#5a9" stroke-width="2" marker-end="url(#ah)"/>
+<rect x="232" y="152" width="130" height="34" rx="4" fill="none" stroke="currentColor"/>
+<text x="297" y="174" text-anchor="middle" font-size="12">Mega 핀 38</text>
+<text x="374" y="174" font-size="11">상태를 읽기만 — 펌웨어 수정 불필요</text>
+</g>
+</svg>
+</div>
+
+<div class="ok">
+<b>버튼이 100A 를 직접 안 끊습니다.</b><br>
+한영넉스 접점 블록은 제어회로용이라 큰 전류를 못 끊지만, <b>원래 이 자리에 쓰는 물건</b>입니다.
+전자석(코일)에 가는 <b>가는 선</b>만 끊으면 큰 접점이 알아서 떨어집니다.
+</div>
+
+<div class="warn">
+<b>🚨 아두이노는 차단 회로에 넣지 않습니다.</b>
+룰북 §8: 제어기가 죽어도 비상정지는 작동해야 합니다. 아두이노는 <b>상태를 읽기만</b> 합니다.
+</div>
+
+<h2>4. 신호 · 표시등 · 공통 GND</h2>
+
+<div class="scroll">
+<svg viewBox="0 0 780 240" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="신호와 접지 구성">
+<g font-family="sans-serif" font-size="13" fill="currentColor">
+<rect x="10" y="16" width="140" height="44" rx="4" fill="none" stroke="currentColor"/>
+<text x="80" y="43" text-anchor="middle" font-size="12">RC 수신기</text>
+<line x1="150" y1="38" x2="178" y2="38" stroke="#5a9" stroke-width="2" marker-end="url(#ah)"/>
+<rect x="184" y="6" width="160" height="64" rx="4" fill="none" stroke="currentColor"/>
+<text x="264" y="26" text-anchor="middle" font-size="12">Mega 2560</text>
+<text x="264" y="44" text-anchor="middle" font-size="11">핀 2 스로틀 / 3 모드</text>
+<text x="264" y="60" text-anchor="middle" font-size="11">핀 18 조향</text>
+<line x1="344" y1="38" x2="372" y2="38" stroke="#5a9" stroke-width="2" marker-end="url(#ah)"/>
+<rect x="378" y="16" width="170" height="44" rx="4" fill="none" stroke="currentColor"/>
+<text x="463" y="35" text-anchor="middle" font-size="12">ESC 신호 ×4</text>
+<text x="463" y="52" text-anchor="middle" font-size="11">핀 9 · 6 · 7 · 8</text>
+
+<rect x="10" y="92" width="140" height="44" rx="4" fill="none" stroke="currentColor"/>
+<text x="80" y="112" text-anchor="middle" font-size="12">노트북 USB</text><text x="80" y="128" text-anchor="middle" font-size="11">Mega 전원</text>
+<line x1="150" y1="114" x2="178" y2="114" stroke="#5a9" stroke-width="2" marker-end="url(#ah)"/>
+<rect x="184" y="92" width="160" height="44" rx="4" fill="none" stroke="currentColor"/>
+<text x="264" y="112" text-anchor="middle" font-size="12">Mega 5V</text><text x="264" y="128" text-anchor="middle" font-size="11">핀 40 → Din</text>
+<line x1="344" y1="114" x2="372" y2="114" stroke="#5a9" stroke-width="2" marker-end="url(#ah)"/>
+<rect x="378" y="92" width="170" height="44" rx="4" fill="none" stroke="currentColor"/>
+<text x="463" y="112" text-anchor="middle" font-size="12">LED 스트립</text><text x="463" y="128" text-anchor="middle" font-size="11">+5V · Din · GND</text>
+
+<rect x="10" y="164" width="620" height="46" rx="4" fill="none" stroke="currentColor" stroke-width="2"/>
+<text x="24" y="184" font-size="13">공통 GND 버스 — 한 점에서 만난다</text>
+<text x="24" y="202" font-size="11">배터리A(−) · 배터리B(−) · Mega GND · ESC 신호GND ×4 · 수신기 GND · LED GND</text>
+</g>
+</svg>
+</div>
+
+<div class="warn">
+<b>🚨 신호 GND 를 안 이으면 ESC 가 안 돕니다.</b><br>
+<code>BESC30-R3</code> 의 신호 커넥터는 <b>GND · 빈칸 · 신호</b> 3핀이고 가운데가 비어 있습니다.
+ESC 는 5V 를 주지도 받지도 않으므로, <b>신호 GND 를 Mega GND 에 잇는 것이 필수</b>입니다.
+PWM 은 "어떤 기준점 대비 몇 V" 인데, 기준점이 다르면 ESC 가 읽은 값에 의미가 없습니다.
+</div>
+
+<div class="ok">
+<b>LED 를 AA 에서 Mega 5V 로 옮깁니다 — 새 부품 없이 문제가 풀립니다.</b><br><br>
+지금은 스트립 전원이 AA 3개(4.5V→3.6V)인데 <b>Mega 가 <code>Din</code> 을 5V 로 때립니다.</b>
+WS2812 계열은 <code>Din</code> 이 전원전압보다 높으면 안 됩니다(최대 <code>VDD+0.5V</code>) — <b>규격 위반이고 소자가 상합니다.</b><br><br>
+Mega 5V 에서 먹이면 <code>Din</code> 5V, <code>VDD</code> 5V 로 <b>맞아떨어집니다.</b>
+Mega 는 노트북 USB 전원이라 <b>비상정지 중에도 살아 있어</b> 빨간 표시등이 켜집니다(규정 4.2).<br><br>
+⚠️ 대신 <b>밝기를 제한해야 합니다.</b> USB 는 총 500mA 라 Mega 자신이 쓰는 몫을 빼면 여유가 크지 않습니다.
+풀백색 대신 <b>한 색을 중간 밝기로</b> 쓰면 충분합니다.
+</div>
+
+<h2>5. 결선표 — 이것이 본체입니다</h2>
+
+<p>단자 하나하나를 적습니다. <b>이번 사고는 이 표가 없어서 생겼습니다.</b>
+각 선이 "그럴듯한 자리" 에 꽂혀 있어서 눈으로는 안 잡혔습니다.
+작업할 때 이 표를 그대로 따라가고, 끝나면 한 줄씩 체크하십시오.</p>
+
+<h3>주 전력</h3>
+<table>
+<tr><th>#</th><th>출발</th><th>도착</th><th>규격</th></tr>
+<tr><td>1</td><td>배터리A (+)</td><td>MD-30a <code>2번</code> (⊕ 표시)</td><td>8~10AWG</td></tr>
+<tr><td>2</td><td>MD-30a <code>1번</code> (⊖ 표시)</td><td>ESC 좌1 (+), ESC 좌2 (+)</td><td>8AWG → 분기 12AWG</td></tr>
+<tr><td>3</td><td>배터리A (−)</td><td>ESC 좌1 (−), ESC 좌2 (−)</td><td>8AWG → 분기 12AWG</td></tr>
+<tr><td>4</td><td>배터리B (+)</td><td>MD-30a <code>5번</code> (⊕ 표시)</td><td>8~10AWG</td></tr>
+<tr><td>5</td><td>MD-30a <code>6번</code> (⊖ 표시)</td><td>ESC 우1 (+), ESC 우2 (+)</td><td>8AWG → 분기 12AWG</td></tr>
+<tr><td>6</td><td>배터리B (−)</td><td>ESC 우1 (−), ESC 우2 (−)</td><td>8AWG → 분기 12AWG</td></tr>
+<tr><td>7</td><td>각 ESC 모터 출력 3가닥</td><td>해당 T200 3가닥</td><td>제품 기본선</td></tr>
+</table>
+
+<div class="note">
+<b>ⓘ 단자 배정은 제품의 극성 마크대로입니다.</b>
+<code>2</code>·<code>5</code> 가 <code>⊕</code>, <code>1</code>·<code>6</code> 이 <code>⊖</code> 로 인쇄돼 있습니다.
+직류 접촉기는 전류가 <code>⊕ → ⊖</code> 로 흘러야 아크 소호 자석이 작동합니다.
+<b>거꾸로 물리면 아크가 안 꺼지고 접점이 녹아 붙습니다</b>(= 눌러도 안 떨어짐).
+</div>
+
+<h3>차단(코일) 회로</h3>
+<table>
+<tr><th>#</th><th>출발</th><th>도착</th><th>비고</th></tr>
+<tr><td>8</td><td>배터리A (+)</td><td>GTWave 입력 (+)</td><td>가는 선. 접촉기 <b>앞</b>에서 분기</td></tr>
+<tr><td>9</td><td>배터리A (−)</td><td>GTWave 입력 (−)</td><td>🚨 코일 단자에 물리지 말 것</td></tr>
+<tr><td>10</td><td>GTWave 출력 (+)</td><td>비상정지 버튼 NC 한쪽</td><td></td></tr>
+<tr><td>11</td><td>비상정지 버튼 NC 반대쪽</td><td>MD-30a <code>A1</code></td><td>무선 확보 시 이 사이에 직렬로 삽입</td></tr>
+<tr><td>12</td><td>MD-30a <code>A2</code></td><td>GTWave 출력 (−)</td><td>회로 완성</td></tr>
+</table>
+
+<div class="warn">
+<b>🚨 #8~12 은 GTWave 출력 전압이 코일 정격과 맞아야 성립합니다.</b>
+둘 다 아직 확인 안 된 값입니다(§7). 안 맞으면 이 부분만 다시 짭니다.
+</div>
+
+<h3>상태 감지</h3>
+<table>
+<tr><th>#</th><th>출발</th><th>도착</th><th>비고</th></tr>
+<tr><td>13</td><td>MD-30a 보조접점 <code>21</code></td><td>Mega 핀 38</td><td rowspan="2">NC 접점 — 접촉기가 꺼지면 닫힌다</td></tr>
+<tr><td>14</td><td>MD-30a 보조접점 <code>22</code></td><td>Mega GND</td></tr>
+</table>
+<p>펌웨어는 <code>pinMode(38, INPUT_PULLUP)</code> 에 <code>LOW = 차단됨</code> 입니다.
+비상정지가 걸리면 접점이 닫혀 <code>LOW</code>, 정상이면 풀업으로 <code>HIGH</code> — <b>코드를 한 줄도 안 고쳐도 맞습니다.</b></p>
+
+<h3>신호 · 표시등</h3>
+<table>
+<tr><th>#</th><th>출발</th><th>도착</th><th>비고</th></tr>
+<tr><td>15</td><td>Mega 핀 9</td><td>ESC 선수 좌 신호</td><td rowspan="4">각 ESC 를 따로 몬다 (펌웨어가 모터별 게인 지원)</td></tr>
+<tr><td>16</td><td>Mega 핀 6</td><td>ESC 선수 우 신호</td></tr>
+<tr><td>17</td><td>Mega 핀 7</td><td>ESC 선미 좌 신호</td></tr>
+<tr><td>18</td><td>Mega 핀 8</td><td>ESC 선미 우 신호</td></tr>
+<tr><td>19</td><td>수신기 스로틀 채널</td><td>Mega 핀 2</td><td rowspan="3">🚨 인터럽트 가능 핀만 (<code>2·3·18·19·20·21</code>)</td></tr>
+<tr><td>20</td><td>수신기 모드 채널 (SWA)</td><td>Mega 핀 3</td></tr>
+<tr><td>21</td><td>수신기 조향 채널</td><td>Mega 핀 18</td></tr>
+<tr><td>22</td><td>수신기 VCC</td><td>Mega 5V</td><td>기존 그대로</td></tr>
+<tr><td>23</td><td>Mega 핀 40</td><td>LED 스트립 <code>Din</code></td><td></td></tr>
+<tr><td>24</td><td>Mega 5V</td><td>LED 스트립 <code>+5V</code></td><td>🚨 AA 3개에서 이설</td></tr>
+<tr><td>25</td><td>Mega 5V (USB)</td><td>노트북</td><td>Mega 전원</td></tr>
+</table>
+
+<div class="note">
+<b>ⓘ 핀 18 이 비었습니다.</b> 새 설계에서는 아두이노가 <code>MD-30a</code> 를 제어하지 않으므로,
+기판의 <code>M</code> 소켓(핀 18) 자리가 <b>그대로 조향 입력 자리</b>가 됩니다. 기판을 고칠 필요가 없습니다.<br><br>
+<b>ⓘ 나중에 i-BUS 로 바꾸면</b> #19~21 세 가닥이 <b>1가닥</b>이 되고 인터럽트 핀 제약이 사라집니다.
+지금은 보류이고, 보드에 확인용 빌드(<code>IBUS_PROBE</code>)를 올려두었습니다.
+</div>
+
+<h3>공통 GND</h3>
+<table>
+<tr><th>#</th><th>한 점에서 만나야 하는 것</th></tr>
+<tr><td>26</td><td>배터리A (−) · 배터리B (−)</td></tr>
+<tr><td>27</td><td>Mega GND</td></tr>
+<tr><td>28</td><td>ESC 4개의 신호 GND</td></tr>
+<tr><td>29</td><td>수신기 GND</td></tr>
+<tr><td>30</td><td>LED 스트립 GND</td></tr>
+</table>
+
+<h2 id="gap">6. 지금 없어서 못 하는 것</h2>
+
+<p>보유 부품만으로는 채울 수 없는 자리입니다. <b>도면에는 넣지 않았고, 여기에만 적습니다.</b>
+살지 말지는 판단하실 일이고, 결과만 정확히 적어둡니다.</p>
+
+<table>
+<tr><th>없는 것</th><th>없으면 생기는 일</th><th>급한 정도</th></tr>
+<tr>
+  <td><b>무선 비상정지</b><br>(수신기 PWM → 접점 모듈)</td>
+  <td>룰북 §8 은 버튼식 + 무선식 <b>둘 다 의무</b>입니다. 성능이 아니라 <b>출전 자격</b> 문제입니다.<br>
+      보유 <code>12V DC RELAY MODULE</code> 이 <b>RC 펄스 입력</b>을 받으면 그걸로 됩니다.
+      <b>로직 입력</b>이면 수신기에 직접 못 물고, 아두이노를 거치면 규정 위반입니다.</td>
+  <td>🚨 <b>가장 급함</b><br>(출전 자격)</td>
+</tr>
+<tr>
+  <td><b>퓨즈</b> (계통당 1개)</td>
+  <td>배선이 벗겨져 <code>(+)</code>와 <code>(−)</code>가 닿거나 ESC 가 고장 나면, <b>배터리가 낼 수 있는 전류가 그대로 흐릅니다.</b>
+      7200mAh 100C 는 수백 A 를 낼 수 있습니다. 선이 녹고 발화합니다.<br>
+      접촉기는 <b>사람이 눌러야</b> 열리므로 이 상황을 못 막습니다 — 퓨즈는 <b>사람 없이</b> 끊는 유일한 장치입니다.</td>
+  <td>⚠️ 안전<br>(규정 항목은 아님)</td>
+</tr>
+<tr>
+  <td><b>5V UBEC</b></td>
+  <td>없어도 됩니다 — LED 를 Mega 5V 로 옮기면 해결됩니다(§4).<br>
+      다만 <b>밝기가 USB 전류에 묶입니다.</b> 한낮 야외에서 심사위원이 못 볼 정도면 그때 필요해집니다.</td>
+  <td>보류<br>(밝기 보고 판단)</td>
+</tr>
+</table>
+
+<h2>7. 확인이 남은 값</h2>
+<table>
+<tr><th>#</th><th>필요한 값</th><th>어디서</th><th>왜</th></tr>
+<tr><td>1</td><td><code>MD-30a</code> 코일 전압 (<code>DC 12V</code>/<code>24V</code> 등)</td><td>측면·앞면 라벨</td><td>결선표 #8~12 이 여기 달려 있다</td></tr>
+<tr><td>2</td><td><code>GTWave XW-12-24-240W</code> 입·출력 전압</td><td>라벨</td><td>코일 전압과 맞는지</td></tr>
+<tr><td>3</td><td>릴레이 모듈 입력 방식 (로직 / RC 펄스)</td><td>기판 표기</td><td>무선 비상정지를 만들 수 있는지</td></tr>
+<tr><td>4</td><td><code>MD-30a</code> 연속 통전 전류 (<code>Ith</code>)</td><td>데이터시트</td><td>계통당 42A 를 감당하는지</td></tr>
+</table>
+
+<div class="note">
+<b>ⓘ MD-30a 정격에 대한 정정.</b> 소프트팀이 처음에 "30A 라 부족하다" 고 했는데, 그건 <b>모델명만 보고 한 말</b>이었습니다.
+실제로는 <code>DC-1/2/5</code>, 최대 1000V 급 제품이고 <code>125V DC 에서 40A</code> 표기가 있습니다.
+그리고 <b>직류 아크는 전압이 낮으면 유지되지 않아</b> 14.8V 에서는 끊기가 훨씬 쉽습니다.
+남는 건 접점의 열 용량이므로 <code>Ith</code> 를 확인해야 확정됩니다. <b>교체 권고는 보류합니다.</b>
+</div>
+
+<h2>8. 절대 하면 안 되는 것</h2>
+<table>
+<tr><th></th><th>금지</th><th>결과</th></tr>
+<tr><td>1</td><td>한 배터리의 <code>(+)</code> 와 <code>(−)</code> 를 같은 극(<code>1-2</code> 또는 <code>5-6</code>)에 물리기</td><td>🚨 <b>배터리 단락 · 발화</b></td></tr>
+<tr><td>2</td><td>한쪽 배터리 <code>(−)</code> 와 다른 쪽 <code>(+)</code> 를 잇기</td><td>🚨 <b>29.6V</b> — T200(최대 20V)·ESC 소손</td></tr>
+<tr><td>3</td><td>극성 마크 무시 (<code>⊕</code> 자리에 <code>(−)</code>)</td><td>아크가 안 꺼져 접점 융착 → <b>눌러도 안 멈춤</b></td></tr>
+<tr><td>4</td><td>비상정지를 아두이노 경유로 만들기</td><td>제어기가 죽으면 정지 불가 — <b>룰북 §8 위반</b></td></tr>
+<tr><td>5</td><td>신호 GND 미결선</td><td>ESC 가 신호를 못 읽음 — 원인 찾기 매우 어려움</td></tr>
+<tr><td>6</td><td>LED 를 AA(4.5V)에 두고 <code>Din</code> 을 5V 로 때리기</td><td>규격 위반 — 스트립 소자 손상</td></tr>
+</table>
+
+<h2>9. 작업 · 검증 순서</h2>
+<ol>
+<li>🚨 <b>배터리 전부 분리</b> — 현재 배선은 접촉기가 닫히면 배터리 B 를 단락시킵니다</li>
+<li><code>MD-30a</code> 의 <code>1·2·5·6</code> 배선 <b>전부 제거</b></li>
+<li>결선표 #1~7 (주 전력)</li>
+<li>결선표 #8~12 (코일 회로) — <b>코일 전압·컨버터 출력 확인 후에</b></li>
+<li>결선표 #13~14 (보조접점), #15~25 (신호·표시등), #26~30 (공통 GND)</li>
+<li><b>무전원 도통 시험</b> — 배터리 연결 <b>전</b>에, 각 배터리의 <code>(+)</code> 와 <code>(−)</code> 가
+    어디서도 이어지지 않는지 확인. 삐 울리면 어딘가 잘못된 것입니다</li>
+<li>배터리 <b>하나만</b> 연결 → 접촉기가 닫히는지 확인 → 버튼을 눌러 열리는지 확인</li>
+<li>스러스터 <b>연결 전에</b> 비상정지 실물 시험 완료</li>
+<li>ESC arm 확인 — 켠 뒤 <code>1500µs</code> 몇 초 → 삐 두 번 (펌웨어 <code>ARM_HOLD_MS = 2000</code>)</li>
+<li>스러스터 연결 → 저출력부터 좌/우 회전 방향 확인</li>
+</ol>
+
+<div class="warn">
+<b>🚨 7~8번을 건너뛰지 마십시오.</b><br>
+작년 구성이 동일했는데 배터리 B 가 타지 않았다는 것은, <b>비상정지가 한 번도 실제로 작동한 적이 없을</b> 가능성을 뜻합니다.
+"달려 있으니 된다" 로 넘어가면 대회 당일에 처음 눌러보게 됩니다.
+</div>
+
+</body>
+</html>
