@@ -59,12 +59,49 @@ git commit -m "작년 대회 최종본 (수정 전 기준선)"
 
 | 항목 | 모델 | 비고 |
 |---|---|---|
-| LiDAR | **RPLIDAR A3** | 25m, **10Hz**, 0.225°, `Sensitivity` 모드, `/dev/ttyLiDAR` |
+| LiDAR | **RPLIDAR A3** | 25m, **11.96Hz**, **0.275°**, `Sensitivity` 모드, `/dev/ttyLiDAR` — 🚨 회전·분해능은 2026-08-18 실측값. 스펙시트의 10Hz/0.225° 가 아니다 (§2-1) |
 | IMU | **RB-SDA-v1** (IntelliThings iAHRS) | 9축 AHRS, ASCII `"e\n"` 프로토콜, `/dev/IMU`. **WT901C 아님** |
 | GPS (A배) | u-blox **C94-M8P** | NTRIP RTK |
 | GPS (B배) | u-blox **ZED-F9P** | NTRIP RTK |
 | MCU | **Arduino Due** + micro-ROS | `Motor_run = pwm_r*10000 + pwm_l`, **1500 = 중립** |
 | 카메라 | **RealSense D455 (현역)** / OAK-1 W POE (미구매) | 현재 D455 사용. OAK 는 RGB 전용(**뎁스 없음**)·광각 120~150° DFOV·PoE=이더넷. **코드는 중립화** 🚨 3-3 |
+
+### 2-1. 🚨 LiDAR 회전수는 파라미터로 못 바꾼다 (2026-08-18 실측)
+
+| 항목 | 스펙시트·문서 | **실측** |
+|---|---|---|
+| 회전 | 10 Hz | **11.96 Hz** (편차 0.003s) |
+| 각분해능 | 0.225° | **0.275°** |
+| range_max | 25 m | 25 m ✅ (`Sensitivity` 정상 적용) |
+
+**원인:** 드라이버가 `scan_frequency` 를 모터에 전달하지 않는다.
+
+```cpp
+// rplidar_ros/src/rplidar_node.cpp:205
+sl_result ans = drv->setMotorSpeed();   // ← 인자 없음 = SDK 기본 속도
+// :324  scan_frequency 는 points_per_circle 계산에만 쓰인다
+```
+
+`scan_frequency:=10.0` 을 명시해도 **11.96Hz 가 그대로 나온다.** 값이 안 먹는데 에러도 없다 —
+`rgb_camera.controls.saturation` 과 같은 유형이다.
+
+**해로운가: 아니다.** 초당 갱신이 19% 많아 제어에는 유리하고, 페일세이프 3.0초도
+30스캔이 아니라 36스캔이라 더 보수적이다. **다만 각분해능이 22% 거칠다** —
+표본수(16kHz)가 고정인데 빨리 도니 한 바퀴의 점이 준다. 문서 곳곳의 `0.225°` 기준 비교는
+라이다를 실제보다 좋게 평가하고 있다.
+
+**현역 개체 (교체 시 대조용):**
+
+```
+모델 0x31(49) → A3 계열   펌웨어 1.32   하드웨어 6
+시리얼 D5F1ED93C0EA98C9A5E698F2402F4669
+USB 어댑터 시리얼 0addfc38c7f9f5498e7724af8de7b0cb
+```
+
+확인: `python3 tools/lidar_id.py` (라벨이 지워져도 장치가 직접 답한다)
+
+🚨 **`/dev/ttyLiDAR` 이 있다고 라이다가 살아있는 게 아니다.** udev 규칙은 **USB 어댑터**의
+시리얼로 붙는다. 어댑터만 멀쩡하고 라이다가 죽어도 링크는 정상적으로 생긴다.
 
 **⚠️ 실측 필요 (배 완성 후):** 선폭, 순항 PWM, 후진 PWM, IMU 장착 오프셋, 대회장 자기편각,
 카메라 **왜곡계수(D)·초점거리(fx,fy)** — `camera_info` 에서, **고정 IP**
