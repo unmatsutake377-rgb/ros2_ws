@@ -142,7 +142,16 @@ const int ESC_OUT_MIN    = 1100;              // T200 출구 클램프
 const int ESC_OUT_MAX    = 1900;
 const int RC_DEADBAND_US = 20;                // 스틱 중립 데드밴드 ⚠️벤치
 const int STEER_SCALE_N  = 10;                // 조향 감도 = N/10 (10=100%) ⚠️물
-const bool STEER_INVERT_RC = false;           // RC 조향 좌우 반전 ⚠️벤치
+// 🚨 2026-08-18 실측으로 둘 다 true 로 잡았다. 조종기 입력이 펌웨어 의도와 반대였다.
+//    측정: 수동 모드에서 스틱을 끝까지 밀고 FL/FR/RL/RR 출력을 봤다.
+//      · 왼쪽 스틱 [위](전진 의도) → 네 출력이 전부 1900 = 규약상 **후진**
+//      · 오른쪽 스틱 [우](우회전 의도) → 왼쪽이 1623/1676, 오른쪽이 1377/1324
+//        = 왼쪽이 덜 전진 = **좌회전**
+//    ⚠️ 이건 "조종기 입력 ↔ 펌웨어 의도" 를 맞춘 것이지 **물리 방향 확정이 아니다.**
+//       스러스터 배선·프로펠러 방향이 미확정이라, 배가 뜨면 실제로 어디로 가는지 보고
+//       여기(또는 motors[].invert)를 다시 잡아야 한다.
+const bool STEER_INVERT_RC    = true;         // RC 조향 좌우 반전 — 08-18 실측
+const bool THROTTLE_INVERT_RC = true;         // RC 스로틀 전후 반전 — 08-18 실측
 const int MODE_AUTO_THRESHOLD = 1500;         // 모드 펄스 < 1500 = AUTO (작년 관례 유지)
 // ✅ 2026-08-18 확정 (실측):
 //      스위치 SWD [위]  = 943us  → 수동 (표시등 초록)
@@ -418,7 +427,8 @@ int applyDeadband(int dev) {
 void mixManual(int &cmdL, int &cmdR) {
   int thr = applyDeadband((int)snapPulse(0) - 1500);
   int str = applyDeadband((int)snapPulse(1) - 1500) * STEER_SCALE_N / 10;
-  if (STEER_INVERT_RC) str = -str;
+  if (THROTTLE_INVERT_RC) thr = -thr;
+  if (STEER_INVERT_RC)    str = -str;
   cmdL = 1500 + thr + str;
   cmdR = 1500 + thr - str;   // 포화는 출구 클램프가 처리 (직진 최고속 보존)
 }
