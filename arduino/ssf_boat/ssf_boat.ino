@@ -268,7 +268,12 @@ void pinHuntSweep() {
   for (uint8_t p = 2; p <= 53; p++) {
     if (huntSkip(p)) continue;
     if (!full && !huntIsLocked(p)) continue;        // 잠긴 핀만
-    pinMode(p, INPUT);
+    // 🚨 INPUT 이 아니라 INPUT_PULLUP 이다. 아무것도 안 꽂힌 핀을 그냥 INPUT 으로 두면
+    //    **붕 떠서 옆 핀의 신호를 유도로 주워담는다.** 만능기판처럼 배선이 나란히 지나가면
+    //    없는 채널이 있는 것처럼 보인다(2026-08-18 실제로 핀 5 에서 유령 신호를 보고했다).
+    //    풀업이 핀을 잡아주면 유령이 사라지고, 진짜 RC 신호는 수신기가 푸시풀로 몰기 때문에
+    //    풀업을 이겨서 그대로 읽힌다.
+    pinMode(p, INPUT_PULLUP);
     unsigned long w = pulseIn(p, HIGH, 30000UL);   // RC 프레임 20ms → 30ms 면 한 발은 잡힌다
     if (w >= (unsigned long)RC_PULSE_MIN && w <= (unsigned long)RC_PULSE_MAX) {
       huntLock(p);
