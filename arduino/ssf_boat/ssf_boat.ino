@@ -102,9 +102,14 @@
 //    **2, 3, 18, 19, 20, 21 뿐**이다. 모드가 실측된 핀 5 는 여기 없다.
 //    (PCINT 로는 가능하나, RC 캡처는 안전 경로라 검증 안 된 두 번째 체계를 붙이지 않는다)
 #define PIN_RC_STEER     2    // 오른쪽 스틱 좌우 (구 18) — 2026-08-17 실측
-#define PIN_RC_MODE     18    // 모드 스위치 (구 3) — 🚨 실측 위치는 핀 5인데 인터럽트가 안 된다.
-                              //    수신기 그 선을 기판의 `M` 소켓(= 핀 18)으로 옮겨야 모드가 산다.
-                              //    옮기기 전까지는 신호가 없어 모드가 `대기` 에 머문다(= 모터 중립, 안전측).
+// 🚨 2026-08-18 모드를 18 → 19 로 옮겼다. 핀 18 은 **이미 임자가 있는 자리**였다.
+//    기판의 `M` 소켓이 핀 18 인데, 작년엔 중앙 ESC 출력이었고 지금은 LED 가 물려 있다.
+//    거기에 RC 모드 입력을 같이 꽂아 **한 핀에 둘**이 된 상태였다. LED 쪽 부하가 RC 펄스를
+//    누르면 신호가 죽는다 — 실제로 어제는 읽히다가 오늘 갑자기 사라졌다.
+//    핀 19 는 인터럽트 가능하고 기판에서 비어 있다.
+//    ⚠️ 18·19 는 Mega 의 Serial1(TX1/RX1) 이기도 하다. 나중에 i-BUS 를 채택하면
+//       그 자리를 쓰게 되는데, 그때는 PWM 3채널이 통째로 사라지므로 충돌이 아니다.
+#define PIN_RC_MODE     19    // 모드 스위치 (구 18) — 2026-08-18 이설
 
 // 🚨 [2026-08-13 임시] 핀 5 를 놓는다 — **출력끼리 충돌**하고 있었다.
 //    기판 실측: 핀 5 에 **RC 수신기 출력**이 물려 있는데, 펌웨어는 같은 핀을
@@ -114,10 +119,25 @@
 //       즉 지금 펌웨어의 ESC 출력은 **어디에도 연결돼 있지 않다**(모터가 안 도는 게 정상).
 //       핀표 확정은 `docs/전달용/회로팀_최종본_회신.md` §8 의 답이 나온 뒤에 한 번에 한다.
 //       그때 ESC 는 2채널(좌/우)로 줄고, 핀도 기판에 맞춘다.
-#define PIN_ESC_FL       9    // (구 5) 선수 좌 ESC 신호 — 임시로 미사용 핀
-#define PIN_ESC_FR       6    // 선수 우 ESC 신호
-#define PIN_ESC_RL       7    // 선미 좌 ESC 신호
-#define PIN_ESC_RR       8    // 선미 우 ESC 신호
+// 🚨 2026-08-18: ESC 출력을 **기판 실물에 맞춰 좌·우 2채널**로 바꿨다.
+//    작년 Due 코드의 핀 배치가 그대로 기판에 굳어 있다:
+//      RC 입력  2(Auto) · 3(M) · 4(L) · 5(R)
+//      ESC 출력 11(M) · 12(R) · 13(L)
+//    그동안 펌웨어는 9·6·7·8 로 내보내고 있었다 — **기판에 없는 자리다.**
+//    명령은 정확히 계산되는데 전달될 길이 없어서, 모터가 한 번도 안 돌았다.
+//
+//    올해는 스러스터가 4개(좌 2·우 2)인데 기판 소켓은 2개다. 회로팀 블록도의
+//    `모터 제어 PWM ×2 → ESC ×4` 와 같은 구조로, **신호 하나가 같은 쪽 ESC 2개를 몬다.**
+//    ⚠️ 그래서 선수/선미 개별 게인(70%/100%)은 못 쓴다 — 한 신호를 나눠 받으므로.
+//       물 위에서 선수 추력만 줄이고 싶어지면 그때 소켓 2개를 더 내야 한다.
+//
+// ✅ 실물 배선이 11·12 라서 그대로 쓴다. 13 을 안 쓰는 게 오히려 낫다 —
+//    핀 13 은 Mega 의 **내장 LED 핀**이라 부트로더가 부팅 때 깜빡인다. ESC 가 그 구간에
+//    이상한 펄스를 보게 되는데, 애초에 안 쓰면 그 걱정이 없다.
+// ⚠️ 좌/우 배정은 **아직 실물로 확인 안 됐다.** 작년 코드에서 12 가 우(R) 였던 것에
+//    근거한 추정이다. 스러스터를 달고 한쪽만 돌려서 확인할 것 — 반대면 이 두 줄만 맞바꾼다.
+#define PIN_ESC_LEFT    11    // 좌측 ESC 2개  ⚠️ 좌/우 실물 확인 필요
+#define PIN_ESC_RIGHT   12    // 우측 ESC 2개
 
 #define PIN_LED_STRIP   40    // WS2812 스트립 Din (LED_USE_WS2812=1일 때 룰 표시등)
 #define PIN_LED_GREEN   22    // (예비) 단색 룰 표시등: 수동
@@ -176,13 +196,11 @@ struct MotorCfg {
   bool    invert;   // ⚠️벤치
   int     gain_num; // 10=100%. 선수 7=70% ⚠️물
 };
-MotorCfg motors[4] = {
-  { PIN_ESC_FL, false, 7  },  // [0] 선수 좌
-  { PIN_ESC_FR, false, 7  },  // [1] 선수 우
-  { PIN_ESC_RL, false, 10 },  // [2] 선미 좌
-  { PIN_ESC_RR, false, 10 },  // [3] 선미 우
+MotorCfg motors[2] = {
+  { PIN_ESC_LEFT,  false, 10 },  // [0] 좌 — ESC 2개가 이 신호를 나눠 받는다
+  { PIN_ESC_RIGHT, false, 10 },  // [1] 우
 };
-Servo esc[4];
+Servo esc[2];
 
 // =====================[ 4. RC 캡처 (인터럽트) ]========================
 // 상승엣지=시작시각 기록, 하강엣지=HIGH 폭 계산 → LOW 구간 쓰레기 원천 차단
@@ -230,8 +248,7 @@ void sc3(){scIsr(3);} void sc4(){scIsr(4);} void sc5(){scIsr(5);}
 //   낡았다. 결과: 비어 있는 핀 5 를 계속 건너뛰고(= RC 후보인데 한 번도 안 훑음),
 //   출력이 된 핀 9 를 pinMode(INPUT) 으로 조용히 끊었다. 같은 상수를 두 곳에 적은 대가다.
 static bool huntSkip(uint8_t p) {
-  if (p == PIN_ESC_FL || p == PIN_ESC_FR ||
-      p == PIN_ESC_RL || p == PIN_ESC_RR) return true;   // 출력 — INPUT 으로 바꾸면 신호가 끊긴다
+  if (p == PIN_ESC_LEFT || p == PIN_ESC_RIGHT) return true;  // 출력 — INPUT 으로 바꾸면 신호가 끊긴다
   if (p == PIN_LED_STRIP || p == PIN_LED_DEBUG ||
       p == PIN_LED_GREEN || p == PIN_LED_YELLOW ||
       p == PIN_LED_RED)   return true;                   // 출력
@@ -438,16 +455,20 @@ void mixManual(int &cmdL, int &cmdR) {
   cmdR = 1500 + thr - str;   // 포화는 출구 클램프가 처리 (직진 최고속 보존)
 }
 
-// 좌/우 명령 → ESC 4개. 모든 출력이 반드시 이 관문 하나를 지남
+// 좌/우 명령 → ESC 2채널. 모든 출력이 반드시 이 관문 하나를 지남
 void driveMotors(int cmdL, int cmdR) {
-  int cmd[4] = { cmdL, cmdR, cmdL, cmdR };   // [선수L, 선수R, 선미L, 선미R]
-  for (int i = 0; i < 4; i++) {
+  int cmd[2] = { cmdL, cmdR };
+  for (int i = 0; i < 2; i++) {
     int dev = (cmd[i] - 1500) * motors[i].gain_num / 10;  // 편차에 게인 (정수 연산)
     if (motors[i].invert) dev = -dev;
     int out = constrain(1500 + dev, ESC_OUT_MIN, ESC_OUT_MAX);  // 유일한 출구 클램프
     esc[i].writeMicroseconds(out);
     finalOut[i] = out;                       // 상태보고용 기록
   }
+  // 🚨 상태 줄은 `S,...,FL,FR,RL,RR` 4칸이 **브릿지와의 계약**이다(status_parser.py).
+  //    2채널이 됐다고 칸을 줄이면 파서가 조용히 깨진다. 같은 쪽 값을 그대로 채운다.
+  finalOut[2] = finalOut[0];   // 선미 좌 = 좌
+  finalOut[3] = finalOut[1];   // 선미 우 = 우
 }
 
 void driveNeutral() { driveMotors(1500, 1500); }
@@ -554,7 +575,7 @@ void setup() {
   Serial.println(boatIdDefaulted ? F("  (ID pins open -> default)") : F("  (from ID pins)"));
 
   // ESC arm: 1500 출력 유지, 이 동안 모든 명령 무시 (설계 §2-5)
-  for (int i = 0; i < 4; i++) { esc[i].attach(motors[i].pin); esc[i].writeMicroseconds(1500); }
+  for (int i = 0; i < 2; i++) { esc[i].attach(motors[i].pin); esc[i].writeMicroseconds(1500); }
   delay(ARM_HOLD_MS);
   Serial.println(F("ESC armed."));
 
