@@ -144,17 +144,17 @@ const int RC_DEADBAND_US = 20;                // 스틱 중립 데드밴드 ⚠�
 const int STEER_SCALE_N  = 10;                // 조향 감도 = N/10 (10=100%) ⚠️물
 const bool STEER_INVERT_RC = false;           // RC 조향 좌우 반전 ⚠️벤치
 const int MODE_AUTO_THRESHOLD = 1500;         // 모드 펄스 < 1500 = AUTO (작년 관례 유지)
-// 2026-08-17 실측: 모드 채널 펄스는 두 지점만 쓴다 — 약 1000us(자율) / 약 2000us(수동).
-// 🚨 아직 못 정한 것 두 개. 물에 띄우기 전에 반드시 확정할 것:
-//   ① 어느 스위치인가 — SWA·SWB 는 아니다(구간 시험에서 무반응). SWC 또는 SWD.
-//   ② 위/아래 중 어느 쪽이 수동인가.
-//      FS-i6 은 **스위치가 전부 [위] 여야 송신을 시작한다**("place all switches in their
-//      up position"). 즉 조종기를 켤 때 그 스위치는 항상 [위]다.
-//      🚨 [위]가 자율이면, 노트북이 미션을 돌리는 상태에서 조종기를 켜는 순간 배가 움직인다.
-//      → [위] = 수동이 되도록 조종기에서 해당 채널을 반전(reverse)시킬 것.
-//        조종기 설정이라 코드·배선에 흔적이 안 남는다. 초기화되면 조용히 위험해지므로
-//        출발 전 점검 항목에 넣어야 한다.
-//      확인은 조종기의 채널 모니터 화면이 제일 빠르다(6채널 막대가 실시간으로 보인다).
+// ✅ 2026-08-18 확정 (실측):
+//      스위치 SWD [위]  = 943us  → 수동 (표시등 초록)
+//      스위치 SWD [아래] = 1894us → 자율 (표시등 노랑)
+//    FS-i6 은 **스위치가 전부 [위] 여야 송신을 시작한다**("place all switches in their up
+//    position"). 즉 조종기를 켜는 순간 이 스위치는 항상 [위] → **수동으로 시작한다.**
+//    자율로 가려면 스위치를 의도적으로 내려야 한다.
+//    🚨 원래는 반대였다. [위]=자율 이라, 노트북이 미션을 돌리는 중에 조종기를 켜는 것만으로
+//       배가 움직이는 구성이었다(60초 관측으로 확인). 판정 부등호를 뒤집어 고쳤다.
+//    ⚠️ 조종기에서 이 채널을 반전(Reverse)시키면 다시 뒤집힌다. 그 설정은 git 에 안 남으므로
+//       ① 첫 펄스에서 찍는 `MODE MAP` 로그 ② 출발 전 "조종기 켠 직후 표시등이 초록인가"
+//       두 가지로 감시한다.
 const long SERIAL_BAUD = 115200;              // 브릿지와 합의된 속도 (브릿지 기본값)
 const int STRIP_NUM_PIXELS = 8;               // WS2812 픽셀 수 ⚠️실물 확정
 const int STRIP_BRIGHTNESS = 255;             // 0~255. 주광 시인성 위해 최대로 시작
@@ -591,9 +591,31 @@ void loop() {
     } else {
       // 모드 판정: 유효한 모드 펄스가 온 적 있어야 대기 해제
       if (snapStamp(2) != 0) {
-        mode = (snapPulse(2) < (unsigned long)MODE_AUTO_THRESHOLD) ? MODE_AUTO : MODE_MANUAL;
+        // 🚨 2026-08-18 부등호를 뒤집었다. 실측: 스위치 [위] = 943us / [아래] = 약 2050us.
+        //    FS-i6 은 **모든 스위치가 [위] 여야 송신을 시작**한다
+        //    ("place all switches in their up position"). 즉 조종기를 켜는 순간 이 스위치는 항상 [위]다.
+        //    그 상태가 자율이면 **노트북이 미션을 돌리는 중에 조종기를 켜는 것만으로 배가 움직인다.**
+        //    실제로 그 구성이었다(전부 [위] → 자율, 60초 관측).
+        //    → [위](낮은 펄스) = 수동 이 되도록 방향을 반대로 잡았다.
+        //    작년 관례(< 1500 = AUTO)와 반대지만, 작년 채널 배정은 **세 개 모두 틀렸던 것**으로
+        //    08-17 실측에서 확인됐다. 관례보다 실측이 우선이다.
+        //    ⚠️ 조종기에서 이 채널을 반전(Reverse)시키면 이 논리가 다시 뒤집힌다.
+        //       아래 MODE MAP 부팅 로그와 출발 전 점검(표시등 초록)으로 감시한다.
+        mode = (snapPulse(2) > (unsigned long)MODE_AUTO_THRESHOLD) ? MODE_AUTO : MODE_MANUAL;
       }
       // (모드 채널이 이후 끊겨도 마지막 모드 유지 — 팀 결정: RC 두절로 모드 전환 안 함)
+
+      // 🚨 매핑을 한 번 찍는다. 조종기에서 채널이 반전되면 코드·배선에 흔적이 안 남으므로,
+      //    **첫 펄스에서 스스로 밝히게** 해서 조용히 뒤집히는 걸 막는다.
+      //    조종기를 켠 직후는 스위치가 전부 [위] 이므로, 여기서 AUTO 가 찍히면 위험한 구성이다.
+      static bool modeMapLogged = false;
+      if (!modeMapLogged && snapStamp(2) != 0) {
+        modeMapLogged = true;
+        Serial.print(F("MODE MAP: "));
+        Serial.print(snapPulse(2));
+        Serial.print(F("us -> "));
+        Serial.println(mode == MODE_AUTO ? F("AUTO  <-- 조종기 켠 직후라면 위험") : F("MANUAL (정상)"));
+      }
 
       int cmdL = 1500, cmdR = 1500;
       watchdogActive = false;
