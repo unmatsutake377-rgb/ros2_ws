@@ -63,14 +63,26 @@ ping <카메라IP>                # ⚠️ IP 는 도착일에 확인 (아래 3 
 
 DHCP 로 두면 재부팅마다 IP 가 바뀌어 launch 가 조용히 실패한다. **고정 IP 로 박는다.**
 
-⚠️ 카메라 기본 IP·설정 방법은 실물 문서/툴로 확인해야 한다(Luxonis 문서).
-확인 후 **여기에 적을 것**:
+**[2026-09-15 Luxonis 공식 PoE 배포 가이드로 확인]** (실물 전 — 도착일에 `ping` 으로 재확인)
+- 카메라 공장 기본: **DHCP 시도 → 서버 없으면 `169.254.1.222` 로 폴백**. 배 위엔 DHCP 서버가 없으니
+  아무것도 안 해도 `169.254.1.222` 다. **노트북 이더넷 어댑터를 `169.254.1.10/16`(넷마스크 255.255.0.0)** 로 고정하면 끝.
+- 디스커버리 UDP **11491**, XLink TCP **11490** — `ufw` 켜져 있으면 열 것:
+  `sudo ufw allow 11490/tcp && sudo ufw allow 11491/udp`
+- VPN 켜져 있으면 디스커버리 실패. 끌 것.
+- 카메라 자체 IP 를 바꾸고 싶으면 depthai 부트로더 도구(Luxonis 문서 "set static IP" — 예제 `poe_set_ip.py`)로 플래시. **바꿀 이유 없으면 폴백 IP 그대로 쓴다**(바꾸면 문서와 어긋난다).
 
+노트북 쪽 고정(nmcli, 어댑터 이름은 `ip link` 로 확인 — USB 어댑터는 보통 `enx…`):
+```bash
+nmcli con add type ethernet ifname <어댑터> con-name oak-poe ipv4.method manual ipv4.addresses 169.254.1.10/16
+nmcli con up oak-poe
+ping 169.254.1.222
 ```
-카메라 IP   : __________
-노트북 IP   : __________
-서브넷      : __________
-설정 방법   : __________
+
+확정값(도착일 `ping` 통과 후 체크):
+```
+카메라 IP   : 169.254.1.222  (폴백 기본값)   [ ] ping 확인
+노트북 IP   : 169.254.1.10/16               [ ] nmcli 적용
+설정 방법   : 카메라 무변경 / 노트북 nmcli 수동
 ```
 
 ---
@@ -80,11 +92,31 @@ DHCP 로 두면 재부팅마다 IP 가 바뀌어 launch 가 조용히 실패한�
 드라이버를 띄우고 **실제 컬러 토픽 이름을 눈으로 확인**한다. 추측 금지.
 
 ```bash
-ros2 launch depthai_ros_driver camera.launch.py
-ros2 topic list | grep -i color
+# IP 지정 + RGB 만 (뎁스·NN 끔 — OAK-1 은 모노 카메라라 뎁스 없음, NN 은 우리가 안 씀)
+ros2 launch depthai_ros_driver camera.launch.py \
+  camera_model:=OAK-1-POE \
+  params_file:=<아래 yaml>          # 또는 -p 로 camera.i_ip / i_pipeline_type / i_nn_type
+ros2 topic list | grep -i -E "rgb|color|image"   # 기본 노드명 oak → 예상 /oak/rgb/image_raw (눈으로 확인)
 ros2 topic hz <컬러토픽>          # 실제로 나오는지
 ros2 topic info <컬러토픽> --verbose   # QoS 확인
 ```
+
+드라이버 파라미터(공식 문서 이름 그대로 — 도착일에 `ros2 param list /oak` 로 재확인):
+```yaml
+/oak:
+  ros__parameters:
+    camera:
+      i_ip: "169.254.1.222"     # 자동탐색 대신 고정 — 다른 OAK 가 붙어도 안 헷갈림
+      i_pipeline_type: RGB
+      i_nn_type: none
+    rgb:
+      i_resolution: "1080P"
+      i_fps: 30.0
+      i_width: 1280
+      i_height: 720
+      i_low_bandwidth: false     # 기가비트면 raw. 100M 어댑터를 어쩔 수 없이 쓰면 true(MJPEG 압축)
+```
+⚠️ 해상도(`i_width/i_height`)를 바꾸면 **`hfov_deg` 도 같이**(§5) — 센서 크롭이 달라진다.
 
 확인한 이름을 **두 곳** 에 넣는다 — 한쪽만 고치면 조용히 어긋난다:
 
@@ -276,7 +308,7 @@ HSV 는 **되돌릴 값을 미리 저장해 둘 것.** 재캘리브레이션 전
 
 - [ ] `depthai-ros` 설치 (RealSense 드라이버 **유지** 확인)
 - [ ] PoE 인젝터 + **기가비트** 이더넷 연결
-- [ ] 고정 IP 설정, `ping` 통과
+- [ ] 노트북 169.254.1.10/16 고정, `ping 169.254.1.222` 통과 (ufw 11490/11491)
 - [ ] 컬러 토픽 이름 확인 (`ros2 topic list`)
 - [ ] `vision.yaml` — `image_topic`
 - [ ] `ssf_tools.yaml` — `image_topic`
