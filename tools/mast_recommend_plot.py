@@ -29,7 +29,6 @@ ax.text(BX0 + 40, DECK + 34, "박스 뚜껑 = 해치 (갑판 면 노출)[확정]
 ax.add_patch(Circle((1100, DECK + 14), 14, fc="red", ec="k")); ax.add_patch(Rectangle((1090, DECK + 6), 20, 8, fc="#333"))
 ax.text(1100, DECK + 62, "비상버튼\n(뚜껑 위)[확정]", ha="center", fontsize=9, color="red")
 # IMU
-ax.add_patch(Rectangle((MX - 70, DECK + 1), 40, 14, fc="#c00", ec="k")); ax.text(MX - 90, DECK + 22, "IMU 베이스 블록 포켓[확정]\n굵은 배선과 30cm+, |m| 확인", ha="right", fontsize=8, color="#c00")
 # GPS 안테나 옆 고정 갑판
 GX = 480
 ax.add_patch(Rectangle((GX - 60, DECK), 120, 4, fc="#999", ec="k"))
@@ -42,6 +41,8 @@ ax.add_patch(Rectangle((MX - 45, DECK + 158), 90, 12, fc="#7aa7e8", ec="k")); ax
 ax.add_patch(Rectangle((MX + 20, DECK + 60), 31, 82, fc="#f4a261", ec="k")); ax.text(MX + 130, DECK + 120, "OAK-1 PoE 아래 7°, 롤 0\n뒷면 M4×4, 아래끝 갑판+60", fontsize=9, va="top")
 ax.text(MX - 60, DECK + 250, "마스트 ≤220mm 프린트(PETG)[확정]\nx≈1230 ? (박스 자리 확정 후)\n갑판 관통 M5×4 + 가로대", ha="center", fontsize=9)
 ax.annotate("", xy=(MX + 110, DECK), xytext=(MX + 110, DECK + 220), arrowprops=dict(arrowstyle="<->", color="k")); ax.text(MX + 116, DECK + 40, "220", fontsize=9)
+# IMU (마스트 베이스 포켓)
+ax.add_patch(Rectangle((MX - 70, DECK + 1), 40, 14, fc="#c00", ec="k")); ax.text(MX - 90, DECK + 22, "IMU 베이스 블록 포켓[확정]\n굵은 배선과 30cm+, |m| 확인", ha="right", fontsize=8, color="#c00")
 # 표시등
 ax.add_patch(Rectangle((MX - 30, DECK + 100), 8, 40, fc="#2ecc71", ec="k")); ax.text(MX - 34, DECK + 145, "표시등\n마스트 뒤", ha="right", fontsize=8)
 # LiDAR
