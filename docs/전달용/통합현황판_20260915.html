@@ -23,17 +23,18 @@ small,.mute{color:var(--mute)}details{margin:8px 0}summary{cursor:pointer;font-w
 @media print{nav{display:none}section{break-inside:avoid}}
 </style></head><body>
 <header><h1>SSF 자율운항선박 — 통합 현황판 (2026-09-14/15 세션)</h1>
-<p>수동 조종 카메라 영상 · 하드웨어 배치·마스트 · USB 허브·전원 · 구매 목록 · 전 파트 과제 목록 · 탑재 품목 총괄. 저장소 <code>ros2_ws</code> 커밋 4개의 요약본. 세부는 각 MD 문서가 주인.</p></header>
+<p>수동 조종 카메라 영상 · 하드웨어 배치·마스트 · USB 허브·전원 · 구매 목록 · 전 파트 과제 목록 · 탑재 품목 총괄. 저장소 <code>ros2_ws</code> 브랜치 <code>cam-stream</code> 요약본 (09-15 main 의 OAK-1 PoE·인젝터 확정 반영). 세부는 각 MD 문서가 주인.</p></header>
 <nav><a href="#top">결정 5개</a><a href="#cam">카메라 영상</a><a href="#layout">배치·마스트</a><a href="#power">허브·전원</a><a href="#buy">구매 목록</a><a href="#tasks">과제 목록</a><a href="#bom">탑재 품목</a><a href="#commits">커밋</a></nav>
 <main>
 
-<section id="top"><h2>0. 지금 막혀 있는 결정 5개 — 돈 안 들고, 뒤를 전부 막는다</h2>
+<section id="top"><h2>0. 결정 5개 — 09-15 로 ③④ 해결, 새로 ⑥ 마스트 개념 추가</h2>
 <div class="grid">
 <div class="card"><b>① 🚨 부표 높이·지름</b>규정에 없음. 운영측 문의/작년 사진. → LiDAR 높이·OAK 높이·마스트 22cm 상한 양립 여부, 비전 최소면적 임계.</div>
 <div class="card"><b>② 🚨 MD-30A 컨버터 위치 (Q1)</b>추진 경로에 있으면 30A 병목. 5V 전용으로 이동 권고. → 핀 18, 펌웨어 M 제어, 인터페이스 보드.</div>
-<div class="card"><b>③ ESC 모델</b>1순위 BlueRobotics Basic ESC. 양방향 1100~1900µs, 4S, 연속 30A+. → P0 구매, 벤치.</div>
-<div class="card"><b>④ OAK 구매 모델</b>저장소는 OAK-1 W <b>PoE</b>(RJ45, USB 아님). M12→RJ45 케이블 동봉 확인. → 어댑터·인젝터·런북.</div>
+<div class="card"><b>③ ✅ ESC 모델</b>BlueRobotics Basic ESC <b>×8 보유</b>(양방향, RC 수동 후진 확인 09-15). 구매 불필요 → 벤치 arm·중립점만.</div>
+<div class="card"><b>④ ✅ OAK 구매 모델</b><b>OAK-1 PoE</b> 고정초점 69°, RJ45 + 2m Cat5e 동봉, 802.3af Class 3. 리얼리스토어 661,000 ×2. 인젝터 <b>REVOTECH PSE5502G</b>(12~48V→802.3af active, 30W) 72,620 ×2, 어댑터 AX88179, 2A 퓨즈. passive·AC·10W 인젝터 ✗. → 발주(B9) → 런북.</div>
 <div class="card"><b>⑤ 갑판 사양</b>FRP 두께, 해치 위치·크기, 박스 그랜드 면. → 마스트 x 좌표·볼트 길이.</div>
+<div class="card"><b>⑥ 🚨 마스트 개념 단일화 (신규)</b><code>마스트_요구사항.md</code>(LiDAR·GPS·LTE 안테나를 마스트에, 알루미늄/카본, 3점+스테이) vs <code>하드웨어_배치_요구사항.md</code>(카메라 2대만, PLA ≤22cm, LiDAR 갑판 직치). 결정 3개: LiDAR 를 올리나 / GPS 를 올리나 / 프린트냐 알루미늄이냐. 부표 높이(①)가 선행.</div>
 </div>
 <div class="danger"><b>LiDAR 장착 높이 = 부표 높이</b> — CLAUDE.md §8 와 보고서 5곳에 반복. 이 값이 확인되기 전까지 아래 배치의 LiDAR·마스트 높이는 <b>잠정값</b>이다.</div>
 </section>
@@ -76,7 +77,7 @@ small,.mute{color:var(--mute)}details{margin:8px 0}summary{cursor:pointer;font-w
 <tr><td>RC 수신기 / LTE</td><td>선미 양현 반대쪽, ≥50cm</td><td>안테나 높게</td><td>2.4GHz 간섭, 5GHz WiFi 만</td></tr></table>
 <h3>마스트 (<code>tools/cad/mast.py</code>, STL: <code>docs/전달용/마스트_stl/</code>)</h3>
 <p>40mm 각관(벽 5) 150mm + 베이스 160×120×8 + D455 선반 캡(벨크로, 아래 15°) + OAK 브래킷(M4 45mm, 아래 7°, 롤 0). 갑판→선반 최고점 <b>219.6mm</b>, 두 배 공용 1세트 3부품. <b>고정: FRP 갑판 관통 M5×4 + Ø20 와셔/백플레이트 + 실란트.</b> 나사못·글루건·양면테이프 ✗. Fusion 은 <code>mast_assembly.step</code>, 프린트는 <code>mast_*.stl</code> 3개.</p>
-<p class="mute">추정: 흘수, 박스 크기·위치, 갑판 두께, OAK-1 W 외형(OAK-1 PoE 기준 가정). 확정되면 <code>MAST_H</code>·<code>BASE_HOLE_PITCH</code>·<code>OAK_*</code> 만 수정.</p>
+<p class="mute">추정: 흘수, 박스 크기·위치, 갑판 두께, OAK-1 PoE 외형(데이터시트 기준, 도착 시 실측). 확정되면 <code>MAST_H</code>·<code>BASE_HOLE_PITCH</code>·<code>OAK_*</code> 만 수정.</p>
 </section>
 
 <section id="power"><h2>3. USB 허브 · 전원 · 노트북</h2>
@@ -92,19 +93,19 @@ small,.mute{color:var(--mute)}details{margin:8px 0}summary{cursor:pointer;font-w
 
 <section id="buy"><h2>4. 구매 목록 (보유품 제외) — <code>docs/전달용/구매_목록.md</code></h2>
 <table><tr><th></th><th>품목</th><th>수량</th><th>예상가</th><th>담당</th></tr>
-<tr><td><span class="tag p0">P0</span></td><td>양방향 ESC (BlueRobotics Basic ESC 1순위)</td><td>4+1</td><td>개당 3~4만</td><td>회로</td></tr>
-<tr><td><span class="tag p0">P0</span></td><td>무선 E-Stop: RC 릴레이 모듈 + 고전류 릴레이 80~100A DC</td><td>각 2</td><td>3~5만</td><td>회로</td></tr>
+<tr><td><span class="tag p0">P0</span></td><td><s>양방향 ESC</s> → 보유 ×8 BlueRobotics Basic ESC</td><td>—</td><td>0</td><td>회로</td></tr>
+<tr><td><span class="tag p0">P0</span></td><td>무선 E-Stop: RC 릴레이 모듈 (<s>고전류 릴레이</s> 보유 — DC 80A+ 정격 확인)</td><td>1~2</td><td>1만</td><td>회로</td></tr>
 <tr><td><span class="tag p0">P0</span></td><td>버튼식 E-Stop: XT90-S 루프키</td><td>2</td><td>1~2만</td><td>회로</td></tr>
-<tr><td><span class="tag p0">P0</span></td><td>룰 표시등 WS2812 스트립 (또는 고휘도 LED 3 + IRLZ44N)</td><td>1</td><td>1~2만</td><td>회로</td></tr>
+<tr><td><span class="tag p0">P0</span></td><td><s>룰 표시등 LED</s> 보유 — 구동 MOSFET·저항만</td><td>—</td><td>0</td><td>회로</td></tr>
 <tr><td><span class="tag p0">P0</span></td><td>XH2.54 5핀 하네스 (LiDAR)</td><td>2</td><td>2천</td><td>소프트</td></tr>
 <tr><td><span class="tag p0">P0</span></td><td>USB 3.0 C↔A 케이블 ≤1m (D455)</td><td>1+1</td><td>1만</td><td>소프트</td></tr>
 <tr><td><span class="tag p1">P1</span></td><td>5V UBEC 3A ×2 (Mega·수신기 / 라우터)</td><td>2</td><td>1~2만</td><td>회로</td></tr>
 <tr><td><span class="tag p1">P1</span></td><td>ipTIME UH308 + 5V 5A 강압 + DC 플러그 + 퓨즈</td><td>1세트</td><td>3.5~4만</td><td>소프트/회로</td></tr>
 <tr><td><span class="tag p1">P1</span></td><td>EC5 커넥터, 실리콘선 8~10/12~14/22~26AWG</td><td>—</td><td>2.5~3.5만</td><td>회로(재고)</td></tr>
-<tr><td><span class="tag p1">P1</span></td><td>방수 박스 + 글랜드 PG7/9, SP13/16 커넥터, MOSFET·저항·DIP·기판</td><td>—</td><td>4~8만</td><td>회로</td></tr>
+<tr><td><span class="tag p1">P1</span></td><td><s>방수 박스</s>(보유) + 글랜드 PG7/9, SP13/16 커넥터, MOSFET·저항·DIP·기판, 퓨즈 3A/2A</td><td>—</td><td>2~4만</td><td>회로</td></tr>
 <tr><td><span class="tag p1">P1</span></td><td>마스트 프린트 재료 + M5×25/M4×50 볼트·Ø20 와셔·실란트, 갑판 그로밋·스파이럴, GPS 접지판 ×2</td><td>—</td><td>2~3만</td><td>선체</td></tr>
 <tr><td><span class="tag p1">P1</span></td><td>공기계 폰 + 데이터쉐어링 SIM (LTE 0트랙)</td><td>1</td><td>월 요금</td><td>소프트</td></tr>
-<tr><td><span class="tag p2">P2</span></td><td>OAK-1 W PoE ($429, M12 케이블 확인) · USB-C 기가비트 이더넷 어댑터 · PoE 인젝터 802.3af(TL-POE150S 15,900)</td><td>각 1</td><td>≈75만</td><td>팀/회로</td></tr>
+<tr><td><span class="tag p2">P2</span></td><td><b>OAK-1 PoE</b> 고정초점 69° ×2 (리얼리스토어 661,000, RJ45·2m Cat5e 동봉) · DC PoE 인젝터 <b>REVOTECH PSE5502G</b> ×2 (11번가 72,620, 802.3af/at active) · USB-C 기가 어댑터 <b>AX88179</b> ×1 · 2A 퓨즈홀더 ×2+</td><td>2/2/1/2</td><td>≈150만</td><td>팀/회로</td></tr>
 <tr><td><span class="tag p2">P2</span></td><td>LTE 라우터 A/B트랙, 가로대 평철</td><td>0~1</td><td>—</td><td>폰 실패/갑판 얇을 때만</td></tr>
 <tr><td><span class="tag p3">P3</span></td><td>방향지시등, 광각 웹캠, 산업용 허브</td><td>—</td><td>—</td><td>선택</td></tr></table>
 <div class="note"><b>모델이 문서에 없어 확인 후 구매:</b> 배터리 용량·C (4S 2개 확정, mAh 미기재) · GPS 안테나 모델(C94-M8P/ZED-F9P 용, Moving Baseline 이면 2개) · MD-30A 는 보유, 위치만 결정.</div>
@@ -115,18 +116,19 @@ small,.mute{color:var(--mute)}details{margin:8px 0}summary{cursor:pointer;font-w
 <table><tr><th>#</th><th>과제</th><th>상태</th><th>담당</th><th>막는 것</th></tr>
 <tr><td>A1</td><td class="crit">부표 높이·지름</td><td><span class="tag todo">미착수</span></td><td>팀장</td><td>LiDAR·OAK 높이, 마스트 상한, 비전 임계</td></tr>
 <tr><td>A2</td><td class="crit">MD-30A 위치 (Q1)</td><td><span class="tag wait">회로 회신 대기</span></td><td>회로</td><td>핀 18, 인터페이스 보드</td></tr>
-<tr><td>A3</td><td>ESC 모델</td><td><span class="tag todo">미착수</span></td><td>회로</td><td>P0 구매, 벤치</td></tr>
+<tr><td>A3</td><td>ESC 모델 → BlueRobotics Basic ESC ×8 보유</td><td><span class="tag ok">완료</span></td><td>회로</td><td>벤치 arm·중립점</td></tr>
 <tr><td>A4</td><td>ESC 신호 4가닥 독립 (Q5)</td><td><span class="tag wait">대기</span></td><td>회로</td><td>펌웨어 게인</td></tr>
 <tr><td>A5</td><td>배터리 용량·C, Mega 5V 출처</td><td><span class="tag todo">미착수</span></td><td>회로</td><td>UBEC 배선</td></tr>
-<tr><td>A6</td><td>OAK 모델 (PoE/USB) + M12 케이블</td><td><span class="tag todo">미착수</span></td><td>팀장</td><td>어댑터·인젝터·런북</td></tr>
+<tr><td>A6</td><td>OAK 모델 → OAK-1 PoE + PSE5502G + AX88179 확정</td><td><span class="tag ok">확정</span> / 발주 미착수</td><td>팀장</td><td>B9 발주 → 런북</td></tr>
 <tr><td>A7</td><td>룰북 재확인 (수동 카메라, 외부 PC 모니터링)</td><td><span class="tag todo">미착수</span></td><td>팀장</td><td>스트림 채택</td></tr>
 <tr><td>A8</td><td>갑판 재질·두께, 해치, 그랜드 면</td><td><span class="tag todo">미착수</span></td><td>선체</td><td>마스트 좌표·볼트</td></tr>
-<tr><td>A9</td><td>카메라 2대 동시 장착 확정</td><td><span class="tag todo">미착수</span></td><td>팀장</td><td>브래킷·케이블</td></tr></table>
+<tr><td>A9</td><td>카메라 2대 동시 장착 확정</td><td><span class="tag todo">미착수</span></td><td>팀장</td><td>브래킷·케이블</td></tr>
+<tr><td>A10</td><td class="crit">마스트 개념 단일화 (마스트_요구사항 vs 배치 요구사항)</td><td><span class="tag todo">미착수</span></td><td>팀장+선체</td><td>B6 CAD·프린트, D5</td></tr></table>
 <h3>B. 구매·제작</h3>
 <table><tr><th>#</th><th>과제</th><th>담당</th><th>선행</th></tr>
-<tr><td>B1</td><td>P0 구매 6종</td><td>회로/소프트</td><td>A3</td></tr><tr><td>B2</td><td>P1 구매</td><td>회로/선체</td><td>—</td></tr>
+<tr><td>B1</td><td>P0 구매 (E-Stop 모듈·XT90-S, LiDAR 하네스, D455 케이블)</td><td>회로/소프트</td><td>—</td></tr><tr><td>B2</td><td>P1 구매</td><td>회로/선체</td><td>—</td></tr>
 <tr><td>B3</td><td>인터페이스 보드 (핀 배정표 → 펌웨어)</td><td>회로</td><td>A2</td></tr><tr><td>B4</td><td>방수 박스 배선·ESC 방열</td><td>회로</td><td>B2</td></tr>
-<tr><td>B5</td><td>갑판 + 해치 + 그로밋</td><td>선체</td><td>A8</td></tr><tr><td>B6</td><td>마스트 프린트·FRP 장착</td><td>선체</td><td>B5, A1</td></tr>
+<tr><td>B5</td><td>갑판 + 해치 + 그로밋</td><td>선체</td><td>A8</td></tr><tr><td>B6</td><td>마스트 제작 (프린트 또는 알루미늄 — A10)</td><td>선체</td><td>B5, A1, A10</td></tr><tr><td>B9</td><td>카메라 계통 발주 (OAK ×2, PSE5502G ×2, AX88179, 2A 퓨즈)</td><td>팀장/회로</td><td>A6 ✅</td></tr>
 <tr><td>B7</td><td>LiDAR 케이블 수리</td><td>소프트</td><td>B1</td></tr><tr><td>B8</td><td>LTE 0트랙 폰: 열 시험·5GHz 확인</td><td>소프트</td><td>—</td></tr></table>
 <h3>C. 벤치</h3>
 <table><tr><th>#</th><th>과제</th><th>담당</th><th>선행</th></tr>
@@ -157,18 +159,19 @@ small,.mute{color:var(--mute)}details{margin:8px 0}summary{cursor:pointer;font-w
 <tr><td>E5</td><td>제어는 선내 연산, 외부 PC 모니터링만</td><td>A7 확인</td></tr></table>
 <pre>A1 부표 높이 ──▶ B6 마스트 ──▶ D4 LiDAR 부표 확인
 A2 MD-30A ────▶ B3 보드 ──▶ C1 벤치 ──▶ D2 조향 부호 ──▶ D3 PWM ──▶ D8
-A3 ESC ───────▶ B1 구매 ──▶ C1
-A6 OAK 모델 ──▶ 구매 P2 ──▶ C6 런북 ──▶ D5
-A8 갑판 ──────▶ B5 ──▶ B6 ──▶ D1</pre>
+A3 ESC ✅ ─────▶ B1 구매 ──▶ C1
+A6 OAK 모델 ✅ ▶ B9 발주 ──▶ C6 런북 ──▶ D5
+A8 갑판 ──────▶ B5 ──▶ B6 ──▶ D1
+A10 마스트 개념 ▶ B6</pre>
 </section>
 
 <section id="bom"><h2>6. 탑재 품목 총괄 (보유 + 구매 예정)</h2>
 <div class="grid">
-<div class="card"><b>추진·전원</b>T200 ×4 · ESC ×4(미확정) · 4S LiPo ×2(좌우 독립) · EC5 · MD-30A(위치 미정) · UBEC 5V 3A ×2 · 5V 5A 강압 · 퓨즈 · 실리콘선</div>
+<div class="card"><b>추진·전원</b>T200 ×4 · BlueRobotics Basic ESC ×8(보유) · 4S LiPo ×2(좌우 독립) · EC5 · MD-30A(위치 미정) · UBEC 5V 3A ×2 · 5V 5A 강압 · 퓨즈 · 실리콘선</div>
 <div class="card"><b>제어·안전</b>Mega 2560 R3 · FS-i6/FS-iA6 · 무선 E-Stop 릴레이 ×2 · XT90-S 루프키 ×2 · WS2812 표시등 · 점검 LED · 배 ID DIP · 릴레이 감지선(핀 38)</div>
 <div class="card"><b>컴퓨팅·통신</b>IdeaPad Slim 3 15IAH8 · UH308 허브 · 폰 LTE(0트랙) + Tailscale · USB-C 이더넷 어댑터 · PoE 인젝터</div>
-<div class="card"><b>센서</b>RPLIDAR A3 · IMU RB-SDA-v1 · C94-M8P(A) / ZED-F9P(B) + 안테나 · D455(조종) · OAK-1 W PoE(비전, 미구매)</div>
-<div class="card"><b>구조</b>방수 박스+글랜드 · FRP 갑판+해치+그로밋 · 마스트 3부품 · LiDAR 직치판 · GPS 접지판 · SP13/16 커넥터</div>
+<div class="card"><b>센서</b>RPLIDAR A3 · IMU RB-SDA-v1 · C94-M8P(A) / ZED-F9P(B) + 안테나 · D455(조종) · OAK-1 PoE ×2(비전, 확정·미발주) + PSE5502G 인젝터 ×2 + AX88179 어댑터</div>
+<div class="card"><b>구조</b>방수 박스+글랜드 · FRP 갑판+해치+그로밇 · 마스트 3부품 · LiDAR 직치판 · GPS 접지판 · SP13/16 커넥터</div>
 </div></section>
 
 <section id="commits"><h2>7. 저장소 커밋 (브랜치 <code>cam-stream</code>, main 위 4개)</h2>

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""cam_stream_oak.py — OAK-1 W PoE 의 **온보드 H.264 인코더**로 영상을 쏜다 (노트북 CPU 0).
+"""cam_stream_oak.py — OAK-1 PoE 의 **온보드 H.264 인코더**로 영상을 쏜다 (노트북 CPU 0).
 
 왜:
   OAK 는 USB/v4l2 장치가 아니라 **이더넷(PoE) 장치**다 → cam_stream.sh 의 v4l2 모드가 안 된다.
