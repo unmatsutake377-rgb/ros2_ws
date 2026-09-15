@@ -42,7 +42,7 @@ ax.add_patch(Rectangle((MX + 20, DECK + 60), 31, 82, fc="#f4a261", ec="k")); ax.
 ax.text(MX - 60, DECK + 250, "마스트 ≤220mm 프린트(PETG)[확정]\nx≈1230 ? (박스 자리 확정 후)\n갑판 관통 M5×4 + 가로대", ha="center", fontsize=9)
 ax.annotate("", xy=(MX + 110, DECK), xytext=(MX + 110, DECK + 220), arrowprops=dict(arrowstyle="<->", color="k")); ax.text(MX + 116, DECK + 40, "220", fontsize=9)
 # IMU (마스트 베이스 포켓)
-ax.add_patch(Rectangle((MX - 70, DECK + 1), 40, 14, fc="#c00", ec="k")); ax.text(MX - 90, DECK + 22, "IMU 베이스 블록 포켓[확정]\n굵은 배선과 30cm+, |m| 확인", ha="right", fontsize=8, color="#c00")
+ax.add_patch(Rectangle((MX - 70, DECK + 1), 40, 14, fc="#c00", ec="k")); ax.text(MX - 40, DECK + 95, "IMU 베이스 블록 포켓[확정] ▶\n굵은 배선과 30cm+, |m| 확인", ha="right", va="center", fontsize=8, color="#c00"); ax.plot([MX - 42, MX - 52], [DECK + 82, DECK + 16], color="#c00", lw=0.8)
 # 표시등
 ax.add_patch(Rectangle((MX - 30, DECK + 100), 8, 40, fc="#2ecc71", ec="k")); ax.text(MX - 34, DECK + 145, "표시등\n마스트 뒤", ha="right", fontsize=8)
 # LiDAR
