@@ -23,13 +23,13 @@ ax.add_patch(Rectangle((-50, -70), 50, 40, fc="#555")); ax.text(-50, -95, "T200"
 BX0, BX1 = 600, 1160
 ax.add_patch(Rectangle((BX0, FB - DEPTH + 20), BX1 - BX0, DECK - 20 - (FB - DEPTH + 20), fc="#fff2cc", ec="#b8860b", lw=1.5))
 ax.add_patch(Rectangle((BX0, DECK - 6), BX1 - BX0, 14, fc="#f0c419", ec="#b8860b", lw=1.5))
-ax.text((BX0 + BX1) / 2, FB - DEPTH + 60, "방수박스 (갑판 아래)\n노트북·배터리·허브·인젝터 PSE5502G·IMU", ha="center", fontsize=10)
+ax.text((BX0 + BX1) / 2, FB - DEPTH + 60, "방수박스 (갑판 아래)\n노트북·배터리·허브·인젝터 PSE5502G·MD-30A", ha="center", fontsize=10)
 ax.text(BX0 + 40, DECK + 34, "박스 뚜껑 = 해치 (갑판 면 노출)[확정]", ha="left", fontsize=10, color="#7a5c00")
 # 비상버튼 on lid
 ax.add_patch(Circle((1100, DECK + 14), 14, fc="red", ec="k")); ax.add_patch(Rectangle((1090, DECK + 6), 20, 8, fc="#333"))
 ax.text(1100, DECK + 62, "비상버튼\n(뚜껑 위)[확정]", ha="center", fontsize=9, color="red")
 # IMU
-ax.add_patch(Rectangle((860, FB - DEPTH + 22), 40, 18, fc="#c00")); ax.text(910, FB - DEPTH + 46, "◀ IMU 박스 바닥·CG, 굵은 배선과 30cm+", ha="left", va="bottom", fontsize=8, color="#c00")
+ax.add_patch(Rectangle((MX - 70, DECK + 1), 40, 14, fc="#c00", ec="k")); ax.text(MX - 90, DECK + 22, "IMU 베이스 블록 포켓[확정]\n굵은 배선과 30cm+, |m| 확인", ha="right", fontsize=8, color="#c00")
 # GPS 안테나 옆 고정 갑판
 GX = 480
 ax.add_patch(Rectangle((GX - 60, DECK), 120, 4, fc="#999", ec="k"))
