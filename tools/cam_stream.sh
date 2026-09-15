@@ -20,10 +20,10 @@
 #   ./tools/cam_stream.sh 100.101.102.103 v4l2 640 480 30 1500
 #   CAM_TOPIC=/oak/rgb/image_raw ./tools/cam_stream.sh 100.101.102.103 ros   # OAK(depthai-ros) 토픽
 #
-# 카메라별 (🚨 OAK-1 W PoE 로 바뀌면 v4l2 모드는 못 쓴다 — PoE 는 이더넷 장치라 /dev/video 가 없다):
+# 카메라별 (🚨 OAK-1 PoE(확정 09-15) 로 바뀌면 v4l2 모드는 못 쓴다 — PoE 는 이더넷 장치라 /dev/video 가 없다):
 #   | 카메라          | 수동(카메라 노드 없음)      | 자율(카메라 노드 있음)              |
 #   | RealSense D455  | v4l2                       | ros                                 |
-#   | OAK-1 W PoE     | ros (depthai 노드만 띄움) 또는 oak | ros (CAM_TOPIC=/oak/rgb/image_raw ⚠️ 도착일 확인) |
+#   | OAK-1 PoE       | ros (depthai 노드만 띄움) 또는 oak | ros (CAM_TOPIC=/oak/rgb/image_raw ⚠️ 도착일 확인) |
 #
 # ⚠️ v4l2 모드는 카메라 장치를 직접 여는 것이라 realsense2_camera 노드가 떠 있으면
 #    "Device busy" 로 실패한다. 그때는 ros 모드.
@@ -110,7 +110,7 @@ while true; do
         --kbps "${KBPS}" --fps "${FPS}" --topic "${TOPIC}"
       ;;
     oak)
-      # OAK-1 W PoE 온보드 H.264 인코더 직접. ⚠️ 시각 각인 없음 — 헤더 표 참고. ⚠️ 실물 미검증.
+      # OAK-1 PoE 온보드 H.264 인코더 직접. ⚠️ 시각 각인 없음 — 헤더 표 참고. ⚠️ 실물 미검증.
       SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
       python3 "${SCRIPT_DIR}/cam_stream_oak.py" --host "${HOST}" --port "${PORT}" \
         --kbps "${KBPS}" --fps "${FPS}" --w "${W}" --h "${H}" ${OAK_IP:+--ip "${OAK_IP}"}
