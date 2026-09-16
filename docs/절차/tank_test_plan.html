@@ -98,6 +98,8 @@ pre{background:#f7f6f1;border:1px solid var(--bd);border-radius:8px;padding:12px
 · 헬스체크: 라이다·IMU·GPS·카메라 다 살아있나 (ros2 launch ... healthcheck / ros2 topic echo /health_ok)
 · 포트 확인: /dev/ttyLiDAR · /dev/IMU · /dev/ttyGPS · /dev/ttyMCU(아두이노 — 아직 미연결이면 생략)
 · IMU 정북: 뱃머리 정북 → /imu/yaw 0 근처. (부호 invert_yaw:false 는 08-07 확정 — mount_offset 만 배 고정 후)
+· IMU 장착 후(마스트 베이스 포켓, v2): /imu 의 자기장 크기 |m| ≈ 50µT 인가 (80µT 대면 굵은 배선·자석 간섭 → 위치 재검토) → cm 자기보정 → mount_offset_deg (뱃머리 정북에서 /imu/yaw = 0)
+· LiDAR 부표 검출(마스트_요구사항 §2-1-a): 부표 유사물(지름 30~40cm 통, 절반 잠기게) 을 5m 앞에 띄우고 /scan 에 찍히는가 → 1번 배 LiDAR 슬롯 높이(±10cm) 결정. 안 찍히면 내린다
 · 모터: ★프로펠러 제거★(물 밖 T200 장시간 금지), 전진 명령 → 양쪽 다 도는가</pre>
 
 <p><span class="step">2</span><b>수조: 조향 부호 (5분)</b></p>
