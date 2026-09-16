@@ -60,7 +60,7 @@ GUSSET          = 30.0
 # IMU (iAHRS RB-SDA-v1) — 매뉴얼 도면 확정값
 IMU_L, IMU_W, IMU_H = 35.0, 35.0, 10.0   # 케이스 (L=선체 좌우 X, W=전후 Y, H=높이)
 IMU_CLEAR   = 1.0      # 전체 +1
-IMU_CABLE_SPACE = 14.0 # [v4] 포켓 +X 쪽 케이블 꺾임 공간 (커넥터가 우현 면에 있다)
+IMU_CABLE_SPACE = 24.0 # [v4.1] 14→24. 14 면 IMU 끝(x=10.5)이 터널 입구(x 6~14)를 56% 막았다
 IMU_CH_D    = 8.0      # 케이블 터널 지름
 IMU_CH_X    = 10.0     # 터널 x 위치 (중앙 케이블 구멍 Ø22 안)
 IMU_PAD_T   = 2.0      # [v4] VHB 양면 + 방진패드 두께 (붙이는 방식, 나사 없음)
@@ -131,7 +131,7 @@ def socket_bolts(body, z_bottom):
 
 
 
-from mast_parts import cradle   # 공용 형상 함수 (fit_test.py 와 공유)
+from mast_parts import collar_ring, cradle   # 공용 형상 함수 (fit_test.py 와 공유)
 
 
 # ───────────────────────────── 1. 베이스 (IMU 포켓 — 중심선 선미쪽, 접착식) ─────────────────────────────
@@ -159,9 +159,7 @@ for ang in (0, 90, 180):        # ±X + 뱃머리(+Y) 거싯 — 선미(−Y)는
                                       (collar_half - 0.1, BASE_T + COLLAR_H)]).close().extrude(4, both=True)
          .rotate((0, 0, 0), (0, 0, 1), ang))
     base = base.union(g)
-collar = (cq.Workplane("XY").workplane(offset=BASE_T).rect(2 * collar_half, 2 * collar_half).extrude(COLLAR_H)
-          .faces(">Z").workplane().rect(TUBE_OD + 2 * PLUG_CLEAR, TUBE_OD + 2 * PLUG_CLEAR).cutThruAll())
-base = base.union(collar)
+base = base.union(collar_ring(TUBE_OD, COLLAR_MARGIN, PLUG_CLEAR, COLLAR_H, BASE_T))
 
 pocket_floor = BASE_T - LID_T - pocket_z
 base = base.cut(cq.Workplane("XY").workplane(offset=pocket_floor).center(pcx, pcy).rect(pocket_x, pocket_y).extrude(pocket_z + LID_T + 1))
@@ -334,6 +332,8 @@ json.dump({
         "pocket": [pocket_x, pocket_y, pocket_z, lid_x, lid_y, LID_T, LID_SCREW_D, IMU_CH_D, IMU_CH_X, IMU_PAD_T],
         "imu": [IMU_L, IMU_W, IMU_H],
         "plug": [TUBE_OD, TUBE_WALL, PLUG_LEN, PLUG_CLEAR, PLUG_HOLE, DECK_T, BOLT_D],
+        "collar": [COLLAR_H, COLLAR_MARGIN],
+        "LID_MARGIN": LID_MARGIN,
         "base": [BASE_T, BASE_HOLE_D],
     },
 }, open(os.path.join(OUT, "placement.json"), "w"), indent=1)

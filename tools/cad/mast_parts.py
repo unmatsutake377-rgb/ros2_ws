@@ -18,7 +18,12 @@ def cradle(cam_w, cam_d, cam_h, plate_h, plate_t, lip,
     idp = cam_d + clear
     ow = iw + 2 * t
     fy = plate_t + idp + t                       # 바닥·좌우턱 앞끝
-    body = cq.Workplane("XY").box(ow, plate_t, plate_h).translate((0, plate_t / 2, cam_h / 2))
+    # [2026-09-16 검토 반영] 뒷판 밑을 바닥턱 밑면(z=−t)까지 내린다.
+    #   전에는 판이 z (cam_h−plate_h)/2 에서 끝나 바닥턱보다 3.5~4.0mm 떠 있었다 →
+    #   어느 방향으로 눕혀도 서포트가 필요했다. 이제 STL 방향 그대로 평평히 앉는다.
+    p_top = cam_h / 2 + plate_h / 2
+    p_bot = -t
+    body = cq.Workplane("XY").box(ow, plate_t, p_top - p_bot).translate((0, plate_t / 2, (p_top + p_bot) / 2))
     floor = cq.Workplane("XY").box(ow, fy - plate_t, t).translate((0, (plate_t + fy) / 2, -t / 2))
     for nx in notch_xs:
         floor = floor.cut(cq.Workplane("XY").box(notch_w, fy - plate_t + 2, t + 2)
@@ -28,3 +33,12 @@ def cradle(cam_w, cam_d, cam_h, plate_h, plate_t, lip,
         body = body.union(cq.Workplane("XY").box(t, fy - plate_t, lip)
                           .translate((sx * (iw + t) / 2, (plate_t + fy) / 2, lip / 2)))
     return body
+
+
+def collar_ring(tube_od, margin, clear, height, z0=0.0):
+    """각관 **바깥**을 잡는 칼라 (베이스↔마디 이중 끼움의 바깥쪽).
+    보어 = tube_od + 2*clear. 본체와 쿠폰이 같은 형상을 쓰게 공용화했다
+    (쿠폰에 이게 빠져 있어서 더 빡빡한 쪽을 시험 못 하고 있었다 — 2026-09-16 검토)."""
+    ch = tube_od / 2 + margin + clear
+    return (cq.Workplane("XY").workplane(offset=z0).rect(2 * ch, 2 * ch).extrude(height)
+            .faces(">Z").workplane().rect(tube_od + 2 * clear, tube_od + 2 * clear).cutThruAll())

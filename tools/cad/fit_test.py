@@ -18,7 +18,7 @@ import json
 import os
 
 import cadquery as cq
-from mast_parts import cradle
+from mast_parts import collar_ring, cradle
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 P = json.load(open(os.path.join(HERE, "out", "placement.json")))
@@ -45,7 +45,8 @@ blk = cq.Workplane("XY").box(blk_x, blk_y, bt).translate((0, 0, bt / 2)).edges("
 floor_z = bt - lt - pz
 blk = blk.cut(cq.Workplane("XY").workplane(offset=floor_z).rect(px, py).extrude(pz + lt + 1))
 blk = blk.cut(cq.Workplane("XY").workplane(offset=bt - lt).rect(lx, ly).extrude(lt + 1))
-scr = [(sx * (px / 2 + 4.0), sy * (py / 2 + 4.0)) for sx in (-1, 1) for sy in (-1, 1)]
+lm = F["LID_MARGIN"]   # 본체와 같은 값 (전에는 4.0 하드코딩 — 지금은 같지만 어긋날 수 있었다)
+scr = [(sx * (px / 2 + lm / 2), sy * (py / 2 + lm / 2)) for sx in (-1, 1) for sy in (-1, 1)]
 for (sx, sy) in scr:
     blk = blk.cut(cq.Workplane("XY").workplane(offset=bt - lt - 9).center(sx, sy).circle(lsd / 2).extrude(10))
 # 케이블 터널 (포켓 +Y 벽 → 블록 밖) — 본체에선 중앙 구멍으로 가지만 쿠폰은 관통만 확인
@@ -68,6 +69,11 @@ a = a.union(cq.Workplane("XY").workplane(offset=6).rect(tod, tod).extrude(dckt)
 a = a.union(cq.Workplane("XY").workplane(offset=6 + dckt).rect(plug, plug).extrude(plen)
             .faces(">Z").workplane().rect(phole, phole).cutThruAll())
 a = a.cut(cq.Workplane("XY").rect(phole, phole).extrude(6 + dckt + 1))
+# [2026-09-16 검토 반영] 칼라 추가 — 베이스↔마디는 플러그(안) + 칼라(바깥) 이중 끼움이고,
+#   프린트 오차는 구멍이 작아지고 바깥면이 커지는 방향이라 **칼라 쪽이 더 빡빡하다**.
+#   쿠폰에 칼라가 없으면 안쪽만 합격하고 본체에서 마디가 안 들어간다.
+ch_h, ch_m = F["collar"]
+a = a.union(collar_ring(tod, ch_m, pclr, ch_h, 6.0))
 a = a.cut(cq.Workplane("YZ").workplane(offset=-tod).center(0, 6 + dckt + plen / 2).circle(bd / 2).extrude(2 * tod))
 parts["joint_plug"] = a
 # 소켓 쪽 (마디 아래끝 흉내)
