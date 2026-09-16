@@ -131,25 +131,7 @@ def socket_bolts(body, z_bottom):
 
 
 
-def cradle(cam_w, cam_d, cam_h, plate_h, plate_t, lip, notch_xs=(), notch_w=None):
-    """카메라를 끼우는 U자 크레들 (뒷판 + 바닥턱 + 좌우턱, 위 열림).
-    로컬 원점 = 좌우 중심 / 뒷판 뒷면 y=0 / **카메라 바닥 z=0**.
-    카메라는 y plate_t~plate_t+cam_d, z 0~cam_h 에 앉는다. 무게는 바닥턱(z −CRADLE_T~0)이 받는다."""
-    iw = cam_w + CRADLE_CLEAR
-    idp = cam_d + CRADLE_CLEAR
-    ow = iw + 2 * CRADLE_T
-    fy = plate_t + idp + CRADLE_T                     # 바닥·좌우턱 앞끝
-    nw = CRADLE_NOTCH_W if notch_w is None else notch_w
-    body = cq.Workplane("XY").box(ow, plate_t, plate_h).translate((0, plate_t / 2, cam_h / 2))
-    floor = cq.Workplane("XY").box(ow, fy - plate_t, CRADLE_T).translate((0, (plate_t + fy) / 2, -CRADLE_T / 2))
-    for nx in notch_xs:                               # 커넥터 노치 (아래로 나오는 케이블)
-        floor = floor.cut(cq.Workplane("XY").box(nw, fy - plate_t + 2, CRADLE_T + 2)
-                          .translate((nx, (plate_t + fy) / 2, -CRADLE_T / 2)))
-    body = body.union(floor)
-    for sx in (-1, 1):                                # 좌우턱
-        body = body.union(cq.Workplane("XY").box(CRADLE_T, fy - plate_t, lip)
-                          .translate((sx * (iw + CRADLE_T) / 2, (plate_t + fy) / 2, lip / 2)))
-    return body
+from mast_parts import cradle   # 공용 형상 함수 (fit_test.py 와 공유)
 
 
 # ───────────────────────────── 1. 베이스 (IMU 포켓 — 중심선 선미쪽, 접착식) ─────────────────────────────
@@ -218,7 +200,7 @@ for i in range(n_seg):
     if z0 <= D455_ZC < z0 + seg_len:
         zb = d455_zb - z0                            # 마디 로컬 카메라 바닥
         cr = cradle(D455_W, D455_D, D455_H, D455_PLATE_H, D455_PLATE_T, CRADLE_LIP_D455,
-                    notch_xs=(-D455_USB_X, D455_USB_X))
+                    CRADLE_T, CRADLE_CLEAR, (-D455_USB_X, D455_USB_X), CRADLE_NOTCH_W)
         for hx in (-D455_HOLE_PITCH / 2, D455_HOLE_PITCH / 2):   # 뒷판 M4 관통 2개
             cr = cr.cut(cq.Workplane("XZ").workplane(offset=1).center(hx, D455_H / 2)
                         .circle(D455_HOLE_D / 2).extrude(-(D455_PLATE_T + 2)))
@@ -247,7 +229,8 @@ cap = socket_bolts(cap, 0)
 cap = cap.union(cq.Workplane("XY").workplane(offset=cap_h - 6).rect(TUBE_OD, TUBE_OD).extrude(6))
 oak_zb = OAK_Z - OAK_H / 2
 zb_l = oak_zb - cap_z0                               # 캡 로컬 카메라 바닥
-cro = cradle(OAK_W, OAK_D, OAK_H, OAK_PLATE_H, OAK_PLATE_T, CRADLE_LIP_OAK, notch_xs=(OAK_CONN_X,), notch_w=CRADLE_NOTCH_OAK)
+cro = cradle(OAK_W, OAK_D, OAK_H, OAK_PLATE_H, OAK_PLATE_T, CRADLE_LIP_OAK,
+             CRADLE_T, CRADLE_CLEAR, (OAK_CONN_X,), CRADLE_NOTCH_OAK)
 for hx in (-OAK_HOLE_PITCH[0] / 2, OAK_HOLE_PITCH[0] / 2):
     for hz in (-OAK_HOLE_PITCH[1] / 2, OAK_HOLE_PITCH[1] / 2):
         cro = cro.cut(cq.Workplane("XZ").workplane(offset=1).center(hx, OAK_H / 2 + hz)
@@ -342,5 +325,16 @@ json.dump({
     "d455": [D455_W, D455_D, D455_H, d455_zb, D455_TILT, D455_STANDOFF, D455_PLATE_T, D455_USB_X, D455_USB_LEN],
     "oak": [OAK_W, OAK_D, OAK_H, oak_zb, OAK_TILT, OAK_STANDOFF, OAK_PLATE_T, OAK_CONN_X, OAK_CONN_LEN, OAK_CONN_W],
     "top": top, "limit": LIMIT_H, "gap": gap,
+    "fit": {   # fit_test.py 가 읽는 형상 파라미터 (쿠폰과 본체가 같은 값을 쓰게)
+        "CRADLE_T": CRADLE_T, "CRADLE_CLEAR": CRADLE_CLEAR,
+        "LIP_D455": CRADLE_LIP_D455, "LIP_OAK": CRADLE_LIP_OAK,
+        "NOTCH_W": CRADLE_NOTCH_W, "NOTCH_OAK": CRADLE_NOTCH_OAK,
+        "D455": [D455_W, D455_D, D455_H, D455_PLATE_H, D455_PLATE_T, D455_HOLE_PITCH, D455_HOLE_D, D455_USB_X],
+        "OAK": [OAK_W, OAK_D, OAK_H, OAK_PLATE_H, OAK_PLATE_T, OAK_HOLE_PITCH[0], OAK_HOLE_PITCH[1], OAK_HOLE_D, OAK_CONN_X],
+        "pocket": [pocket_x, pocket_y, pocket_z, lid_x, lid_y, LID_T, LID_SCREW_D, IMU_CH_D, IMU_CH_X, IMU_PAD_T],
+        "imu": [IMU_L, IMU_W, IMU_H],
+        "plug": [TUBE_OD, TUBE_WALL, PLUG_LEN, PLUG_CLEAR, PLUG_HOLE, DECK_T, BOLT_D],
+        "base": [BASE_T, BASE_HOLE_D],
+    },
 }, open(os.path.join(OUT, "placement.json"), "w"), indent=1)
 print("출력:", ", ".join(sorted(f for f in os.listdir(OUT) if f.startswith("mast_"))))
