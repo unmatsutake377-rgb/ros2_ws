@@ -65,6 +65,7 @@ D455_SETBACK = 40.0   # 관 면 ↔ D455 뒤 턱. OAK 그랜드(아래 ≈35mm)�
 SHELF_T     = 6.0
 SHELF_RIM   = 3.0
 SHELF_MARGIN = 3.0
+SHELF_GUSSET_H = 25.0  # 선반 밑 거싯 높이. [09-16] 35→25: D455_Z=85 에서 베이스 칼라(상단 48)와 간섭 회피
 
 # OAK-1 PoE (구매 확정 09-15, 고정초점 69°): 81.9 × 81.9 × 31, 뒷면 M4×4 가로 45 / 세로 37.5, 바닥 1/4-20
 OAK_W, OAK_H, OAK_D = 81.9, 81.9, 31.0
@@ -193,14 +194,14 @@ for i in range(n_seg):
         # 거싯 2개 (관 폭 안쪽 X=±14) 선반 밑
         for gx in (-14, 14):
             g = (cq.Workplane("YZ").workplane(offset=gx - 2)
-                 .polyline([(0, -SHELF_T), (D455_SETBACK + 10, -SHELF_T), (0, -SHELF_T - 35)]).close().extrude(4))
+                 .polyline([(0, -SHELF_T), (D455_SETBACK + 10, -SHELF_T), (0, -SHELF_T - SHELF_GUSSET_H)]).close().extrude(4))
             sh = sh.union(g)
         # 뒤 가장자리 기준 아래로 D455_TILT 회전 → 관 앞면으로 이동
         sh = sh.rotate((0, 0, 0), (1, 0, 0), -D455_TILT).translate((0, TUBE_OD / 2, zl))
         # 기울이면 거싯 아래 끝이 관 안으로 들어온다 → 관 앞면(y=TUBE_OD/2) 뒤쪽은 잘라낸다
         sh = sh.cut(cq.Workplane("XY").box(shelf_w + 20, 100, 300).translate((0, TUBE_OD / 2 - 50, zl)))
         # 관 면과 기운 선반·거싯 사이 쐐기 (뒤가 벌어지는 틈)
-        h_w = SHELF_T + 35
+        h_w = SHELF_T + SHELF_GUSSET_H
         wedge = (cq.Workplane("YZ").workplane(offset=-TUBE_OD / 2)
                  .polyline([(TUBE_OD / 2, zl + 1), (TUBE_OD / 2, zl - h_w),
                             (TUBE_OD / 2 + h_w * math.sin(R(D455_TILT)) + 0.5, zl - h_w * math.cos(R(D455_TILT)))]).close()
