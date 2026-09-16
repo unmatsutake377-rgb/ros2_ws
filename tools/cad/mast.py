@@ -66,6 +66,8 @@ IMU_CH_X    = 10.0     # 터널 x 위치 (중앙 케이블 구멍 Ø22 안)
 IMU_PAD_T   = 2.0      # [v4] VHB 양면 + 방진패드 두께 (붙이는 방식, 나사 없음)
 LID_T       = 3.0
 LID_MARGIN  = 8.0
+LID_FIT     = 0.8      # [v4.3] 뚜껑↔리베이트 총 여유 (편측 0.4). 전엔 0.4 하드코딩=편측 0.2 라
+                       #   리베이트는 작아지고 뚜껑 바깥면은 커지는 프린트 방향에서 안 들어갈 공산이 컸다
 LID_SCREW_D = 2.5      # 나일론 M3 탭 (베이스), 뚜껑 3.4 관통
 
 # D455: 124 × 26 × 29. 뒷면 M4×2 간격 95 (삽입 ≤4mm, 0.4Nm). 바닥 ¼-20 + USB-C(중심 +37) + M2×2 케이블 잠금
@@ -177,7 +179,7 @@ arrow = (cq.Workplane("XY").workplane(offset=BASE_T - 0.6).center(0, collar_half
          .polyline([(0, 12), (7, 4), (2.5, 4), (2.5, -12), (-2.5, -12), (-2.5, 4), (-7, 4)]).close().extrude(1.0))
 base = base.cut(arrow)
 
-lid = cq.Workplane("XY").rect(lid_x - 0.4, lid_y - 0.4).extrude(LID_T).edges("|Z").fillet(2)
+lid = cq.Workplane("XY").rect(lid_x - LID_FIT, lid_y - LID_FIT).extrude(LID_T).edges("|Z").fillet(2)
 for (sx, sy) in screw_pts:
     lid = lid.cut(cq.Workplane("XY").center(sx - pcx, sy - pcy).circle(3.4 / 2).extrude(LID_T))
 lid = lid.cut(cq.Workplane("XY").workplane(offset=LID_T - 0.8).center(0, 0).rect(12, 3).extrude(1))
@@ -333,7 +335,7 @@ json.dump({
         "imu": [IMU_L, IMU_W, IMU_H],
         "plug": [TUBE_OD, TUBE_WALL, PLUG_LEN, PLUG_CLEAR, PLUG_HOLE, DECK_T, BOLT_D],
         "collar": [COLLAR_H, COLLAR_MARGIN],
-        "LID_MARGIN": LID_MARGIN,
+        "LID_MARGIN": LID_MARGIN, "LID_FIT": LID_FIT,
         "base": [BASE_T, BASE_HOLE_D],
     },
 }, open(os.path.join(OUT, "placement.json"), "w"), indent=1)

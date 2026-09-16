@@ -56,7 +56,7 @@ for (sx, sy) in scr:
 blk = blk.cut(cq.Workplane("XZ").workplane(offset=py / 2 - 1).center(chx, floor_z + pad + chd / 2 + 0.5)
               .circle(chd / 2).extrude(-(blk_y / 2 + 2 + py / 2 - 1)))
 parts["pocket_imu"] = blk
-lid = cq.Workplane("XY").rect(lx - 0.4, ly - 0.4).extrude(lt).edges("|Z").fillet(2)
+lid = cq.Workplane("XY").rect(lx - F["LID_FIT"], ly - F["LID_FIT"]).extrude(lt).edges("|Z").fillet(2)
 for (sx, sy) in scr:
     lid = lid.cut(cq.Workplane("XY").center(sx, sy).circle(3.4 / 2).extrude(lt))
 parts["pocket_lid"] = lid
