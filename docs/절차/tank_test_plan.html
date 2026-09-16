@@ -42,7 +42,7 @@ pre{background:#f7f6f1;border:1px solid var(--bd);border-radius:8px;padding:12px
 <li><b>ship_direction v2.2.2</b> — 경로 없으면 <b>후진 0.5s → STOP 재탐색 3s 반복</b>(상태기계). 수조 벽에 사방이 막히면 이 사이클을 돈다(정상). <code>detection_distance</code> 짧게 = 회피.</li>
 <li><b>조향각 rate limiter</b> — 정상 조향(0~160°)만 tick당 15° 제한(급반전 완화). 특수신호(후진/SPIN/STOP)는 통과.</li>
 <li><b>north_goal_angle LOS</b> — 야외 GPS 항법이 직접방위→LOS(경로선 추종). 수조(미션만)엔 무관.</li>
-<li><b>GPS = ZED-F9P(B배)</b> · <code>dynamic_model: sea</code> · <b>RTK FIXED ±1.5cm 실증(08-07)</b>.</li>
+<li><b>GPS = ZED-F9P(B배)</b> · <code>dynamic_model: sea</code> · <b>RTK FIXED ±1.5cm 실증(08-07)</b>. <b>A배(C94-M8P)</b>는 메인 launch 에 <code>gps_config:=c94_m8p_rover.yaml</code> 필수(09-16: 인자 없으면 B배 설정이 들어간다) · udev <code>01a8</code> 규칙 필요 · A배 <code>sea</code> 는 실기 미확인.</li>
 <li><b>IMU 부호 확정(08-07)</b>: <code>invert_yaw: false</code>. <code>/imu/mag_heading</code> 발행 중(GPS COG와 대조 가능).</li>
 <li><b>gps_guard</b> — fix 없으면 항법 침묵(Null Island 방지). <b>boat_boot.sh</b> — 거버너/USB autosuspend 잡음(먼저 실행).</li>
 </ul>

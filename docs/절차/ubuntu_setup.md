@@ -197,7 +197,8 @@ SUBSYSTEM=="tty", ATTRS{idVendor}=="10c4", ATTRS{idProduct}=="ea60", ATTRS{seria
 SUBSYSTEM=="tty", ATTRS{idVendor}=="10c4", ATTRS{idProduct}=="ea60", ATTRS{serial}=="0001", ATTRS{product}=="CP2102 USB to UART Bridge Controller", SYMLINK+="IMU"
 
 # u-blox ZED-F9P — 시리얼 속성을 안 내놓는다 → VID/PID 로만
-SUBSYSTEM=="tty", ATTRS{idVendor}=="1546", ATTRS{idProduct}=="01a9", SYMLINK+="ttyGPS"
+SUBSYSTEM=="tty", ATTRS{idVendor}=="1546", ATTRS{idProduct}=="01a9", SYMLINK+="ttyGPS"   # B배 ZED-F9P (u-blox 9)
+SUBSYSTEM=="tty", ATTRS{idVendor}=="1546", ATTRS{idProduct}=="01a8", SYMLINK+="ttyGPS"   # A배 C94-M8P (u-blox 8) — 2026-09-16 추가. 한 노트북에 GPS 는 한 번에 하나만 꽂는다
 
 # Arduino Mega 2560 R3 (정품) — 시리얼번호까지 본다
 SUBSYSTEM=="tty", ATTRS{idVendor}=="2341", ATTRS{idProduct}=="0042", ATTRS{serial}=="03536383236351C07273", SYMLINK+="ttyMEGA"
