@@ -1,5 +1,14 @@
 #!/usr/bin/env python3
-"""mast.py v3 — 카메라 마스트 파라메트릭 CAD (CadQuery). STEP(Fusion 360) + STL(프린트) 출력.
+"""mast.py v4 — 카메라 마스트 파라메트릭 CAD (CadQuery). STEP(Fusion 360) + STL(프린트) 출력.
+
+v4 (2026-09-16, 팀 피드백 반영):
+  · **카메라 2대 모두 "박스에 끼우는" U자 크레들** — 뒷판 + 바닥턱 + 좌우턱, 위 열림. 카메라 무게는 바닥턱이 받고
+    M4 나사는 잠금만 한다(v3 는 나사 2개에 매달렸음). 바닥턱에는 커넥터 노치(D455 USB-C ±37 양쪽, OAK 그랜드 중앙).
+  · **IMU 포켓을 중심선(X=0) 선미쪽**으로 — 좌우 대칭, 마스트 축에 가깝다. 베이스 폭 200→160 복귀, 길이 120→자동(≈152).
+  · **IMU 는 접착식** — 포켓 바닥 M2 탭 구멍 삭제, VHB/방진패드로 붙인다(매뉴얼의 방진패드 권장과 겸함).
+    바닥이 평평해야 하므로 뱃머리 화살표는 포켓 바닥이 아니라 **베이스 윗면**에 각인.
+  · **D455 를 62 로 내림**(72→62) + L자 USB-C 가정(돌출 25→10) → OAK 그랜드 끝과 여유 7.6 → 17.6.
+    ⚠️ OAK 쪽 "L자 RJ45" 는 불가 — 그랜드가 본체 일부라 길이 35 고정. 여유는 D455 를 내려서만 번다.
 
 v3 (2026-09-16, `docs/전달용/케이블_출구_맵.md` 반영 — 제조사 도면으로 확인한 케이블 출구 기준):
   · **D455: 선반 삭제 → 뒷면 M4×2(간격 95) 판 마운트.** Intel 도면(337029-017 p150): USB-C 는 ¼-20 과 같은 **바닥면**(중심 +37).
@@ -9,7 +18,7 @@ v3 (2026-09-16, `docs/전달용/케이블_출구_맵.md` 반영 — 제조사 �
   · OAK 슬롯 폭 18→40 (그랜드 오프셋 실측 전 여유). 플러그 안쪽 구멍 22 (RJ45 헤드 13×16 통과).
   · v2 유지: OAK 꼭대기 −11°(그랜드 아래), 220 상한, 간섭 검사, PETG/ASA.
 
-부품 4개: base(IMU 포켓·칼라) / seg1(각관 + D455 판) / cap(OAK 판) / imu_lid.
+부품 4개: base(IMU 포켓·칼라) / seg1(각관 + D455 크레들) / cap(OAK 크레들) / imu_lid.
 좌표: +Y = 뱃머리, Z = 갑판 윗면 0. 카메라는 +Y 를 본다.
 
 ⚠️ 실측 후 고칠 파라미터:
@@ -22,6 +31,7 @@ v3 (2026-09-16, `docs/전달용/케이블_출구_맵.md` 반영 — 제조사 �
   pip install cadquery
   python3 tools/cad/mast.py            → tools/cad/out/mast_{base,seg1,cap,imu_lid}.stl/.step, mast_assembly.step
 """
+import json
 import math
 import os
 
@@ -39,7 +49,7 @@ BOLT_D         = 4.4     # M4 관통
 DECK_T         = 4.0     # 플러그 밑 바닥판
 LIMIT_H        = 220.0   # 팀 요구 상한 (갑판 위 최고점)
 
-BASE_W_MIN, BASE_L, BASE_T_MIN = 160.0, 120.0, 20.0
+BASE_W_MIN, BASE_L_MIN, BASE_T_MIN = 160.0, 120.0, 20.0   # [v4] BASE_L 은 포켓에 맞춰 자동
 BASE_HOLE_PITCH = (130.0, 90.0)   # x=현 방향, y=90 = 가로대 2개 중심 간격 → 실측 후 수정
 BASE_HOLE_D     = 5.5             # M5
 CABLE_HOLE_D    = 22.0
@@ -50,9 +60,10 @@ GUSSET          = 30.0
 # IMU (iAHRS RB-SDA-v1) — 매뉴얼 도면 확정값
 IMU_L, IMU_W, IMU_H = 35.0, 35.0, 10.0   # 케이스 (L=선체 좌우 X, W=전후 Y, H=높이)
 IMU_CLEAR   = 1.0      # 전체 +1
-IMU_CONN_EXT = 20.0    # [v3] 커넥터 면(+X, 관 쪽) 쪽 포켓 연장 — micro-USB/4핀 플러그 + 굽힘
+IMU_CABLE_SPACE = 14.0 # [v4] 포켓 +X 쪽 케이블 꺾임 공간 (커넥터가 우현 면에 있다)
 IMU_CH_D    = 8.0      # 케이블 터널 지름
-IMU_PAD_T   = 2.0      # 포켓 바닥 고무 방진패드 (매뉴얼 권장) — 포켓 깊이에 포함
+IMU_CH_X    = 10.0     # 터널 x 위치 (중앙 케이블 구멍 Ø22 안)
+IMU_PAD_T   = 2.0      # [v4] VHB 양면 + 방진패드 두께 (붙이는 방식, 나사 없음)
 LID_T       = 3.0
 LID_MARGIN  = 8.0
 LID_SCREW_D = 2.5      # 나일론 M3 탭 (베이스), 뚜껑 3.4 관통
@@ -61,12 +72,20 @@ LID_SCREW_D = 2.5      # 나일론 M3 탭 (베이스), 뚜껑 3.4 관통
 D455_W, D455_D, D455_H = 124.0, 26.0, 29.0
 D455_HOLE_PITCH = 95.0
 D455_HOLE_D     = 4.4
-D455_ZC         = 72.0   # 갑판 → D455 중심(=M4 구멍 높이). 상단 ≈89 ↔ OAK 그랜드 끝 ≈97
+D455_ZC         = 62.0   # [v4] 72→62: OAK 그랜드 끝(≈97)과 여유 7.6→17.6
 D455_TILT       = 15.0   # 아래로
-D455_PLATE_W, D455_PLATE_H, D455_PLATE_T = 115.0, 30.0, 6.0
+D455_PLATE_H, D455_PLATE_T = 30.0, 6.0
 D455_STANDOFF   = 1.0
-D455_USB_X      = 37.0   # ¼-20 기준 USB-C 좌우 오프셋 (부호 실측)
-D455_USB_LEN    = 25.0   # USB-C 플러그 + 몰드 돌출 (아래)
+D455_USB_X      = 37.0   # ¼-20 기준 USB-C 좌우 오프셋 (부호 실측 → 노치는 ±37 둘 다 뚫는다)
+D455_USB_LEN    = 10.0   # [v4] L자 USB-C 케이블 가정 (스트레이트는 25)
+
+# 크레들 공통 (카메라를 끼우는 U자 — 뒷판 + 바닥턱 + 좌우턱, 위 열림)
+CRADLE_T        = 4.0    # 턱 두께
+CRADLE_CLEAR    = 1.0    # 카메라 ↔ 안쪽 벽 총 여유
+CRADLE_LIP_D455 = 12.0   # 좌우턱 높이
+CRADLE_LIP_OAK  = 18.0
+CRADLE_NOTCH_W  = 22.0   # 바닥턱 커넥터 노치 기본 폭 (D455 USB-C 10 + 여유)
+CRADLE_NOTCH_OAK = 35.0  # [v4] OAK 그랜드는 Ø27 → 노치 35 (22 면 양옆 2.5 씩 걸려 간섭)
 D455_SLOT_Z     = None   # 관 앞면 케이블 슬롯 중심 높이. None = 칼라 위 자동
 
 # OAK-1 PoE: 81.9 × 81.9 × 31, 뒷면 M4×4 (45/37.5), 바닥 ¼-20, 그랜드 측면(아래로 장착)
@@ -76,7 +95,7 @@ OAK_HOLE_D     = 4.4
 OAK_TILT       = 11.0
 OAK_Z          = 175.0   # 갑판 → OAK 중심. 상단 ≈218
 OAK_PLATE_T    = 6.0
-OAK_PLATE_H    = 50.0
+OAK_PLATE_H    = 82.0    # [v4] 50→82: 크레들 뒷판이 OAK 전체 높이를 덮는다
 OAK_STANDOFF   = 1.0
 OAK_CONN_LEN, OAK_CONN_W = 35.0, 27.0   # RJ45 그랜드 돌출(아래)·지름
 OAK_CONN_X     = 0.0     # 그랜드 좌우 오프셋 (실측)
@@ -111,28 +130,49 @@ def socket_bolts(body, z_bottom):
                     .circle(BOLT_D / 2).extrude(2 * TUBE_OD))
 
 
-# ───────────────────────────── 1. 베이스 (IMU 포켓 — 좌현) ─────────────────────────────
-pocket_x = IMU_L + IMU_CLEAR + IMU_CONN_EXT          # X: IMU + 커넥터 연장(+X 쪽)
+
+def cradle(cam_w, cam_d, cam_h, plate_h, plate_t, lip, notch_xs=(), notch_w=None):
+    """카메라를 끼우는 U자 크레들 (뒷판 + 바닥턱 + 좌우턱, 위 열림).
+    로컬 원점 = 좌우 중심 / 뒷판 뒷면 y=0 / **카메라 바닥 z=0**.
+    카메라는 y plate_t~plate_t+cam_d, z 0~cam_h 에 앉는다. 무게는 바닥턱(z −CRADLE_T~0)이 받는다."""
+    iw = cam_w + CRADLE_CLEAR
+    idp = cam_d + CRADLE_CLEAR
+    ow = iw + 2 * CRADLE_T
+    fy = plate_t + idp + CRADLE_T                     # 바닥·좌우턱 앞끝
+    nw = CRADLE_NOTCH_W if notch_w is None else notch_w
+    body = cq.Workplane("XY").box(ow, plate_t, plate_h).translate((0, plate_t / 2, cam_h / 2))
+    floor = cq.Workplane("XY").box(ow, fy - plate_t, CRADLE_T).translate((0, (plate_t + fy) / 2, -CRADLE_T / 2))
+    for nx in notch_xs:                               # 커넥터 노치 (아래로 나오는 케이블)
+        floor = floor.cut(cq.Workplane("XY").box(nw, fy - plate_t + 2, CRADLE_T + 2)
+                          .translate((nx, (plate_t + fy) / 2, -CRADLE_T / 2)))
+    body = body.union(floor)
+    for sx in (-1, 1):                                # 좌우턱
+        body = body.union(cq.Workplane("XY").box(CRADLE_T, fy - plate_t, lip)
+                          .translate((sx * (iw + CRADLE_T) / 2, (plate_t + fy) / 2, lip / 2)))
+    return body
+
+
+# ───────────────────────────── 1. 베이스 (IMU 포켓 — 중심선 선미쪽, 접착식) ─────────────────────────────
+pocket_x = IMU_L + IMU_CLEAR + IMU_CABLE_SPACE     # X: IMU + 케이블 꺾임 공간(+X 쪽)
 pocket_y = IMU_W + IMU_CLEAR
 pocket_z = IMU_H + IMU_CLEAR + IMU_PAD_T
 lid_x, lid_y = pocket_x + 2 * LID_MARGIN, pocket_y + 2 * LID_MARGIN
 collar_half = TUBE_OD / 2 + COLLAR_MARGIN + PLUG_CLEAR
-# 포켓 +X 끝(연장부 끝)이 칼라 옆 1.5mm 에 오도록
-pocket_xmax = -(collar_half + 1.5) - LID_MARGIN
-pcx = pocket_xmax - pocket_x / 2            # 포켓 중심 x (음수 = 좌현)
-pcy = 0.0
-imu_cx = pcx - IMU_CONN_EXT / 2             # IMU 케이스 중심 (포켓의 −X 쪽에 붙음)
-BASE_W = max(BASE_W_MIN, 2 * (abs(pcx) + lid_x / 2 + 4.0))
+pocket_ymax = -(collar_half + 1.5)                 # 포켓 +Y 끝 = 칼라 뒤 1.5
+pcx, pcy = 0.0, pocket_ymax - pocket_y / 2         # [v4] 중심선(X=0), 선미쪽
+imu_cx = pcx - IMU_CABLE_SPACE / 2                 # IMU 케이스 중심 (포켓 −X 쪽에 붙임)
+BASE_W = max(BASE_W_MIN, lid_x + 24.0)
+BASE_L = max(BASE_L_MIN, 2 * (abs(pcy) + lid_y / 2 + 6.0))
 BASE_T = max(BASE_T_MIN, math.ceil(pocket_z + LID_T + 4.0))
 if MAST_H is None:
-    MAST_H = OAK_Z - OAK_PLATE_H / 2 - BASE_T - 2 * DECK_T
-    print(f"ℹ️ MAST_H 자동 = {MAST_H:.0f}")
+    MAST_H = OAK_Z - OAK_H / 2 - BASE_T - 2 * DECK_T
+    print(f"ℹ️ MAST_H 자동 = {MAST_H:.1f}")
 
 base = cq.Workplane("XY").rect(BASE_W, BASE_L).extrude(BASE_T).edges("|Z").fillet(8)
 base = base.faces(">Z").workplane().rect(*BASE_HOLE_PITCH, forConstruction=True).vertices().hole(BASE_HOLE_D)
 base = plug_top(base, BASE_T)
 base = base.cut(cq.Workplane("XY").circle(CABLE_HOLE_D / 2).extrude(BASE_T + DECK_T + PLUG_LEN + 1))
-for ang in (90, 270, 0):   # ±Y 거싯 + 우현(+X) 거싯 (좌현은 포켓)
+for ang in (0, 90, 180):        # ±X + 뱃머리(+Y) 거싯 — 선미(−Y)는 포켓
     g = (cq.Workplane("XZ").polyline([(collar_half - 0.1, BASE_T), (collar_half + GUSSET, BASE_T),
                                       (collar_half - 0.1, BASE_T + COLLAR_H)]).close().extrude(4, both=True)
          .rotate((0, 0, 0), (0, 0, 1), ang))
@@ -148,133 +188,134 @@ screw_pts = [(pcx + sx * (pocket_x / 2 + LID_MARGIN / 2), pcy + sy * (pocket_y /
              for sx in (-1, 1) for sy in (-1, 1)]
 for (sx, sy) in screw_pts:
     base = base.cut(cq.Workplane("XY").workplane(offset=BASE_T - LID_T - 9).center(sx, sy).circle(LID_SCREW_D / 2).extrude(10))
-# 케이블 터널: 포켓 +X 벽 → 중앙 케이블 구멍 (YZ 평면 법선 +X, offset = 시작 x)
+# 케이블 터널: 포켓 +Y 벽 → 중앙 케이블 구멍 (XZ 법선 −Y)
 ch_z = pocket_floor + IMU_PAD_T + IMU_CH_D / 2 + 0.5
-x_start = pcx + pocket_x / 2 - 1.0
-base = base.cut(cq.Workplane("YZ").workplane(offset=x_start).center(pcy, ch_z).circle(IMU_CH_D / 2).extrude(-x_start + 1.0))
-# 포켓 바닥 화살표 (+Y = 뱃머리) 0.6 각인 — IMU 자리 중심에
-arrow = (cq.Workplane("XY").workplane(offset=pocket_floor - 0.6).center(imu_cx, pcy)
+y_start = pocket_ymax - 1.0
+base = base.cut(cq.Workplane("XZ").workplane(offset=-y_start).center(IMU_CH_X, ch_z).circle(IMU_CH_D / 2).extrude(y_start - 1.0))
+# [v4] 포켓 바닥은 접착면이라 평평하게 둔다 → 뱃머리 화살표는 베이스 윗면(뱃머리 쪽)에 각인
+arrow = (cq.Workplane("XY").workplane(offset=BASE_T - 0.6).center(0, collar_half + 14)
          .polyline([(0, 12), (7, 4), (2.5, 4), (2.5, -12), (-2.5, -12), (-2.5, 4), (-7, 4)]).close().extrude(1.0))
 base = base.cut(arrow)
-# IMU 케이스 Ø2 홀 4개 → 포켓 바닥 M2 탭 구멍 (모서리 3, 간격 29) — 뚜껑 누름 대신 직접 고정 선택지
-for sx in (-1, 1):
-    for sy in (-1, 1):
-        base = base.cut(cq.Workplane("XY").workplane(offset=pocket_floor - 6).center(imu_cx + sx * 14.5, pcy + sy * 14.5)
-                        .circle(1.6 / 2).extrude(7))
 
 lid = cq.Workplane("XY").rect(lid_x - 0.4, lid_y - 0.4).extrude(LID_T).edges("|Z").fillet(2)
 for (sx, sy) in screw_pts:
     lid = lid.cut(cq.Workplane("XY").center(sx - pcx, sy - pcy).circle(3.4 / 2).extrude(LID_T))
 lid = lid.cut(cq.Workplane("XY").workplane(offset=LID_T - 0.8).center(0, 0).rect(12, 3).extrude(1))
 
-# ───────────────────────────── 2. 마디 (D455 뒷면 판) ─────────────────────────────
+# ───────────────────────────── 2. 마디 (D455 크레들) ─────────────────────────────
+yf = TUBE_OD / 2
 n_seg = math.ceil(MAST_H / SEG_MAX)
 seg_len = MAST_H / n_seg
 seg_z0 = BASE_T + DECK_T
-segments = []
 d455_slot_z = D455_SLOT_Z if D455_SLOT_Z is not None else BASE_T + COLLAR_H + 10.0
+d455_zb = D455_ZC - D455_H / 2                      # 카메라 바닥 (절대)
+segments = []
 for i in range(n_seg):
     s = tube(seg_len)
     s = socket_bolts(s, 0)
     s = plug_top(s, seg_len)
     z0 = seg_z0 + i * (seg_len + DECK_T)
     if z0 <= D455_ZC < z0 + seg_len:
-        zl = D455_ZC - z0
-        yf = TUBE_OD / 2
-        # 판: 관 앞면에 붙는 수직 판 (뒤면 y=yf+standoff), 구멍 2개 가로 95
-        plate = cq.Workplane("XY").box(D455_PLATE_W, D455_PLATE_T, D455_PLATE_H) \
-            .translate((0, yf + D455_STANDOFF + D455_PLATE_T / 2, zl)).edges("|Y").fillet(4)
-        for hx in (-D455_HOLE_PITCH / 2, D455_HOLE_PITCH / 2):
-            plate = plate.cut(cq.Workplane("XZ").workplane(offset=-(yf + D455_STANDOFF + D455_PLATE_T + 1))
-                              .center(hx, zl).circle(D455_HOLE_D / 2).extrude(D455_PLATE_T + 2))
-        # 스탠드오프 + 거싯 (판 뒤 ↔ 관 면), 판 폭 안쪽 x=±30
-        for gx in (-30, 30):
+        zb = d455_zb - z0                            # 마디 로컬 카메라 바닥
+        cr = cradle(D455_W, D455_D, D455_H, D455_PLATE_H, D455_PLATE_T, CRADLE_LIP_D455,
+                    notch_xs=(-D455_USB_X, D455_USB_X))
+        for hx in (-D455_HOLE_PITCH / 2, D455_HOLE_PITCH / 2):   # 뒷판 M4 관통 2개
+            cr = cr.cut(cq.Workplane("XZ").workplane(offset=1).center(hx, D455_H / 2)
+                        .circle(D455_HOLE_D / 2).extrude(-(D455_PLATE_T + 2)))
+        cr = cr.translate((0, yf + D455_STANDOFF, zb))
+        for gx in (-34, 34):                         # 뒷판 ↔ 관 거싯
             g = (cq.Workplane("YZ").workplane(offset=gx - 2)
-                 .polyline([(yf - 0.1, zl + D455_PLATE_H / 2), (yf + D455_STANDOFF + 0.2, zl + D455_PLATE_H / 2),
-                            (yf + D455_STANDOFF + 0.2, zl - D455_PLATE_H / 2), (yf - 0.1, zl - D455_PLATE_H / 2 - 20)]).close().extrude(4))
-            plate = plate.union(g)
-        # 아래로 D455_TILT: 판 뒤 중심선(y=yf, z=zl) 기준
-        plate = plate.rotate((0, yf, zl), (1, yf, zl), -D455_TILT)
-        # 기울인 판 위쪽과 관 면 사이 쐐기
-        h2 = D455_PLATE_H / 2
-        wedge = (cq.Workplane("YZ").workplane(offset=-D455_PLATE_W / 2)
-                 .polyline([(yf - 0.1, zl - 2), (yf + D455_STANDOFF + h2 * math.sin(R(D455_TILT)) + 0.3, zl - 2),
-                            (yf + D455_STANDOFF + h2 * math.sin(R(D455_TILT)) + 0.3, zl + h2 * math.cos(R(D455_TILT))),
-                            (yf - 0.1, zl + h2 * math.cos(R(D455_TILT)))]).close().extrude(D455_PLATE_W))
-        # 관 앞면 케이블 슬롯 (USB-C 플러그 아래에서 관 안으로)
+                 .polyline([(yf - 0.1, zb + D455_H / 2 + 12), (yf + D455_STANDOFF + 0.2, zb + D455_H / 2 + 12),
+                            (yf + D455_STANDOFF + 0.2, zb - CRADLE_T), (yf - 0.1, zb - CRADLE_T - 16)]).close().extrude(4))
+            cr = cr.union(g)
+        cr = cr.rotate((0, yf + D455_STANDOFF, zb), (1, yf + D455_STANDOFF, zb), -D455_TILT)
+        cr = cr.cut(cq.Workplane("XY").box(300, 120, 400).translate((0, yf - 60, zb)))   # 관 뒤로 넘어간 부분 제거
+        wedge = (cq.Workplane("YZ").workplane(offset=-30)
+                 .polyline([(yf - 0.1, zb - 2), (yf + D455_STANDOFF + 0.4, zb - 2),
+                            (yf + D455_STANDOFF + D455_PLATE_H * math.sin(R(D455_TILT)) + 0.4, zb + D455_PLATE_H * math.cos(R(D455_TILT))),
+                            (yf - 0.1, zb + D455_PLATE_H)]).close().extrude(60))
         slot = cq.Workplane("XZ").workplane(offset=-(yf + 1)).center(0, d455_slot_z - z0).rect(18, 14).extrude(TUBE_WALL + 2)
-        s = s.union(wedge).union(plate).cut(slot)
+        s = s.union(wedge).union(cr).cut(slot)
     segments.append(s)
 seg_top = seg_z0 + n_seg * seg_len + (n_seg - 1) * DECK_T
 
-# ───────────────────────────── 3. 캡 (OAK 판) ─────────────────────────────
+# ───────────────────────────── 3. 캡 (OAK 크레들) ─────────────────────────────
 cap_z0 = seg_top + DECK_T
 cap_h = PLUG_LEN + 6
 cap = tube(cap_h)
 cap = socket_bolts(cap, 0)
 cap = cap.union(cq.Workplane("XY").workplane(offset=cap_h - 6).rect(TUBE_OD, TUBE_OD).extrude(6))
-pz0 = OAK_Z - OAK_PLATE_H / 2 - cap_z0
-plate = (cq.Workplane("XY").center(0, OAK_PLATE_T / 2).rect(OAK_W + 10, OAK_PLATE_T).extrude(OAK_PLATE_H)
-         .edges("|Y").fillet(4))
+oak_zb = OAK_Z - OAK_H / 2
+zb_l = oak_zb - cap_z0                               # 캡 로컬 카메라 바닥
+cro = cradle(OAK_W, OAK_D, OAK_H, OAK_PLATE_H, OAK_PLATE_T, CRADLE_LIP_OAK, notch_xs=(OAK_CONN_X,), notch_w=CRADLE_NOTCH_OAK)
 for hx in (-OAK_HOLE_PITCH[0] / 2, OAK_HOLE_PITCH[0] / 2):
     for hz in (-OAK_HOLE_PITCH[1] / 2, OAK_HOLE_PITCH[1] / 2):
-        plate = plate.cut(cq.Workplane("XZ").workplane(offset=-OAK_PLATE_T - 1).center(hx, OAK_PLATE_H / 2 + hz)
-                          .circle(OAK_HOLE_D / 2).extrude(OAK_PLATE_T + 2))
-plate = plate.rotate((0, 0, 0), (1, 0, 0), -OAK_TILT).translate((0, TUBE_OD / 2 + OAK_STANDOFF, pz0))
-wz1 = min(cap_h, pz0 + OAK_PLATE_H)
-wedge = (cq.Workplane("YZ").workplane(offset=-TUBE_OD / 2)
-         .polyline([(TUBE_OD / 2 - 0.1, max(0, pz0)), (TUBE_OD / 2 + OAK_STANDOFF + (max(0, pz0) - pz0) * math.tan(R(OAK_TILT)) + 0.3, max(0, pz0)),
-                    (TUBE_OD / 2 + OAK_STANDOFF + (wz1 - pz0) * math.tan(R(OAK_TILT)) + 0.3, wz1), (TUBE_OD / 2 - 0.1, wz1)]).close()
-         .extrude(TUBE_OD))
-cap = cap.union(wedge).union(plate)
-# OAK 케이블 슬롯 — 캡 앞면 아래쪽 (그랜드가 아래로 나와 관 안으로), 폭 40
-oak_slot = cq.Workplane("XZ").workplane(offset=-(TUBE_OD / 2 + 1)).center(OAK_CONN_X, max(3, pz0 - 4) + 7).rect(OAK_SLOT_W, 14).extrude(TUBE_WALL + 2)
-cap = cap.cut(oak_slot)
+        cro = cro.cut(cq.Workplane("XZ").workplane(offset=1).center(hx, OAK_H / 2 + hz)
+                      .circle(OAK_HOLE_D / 2).extrude(-(OAK_PLATE_T + 2)))
+cro = cro.translate((0, yf + OAK_STANDOFF, zb_l))
+for gx in (-30, 30):
+    g = (cq.Workplane("YZ").workplane(offset=gx - 2)
+         .polyline([(yf - 0.1, zb_l + OAK_H / 2), (yf + OAK_STANDOFF + 0.2, zb_l + OAK_H / 2),
+                    (yf + OAK_STANDOFF + 0.2, zb_l - CRADLE_T), (yf - 0.1, zb_l - CRADLE_T - 18)]).close().extrude(4))
+    cro = cro.union(g)
+cro = cro.rotate((0, yf + OAK_STANDOFF, zb_l), (1, yf + OAK_STANDOFF, zb_l), -OAK_TILT)
+cro = cro.cut(cq.Workplane("XY").box(300, 120, 500).translate((0, yf - 60, zb_l)))
+wedge_o = (cq.Workplane("YZ").workplane(offset=-30)
+           .polyline([(yf - 0.1, max(1.0, zb_l - 2)), (yf + OAK_STANDOFF + 0.4, max(1.0, zb_l - 2)),
+                      (yf + OAK_STANDOFF + OAK_PLATE_H * math.sin(R(OAK_TILT)) + 0.4, zb_l + OAK_PLATE_H * math.cos(R(OAK_TILT))),
+                      (yf - 0.1, zb_l + OAK_PLATE_H)]).close().extrude(60))
+oak_slot = cq.Workplane("XZ").workplane(offset=-(yf + 1)).center(OAK_CONN_X, max(4.0, zb_l - 6)).rect(OAK_SLOT_W, 14).extrude(TUBE_WALL + 2)
+cap = cap.union(wedge_o).union(cro).cut(oak_slot)
 
-# ───────────────────────────── 4. 검산 ─────────────────────────────
-oak_top = OAK_Z + (OAK_H / 2) * math.cos(R(OAK_TILT)) + (OAK_D / 2) * math.sin(R(OAK_TILT))
-oak_bot = OAK_Z - (OAK_H / 2) * math.cos(R(OAK_TILT)) - (OAK_D / 2) * math.sin(R(OAK_TILT))
+# ───────────────────────────── 4. 더미 + 검산 ─────────────────────────────
+def cam_dummy(cam_w, cam_d, cam_h, plate_t, standoff, zb, tilt, conn=None):
+    yc = yf + standoff + plate_t + cam_d / 2
+    d = cq.Workplane("XY").box(cam_w, cam_d, cam_h).translate((0, yc, zb + cam_h / 2))
+    if conn:
+        cw, cd, cl, cx = conn
+        d = d.union(cq.Workplane("XY").box(cw, cd, cl).translate((cx, yc, zb - cl / 2)))
+    return d.rotate((0, yf + standoff, zb), (1, yf + standoff, zb), -tilt)
+
+d455_dummy = cam_dummy(D455_W, D455_D, D455_H, D455_PLATE_T, D455_STANDOFF, d455_zb, D455_TILT,
+                       conn=(10, 8, D455_USB_LEN, D455_USB_X))
+oak_dummy = cam_dummy(OAK_W, OAK_D, OAK_H, OAK_PLATE_T, OAK_STANDOFF, oak_zb, OAK_TILT,
+                      conn=(OAK_CONN_W, 16, OAK_CONN_LEN, OAK_CONN_X))
+imu_dummy = cq.Workplane("XY").box(IMU_L, IMU_W, IMU_H).translate((imu_cx, pcy, pocket_floor + IMU_PAD_T + IMU_H / 2))
+
+def bb(o):
+    return o.val().BoundingBox()
+
+oak_bb, d455_bb = bb(oak_dummy), bb(d455_dummy)
 cap_top = cap_z0 + cap_h
-top = max(oak_top, cap_top)
-d455_top = D455_ZC + (D455_H / 2) * math.cos(R(D455_TILT)) + (D455_D / 2) * math.sin(R(D455_TILT))
-d455_usb_end = D455_ZC - (D455_H / 2) * math.cos(R(D455_TILT)) - D455_USB_LEN
+top = max(oak_bb.zmax, cap_top, cap_z0 + bb(cro).zmax)
+gap = oak_bb.zmin - d455_bb.zmax
 
 # ───────────────────────────── 출력 ─────────────────────────────
 parts = {"base": base, "imu_lid": lid, "cap": cap}
-for i, s in enumerate(segments):
-    parts[f"seg{i + 1}"] = s
-for name, p in parts.items():
-    cq.exporters.export(p, os.path.join(OUT, f"mast_{name}.stl"), tolerance=0.05)
-    cq.exporters.export(p, os.path.join(OUT, f"mast_{name}.step"))
+for i, sg in enumerate(segments):
+    parts[f"seg{i + 1}"] = sg
+for name, pp in parts.items():
+    cq.exporters.export(pp, os.path.join(OUT, f"mast_{name}.stl"), tolerance=0.05)
+    cq.exporters.export(pp, os.path.join(OUT, f"mast_{name}.step"))
 
 asm = cq.Assembly()
 asm.add(base, name="base")
 asm.add(lid, name="imu_lid", loc=cq.Location(cq.Vector(pcx, pcy, BASE_T - LID_T)), color=cq.Color(0.6, 0.8, 0.6, 0.8))
 z = seg_z0
-for i, s in enumerate(segments):
-    asm.add(s, name=f"seg{i + 1}", loc=cq.Location(cq.Vector(0, 0, z)))
+for i, sg in enumerate(segments):
+    asm.add(sg, name=f"seg{i + 1}", loc=cq.Location(cq.Vector(0, 0, z)))
     z += seg_len + DECK_T
 asm.add(cap, name="cap", loc=cq.Location(cq.Vector(0, 0, z)))
-# 더미: D455(+USB 플러그 아래) / OAK(+그랜드 아래) / IMU
-yf = TUBE_OD / 2
-d455_body = cq.Workplane("XY").box(D455_W, D455_D, D455_H).translate((0, yf + D455_STANDOFF + D455_PLATE_T + D455_D / 2, D455_ZC))
-d455_usb = cq.Workplane("XY").box(10, 8, D455_USB_LEN).translate((D455_USB_X, yf + D455_STANDOFF + D455_PLATE_T + D455_D / 2, D455_ZC - D455_H / 2 - D455_USB_LEN / 2))
-d455_dummy = d455_body.union(d455_usb).rotate((0, yf, D455_ZC), (1, yf, D455_ZC), -D455_TILT)
 asm.add(d455_dummy, name="D455_dummy", color=cq.Color(0.2, 0.5, 0.9, 0.5))
-oak_body = cq.Workplane("XY").box(OAK_W, OAK_D, OAK_H).translate((0, OAK_PLATE_T + OAK_D / 2, OAK_PLATE_H / 2))
-oak_conn = cq.Workplane("XY").box(OAK_CONN_W, 16, OAK_CONN_LEN).translate((OAK_CONN_X, OAK_PLATE_T + OAK_D / 2, OAK_PLATE_H / 2 - OAK_H / 2 - OAK_CONN_LEN / 2))
-oak_dummy = (oak_body.union(oak_conn).rotate((0, 0, 0), (1, 0, 0), -OAK_TILT)
-             .translate((0, TUBE_OD / 2 + OAK_STANDOFF, OAK_Z - OAK_PLATE_H / 2)))
 asm.add(oak_dummy, name="OAK_dummy", color=cq.Color(0.9, 0.5, 0.2, 0.5))
-imu_dummy = cq.Workplane("XY").box(IMU_L, IMU_W, IMU_H).translate((imu_cx, pcy, pocket_floor + IMU_PAD_T + 0.5 + IMU_H / 2))
 asm.add(imu_dummy, name="IMU_dummy", color=cq.Color(0.8, 0.2, 0.2, 0.6))
 asm.save(os.path.join(OUT, "mast_assembly.step"))
 
 placed = {"base": base, "imu_lid": lid.translate((pcx, pcy, BASE_T - LID_T)), "cap": cap.translate((0, 0, z)),
           "D455": d455_dummy, "OAK": oak_dummy, "IMU": imu_dummy}
 zz = seg_z0
-for i, s in enumerate(segments):
-    placed[f"seg{i + 1}"] = s.translate((0, 0, zz)); zz += seg_len + DECK_T
+for i, sg in enumerate(segments):
+    placed[f"seg{i + 1}"] = sg.translate((0, 0, zz)); zz += seg_len + DECK_T
 names = list(placed)
 bad = []
 for a in range(len(names)):
@@ -286,8 +327,20 @@ for a in range(len(names)):
         if v > 5.0:
             bad.append(f"{names[a]}×{names[b]} {v:.0f}mm³")
 
-print(f"마디 {n_seg}개 × {seg_len:.0f} (갑판 {seg_z0:.0f}~{seg_top:.0f}) / 캡 상단 {cap_top:.0f} / OAK 상단 {oak_top:.1f} (아래끝 {oak_bot:.1f}, 그랜드 끝 ≈{oak_bot - OAK_CONN_LEN:.0f}) / "
-      f"D455 중심 {D455_ZC:.0f} 상단 {d455_top:.1f} USB 끝 ≈{d455_usb_end:.0f} 슬롯 z {d455_slot_z:.0f} / 한계 {LIMIT_H:.0f} → {'OK' if top <= LIMIT_H else '초과!'}")
-print(f"IMU 포켓 {pocket_x:.0f}×{pocket_y:.0f}×{pocket_z:.0f} (케이스 {IMU_L:.0f}×{IMU_W:.0f}×{IMU_H:.0f} + 커넥터 연장 {IMU_CONN_EXT:.0f}) 중심 ({pcx:.1f},{pcy:.1f}) IMU 중심 x {imu_cx:.1f} 터널 +X Ø{IMU_CH_D:.0f} / 뚜껑 {lid_x:.0f}×{lid_y:.0f}×{LID_T:.0f} / 베이스 {BASE_W:.0f}×{BASE_L:.0f}×{BASE_T:.0f}")
+print(f"마디 {n_seg}개 × {seg_len:.1f} (갑판 {seg_z0:.0f}~{seg_top:.1f}) / 캡 {cap_z0:.1f}~{cap_top:.1f}")
+print(f"OAK  바닥 {oak_bb.zmin:.1f} 상단 {oak_bb.zmax:.1f} (그랜드 포함) / D455 상단 {d455_bb.zmax:.1f} 바닥 {d455_bb.zmin:.1f} (USB 포함)")
+print(f"세로 여유 OAK바닥−D455상단 = {gap:.1f} / 최고점 {top:.1f} / 한계 {LIMIT_H:.0f} → {'OK' if top <= LIMIT_H else '초과!'}")
+print(f"IMU 포켓 {pocket_x:.0f}×{pocket_y:.0f}×{pocket_z:.0f} 중심({pcx:.0f},{pcy:.1f}) IMU중심x {imu_cx:.1f} 터널 +Y Ø{IMU_CH_D:.0f} @x{IMU_CH_X:.0f} / 뚜껑 {lid_x:.0f}×{lid_y:.0f} / 베이스 {BASE_W:.0f}×{BASE_L:.0f}×{BASE_T:.0f}")
 print("간섭:", ", ".join(bad) if bad else "없음")
+
+# 배치값 덤프 — mast_preview.py 가 읽는다 (수치 하드코딩 방지)
+json.dump({
+    "yf": yf, "BASE_T": BASE_T, "BASE_W": BASE_W, "BASE_L": BASE_L, "LID_T": LID_T, "DECK_T": DECK_T,
+    "seg_z0": seg_z0, "seg_len": seg_len, "n_seg": n_seg, "cap_z0": cap_z0, "cap_h": cap_h,
+    "pcx": pcx, "pcy": pcy, "lid_x": lid_x, "lid_y": lid_y,
+    "imu": [imu_cx, pcy, pocket_floor + IMU_PAD_T + IMU_H / 2, IMU_L, IMU_W, IMU_H],
+    "d455": [D455_W, D455_D, D455_H, d455_zb, D455_TILT, D455_STANDOFF, D455_PLATE_T, D455_USB_X, D455_USB_LEN],
+    "oak": [OAK_W, OAK_D, OAK_H, oak_zb, OAK_TILT, OAK_STANDOFF, OAK_PLATE_T, OAK_CONN_X, OAK_CONN_LEN, OAK_CONN_W],
+    "top": top, "limit": LIMIT_H, "gap": gap,
+}, open(os.path.join(OUT, "placement.json"), "w"), indent=1)
 print("출력:", ", ".join(sorted(f for f in os.listdir(OUT) if f.startswith("mast_"))))

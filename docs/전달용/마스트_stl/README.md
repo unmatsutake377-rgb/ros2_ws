@@ -1,9 +1,16 @@
-# 마스트 STL — v3 (2026-09-16)
+# 마스트 STL — v4 (2026-09-16)
 
-프린트: `mast_base.stl`(IMU 포켓·칼라) / `mast_seg1.stl`(각관 + D455 뒷면 M4×2 판) / `mast_cap.stl`(OAK 판) / `mast_imu_lid.stl`(뚜껑, 나일론 M3×4).
-Fusion 360 확인: `mast_assembly_v3.step` (D455·OAK·IMU 더미 포함) → Inspect > Interference.
+프린트: `mast_base.stl`(IMU 포켓·칼라) / `mast_seg1.stl`(각관 + D455 크레들) / `mast_cap.stl`(OAK 크레들) / `mast_imu_lid.stl`(포켓 뚜껑, 나일론 M3×4).
+Fusion 360 확인: `mast_assembly_v4.step` (D455·OAK·IMU 더미 포함) → Inspect > Interference.
 
 ⚠️ **아직 프린트하지 말 것** — v3 는 제조사 도면 기준(iAHRS 35×35×10 확정, D455 USB-C 바닥면 확정). 남은 실측: **OAK RJ45 그랜드 좌우 오프셋**(도착일, 슬롯 40 안이면 무변경), 가로대 간격. 근거 `docs/전달용/케이블_출구_맵.md`.
 재질 PETG/ASA(PLA ✗), 밝은 색, 인필 ≥40%, 벽 ≥4. 방향: base·cap 은 그대로, seg1 은 관을 세워서(선반은 서포트).
 
 `v1_구버전/` = D455 위·OAK 아래 시절(09-15). 쓰지 않음, 기록용.
+
+## v4 변경 (팀 피드백 2026-09-16)
+- 카메라 2대 모두 **U자 크레들**(뒷판+바닥턱+좌우턱, 위 열림). 무게는 바닥턱이 받고 M4 나사는 잠금만.
+- 바닥턱 커넥터 노치: D455 USB-C ±37 두 곳(부호 실측 전이라 양쪽), OAK 그랜드 중앙 35폭.
+- IMU 포켓 = **중심선 선미쪽**, **접착식**(VHB+방진패드, 나사 없음). 뱃머리 화살표는 베이스 윗면 각인.
+- D455 62 로 내림 + L자 USB-C 가정 → OAK 와 세로 여유 확보.
+- 프린트는 **완성품 확정 후**(팀 결정) — 지금은 CAD/STEP 검토용.
