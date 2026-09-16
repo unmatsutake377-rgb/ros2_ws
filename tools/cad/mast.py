@@ -152,8 +152,25 @@ if MAST_H is None:
     MAST_H = OAK_Z - OAK_H / 2 - BASE_T - 2 * DECK_T
     print(f"ℹ️ MAST_H 자동 = {MAST_H:.1f}")
 
-base = cq.Workplane("XY").rect(BASE_W, BASE_L).extrude(BASE_T).edges("|Z").fillet(8)
-base = base.faces(">Z").workplane().rect(*BASE_HOLE_PITCH, forConstruction=True).vertices().hole(BASE_HOLE_D)
+# ── 통합 시험 출력 모드 (MAST_TEST=1) ────────────────────────────────────────
+#   실물과 **같은 형상**을 유지하되 베이스 판만 최소로 줄인다. 갑판이 아직 없어 M5 볼트 구멍은
+#   어차피 시험할 수 없으므로 뺀다. 목적: 조립·케이블 경로·서포트 자국을 실물 그대로 확인.
+TEST = os.environ.get("MAST_TEST") == "1"
+if TEST:
+    _x = max(lid_x / 2, collar_half + GUSSET) + 4.0
+    _ymin, _ymax = pcy - lid_y / 2 - 4.0, collar_half + GUSSET + 4.0
+    BASE_W = 2 * _x
+    BASE_L = _ymax - _ymin
+    _yoff = (_ymax + _ymin) / 2
+    OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "out_test")
+    os.makedirs(OUT, exist_ok=True)
+    print(f"ℹ️ MAST_TEST: 베이스 판 {BASE_W:.0f}×{BASE_L:.0f} (중심 y{_yoff:+.1f}), M5 볼트 구멍 생략")
+else:
+    _yoff = 0.0
+
+base = cq.Workplane("XY").rect(BASE_W, BASE_L).extrude(BASE_T).translate((0, _yoff, 0)).edges("|Z").fillet(8)
+if not TEST:
+    base = base.faces(">Z").workplane().rect(*BASE_HOLE_PITCH, forConstruction=True).vertices().hole(BASE_HOLE_D)
 base = plug_top(base, BASE_T)
 base = base.cut(cq.Workplane("XY").circle(CABLE_HOLE_D / 2).extrude(BASE_T + DECK_T + PLUG_LEN + 1))
 for ang in (0, 90, 180):        # ±X + 뱃머리(+Y) 거싯 — 선미(−Y)는 포켓
