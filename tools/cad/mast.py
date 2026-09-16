@@ -311,6 +311,22 @@ asm.add(oak_dummy, name="OAK_dummy", color=cq.Color(0.9, 0.5, 0.2, 0.5))
 asm.add(imu_dummy, name="IMU_dummy", color=cq.Color(0.8, 0.2, 0.2, 0.6))
 asm.save(os.path.join(OUT, "mast_assembly.step"))
 
+# ── 통짜 융합 출력 (MAST_FUSED=1) ────────────────────────────────────────────
+#   base + seg + cap 을 하나로 붙인다. 이음(플러그·칼라·M4 볼트)이 사라지는 대신
+#   크레들 캔틸레버가 전부 한 부품에 실린다. 출력성은 측정으로 판단한다.
+if os.environ.get("MAST_FUSED") == "1":
+    print("ℹ️ MAST_FUSED: base+seg+cap 융합 중 (OCCT 불리언, 시간 걸림)")
+    fused = base
+    _z = seg_z0
+    for _s in segments:
+        fused = fused.union(_s.translate((0, 0, _z))); _z += seg_len + DECK_T
+    fused = fused.union(cap.translate((0, 0, _z)))
+    cq.exporters.export(fused, os.path.join(OUT, "mast_fused.stl"), tolerance=0.05)
+    _bb = fused.val().BoundingBox()
+    print(f"   융합본 {_bb.xlen:.1f}×{_bb.ylen:.1f}×{_bb.zlen:.1f}mm  {fused.val().Volume()/1000:.1f}㎤")
+
+
+
 placed = {"base": base, "imu_lid": lid.translate((pcx, pcy, BASE_T - LID_T)), "cap": cap.translate((0, 0, z)),
           "D455": d455_dummy, "OAK": oak_dummy, "IMU": imu_dummy}
 zz = seg_z0
