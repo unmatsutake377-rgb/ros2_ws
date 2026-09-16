@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """mast_parts.py — mast.py 와 fit_test.py 가 공유하는 형상 함수.
 치수 중복 정의를 막으려고 분리했다 (v4, 2026-09-16)."""
+import math
+
 import cadquery as cq
 
 
@@ -42,3 +44,40 @@ def collar_ring(tube_od, margin, clear, height, z0=0.0):
     ch = tube_od / 2 + margin + clear
     return (cq.Workplane("XY").workplane(offset=z0).rect(2 * ch, 2 * ch).extrude(height)
             .faces(">Z").workplane().rect(tube_od + 2 * clear, tube_od + 2 * clear).cutThruAll())
+
+
+def cradle_module(cam_w, cam_d, cam_h, plate_h, plate_t, lip, tilt,
+                  back_t=6.0, t=4.0, clear=1.0, notch_xs=(), notch_w=22.0,
+                  holes=(), hole_d=3.4, hole_depth=8.0):
+    """[v5] 관에서 떼어낸 **볼트-온 크레들 모듈**.
+
+    등판(mounting face)은 **수직**(y=0 평면)이라 관의 리브에 그대로 밀착한다.
+    카메라만 tilt 만큼 아래로 기울고, 그 사이 틈은 쐐기로 채운다.
+    → 등판을 바닥에 대고 뽑으면 관도 크레들도 각각 평평하게 앉는다(서포트 거의 0).
+    로컬 원점: 좌우 중심 / 등판 뒷면 y=0 / 등판 밑 z=0.
+    """
+    c = cradle(cam_w, cam_d, cam_h, plate_h, plate_t, lip, t, clear, notch_xs, notch_w)
+    c = c.translate((0, 0, t))                      # 바닥턱 밑 → z=0
+    c = c.rotate((0, 0, 0), (1, 0, 0), -tilt)       # 등판 밑 모서리 기준으로 앞으로 기울임
+    H = t + cam_h + 6.0                             # 등판이 덮어야 할 높이
+    bw = cam_w + clear + 2 * t
+    yb = H * math.sin(math.radians(tilt))           # 기울여서 앞으로 나간 양
+    # 등판 + 쐐기: y −back_t..0 의 판 + 0..yb 의 삼각 쐐기
+    back = cq.Workplane("XY").box(bw, back_t, H).translate((0, -back_t / 2, H / 2))
+    wedge = (cq.Workplane("YZ").workplane(offset=-bw / 2)
+             .polyline([(0.0, 0.0), (yb + 0.3, H), (0.0, H)]).close().extrude(bw))
+    body = back.union(wedge).union(c)
+    for (hx, hz) in holes:                          # 셀프탭 M4 맹공 (등판 뒷면에서)
+        body = body.cut(cq.Workplane("XZ").workplane(offset=back_t + 1)
+                        .center(hx, hz).circle(hole_d / 2).extrude(-(hole_depth + back_t + 1)))
+    return body
+
+
+def mount_rib(tube_od, width, proud, z0, z1, holes=(), hole_d=3.4, hole_depth=8.0):
+    """[v5] 관 +Y 면에 붙는 **전 높이 리브** (크레들이 볼트로 붙는 자리).
+    세로 프리즘이라 관을 세워 뽑을 때 아래보기 면이 생기지 않는다."""
+    rib = cq.Workplane("XY").box(width, proud, z1 - z0).translate((0, tube_od / 2 + proud / 2, (z0 + z1) / 2))
+    for (hx, hz) in holes:
+        rib = rib.cut(cq.Workplane("XZ").workplane(offset=-(tube_od / 2 + proud + 1))
+                      .center(hx, hz).circle(hole_d / 2).extrude(hole_depth + 1))
+    return rib
