@@ -50,8 +50,11 @@ scr = [(sx * (px / 2 + lm / 2), sy * (py / 2 + lm / 2)) for sx in (-1, 1) for sy
 for (sx, sy) in scr:
     blk = blk.cut(cq.Workplane("XY").workplane(offset=bt - lt - 9).center(sx, sy).circle(lsd / 2).extrude(10))
 # 케이블 터널 (포켓 +Y 벽 → 블록 밖) — 본체에선 중앙 구멍으로 가지만 쿠폰은 관통만 확인
+# 터널은 포켓 안 → 블록 **밖**까지 관통해야 케이블을 실제로 꿰어볼 수 있다.
+#   [2026-09-16] 전엔 extrude(-(blk_y/2+2)) 라 포켓 벽을 1mm 만 파고 막혔다(맹공).
+#   본체는 중앙 Ø22 구멍까지 뚫려 정상. 쿠폰만 틀렸던 것.
 blk = blk.cut(cq.Workplane("XZ").workplane(offset=py / 2 - 1).center(chx, floor_z + pad + chd / 2 + 0.5)
-              .circle(chd / 2).extrude(-(blk_y / 2 + 2)))
+              .circle(chd / 2).extrude(-(blk_y / 2 + 2 + py / 2 - 1)))
 parts["pocket_imu"] = blk
 lid = cq.Workplane("XY").rect(lx - 0.4, ly - 0.4).extrude(lt).edges("|Z").fillet(2)
 for (sx, sy) in scr:
