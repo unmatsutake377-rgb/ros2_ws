@@ -103,6 +103,19 @@ screen_sleep(){
   else
     skip "DISPLAY 없음(헤드리스) — xset 건너뜀"
   fi
+  # 🚨 [2026-09-07] 덮개 닫힘 절전 억제 — 노트북을 배에 싣고 덮개를 닫는다.
+  #    logind 기본값이 HandleLidSwitch=suspend 라, 억제 없이 닫으면 **배 위에서 절전**된다.
+  #    systemd-inhibit 프로세스가 살아있는 동안만 유효(런타임 전용 철학 유지, logind.conf 안 건드림).
+  #    중복 실행 방지: 이미 떠 있으면 건너뜀.
+  if systemd-inhibit --list 2>/dev/null | grep -q "handle-lid-switch.*boat_boot"; then
+    ok "덮개 억제 이미 활성"
+  else
+    ( systemd-inhibit --what=handle-lid-switch --who="boat_boot" \
+        --why="경기 중 덮개 닫아도 유지" --mode=block sleep infinity >/dev/null 2>&1 & )
+    sleep 1
+    systemd-inhibit --list 2>/dev/null | grep -q "handle-lid-switch" \
+      && ok "덮개 닫힘 절전 억제 활성" || warn "덮개 억제 실패 — 닫기 전 확인 필요"
+  fi
 }
 
 # ─────────────────────────────────────────── 4) 전원 상태 알림 (변경 아님)
