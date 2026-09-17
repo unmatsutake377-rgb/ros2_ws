@@ -25,21 +25,22 @@ ax.add_patch(Rectangle((0, DECK - 6), L, 6, fc="#8fa8c8", ec="k", lw=1)); ax.tex
 # T200
 ax.add_patch(Rectangle((-50, -70), 50, 40, fc="#555")); ax.text(-50, -95, "T200", fontsize=9)
 # 방수박스 (갑판 아래) + 뚜껑=해치
-BX0, BX1 = 600, 1160
-ax.add_patch(Rectangle((BX0, FB - DEPTH + 20), BX1 - BX0, DECK - 20 - (FB - DEPTH + 20), fc="#fff2cc", ec="#b8860b", lw=1.5))
+BX0, BX1 = 600, 1000   # [09-17] 박스 실측 길이 400 (종전 560 은 틀린 도식값). 위치는 미확정 — 전진안은 배치_요구사항 §2-5
+BOX_H = 200   # [09-17] 실측 높이. 1번배는 갑판 밑에 다 들어간다(깊이 280)
+ax.add_patch(Rectangle((BX0, DECK - BOX_H), BX1 - BX0, BOX_H, fc="#fff2cc", ec="#b8860b", lw=1.5))
 ax.add_patch(Rectangle((BX0, DECK - 6), BX1 - BX0, 14, fc="#f0c419", ec="#b8860b", lw=1.5))
 ax.text((BX0 + BX1) / 2, FB - DEPTH + 60, "방수박스 (갑판 아래)\n노트북·배터리·허브·인젝터 PSE5502G·MD-30A", ha="center", fontsize=10)
 ax.text(BX0 + 40, DECK + 20, "박스 뚜껑 = 해치 (갑판 면 노출)[확정]", ha="left", fontsize=10, color="#7a5c00")
 # 비상버튼 on lid
-ax.add_patch(Circle((1100, DECK + 14), 14, fc="red", ec="k")); ax.add_patch(Rectangle((1090, DECK + 6), 20, 8, fc="#333"))
-ax.text(1078, DECK + 46, "비상버튼 (뚜껑 위)[확정]", ha="right", va="bottom", fontsize=9, color="red")
+ax.add_patch(Circle((950, DECK + 14), 14, fc="red", ec="k")); ax.add_patch(Rectangle((940, DECK + 6), 20, 8, fc="#333"))
+ax.text(928, DECK + 46, "비상버튼 (뚜껑 위)[확정]", ha="right", va="bottom", fontsize=9, color="red")
 # IMU
 # GPS 안테나 옆 고정 갑판
 GX = 480
 ax.add_patch(Rectangle((GX - 60, DECK), 120, 4, fc="#999", ec="k"))
 ax.add_patch(Circle((GX, DECK + 22), 20, fc="#eee", ec="k")); ax.text(GX, DECK + 56, "GPS 안테나[확정]\n뚜껑 옆 고정 갑판 + 접지판Ø10cm+", ha="center", fontsize=9)
 # 마스트
-MX = 1264   # [09-17] 1230→1264: 베이스 147.8 깊이 + 해치 이격 30
+MX = 1264   # 박스 전진안(§2-5) 채택 시 1328 로
 ax.add_patch(Rectangle((MX - 95, DECK), 190, 28, fc="#888", ec="k"))  # base v2 (IMU 포켓, 두께 IMU 높이 따라 20~28)
 ax.add_patch(Rectangle((MX - 20, DECK + 28), 40, 158, fc="#aaa", ec="k"))  # column → 캡 상단 186
 ax.add_patch(Rectangle((MX + 20, DECK + 89), 90, 6, fc="#777", ec="k"))  # D455 선반 (갑판+95, 관 면에서 40 물림)
@@ -71,13 +72,15 @@ ax.set_xlim(-120, L + 860); ax.set_ylim(-160, 560); ax.set_aspect("equal"); ax.s
 
 # ---------------- 평면도 ----------------
 W = 580
-ax2.set_title("1번 배 — 평면 (mm). 마스트·LiDAR 중심선, 박스 자리는 회로 작업 때 확정", fontsize=14, loc="left")
+ax2.set_title("1번 배 — 평면 (mm). 마스트·LiDAR 중심선, 박스 400×300×200 실측. 앞뒤 위치 미확정", fontsize=14, loc="left")
 hull = Polygon([[0, -W/2], [1150, -W/2], [1450, -W/2 + 120], [1620, -80], [1660, 0], [1620, 80], [1450, W/2 - 120], [1150, W/2], [0, W/2]], closed=True, fc="#dbe6f1", ec="k", lw=1.5)
 ax2.add_patch(hull)
 ax2.add_patch(Rectangle((BX0, -190), BX1 - BX0, 380, fc="#f0c419", ec="#b8860b", lw=1.5, alpha=0.7)); ax2.text((BX0 + BX1) / 2, 0, "방수박스 뚜껑 = 해치\n(비상버튼 뚜껑 위)", ha="center", va="center", fontsize=10)
-ax2.add_patch(Circle((1100, 130), 14, fc="red", ec="k"))
+ax2.add_patch(Circle((950, 130), 14, fc="red", ec="k"))
 ax2.add_patch(Rectangle((GX - 40, W/2 - 120), 80, 60, fc="#ddd", ec="k")); ax2.text(GX, W/2 - 30, "GPS 안테나\n(뚜껑 옆 갑판)", ha="center", fontsize=9)
-ax2.add_patch(Rectangle((MX - 95, -60), 190, 120, fc="#888", ec="k")); ax2.text(MX, -100, "마스트 베이스 v2 190×120 (IMU 포켓 우현)\n해치와 ≥30 이격 ?", ha="center", fontsize=9)
+# [09-17] placement.json: BASE_L=147.8(앞뒤) BASE_W=160(좌우)
+ax2.add_patch(Rectangle((MX - 73.9, -80), 147.8, 160, fc="#888", ec="k"))
+ax2.text(MX, -100, "마스트 베이스 v5.2 147.8×160 (IMU 포켓 중심선)\n해치와 ≥30 이격 ?", ha="center", fontsize=9)
 for yy in (-W/2 + 40, W/2 - 40): ax2.plot([MX - 40, MX + 40], [yy, yy], color="#555", lw=6, alpha=0.5)
 ax2.text(MX, W/2 - 5, "가로대(알루미늄 평철, 갑판 밑) ×2", ha="center", fontsize=8)
 ax2.add_patch(Circle((LX, 0), 38, fc="#9fd89f", ec="k")); ax2.text(LX, 70, "LiDAR A3\n선수 판 내폭 ? 실측", ha="center", fontsize=9)
