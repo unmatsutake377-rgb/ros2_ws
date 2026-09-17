@@ -105,6 +105,16 @@ OAK_CONN_LEN, OAK_CONN_W = 35.0, 27.0   # RJ45 그랜드 돌출(아래)·지름
 OAK_CONN_X     = 0.0     # 그랜드 좌우 오프셋 (실측)
 OAK_SLOT_W     = 40.0    # [v3] 18→40
 
+# ── 통합(통짜) 출력용 리브 (v5, 2026-09-17) ──────────────────────────────────
+#   통짜로 세워 뽑을 때 크레들 바닥턱 밑을 194mm 서포트탑이 받치다 무너졌다.
+#   앞서 핀 2개(±50)를 넣었다가 실패한 이유는 **간격이 100mm** 라 그 사이가 그대로 떴기 때문.
+#   → 브리지 가능한 간격(≤30mm)으로 촘촘히 넣으면 바닥턱이 리브 사이를 다리 놓듯 건너간다.
+#   D455 는 베이스 판이 바로 밑이라 **수직 핀**(오버행 0°), OAK 는 공중이라 **45° 삼각 리브**.
+RIB_T      = 5.0
+RIB_XS_D455 = (-63.0, -50.0, -26.0, -12.0, 12.0, 26.0, 50.0, 63.0)  # USB-C(±32~42) 회피, 최대 간격 26
+RIB_XS_OAK  = (-40.0, -22.0, 22.0, 40.0)                            # 그랜드 노치(±17.5) 바깥, 최대 간격 18
+RIB_ANG    = 45.0        # OAK 리브 빗면 (45° = 자립 한계)
+
 # 🚫 [v4.4 기각] 보강 브레이스(D455 수직 핀 ±50 / OAK 45° 삼각 웨브)를 넣어봤다가 뺐다.
 #    목적은 강도가 아니라 **출력 중 서포트탑 대체**였는데, 측정하니 오히려 서포트가 늘었다:
 #      seg1 4156→4622mm² (+11%) / cap 3312→4399mm² (+33%), 서포트탑 72→100mm, 재료 +6g
@@ -244,6 +254,15 @@ for i in range(n_seg):
                  .polyline([(yf - 0.1, zb - 2), (yf + D455_STANDOFF + 0.4, zb - 2),
                             (yf + D455_STANDOFF + D455_PLATE_H * math.sin(R(D455_TILT)) + 0.4, zb + D455_PLATE_H * math.cos(R(D455_TILT))),
                             (yf - 0.1, zb + D455_PLATE_H)]).close().extrude(60))
+        # [v5] 수직 핀 — 베이스 판(z=BASE_T) 위에 서서 바닥턱 밑을 받친다. 오버행 0°.
+        _fz  = zb - CRADLE_T                                   # 바닥턱 밑면 (마디 로컬)
+        _fy0 = collar_half + 0.6                               # 칼라 바깥부터
+        _fy1 = yf + D455_STANDOFF + D455_PLATE_T + D455_D + 1.0 + CRADLE_T
+        for _rx in RIB_XS_D455:
+            fin = (cq.Workplane("YZ").workplane(offset=_rx - RIB_T / 2)
+                   .polyline([(_fy0, BASE_T - z0), (_fy1, BASE_T - z0), (_fy1, _fz), (_fy0, _fz)]).close()
+                   .extrude(RIB_T))
+            cr = cr.union(fin)
         slot = cq.Workplane("XZ").workplane(offset=-(yf + 1)).center(0, d455_slot_z - z0).rect(18, 14).extrude(TUBE_WALL + 2)
         s = s.union(wedge).union(cr).cut(slot)
     segments.append(s)
@@ -276,6 +295,20 @@ wedge_o = (cq.Workplane("YZ").workplane(offset=-30)
                       (yf + OAK_STANDOFF + OAK_PLATE_H * math.sin(R(OAK_TILT)) + 0.4, zb_l + OAK_PLATE_H * math.cos(R(OAK_TILT))),
                       (yf - 0.1, zb_l + OAK_PLATE_H)]).close().extrude(60))
 oak_slot = cq.Workplane("XZ").workplane(offset=-(yf + 1)).center(OAK_CONN_X, max(4.0, zb_l - 6)).rect(OAK_SLOT_W, 14).extrude(TUBE_WALL + 2)
+# [v5] 45° 삼각 리브 — 공중에 뜬 OAK 바닥턱 밑을 자립 구조로 받친다 (회전 뒤 = 월드 기준 45°)
+_ofz  = zb_l - CRADLE_T
+_ofy1 = yf + OAK_STANDOFF + OAK_PLATE_T + OAK_D + 1.0 + CRADLE_T
+_orun = _ofy1 - yf
+for _rx in RIB_XS_OAK:
+    # 리브 윗면은 **기울어진 바닥면**을 따라가야 한다 (회전 뒤라 바닥이 앞쪽으로 내려가 있다).
+    #   그냥 수평으로 두면 기울어진 카메라 앞모서리를 파고든다(= 앞서 422mm³ 간섭).
+    _dip = _orun * math.sin(R(OAK_TILT)) + 1.0
+    rib = (cq.Workplane("YZ").workplane(offset=_rx - RIB_T / 2)
+           .polyline([(yf - 0.1, _ofz - _orun * math.tan(R(RIB_ANG))),
+                      (_ofy1, _ofz - _dip), (yf - 0.1, _ofz - 0.5)]).close()
+           .extrude(RIB_T))
+    cro = cro.union(rib)
+
 cap = cap.union(wedge_o).union(cro).cut(oak_slot)
 
 # ───────────────────────────── 4. 더미 + 검산 ─────────────────────────────
