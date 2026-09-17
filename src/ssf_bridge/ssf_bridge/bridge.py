@@ -82,6 +82,27 @@ class SsfBridge(Node):
         #    프로세스 기동이 느려지며 쓰기 시점이 부트로더 창 안으로 밀린 것이다.
         #    Mega 는 Uno 보다 부트로더가 길어 기본값을 2.0s 로 잡는다.
         self._boot_wait = float(self.declare_parameter("boot_wait_sec", 2.0).value)
+
+        # 🚨 [2026-09-01] 추력 방향 반전 — ROS 규약과 실물이 반대다.
+        #    motor_control 규약 : 1500=정지, **<1500=전진**, >1500=후진 (base_pwm=1360)
+        #    실물 실측(08-27)   : **>1500 = 전진** (1750 에서 네 스러스터가 물을 뒤로 밈)
+        #    → 이대로 자율을 켜면 배가 뒤로 간다. 회피·게이트·도킹이 전부 반대로 돈다.
+        #
+        #    변환은 **1500 대칭**이면 충분하다: pwm → 3000 − pwm
+        #      전진+우회전  좌1300/우1400 → 좌1700/우1600  ✅ 좌가 더 전진
+        #      제자리 우선회 좌1400/우1600 → 좌1600/우1400  ✅ 좌 전진·우 후진
+        #    차동 부호도 함께 뒤집히므로 `steer_invert` 는 건드리지 않는다.
+        #
+        #    ⚠️ 왜 여기서 하나 — `ssf_bridge` 가 ROS 와 하드웨어의 **경계**다.
+        #       motor_control 쪽 규약을 뒤집으면 base/reverse/SPIN 부호와 테스트·문서까지
+        #       전부 따라가야 한다(시뮬로 검증된 로직을 대회 직전에 뜯는 것 — CLAUDE.md §1).
+        #       여기서 막으면 `Motor_run` 토픽·`/motor_reverse`·blackbox 는 ROS 규약 그대로다.
+        #
+        #    ⚠️ 수동(RC)은 이 경로를 안 탄다 — 펌웨어가 직접 몬다. 이미 맞게 동작한다.
+        #    ⚠️ 배선을 다시 뒤집으면 이 값을 false 로 되돌릴 것.
+        self._invert_thrust = bool(
+            self.declare_parameter("invert_thrust_direction", True).value)
+
         self._open()          # 실패해도 죽지 않는다 — 타이머가 계속 재시도한다
 
         self.pub_mode = self.create_publisher(Int32, "/boat_mode", STATUS_QOS)
@@ -151,6 +172,9 @@ class SsfBridge(Node):
     def _send(self, pwm_l, pwm_r):
         if self._ser is None:
             return                                   # 재연결 대기 중 — 조용히 버린다
+        if self._invert_thrust:
+            # 1500 대칭 반전. 중립(1500)은 그대로 남는다 — 워치독·정지 경로가 안 흔들린다.
+            pwm_l, pwm_r = 3000 - pwm_l, 3000 - pwm_r
         try:
             self._ser.write(sp.format_command(pwm_l, pwm_r).encode('ascii'))
         except Exception as e:                       # noqa: BLE001 — 어떤 시리얼 오류든 죽지 않는다

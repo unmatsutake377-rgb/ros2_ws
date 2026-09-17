@@ -571,6 +571,31 @@ super().__init__('ship_turn')   # ← 복붙 실수. 파일은 ship_back 인데 
 | `/boat_cmd_watchdog` | `true` = 명령 500ms 무수신 → 펌웨어가 중립으로 잡는 중 |
 | `/boat_estop` | `true` = 비상정지 눌림 |
 
+#### 🚨 추력 방향 — ROS 규약과 시리얼 규약이 **반대다** (2026-09-01)
+
+```
+ROS 쪽 (motor_control) :  1500=정지, **<1500=전진**, >1500=후진   (base_pwm=1360, reverse_pwm=1590)
+시리얼/실물            :  1500=정지, **>1500=전진**
+```
+
+**실측 근거(2026-08-27):** 자율로 네 스러스터에 `1750` 을 20초 보내고 바람 방향을 확인했다.
+물을 뒤로 미는 = 전진이었다. 즉 실물은 `>1500 = 전진` 이다.
+
+**변환 위치: `ssf_bridge._send` — 시리얼로 내보낼 때만 1500 대칭으로 뒤집는다.**
+```python
+pwm_l, pwm_r = 3000 - pwm_l, 3000 - pwm_r     # 파라미터 invert_thrust_direction (기본 true)
+```
+
+| | |
+|---|---|
+| 왜 여기인가 | `ssf_bridge` 가 ROS↔하드웨어 **경계**다. `Motor_run`·`/motor_reverse`·blackbox 는 ROS 규약 그대로 남는다 |
+| 왜 motor_control 이 아닌가 | base/reverse/SPIN 부호·테스트·문서까지 전부 따라가야 한다 — 시뮬 검증된 로직을 대회 직전에 뜯는 것(§1) |
+| `steer_invert` | **건드리지 않는다.** 축 전체가 뒤집히며 차동 부호도 같이 맞는다 (검산·테스트 완료) |
+| 수동(RC) | 이 경로를 안 탄다. 펌웨어가 직접 몬다 — 이미 맞게 동작한다 |
+
+🚨 **스러스터 배선을 다시 뒤집으면 `invert_thrust_direction` 을 false 로 되돌릴 것.**
+검증: `src/ssf_bridge/test/test_thrust_invert.py` (중립 보존·차동 보존·제자리선회·클램프 범위)
+
 🚨 **번호를 여기서 새로 매기지 않는다.** `ssf_boat.ino` 의 `enum Mode`·`enum BoatId` 와
 값을 그대로 쓴다. 변환표를 하나 끼우면 펌웨어가 바뀌었을 때 **두 곳이 조용히 어긋난다** —
 `ship_dock` 의 `9 vs 7` 과 같은 유형이다.
