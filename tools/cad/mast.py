@@ -300,12 +300,15 @@ _ofz  = zb_l - CRADLE_T
 _ofy1 = yf + OAK_STANDOFF + OAK_PLATE_T + OAK_D + 1.0 + CRADLE_T
 _orun = _ofy1 - yf
 for _rx in RIB_XS_OAK:
-    # 리브 윗면은 **기울어진 바닥면**을 따라가야 한다 (회전 뒤라 바닥이 앞쪽으로 내려가 있다).
-    #   그냥 수평으로 두면 기울어진 카메라 앞모서리를 파고든다(= 앞서 422mm³ 간섭).
-    _dip = _orun * math.sin(R(OAK_TILT)) + 1.0
+    # 리브 윗면 = **기울어진 바닥턱 밑면 그 자체**. 같은 부품이라 틈을 둘 이유가 없다.
+    #   [2026-09-17] 앞서 카메라 간섭을 피하려고 9mm 내렸다가 리브가 바닥에서 떨어져 아무것도
+    #   못 받쳤다(브리지 0mm²). 카메라는 바닥턱 **위**에 있으므로 틈이 필요 없다.
+    #   간섭의 진짜 원인은 리브 윗면을 **수평**으로 뒀던 것 — 바닥이 앞으로 기울어 내려가는데
+    #   리브가 수평이면 끝에서 바닥 위로 솟아 카메라를 파고든다. 기울기를 그대로 따라가면 해결.
+    _tipdrop = _orun * math.sin(R(OAK_TILT))
     rib = (cq.Workplane("YZ").workplane(offset=_rx - RIB_T / 2)
            .polyline([(yf - 0.1, _ofz - _orun * math.tan(R(RIB_ANG))),
-                      (_ofy1, _ofz - _dip), (yf - 0.1, _ofz - 0.5)]).close()
+                      (_ofy1, _ofz - _tipdrop), (yf - 0.1, _ofz)]).close()
            .extrude(RIB_T))
     cro = cro.union(rib)
 
