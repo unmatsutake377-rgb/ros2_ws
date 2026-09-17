@@ -32,7 +32,7 @@
 <div class="wrap">
 
 <h1>⚡ 회로/펌웨어 현황판</h1>
-<div class="sub">2026-08-10 기준 · 담당: 회로/펌웨어(소프트) · 상세 근거는 <b>docs/전달용/펌웨어_설계문서.md</b></div>
+<div class="sub">2026-08-13 기준 · 담당: 회로/펌웨어(소프트) · 상세 근거는 <b>docs/전달용/펌웨어_설계문서.md</b></div>
 
 <div class="card">
 <h2>📌 지금 시스템이 어떻게 생겼나 (아키텍처 확정본)</h2>
@@ -41,8 +41,9 @@
 펌웨어 → 노트북: "S,모드,워치독,배ID,비상정지,FL,FR,RL,RR" (10Hz, 상태 보고)</div>
 <ul style="list-style:none">
   <li style="border:none">보드 <b class="hl">Mega 2560 R3</b> · ESC <b class="hl">BlueRobotics Basic ESC</b> · 수신기 <b class="hl">FS-iA6</b> · 스러스터 <b class="hl">4개</b> — 주요 하드웨어 전부 확정</li>
-  <li style="border:none">micro-ROS <b>폐기</b> → 시리얼 브릿지 (작년 발굴본 되살리기 채택 — 노트북측 작업 대기)</li>
-  <li style="border:none">룰 표시등 = <b class="hl">WS2812 스트립</b> (코드 반영됨, 컴파일 확인 대기) · 방향지시등 미채택</li>
+  <li style="border:none">micro-ROS <b>폐기</b> → 시리얼 브릿지. <b class="hl">08-12 실물 업로드·검증 완료</b> (브릿지가 상태 줄 읽어 ROS 토픽 발행)</li>
+  <li style="border:none">룰 표시등 = <b class="hl">WS2812 스트립</b> (컴파일 통과) · 방향지시등 미채택</li>
+  <li style="border:none">🚨 <b>실물 배선이 핀표와 다름</b> — RC 는 핀 2·3 정상, 나머지는 재배치 필요. ESC 는 기판 10·13. 핀표 확정은 회신문 Q1 답 대기</li>
   <li style="border:none">무선 링크: LTE 라우터 후보 확정 — A트랙 M1(검증용) / B트랙 RUTX11. 급전·안테나 설계안 완료 (부품목록 §9-2)</li>
 </ul>
 </div>
@@ -56,28 +57,34 @@
   <li>브릿지 = 작년(2025) 발굴본 판명 → <b class="hl">되살리기 채택 회신</b> (docs/기준/2025브리지_결정_회로AI회신.md). 받는 쪽 펌웨어는 우리 완성본</li>
   <li>회로팀 전원 문서 검토 — 충돌 9건 정리, 스러스터 4개·배터리 2개 확정. 납땜 그림(PDF) 해독 + 질의 완료</li>
   <li>하드웨어 확정 누적: Mega 2560 R3 / Basic ESC / FS-i6+FS-iA6 / T200×4 / WS2812(잠정) / 방향지시등 미채택</li>
-  <li>LTE 라우터: 구매 조사 → 후보 2종 확정 → <b class="hl">급전(비상정지 앞단 분기·전용 UBEC)·안테나(50cm~1m 이격)·발열 설계안 완료</b> (08-10)</li>
+  <li>LTE 라우터: 구매 조사 → 후보 2종 확정 → 급전·안테나·발열 설계안 완료 (08-10) → <b class="hl">0트랙(폰 온보드) 채택</b>으로 지출 보류</li>
+  <li><b class="hl">08-12~13 실물 진전</b>: arduino-cli 로 업로드·동작 확인 / RC 모드 채널로 자율·수동 전환 실물 검증 / 🚨 <b>핀 5 출력 충돌(RC 입력 ↔ ESC 출력) 발견·해소</b> / 진단 빌드 3종(RC_DEBUG·RC_SCAN·PIN_HUNT)</li>
+  <li><b class="hl">08-13 문서 정리</b>: 설계문서 Due·micro-ROS 잔재 제거 · 벤치 검증 절차서 신규 · 펌웨어 재검토(표시등 버그 1 + 경보 2건 수정) · 회로 기초 1편</li>
+  <li>회로팀 회신문 발송 — <b class="hl">Q1~Q5</b> (MD-30A 위치 / 신호 GND 공통 / 무선 E-Stop / 양쪽 동시 차단 / <b>ESC 신호선 4가닥 독립 여부</b>)</li>
 </ul>
 </div>
 
 <div class="card todo">
-<h2>내가 처리할 일 (우선순위 순)</h2>
+<h2>지금 살아 있는 일 (우선순위)</h2>
 <ul>
-  <li><b>② 회로팀 전달 4건</b>: ESC 신호선은 펌웨어 핀표(5/6/7/8) 기준 납땜 / MD-30A가 추진 경로에 있는지 확인(컨버터는 Mega 5V용으로 이동) / <b class="hl">라우터 전원 분기는 비상정지 릴레이 앞단</b> / 라우터·RC 안테나 50cm~1m 이격 배치 <span class="tag t-cir">회로팀</span></li>
-  <li><b>③ 전원 설계 회의 잔여</b> (전원문서_검토.md §3): <b class="hl">무선 비상정지(규정 의무)</b> + 좌우 동시 차단 / 신호 GND 한 가닥 공통 / Mega·수신기 전원 출처 <span class="tag t-cir">회로팀</span></li>
-  <li><b>④ A트랙 라우터 부품 구매</b> (부품목록 §9-2 목록 7종) → M1 배터리 제거 상시전원 벤치 검증 → 대회장 답사 때 셀 커버리지 확인 <span class="tag t-me">나</span></li>
-  <li><b>⑤ WS2812 스트립 실물 확인</b> — 픽셀 수·전원 위치 (STRIP_NUM_PIXELS 노브 반영용) <span class="tag t-cir">회로팀</span></li>
+  <li><b>① 회로팀 답변 5건</b> — <b class="hl">Q1 MD-30A 위치</b>(이거 하나로 핀표·M커넥터가 정리됨) / Q2 신호 GND 공통 / Q3 무선 비상정지 부품(규정) / Q4 버튼 하나로 좌우 동시 차단 / <b class="hl">Q5 ESC 신호선 4가닥 독립</b>(아니면 선수 게인 튜닝 영구 불가) <span class="tag t-cir">회로팀</span></li>
+  <li><b>② RC 선 한 가닥 이설</b> — 읽을 수 없는 핀(4·5)에 물린 RC 채널을 인터럽트 핀(19/20/21 또는 18)으로. 목적지는 Q1 답에 따라 결정 <span class="tag t-cir">회로팀</span></li>
+  <li><b>③ 핀표 확정 → 펌웨어 반영 → 재업로드</b> (Q1·Q2 답 이후 한 번에) <span class="tag t-cl">Claude</span></li>
+  <li><b>④ 벤치 검증</b> — <code>docs/절차/펌웨어_벤치검증_절차서.md</code> 순서대로. 🚨 최우선은 <b>§2-3 수신기 failsafe 판정</b>(조종기 끄기) <span class="tag t-me">나</span></li>
+  <li><b>⑤ 라우터 0트랙 검증</b> — 폰 온보드로 답사 때 셀 커버리지 + 폭염 박스 열 셧다운 확인 <span class="tag t-me">나</span></li>
+  <li><b>⑥ WS2812 스트립 실물</b> — 픽셀 수·전원(AA 3개는 부족 → UBEC 권장) <span class="tag t-cir">회로팀</span></li>
 </ul>
-<div class="small">※ <b>08-12 추가 해결</b>: ① NeoPixel 재컴파일(가장 오래 밀렸던 항목) — arduino-cli 로 <b>컴파일·업로드·동작확인까지 완료</b>. 보드에서 상태 줄 10Hz 확인, 브릿지가 <code>/boat_mode</code> 등 4토픽을 실물값으로 발행. 🚨 문서에 빠져 있던 <code>Servo</code> 라이브러리 의존도 발견해 안내서에 반영.<br>※ 해결 완료로 목록에서 빠진 것: 보드 확정(Mega), ESC 모델(Basic ESC), 수신기(FS-iA6), Mega 스케치(작년 발굴본 판명 — 우리 완성본이 담당), 핀표(펌웨어 §1 표 기준으로 역전 확정), <b>브릿지(08-10 — 회로팀 전달 불필요해짐)</b>: 작년 발굴본을 우리가 <code>src/ssf_bridge/</code> 패키지로 되살려 <b>메인 launch 에 연결</b>했다. 실행법은 <code>ros2 launch ssf_bridge ssf_bridge.launch.py</code> 이고 포트는 udev 로 <code>/dev/ttyMEGA</code> 에 고정한다(<code>--port /dev/ttyACM0</code> 방식 아님). 아두이노가 없으면 그 노드만 건너뛴다. 아두이노 없이 검증: <code>python3 tools/fake_mega.py</code></div>
+<div class="small">※ 해결되어 목록에서 빠진 것: 보드(Mega 2560) · ESC 모델(Basic ESC) · 수신기(FS-iA6) · 브릿지(<code>src/ssf_bridge/</code> 패키지화 + launch 연결 + USB 재연결 복구) · 펌웨어 업로드(arduino-cli) · NeoPixel 컴파일</div>
 </div>
 
 <div class="card wait">
 <h2>답 오면 이어지는 작업 (Claude 담당)</h2>
 <ul>
-  <li>WS2812 컴파일 결과 받으면 → 에러 시 수정 / 통과 시 벤치 준비 단계 진입 <span class="tag t-cl">Claude</span></li>
-  <li><s>브릿지 되살리기(패키징·udev·상태피드백 읽기)</s> <b>→ 08-10/08-12 완료.</b> 🚨 남은 건 <b>펌웨어 업로드뿐</b> — 08-12 실물 보드가 인식은 되는데 시리얼이 <b>완전 무음</b>(8초 0줄)이다. 상태 읽기 경로는 펌웨어가 올라와야 검증된다 <span class="tag t-cl">Claude</span></li>
-  <li>스트립 픽셀 수 확정 시 노브 반영 / 라우터 기종 최종 확정 시 부품목록 갱신 <span class="tag t-cl">Claude</span></li>
-  <li>이후: <b>벤치 검증</b> (설계문서 §6 — ESC arm 시간, 모터 4개 방향, RC failsafe·조향 부호, M1 상시전원) → 수조 → 물 위 튜닝(선수 게인)</li>
+  <li>Q1 답 → M 커넥터(핀 18) 처리 결정: 컨버터가 빠지면 핀 18 을 RC 로, 남으면 M 제어 기능 신규 구현</li>
+  <li>Q5 답 → (가)면 선수 게인 유지 / (나)면 <code>gain_num</code> 전부 10 으로 맞추고 "선수 게인 튜닝 불가" 못박기</li>
+  <li>핀표 확정 시 코드 §1 반영 + 재컴파일·재업로드</li>
+  <li>벤치 결과 → 노브 확정 (arm 시간·데드밴드·조향 부호·모터 invert)</li>
+  <li>이후: 수조 → 물 위 튜닝(선수 게인·전압 강하 관찰)</li>
 </ul>
 </div>
 

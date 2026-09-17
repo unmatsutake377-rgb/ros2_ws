@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SSF 노드 구성표 — 전체 배선 한 장</title>
+<style>
+  :root{
+    --bg:#f6f8fb; --card:#fff; --ink:#1a1f27; --muted:#5b6673; --line:#d8dee6;
+    --sensor:#0891b2; --pre:#7c3aed; --goal:#2563eb; --mission:#0f9d58; --fuse:#c2410c; --act:#b91c1c; --tool:#4b5563;
+  }
+  @media (prefers-color-scheme:dark){:root{
+    --bg:#0e1116; --card:#161b22; --ink:#e6e9ee; --muted:#9aa4b0; --line:#2a3038;
+    --sensor:#22d3ee; --pre:#b388ff; --goal:#5b9bff; --mission:#41c07a; --fuse:#fb923c; --act:#ff6b6f; --tool:#9ca3af;
+  }}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans KR",sans-serif;line-height:1.6}
+  .wrap{max-width:1000px;margin:0 auto;padding:24px 16px 80px}
+  h1{font-size:1.6rem;margin:0 0 4px}
+  .sub{color:var(--muted);font-size:.92rem}
+  h2{font-size:1.2rem;margin:36px 0 12px;border-top:2px solid var(--line);padding-top:14px}
+
+  .legend{display:flex;gap:12px;flex-wrap:wrap;font-size:.8rem;color:var(--muted);margin:12px 0 20px}
+  .legend span{display:inline-flex;align-items:center;gap:5px}
+  .dot{width:11px;height:11px;border-radius:3px;display:inline-block}
+
+  /* ---- 다이어그램 ---- */
+  .diagram{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px 16px}
+  .row{display:flex;justify-content:center;gap:14px;flex-wrap:wrap}
+  .node{border-radius:10px;padding:10px 16px;color:#fff;text-align:center;min-width:120px}
+  .node .nm{font:700 13px ui-monospace,Menlo,monospace}
+  .node .rl{font-size:11px;opacity:.94;margin-top:2px}
+  .s-sensor{background:var(--sensor)} .s-pre{background:var(--pre)} .s-goal{background:var(--goal)}
+  .s-mission{background:var(--mission)} .s-fuse{background:var(--fuse)} .s-act{background:var(--act)} .s-tool{background:var(--tool)}
+  .big{min-width:280px;padding:14px 20px}
+  .big .nm{font-size:16px}
+
+  .cap{font:700 12px -apple-system,sans-serif;color:var(--muted);text-align:center;margin:6px 0}
+  .flow{text-align:center;color:var(--muted);font-size:11px;margin:7px 0;line-height:1.4}
+  .flow .ar{font-size:16px;color:var(--muted);display:block;line-height:1}
+  .flow code{font-family:ui-monospace,Menlo,monospace;font-size:11px;background:rgba(128,128,128,.14);padding:1px 5px;border-radius:4px}
+
+  /* 2줄기 분할 */
+  .split{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin:6px 0}
+  @media(max-width:620px){.split{grid-template-columns:1fr}}
+  .branch{border:1px dashed var(--line);border-radius:12px;padding:12px 10px}
+  .branch .bt{font:700 11px -apple-system;text-align:center;margin-bottom:8px}
+  .branch.left .bt{color:var(--goal)} .branch.right .bt{color:var(--pre)}
+  .stack{display:flex;flex-direction:column;align-items:center;gap:0}
+
+  .merge{border:2px solid var(--fuse);border-radius:14px;padding:6px;margin:8px auto 0;max-width:560px;background:rgba(194,65,12,.06)}
+  .tools{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:6px}
+
+  /* 표 */
+  table{width:100%;border-collapse:collapse;margin:12px 0;font-size:.88rem;display:block;overflow-x:auto}
+  th,td{text-align:left;padding:7px 9px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--muted);font-weight:600;font-size:.78rem;white-space:nowrap}
+  code{font-family:ui-monospace,Menlo,monospace;font-size:.85em;background:rgba(128,128,128,.14);padding:1px 5px;border-radius:4px}
+  .c-sensor{color:var(--sensor)}.c-pre{color:var(--pre)}.c-goal{color:var(--goal)}
+  .c-mission{color:var(--mission)}.c-fuse{color:var(--fuse)}.c-act{color:var(--act)}.c-tool{color:var(--tool)}
+  footer{margin-top:34px;padding-top:14px;border-top:1px solid var(--line);color:var(--muted);font-size:.83rem}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🔌 SSF 노드 구성표</h1>
+  <div class="sub">위(센서)에서 아래(모터)로 데이터가 흐릅니다. 화살표 아래 글자가 그때 흐르는 <b>토픽</b> 이름입니다.</div>
+
+  <div class="legend">
+    <span><span class="dot" style="background:var(--sensor)"></span>센서</span>
+    <span><span class="dot" style="background:var(--pre)"></span>전처리</span>
+    <span><span class="dot" style="background:var(--goal)"></span>목표 계산</span>
+    <span><span class="dot" style="background:var(--mission)"></span>미션</span>
+    <span><span class="dot" style="background:var(--fuse)"></span>통합 조향</span>
+    <span><span class="dot" style="background:var(--act)"></span>구동</span>
+    <span><span class="dot" style="background:var(--tool)"></span>감시</span>
+  </div>
+
+  <div class="diagram">
+
+    <!-- ① 센서 -->
+    <div class="cap">① 센서 (눈·감각)</div>
+    <div class="row">
+      <div class="node s-sensor"><div class="nm">LiDAR</div><div class="rl">사방 거리</div></div>
+      <div class="node s-sensor"><div class="nm">iahrs_driver</div><div class="rl">IMU 방향</div></div>
+      <div class="node s-sensor"><div class="nm">ublox_gps</div><div class="rl">위치·속도</div></div>
+      <div class="node s-sensor"><div class="nm">realsense</div><div class="rl">카메라 영상</div></div>
+    </div>
+    <div class="flow"><span class="ar">↓</span>
+      <code>/scan</code> <code>/imu/yaw_raw</code> <code>…/fix_velocity</code> <code>…/image_raw</code></div>
+
+    <!-- ②③④ 두 줄기 -->
+    <div class="split">
+      <!-- 왼쪽: 방향 줄기 -->
+      <div class="branch left">
+        <div class="bt">🧭 방향 줄기 (GPS·IMU)</div>
+        <div class="stack">
+          <div class="node s-pre"><div class="nm">yaw_mux</div><div class="rl">진짜 뱃머리 방위</div></div>
+          <div class="flow"><span class="ar">↓</span><code>/imu/yaw</code></div>
+          <div class="node s-goal"><div class="nm">north_goal_angle</div><div class="rl">목표방위 · 지오펜스 · wp_mode</div></div>
+          <div class="flow"><span class="ar">↓</span><code>/north_goal_angle_tp</code></div>
+          <div class="node s-goal"><div class="nm">ship_goal_angle</div><div class="rl">방향 오차</div></div>
+          <div class="flow"><span class="ar">↓</span><code>/yaw_error</code></div>
+        </div>
+      </div>
+
+      <!-- 오른쪽: 비전 줄기 -->
+      <div class="branch right">
+        <div class="bt">👁 비전 줄기 (카메라)</div>
+        <div class="stack">
+          <div class="node s-pre"><div class="nm">비전 검출 3종</div><div class="rl">gate · turn · dock (부표 방향)</div></div>
+          <div class="flow"><span class="ar">↓</span><code>/red_angle</code> <code>/green_angle</code> <code>/image_angle</code></div>
+          <div class="row" style="gap:8px">
+            <div class="node s-mission" style="min-width:0;padding:8px 10px"><div class="nm">ship_gate</div><div class="rl">0·1</div></div>
+            <div class="node s-mission" style="min-width:0;padding:8px 10px"><div class="nm">ship_turn</div><div class="rl">3</div></div>
+            <div class="node s-mission" style="min-width:0;padding:8px 10px"><div class="nm">ship_dock</div><div class="rl">7</div></div>
+            <div class="node s-mission" style="min-width:0;padding:8px 10px"><div class="nm">ship_back</div><div class="rl">2</div></div>
+          </div>
+          <div class="flow"><span class="ar">↓</span><code>/candidate_angle</code></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 합류 표시 -->
+    <div class="flow" style="margin-top:0">
+      <span class="ar">↓ ↓</span>
+      두 줄기 + <code>/scan</code>(LiDAR) + <code>/geofence_state</code> 가 한곳으로
+    </div>
+
+    <!-- ⑤ 통합 -->
+    <div class="cap">⑤ 통합 조향 — 모든 판단이 여기서 합쳐짐</div>
+    <div class="merge">
+      <div class="node s-fuse big" style="margin:0 auto">
+        <div class="nm">⭐ ship_direction</div>
+        <div class="rl">목표 방향 + 미션 + LiDAR 장애물 + 경계 → 최종 조향 결정 · 위험하면 감속/정지</div>
+      </div>
+    </div>
+    <div class="flow"><span class="ar">↓</span><code>/desired_angle</code> <code>/failsafe_level</code></div>
+
+    <!-- ⑥ 구동 -->
+    <div class="cap">⑥ 구동 (근육)</div>
+    <div class="row">
+      <div class="node s-act"><div class="nm">motor_control</div><div class="rl">조향각 → 좌우 모터 세기</div></div>
+    </div>
+    <div class="flow"><span class="ar">↓</span><code>Motor_run</code></div>
+    <div class="row">
+      <div class="node s-act" style="opacity:.9"><div class="nm">아두이노 → 모터</div><div class="rl">실제 회전</div></div>
+    </div>
+
+    <!-- 감시 도구 -->
+    <div class="cap" style="margin-top:22px">🔍 옆에서 감시만 (제어에 개입 안 함)</div>
+    <div class="tools">
+      <div class="node s-tool"><div class="nm">blackbox</div><div class="rl">모든 신호 CSV 기록</div></div>
+      <div class="node s-tool"><div class="nm">healthcheck</div><div class="rl">고장 감시 → /health_ok</div></div>
+    </div>
+  </div>
+
+  <h2>정확한 입·출력 표 (그림의 근거)</h2>
+  <table>
+    <tr><th>노드</th><th>구독(입력)</th><th>발행(출력)</th></tr>
+    <tr><td class="c-sensor">rplidar_ros</td><td>—(레이저)</td><td><code>/scan</code></td></tr>
+    <tr><td class="c-sensor">iahrs_driver</td><td>—(관성)</td><td><code>/imu/yaw_raw</code></td></tr>
+    <tr><td class="c-sensor">ublox_gps</td><td>—(위성+NTRIP)</td><td><code>/ublox_gps_node/fix</code>, <code>…/fix_velocity</code></td></tr>
+    <tr><td class="c-sensor">realsense</td><td>—(영상)</td><td><code>/camera/…/image_raw</code></td></tr>
+    <tr><td class="c-pre">yaw_mux</td><td><code>/imu/yaw_raw</code>, <code>…/fix_velocity</code>, <code>/motor_reverse</code></td><td><code>/imu/yaw</code>, <code>/heading_status</code></td></tr>
+    <tr><td class="c-pre">비전 gate</td><td><code>/camera/…</code>, <code>/wp_mode</code></td><td><code>/red_angle</code>, <code>/green_angle</code></td></tr>
+    <tr><td class="c-pre">비전 turn/dock</td><td><code>/camera/…</code>, <code>/wp_mode</code></td><td><code>/image_angle</code>, <code>/image_color</code></td></tr>
+    <tr><td class="c-goal">north_goal_angle</td><td><code>/ublox_gps_node/fix</code>, <code>/imu/yaw</code></td><td><code>/wp_mode</code>, <code>/north_goal_angle_tp</code>, <code>/geofence_state</code>, <code>/goal_distance</code></td></tr>
+    <tr><td class="c-goal">ship_goal_angle</td><td><code>/imu/yaw</code>, <code>/north_goal_angle_tp</code></td><td><code>/yaw_error</code></td></tr>
+    <tr><td class="c-mission">ship_gate</td><td><code>/red_angle</code>, <code>/green_angle</code>, <code>/scan</code>, <code>/wp_mode</code></td><td><code>/candidate_angle</code>, <code>/gates_passed</code></td></tr>
+    <tr><td class="c-mission">ship_turn</td><td><code>/image_angle</code>, <code>/scan</code>, <code>/imu/yaw</code>, <code>/wp_mode</code></td><td><code>/candidate_angle</code></td></tr>
+    <tr><td class="c-mission">ship_dock</td><td><code>/image_angle</code>, <code>/scan</code>, <code>/wp_mode</code></td><td><code>/candidate_angle</code></td></tr>
+    <tr><td class="c-mission">ship_back</td><td><code>/image_angle</code>, <code>/scan</code>, <code>/wp_mode</code></td><td><code>/candidate_angle</code></td></tr>
+    <tr><td class="c-fuse">ship_direction</td><td><code>/scan</code>, <code>/yaw_error</code>, <code>/candidate_angle</code>, <code>/geofence_state</code>, <code>/wp_mode</code></td><td><code>/desired_angle</code>, <code>/failsafe_level</code>, <code>/obstacle_distance_array</code>, <code>/obstacle_reject_count</code></td></tr>
+    <tr><td class="c-act">motor_control</td><td><code>/desired_angle</code>, <code>/obstacle_distance_array</code>, <code>/failsafe_level</code></td><td><code>Motor_run</code>, <code>/motor_reverse</code></td></tr>
+    <tr><td class="c-act">아두이노 펌웨어</td><td><code>Motor_run</code></td><td>—(모터 구동)</td></tr>
+    <tr><td class="c-tool">blackbox</td><td>거의 모든 토픽</td><td>CSV 파일</td></tr>
+    <tr><td class="c-tool">healthcheck</td><td>센서·상태 토픽</td><td><code>/health_ok</code></td></tr>
+  </table>
+
+  <footer>
+    정확한 기준은 저장소 코드와 <code>CLAUDE.md</code>. 인터랙티브 클릭 설명은
+    <code>docs/전달용/발표용_시스템설명.html</code>. 이 페이지는 인터넷 없이 열립니다.
+  </footer>
+</div>
+</body>
+</html>

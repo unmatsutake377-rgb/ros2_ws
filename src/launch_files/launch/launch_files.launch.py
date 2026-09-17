@@ -1,5 +1,6 @@
 from launch import LaunchDescription
-from launch.actions import IncludeLaunchDescription, TimerAction
+from launch.actions import IncludeLaunchDescription, TimerAction, DeclareLaunchArgument
+from launch.substitutions import LaunchConfiguration
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from ament_index_python.packages import get_package_share_directory
 import os
@@ -32,6 +33,9 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
+        DeclareLaunchArgument(
+            'gps_config', default_value='zed_f9p_rover.yaml',
+            description='배별 GPS 설정 (B배: zed_f9p_rover.yaml / A배: c94_m8p_rover.yaml)'),
 
         # ============================================================
         # 1) RPLIDAR
@@ -79,10 +83,15 @@ def generate_launch_description():
         # ============================================================
         # 3) U-BLOX GPS
         # ============================================================
+        # 🚨 배별 설정을 넘긴다. 예전엔 인자 없이 include 해서 ublox launch 의 기본값(B배 F9P)이
+        #    A배(M8P)에서도 그대로 쓰였다 — 에러 없이 조용히 어긋나는 류. (2026-09-16)
+        #    A배:  ros2 launch launch_files launch_files.launch.py gps_config:=c94_m8p_rover.yaml
+        #    B배:  인자 없이 (기본 zed_f9p_rover.yaml)
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(
                 os.path.join(dir_gps, 'launch', 'ublox_gps_node-launch.py')
-            )
+            ),
+            launch_arguments={'config': LaunchConfiguration('gps_config')}.items(),
         ),
 
         # ============================================================
