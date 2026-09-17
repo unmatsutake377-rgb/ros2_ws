@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""concept_recessed.py — 오픈 헐 위에 갑판을 덮고, 방수박스는 갑판 아래(선체 안), 케이블은 박스 그랜드 → 갑판 관통 → 마스트. 전부 추정치."""
+"""concept_recessed.py — 오픈 헐 위에 갑판을 덮고, 방수박스는 갑판 아래(선체 안),
+케이블은 박스 그랜드 → 갑판 관통 → 마스트. 전부 추정치.
+
+⚠️ 파일명의 'recessed' 는 **박스만** 갑판 아래라는 뜻이다. 센서는 전부 갑판 **위**에 얹는다
+   (2026-09-17 확정). 갑판을 뚫는 것은 케이블뿐 — 관통부 3개는
+   `docs/전달용/하드웨어_배치_요구사항.md` §2-2 참조."""
 import glob, os
 import matplotlib; matplotlib.use("Agg")
 import matplotlib.pyplot as plt, matplotlib.font_manager as fm
@@ -9,7 +14,7 @@ plt.rcParams["font.family"] = ["Noto Sans CJK KR", "Noto Sans CJK JP", "DejaVu S
 
 L, DEPTH, FREEBOARD = 1700, 180, 100         # 2번 배. 흘수 80 가정 → 갑판 수면 +100
 BOX_X, BOX_W, BOX_H = 600, 550, 160          # 박스: 갑판 아래 선체 안. 뚜껑 위로 해치
-MAST_X, MAST_H, TUBE = BOX_X + BOX_W + 90, 150, 40   # 마스트: 박스 앞쪽 갑판 위
+MAST_X, MAST_H, TUBE = 1264, 150, 40   # [09-17] 마스트 x=1264 (베이스 147.8 깊이 + 해치 이격 30). 갑판 위
 Z_DECK = FREEBOARD
 Z_OAK, Z_D455 = Z_DECK + 8 + 95, Z_DECK + 8 + MAST_H + 40   # 마스트 상한 220: OAK 아래끝 ≈ 갑판+6cm, LiDAR 는 갑판 직치(회전면 갑판+3cm)
 LIDAR_X = 1420
@@ -28,7 +33,8 @@ ax.axhline(0, color="#3a7bd5", ls="--", lw=1); ax.text(L + 15, 8, "수면", colo
 # 박스 (선체 안, 뚜껑 플러시)
 ax.add_patch(Rectangle((BOX_X, FREEBOARD - BOX_H), BOX_W, BOX_H, fc="#fff2cc", ec="k"))
 ax.add_patch(Rectangle((BOX_X - 10, FREEBOARD - 10 - 14), BOX_W + 20, 12, fc="#ffe699", ec="k"))  # 박스 뚜껑 (갑판 바로 아래)
-ax.text(BOX_X + 20, FREEBOARD - 80, "방수박스 (갑판 아래)\n노트북 · 배터리 · 허브 · IMU")
+# IMU 는 09-16 부터 마스트 베이스 포켓이다 (여기 박스 안이 아니다)
+ax.text(BOX_X + 20, FREEBOARD - 80, "방수박스 (갑판 아래)\n노트북 · 배터리 · 허브 · 인젝터")
 # 뚜껑 그랜드
 gx = BOX_X + BOX_W - 60
 gx = BOX_X + BOX_W - 40
