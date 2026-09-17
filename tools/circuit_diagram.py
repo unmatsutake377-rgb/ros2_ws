@@ -18,9 +18,11 @@ def wire(ax,pts,c=C_PWR,lw=2.0,ls="-"):
 def lbl(ax,x,y,t,c="#333",fs=8,ha="center",va="center",bold=False):
     ax.text(x,y,t,ha=ha,va=va,fontsize=fs,color=c,fontweight="bold" if bold else "normal")
 
-fig=plt.figure(figsize=(15.5,24)); gs=fig.add_gridspec(4,1,height_ratios=[1,1,1.12,1.05],hspace=0.10)
+fig=plt.figure(figsize=(15.5,24)); gs=fig.add_gridspec(4,1,height_ratios=[1,1,1.38,1.05],hspace=0.10)
 for a in range(4):
-    ax=fig.add_subplot(gs[a]); ax.set_xlim(0,100); ax.set_ylim(0,100); ax.axis("off")
+    ax=fig.add_subplot(gs[a]); ax.set_xlim(0,100)
+    ax.set_ylim(-22,100) if a==2 else ax.set_ylim(0,100)
+    ax.axis("off")
     globals()[f"ax{a+1}"]=ax
 
 # ═══ ① 주 전력 ═══
@@ -101,6 +103,17 @@ wire(ax,[(37,7),(37,3),(85,3),(85,7)],c=C_SIG,lw=1.6)
 lbl(ax,49,21,"동봉 2m Cat5e",fs=7.5); lbl(ax,61,1,"LAN (데이터)",fs=7.5,c=C_SIG)
 lbl(ax,12,21.5,"● 인젝터는 접촉기 앞에서 — 비상정지는 추진만 끊는다",c=C_PWR,fs=8,bold=True)
 
+# ── 허브 계통 ──
+box(ax,2,-16,20,12,"배터리 ⊕ (접촉기 앞)\n- 3A 퓨즈 -",fc="#fdecea")
+box(ax,27,-16,19,12,"XL4015 강압\n14.8V → 5.0~5.1V",fc="#fff8dc",ec=C_WARN)
+box(ax,52,-16,18,12,"ipTIME UH308\n유전원 허브",fc="#eaf2fb")
+box(ax,76,-16,22,12,"LiDAR · IMU · GPS · D455",fc="#eafaf1")
+wire(ax,[(22,-10),(27,-10)]); wire(ax,[(46,-10),(52,-10)])
+wire(ax,[(70,-10),(76,-10)],c=C_SIG)
+lbl(ax,49,-2.5,"DC 플러그 5.5x2.1   ● 중심 + / 바깥 -   ● 출력을 먼저 5.0~5.1V 로 맞춘 뒤 연결",fs=7.5,c=C_PWR,bold=True)
+lbl(ax,24,-19.5,"● 퓨즈는 입력측",fs=7.5,c=C_PWR)
+lbl(ax,80,-19.5,"노트북 USB-A #1 → 허브 (데이터)",fs=7.5,c=C_SIG)
+
 
 # ═══ ④ 결선표 ═══
 ax=ax4
@@ -132,7 +145,7 @@ pins=[("2","RC 스로틀  ← 수신기","인터럽트 핀 (2·3·18·19·20·21
       ("16","WS2812 스트립 Din →","=TX2. 09-03 확정. 밝기 상한 40"),
       ("22 / 24 / 26","단색 룰 표시등 초록/노랑/빨강","(예비) 스트립 쓰면 미사용"),
       ("28","점검 LED →","배 ID 깜빡임·워치독. 항상 사용"),
-      ("34 / 36","배 ID A / B  ← DIP","해당 배만 GND 로. 내부 풀업"),
+      ("34 / 36","배 ID — 배선 안 함","09-17 확정. 회로 두 배 동일. 어디서도 분기 안 함. 둘 다 GND 면 FAULT"),
       ("38","비상정지 감지  ← 접촉기 21","INPUT_PULLUP · LOW = 차단됨"),
       ("GND","공통 GND 버스","ESC 신호GND ×4 · 수신기 · LED · 배터리 ⊖ ×2")]
 tbl(ax,1,88,47,pins,("Mega 핀","연결","비고"),(9,17,21),"Arduino Mega 2560  —  단일 출처: arduino/ssf_boat/ssf_boat.ino")
