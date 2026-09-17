@@ -18,8 +18,8 @@ def wire(ax,pts,c=C_PWR,lw=2.0,ls="-"):
 def lbl(ax,x,y,t,c="#333",fs=8,ha="center",va="center",bold=False):
     ax.text(x,y,t,ha=ha,va=va,fontsize=fs,color=c,fontweight="bold" if bold else "normal")
 
-fig=plt.figure(figsize=(15.5,19)); gs=fig.add_gridspec(3,1,height_ratios=[1,1,1.12],hspace=0.10)
-for a in range(3):
+fig=plt.figure(figsize=(15.5,24)); gs=fig.add_gridspec(4,1,height_ratios=[1,1,1.12,1.05],hspace=0.10)
+for a in range(4):
     ax=fig.add_subplot(gs[a]); ax.set_xlim(0,100); ax.set_ylim(0,100); ax.axis("off")
     globals()[f"ax{a+1}"]=ax
 
@@ -100,6 +100,67 @@ wire(ax,[(22,13),(27,13)]); wire(ax,[(46,13),(52,13)],c="#111")
 wire(ax,[(37,7),(37,3),(85,3),(85,7)],c=C_SIG,lw=1.6)
 lbl(ax,49,21,"동봉 2m Cat5e",fs=7.5); lbl(ax,61,1,"LAN (데이터)",fs=7.5,c=C_SIG)
 lbl(ax,12,21.5,"● 인젝터는 접촉기 앞에서 — 비상정지는 추진만 끊는다",c=C_PWR,fs=8,bold=True)
+
+
+# ═══ ④ 결선표 ═══
+ax=ax4
+ax.set_title("④ 결선표 — 이 표를 보고 한 줄씩 체크한다. 지난 사고는 이 표가 없어서 났다",
+             fontsize=13,loc="left",fontweight="bold",pad=6)
+
+def tbl(ax,x0,y0,w,rows,head,colw,title,tc="#333"):
+    lbl(ax,x0,y0+6,title,fs=11,ha="left",bold=True,c=tc)
+    ax.add_patch(Rectangle((x0,y0-len(rows)*4.1),w,4.1,fc="#e8eef5",ec="#999",lw=0.8))
+    yy=y0
+    ax.add_patch(Rectangle((x0,yy),w,4.1,fc="#d4dde8",ec="#999",lw=0.9))
+    cx=x0+1
+    for t,cw in zip(head,colw):
+        lbl(ax,cx,yy+2.05,t,fs=8.5,ha="left",bold=True); cx+=cw
+    for i,r in enumerate(rows):
+        yy=y0-(i+1)*4.1
+        ax.add_patch(Rectangle((x0,yy),w,4.1,fc="#fff" if i%2==0 else "#f6f8fa",ec="#ccc",lw=0.6))
+        cx=x0+1
+        for t,cw in zip(r,colw):
+            warn = t.startswith("●")
+            lbl(ax,cx,yy+2.05,t,fs=8,ha="left",c=C_PWR if warn else "#333",bold=warn); cx+=cw
+
+pins=[("2","RC 스로틀  ← 수신기","인터럽트 핀 (2·3·18·19·20·21 만)"),
+      ("3","RC 조향  ← 수신기","08-25 실측. 옛 표 3/2 는 뒤바뀐 값"),
+      ("19","RC 모드  ← 수신기","08-18 이설. 18 은 M 소켓과 한 핀 충돌"),
+      ("11","ESC 우 ×2  신호 →","08-25 실물 확정"),
+      ("12","ESC 좌 ×2  신호 →","08-25 실물 확정"),
+      ("● 13","● 사용 금지","● 부트로더가 부팅마다 흔든다 = 스러스터가 튄다"),
+      ("16","WS2812 스트립 Din →","=TX2. 09-03 확정. 밝기 상한 40"),
+      ("22 / 24 / 26","단색 룰 표시등 초록/노랑/빨강","(예비) 스트립 쓰면 미사용"),
+      ("28","점검 LED →","배 ID 깜빡임·워치독. 항상 사용"),
+      ("34 / 36","배 ID A / B  ← DIP","해당 배만 GND 로. 내부 풀업"),
+      ("38","비상정지 감지  ← 접촉기 21","INPUT_PULLUP · LOW = 차단됨"),
+      ("GND","공통 GND 버스","ESC 신호GND ×4 · 수신기 · LED · 배터리 ⊖ ×2")]
+tbl(ax,1,88,47,pins,("Mega 핀","연결","비고"),(9,17,21),"Arduino Mega 2560  —  단일 출처: arduino/ssf_boat/ssf_boat.ino")
+
+term=[("5","배터리 A ⊕","전류 유입 (⊕ 인쇄)"),
+      ("6","ESC 우 ⊕ ×2","전류 유출 (⊖ 인쇄)"),
+      ("2","배터리 B ⊕","전류 유입"),
+      ("1","ESC 좌 ⊕ ×2","전류 유출"),
+      ("A1","컨버터 OUT ⊕","코일 (48Ω · DC 24V)"),
+      ("A2","릴레이 COM","코일"),
+      ("21","Mega 핀 38","b접점 — 09-09 완료"),
+      ("22","Mega GND","b접점 — 09-09 완료"),
+      ("13/14, 43/44, 31/32","미사용","NO ×2 · NC ×1 남음"),
+      ("● 극성","● ⊕→⊖ 방향 지킬 것","● 거꾸로면 아크가 안 꺼지고 접점이 녹아 붙는다")]
+tbl(ax,52,88,47,term,("MD-30a 단자","연결","비고"),(13,14,20),"MD-30a 접촉기  —  단일 출처: 회로도_20260824.html 결선표")
+
+lbl(ax,1,36,"배터리 ⊖ 는 접촉기를 지나지 않는다 :  A ⊖ → ESC 우 ⊖ ×2 직결 (분기: 컨버터 IN⊖ · 릴레이 IN-)  /  B ⊖ → ESC 좌 ⊖ ×2 직결",
+    fs=9,ha="left",c=C_GND,bold=True)
+lbl(ax,1,31,"코일 회로 :  배터리A ⊕ (접촉기 5번보다 배터리 쪽) → 컨버터 IN⊕ / 릴레이 IN+   ·   컨버터 OUT⊕ → A1   ·   A2 → 릴레이 COM → 릴레이 NC → 버튼 NC(1)   ·   버튼 NC(2) → 컨버터 OUT⊖",
+    fs=9,ha="left",c=C_PWR)
+lbl(ax,1,26,"카메라 :  배터리 ⊕ (접촉기 앞) → 2A 인라인 퓨즈 → PoE 인젝터 DC IN → 동봉 2m Cat5e → OAK-1 PoE   ·   인젝터 LAN → AX88179 어댑터 → 노트북",
+    fs=9,ha="left",c="#111")
+lbl(ax,1,19,"● 배선 전 무전원 도통 시험 : 배터리 연결 전에 (+) 와 (-) 가 어디서도 안 만나는지 확인한다. 한쪽 (-) 와 다른 쪽 (+) 가 만나면 29.6V — T200(최대 20V)이 탄다.",
+    fs=9,ha="left",c=C_PWR,bold=True)
+lbl(ax,1,14,"● 배터리 연결 순서 : 1·2번 쪽 먼저 → 5·6번 쪽 나중 → 삑 4개 확인 → 15초 대기.  순서가 바뀌면 일부 ESC 만 시동이 걸린다.",
+    fs=9,ha="left",c=C_PWR,bold=True)
+lbl(ax,1,9,"▲ 미해결 : 컨버터 재구매(구매목록 #32) · 릴레이 점퍼 자기유지 재시험 · 퓨즈(계통당 1개) · MD-30a 연속통전 Ith 확인",
+    fs=9,ha="left",c=C_WARN,bold=True)
 
 fig.text(.5,.006,"출처: 결선표 docs/전달용/회로도_20260824.html · 설계근거 회로_신규설계.md · 핀 arduino/ssf_boat/ssf_boat.ino"
         "   |   현재 진행상황은 docs/문제와작업/좌측스러스터_접촉기_20260819.md 가 단일 출처",
