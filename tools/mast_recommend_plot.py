@@ -39,14 +39,14 @@ GX = 480
 ax.add_patch(Rectangle((GX - 60, DECK), 120, 4, fc="#999", ec="k"))
 ax.add_patch(Circle((GX, DECK + 22), 20, fc="#eee", ec="k")); ax.text(GX, DECK + 56, "GPS 안테나[확정]\n뚜껑 옆 고정 갑판 + 접지판Ø10cm+", ha="center", fontsize=9)
 # 마스트
-MX = 1230
+MX = 1264   # [09-17] 1230→1264: 베이스 147.8 깊이 + 해치 이격 30
 ax.add_patch(Rectangle((MX - 95, DECK), 190, 28, fc="#888", ec="k"))  # base v2 (IMU 포켓, 두께 IMU 높이 따라 20~28)
 ax.add_patch(Rectangle((MX - 20, DECK + 28), 40, 158, fc="#aaa", ec="k"))  # column → 캡 상단 186
 ax.add_patch(Rectangle((MX + 20, DECK + 89), 90, 6, fc="#777", ec="k"))  # D455 선반 (갑판+95, 관 면에서 40 물림)
 ax.add_patch(Rectangle((MX + 66, DECK + 95), 26, 29, fc="#7aa7e8", ec="k")); ax.text(MX + 130, DECK + 100, "D455 (조종) 아래단 선반 −15° [v2]\n렌즈 ≈ 갑판+110", fontsize=9, va="top")
 ax.add_patch(Rectangle((MX + 27, DECK + 134), 31, 82, fc="#f4a261", ec="k")); ax.text(MX + 130, DECK + 200, "OAK-1 PoE 꼭대기 −11°, 롤 0 [v2 확정]\n중심 갑판+175, 상단 218 ≤ 220\n뒷면 M4×4, RJ45 그랜드 아래(끝 ≈+97)", fontsize=9, va="top")
 ax.add_patch(Rectangle((MX + 30, DECK + 99), 16, 35, fc="#c98a3a", ec="k"))  # RJ45 그랜드
-ax.text(MX - 60, DECK + 250, "마스트 v2 ≤220mm 프린트(PETG/ASA)[확정]\nx≈1230 ? (박스 자리 확정 후)\n갑판 관통 M5×4 + 가로대", ha="center", fontsize=9)
+ax.text(MX - 60, DECK + 250, "마스트 v2 ≤220mm 프린트(PETG/ASA)[확정]\nx≥1264 (베이스 147.8 + 해치 이격 30)\n갑판 관통 M5×4 + 가로대", ha="center", fontsize=9)
 ax.annotate("", xy=(MX + 110, DECK), xytext=(MX + 110, DECK + 220), arrowprops=dict(arrowstyle="<->", color="k")); ax.text(MX + 116, DECK + 40, "220", fontsize=9)
 # IMU (마스트 베이스 포켓)
 ax.add_patch(Rectangle((MX - 82, DECK + 4), 50, 20, fc="#c00", ec="k")); ax.text(MX - 125, DECK + 150, "IMU 베이스 포켓 + 나일론 M3 뚜껑[확정, v2]\n케이스 실측 대기(가정 50×50×20)\n굵은 배선과 30cm+, |m| 확인 ▼", ha="right", va="bottom", fontsize=8, color="#c00"); ax.plot([MX - 130, MX - 57], [DECK + 148, DECK + 26], color="#c00", lw=0.8)

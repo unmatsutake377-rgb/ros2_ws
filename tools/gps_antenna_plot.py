@@ -13,7 +13,7 @@ matplotlib.rcParams["axes.unicode_minus"] = False
 OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "docs", "전달용", "배치도", "gps_antenna_position.png")
 L, W = 1660, 580
 BX0, BX1 = 600, 1160          # 박스(=해치) 앞뒤 (선미 기준)
-MX, LX = 1230, 1470
+MX, LX = 1264, 1470   # [09-17] 마스트 1230→1264 (베이스 깊이)
 GX = 535                      # [O] 안테나 (09-16: 케이블 짧아 해치 바로 뒤로. 접지판 Ø120)
 DECK = 240                    # 건현 가정
 MAST_TOP = DECK + 220
@@ -46,7 +46,7 @@ hull = Polygon([[0, -W/2], [1150, -W/2], [1450, -W/2 + 120], [1620, -80], [1660,
 a2.add_patch(hull)
 a2.add_patch(Rectangle((BX0, -190), BX1 - BX0, 380, fc="#f0c419", ec="#b8860b", alpha=0.7)); a2.text((BX0 + BX1) / 2, 60, "해치 (600~1160)", ha="center", fontsize=10)
 a2.plot([BX1, BX1], [-190, 190], color="#b8860b", lw=5); a2.text(BX1 - 120, -240, "경첩 = 앞쪽(마스트 쪽) [O]\n뒤쪽이면 열릴 때 안테나 덮음 [X]", fontsize=8, color="#b8860b")
-a2.add_patch(Rectangle((MX - 80, -60), 160, 120, fc="#888", ec="k")); a2.text(MX + 60, -100, "마스트 베이스 1150~1310\n(해치 1160 과 겹침 → 마스트 ≥1270 또는 해치 ≤1120)", ha="center", fontsize=8)
+a2.add_patch(Rectangle((MX - 80, -60), 160, 120, fc="#888", ec="k")); a2.text(MX + 60, -100, "마스트 베이스 1190~1338\n(09-17 확정: 마스트 ≥1264)", ha="center", fontsize=8)
 a2.add_patch(Circle((LX, 0), 38, fc="#9fd89f", ec="k")); a2.text(LX, 60, "LiDAR", ha="center", fontsize=8)
 # [O] GPS
 a2.add_patch(Circle((GX, 0), 60, fc="#bbb", ec="k", alpha=0.6)); a2.add_patch(Circle((GX - 20, -60), 6, fc="#333")); a2.text(GX - 20, -95, "그로밋 → 박스 뒷벽 수신기", ha="center", fontsize=7); a2.add_patch(Rectangle((GX - 30, -41), 60, 82, fc="#eee", ec="#2a9d2a", lw=2))
