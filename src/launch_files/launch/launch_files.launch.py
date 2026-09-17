@@ -169,9 +169,24 @@ def generate_launch_description():
                 {"rgb_camera.saturation": 64},
 
 
+                # 🚨 [2026-09-10 실측] 뎁스 스트림을 끈다. **켜면 카메라가 USB 에서 떨어진다.**
+                #    D455 를 노트북 USB3 포트에 직결(SuperSpeed 5000M)한 상태에서 측정:
+                #      컬러+뎁스 : 컬러 10.8fps · 뎁스 0.6fps · 최대공백 1.75s
+                #                  2분간 USB 끊김 13회 · 드라이버 오류 583,090 줄
+                #                  (xioctl(VIDIOC_QBUF) failed ... error: No such device 무한 재시도)
+                #      컬러 전용 : **30.0fps · 최대공백 0.03s · 오류 0 줄**
+                #    허브·USB2.0 문제가 아니었다. 직결·SuperSpeed 에서도 같았고,
+                #    USB autosuspend 를 꺼도(boat_boot.sh 적용) 그대로였다. **뎁스 부하 자체가 원인이다.**
+                #
+                #    ⚠️ 끄는 게 안전한 근거: **뎁스를 구독하는 코드가 하나도 없다.**
+                #       V1(2026-07-23)에서 비전 3종의 depth 의존을 전부 제거했고
+                #       거리는 LiDAR `/scan` 에서 얻는다(CLAUDE.md 3-3). 전수 검색으로 재확인함.
+                #    ⚠️ 되살릴 일이 생기면 **먼저 USB 케이블을 바꿔서** 재측정할 것.
+                #       마지막까지 남은 의심은 케이블 품질이다(오늘 아두이노·라이다도 같은 증상이었다).
+                {"enable_depth": False},
+
                 # 🎥 30FPS, 640x480
                 {"rgb_camera.color_profile": "640x480x30"},
-                {"depth_module.depth_profile": "640x480x30"},
             ]
         ),
 

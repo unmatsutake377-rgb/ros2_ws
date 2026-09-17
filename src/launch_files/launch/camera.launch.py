@@ -31,8 +31,15 @@ def generate_launch_description():
 
 
                 # 🎥 30FPS, 640x480
+                # 🚨 [2026-09-10] 뎁스 OFF — 켜면 D455 가 USB 에서 떨어진다.
+                #    컬러+뎁스 10.8fps/끊김13회 → 컬러전용 30.0fps/오류0.
+                #    구독자가 없어 안전하다(V1 에서 depth 의존 제거, 거리는 LiDAR).
+                #    자세한 측정은 launch_files.launch.py 의 같은 자리 주석 참고.
+                {"enable_depth": False},
+                {"enable_gyro": False},
+                {"enable_accel": False},
+
                 {"rgb_camera.color_profile": "640x480x30"},
-                {"depth_module.depth_profile": "640x480x30"},
             ]
         ),
 
