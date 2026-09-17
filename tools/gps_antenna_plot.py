@@ -12,8 +12,8 @@ matplotlib.rcParams["axes.unicode_minus"] = False
 
 OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "docs", "전달용", "배치도", "gps_antenna_position.png")
 L, W = 1660, 580
-BX0, BX1 = 600, 1160          # 박스(=해치) 앞뒤 (선미 기준)
-MX, LX = 1264, 1470   # [09-17] 마스트 1230→1264 (베이스 깊이)
+BX0, BX1 = 790, 1190          # [09-17 채택] 박스 400 실측 + 전진안
+MX, LX = 1294, 1470   # [09-17 채택] 박스 전진(790~1190) 으로 마스트 1264→1294
 GX = 535                      # [O] 안테나 (09-16: 케이블 짧아 해치 바로 뒤로. 접지판 Ø120)
 DECK = 240                    # 건현 가정
 MAST_TOP = DECK + 220
@@ -29,7 +29,7 @@ a1.add_patch(Rectangle((MX - 20, DECK), 40, 220, fc="#aaa", ec="k")); a1.text(MX
 a1.add_patch(Rectangle((LX - 38, DECK), 76, 40, fc="#9fd89f", ec="k"))
 a1.axhline(0, color="#3b7dd8", ls="--", lw=1); a1.text(20, -30, "수면", color="#3b7dd8", fontsize=9)
 # [O] 후보: 해치 뒤 500
-for gx, col, tag in ((GX, "#2a9d2a", "[O] 해치 뒤 x=535"), (1190, "#d33", "[X] 해치 앞 x=1190")):
+for gx, col, tag in ((GX, "#2a9d2a", "[O] 해치 뒤 x=535"), (1190, "#d33", "[X] 해치 앞끝 x=1190")):
     a1.add_patch(Rectangle((gx - 60, DECK), 120, 4, fc="#777", ec="k"))
     a1.add_patch(Circle((gx, DECK + 20), 18, fc="#eee", ec=col, lw=2))
     dx = (MX - 20) - gx
@@ -44,16 +44,16 @@ a1.set_xlim(-60, L + 60); a1.set_ylim(-80, MAST_TOP + 90); a1.set_aspect("equal"
 a2.set_title("② 평면 — 후보 비교, RF 이격, 해치 경첩 (1번 배 166×58cm)", fontsize=13, loc="left")
 hull = Polygon([[0, -W/2], [1150, -W/2], [1450, -W/2 + 120], [1620, -80], [1660, 0], [1620, 80], [1450, W/2 - 120], [1150, W/2], [0, W/2]], closed=True, fc="#dbe6f1", ec="k", lw=1.5)
 a2.add_patch(hull)
-a2.add_patch(Rectangle((BX0, -190), BX1 - BX0, 380, fc="#f0c419", ec="#b8860b", alpha=0.7)); a2.text((BX0 + BX1) / 2, 60, "해치 (600~1160)", ha="center", fontsize=10)
+a2.add_patch(Rectangle((BX0, -190), BX1 - BX0, 380, fc="#f0c419", ec="#b8860b", alpha=0.7)); a2.text((BX0 + BX1) / 2, 60, "해치 (790~1190)", ha="center", fontsize=10)
 a2.plot([BX1, BX1], [-190, 190], color="#b8860b", lw=5); a2.text(BX1 - 120, -240, "경첩 = 앞쪽(마스트 쪽) [O]\n뒤쪽이면 열릴 때 안테나 덮음 [X]", fontsize=8, color="#b8860b")
-a2.add_patch(Rectangle((MX - 80, -60), 160, 120, fc="#888", ec="k")); a2.text(MX + 60, -100, "마스트 베이스 1190~1338\n(09-17 확정: 마스트 ≥1264)", ha="center", fontsize=8)
+a2.add_patch(Rectangle((MX - 80, -60), 160, 120, fc="#888", ec="k")); a2.text(MX + 60, -100, "마스트 베이스 1220~1368\n(09-17 채택: 마스트 1294)", ha="center", fontsize=8)
 a2.add_patch(Circle((LX, 0), 38, fc="#9fd89f", ec="k")); a2.text(LX, 60, "LiDAR", ha="center", fontsize=8)
 # [O] GPS
-a2.add_patch(Circle((GX, 0), 60, fc="#bbb", ec="k", alpha=0.6)); a2.add_patch(Circle((GX - 20, -60), 6, fc="#333")); a2.text(GX - 20, -95, "그로밋 → 박스 뒷벽 수신기", ha="center", fontsize=7); a2.add_patch(Rectangle((GX - 30, -41), 60, 82, fc="#eee", ec="#2a9d2a", lw=2))
-a2.text(GX, 120, "[O] GPS 안테나 x=535 중심선\n접지판 Ø120 (앞끝 595 ↔ 해치 600) 케이블 최단", ha="center", fontsize=9, color="#2a9d2a")
+a2.add_patch(Circle((GX, 0), 60, fc="#bbb", ec="k", alpha=0.6)); a2.add_patch(Circle((GX - 20, -60), 6, fc="#333")); a2.text(GX - 20, -95, "그로밋 → 박스(790~) 뒷벽 수신기", ha="center", fontsize=7); a2.add_patch(Rectangle((GX - 30, -41), 60, 82, fc="#eee", ec="#2a9d2a", lw=2))
+a2.text(GX, 120, "[O] GPS 안테나 x=535 중심선\n접지판 Ø120 (앞끝 595). 해치 790 까지 195mm — 박스 전진으로 케이블이 그만큼 길어짐", ha="center", fontsize=9, color="#2a9d2a")
 a2.annotate("", xy=(GX, -60), xytext=(GX, -W/2 + 20), arrowprops=dict(arrowstyle="-", color="#2a9d2a", ls=":"))
 # [X] 후보들
-a2.add_patch(Rectangle((1165, -41), 60, 82, fc="none", ec="#d33", lw=1.5, ls="--")); a2.text(1195, -150, "[X] 해치 앞\n마스트 기둥 2cm → 85° 가림", ha="center", fontsize=8, color="#d33")
+a2.add_patch(Rectangle((1165, -41), 60, 82, fc="none", ec="#d33", lw=1.5, ls="--")); a2.text(1195, -150, "[X] 해치 앞끝\n마스트 기둥 2cm → 85° 가림", ha="center", fontsize=8, color="#d33")
 a2.add_patch(Rectangle((850, W/2 - 105), 82, 60, fc="none", ec="#d33", lw=1.5, ls="--")); a2.text(890, W/2 - 140, "[X] 해치 옆: 옆갑판 10cm < 안테나 60×82\n(2번 배 43cm 폭은 아예 불가)", ha="center", fontsize=8, color="#d33")
 a2.add_patch(Rectangle((60, -41), 60, 82, fc="none", ec="#d33", lw=1.5, ls="--")); a2.text(90, -110, "[X] 선미 끝\nRC/LTE 자리, CG 와 50cm+", ha="center", fontsize=8, color="#d33")
 # 이격
