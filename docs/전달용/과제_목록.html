@@ -1,0 +1,351 @@
+<title>SSF 과제 목록</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gothic+A1:wght@500;700;900&family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans+KR:wght@400;500;600&display=swap">
+
+<style>
+  /* 구매 목록과 같은 토큰 — 두 문서가 한 세트로 읽혀야 한다 */
+  :root {
+    --ground:#F2F6F6; --surface:#FFFFFF; --surface-sunk:#E8EFEF;
+    --ink:#0B1F2A; --ink-soft:#3B535D; --ink-mute:#6B8189;
+    --rule:#CBD9DC; --rule-soft:#E1EAEB;
+    --accent:#0E6E7D; --accent-soft:#D7ECEE;
+    --sig-red:#B32821;   --sig-red-bg:#FBE9E7;
+    --sig-amber:#A66A00; --sig-amber-bg:#FCF1DC;
+    --sig-green:#256C4A; --sig-green-bg:#E0F0E7;
+    --shadow: 0 1px 2px rgba(11,31,42,.06), 0 8px 24px -18px rgba(11,31,42,.35);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground:#0A1720; --surface:#10242F; --surface-sunk:#0D1E28;
+      --ink:#E4EFF1; --ink-soft:#A9C0C6; --ink-mute:#7A959D;
+      --rule:#23404C; --rule-soft:#1A323C;
+      --accent:#5FC6D4; --accent-soft:#123842;
+      --sig-red:#F08A80;   --sig-red-bg:#3A1A18;
+      --sig-amber:#E8B45C; --sig-amber-bg:#372813;
+      --sig-green:#74C89C; --sig-green-bg:#123227;
+      --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px -18px rgba(0,0,0,.8);
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground:#0A1720; --surface:#10242F; --surface-sunk:#0D1E28;
+    --ink:#E4EFF1; --ink-soft:#A9C0C6; --ink-mute:#7A959D;
+    --rule:#23404C; --rule-soft:#1A323C;
+    --accent:#5FC6D4; --accent-soft:#123842;
+    --sig-red:#F08A80;   --sig-red-bg:#3A1A18;
+    --sig-amber:#E8B45C; --sig-amber-bg:#372813;
+    --sig-green:#74C89C; --sig-green-bg:#123227;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px -18px rgba(0,0,0,.8);
+  }
+
+  *, *::before, *::after { box-sizing: border-box; }
+  body {
+    margin:0; background:var(--ground); color:var(--ink);
+    font-family:"IBM Plex Sans KR", system-ui, -apple-system, "Apple SD Gothic Neo", sans-serif;
+    font-size:15px; line-height:1.7; -webkit-font-smoothing:antialiased;
+  }
+  .wrap { max-width:1000px; margin:0 auto; padding:40px 20px 96px; display:flex; flex-direction:column; gap:44px; }
+
+  .eyebrow {
+    font-family:"IBM Plex Mono", monospace; font-size:11px; font-weight:600;
+    letter-spacing:.14em; text-transform:uppercase; color:var(--accent);
+  }
+  h1 {
+    font-family:"Gothic A1", sans-serif; font-weight:900;
+    font-size:clamp(30px,6vw,46px); line-height:1.12; letter-spacing:-.02em;
+    margin:0; text-wrap:balance;
+  }
+  .masthead { display:flex; flex-direction:column; gap:14px; }
+  .standfirst { max-width:64ch; margin:0; color:var(--ink-soft); font-size:16px; }
+  .meta {
+    display:flex; flex-wrap:wrap; gap:8px 20px; padding-top:10px;
+    border-top:1px solid var(--rule);
+    font-family:"IBM Plex Mono", monospace; font-size:12px; color:var(--ink-mute);
+  }
+
+  .alarm {
+    display:flex; gap:14px; align-items:flex-start;
+    background:var(--sig-amber-bg); border-left:4px solid var(--sig-amber);
+    padding:16px 18px; border-radius:0 6px 6px 0;
+  }
+  .alarm .lamp { flex:none; width:10px; height:10px; margin-top:8px; border-radius:50%; background:var(--sig-amber); }
+  .alarm p { margin:0; font-size:14.5px; }
+  .alarm p + p { margin-top:8px; }
+
+  .tiles { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; }
+  @media (max-width:640px){ .tiles{ grid-template-columns:1fr; } }
+  .tile {
+    background:var(--surface); border:1px solid var(--rule); border-radius:8px;
+    padding:18px; display:flex; flex-direction:column; gap:4px; box-shadow:var(--shadow);
+  }
+  .tile.done  { border-top:3px solid var(--sig-green); }
+  .tile.block { border-top:3px solid var(--sig-red); }
+  .tile.all   { border-top:3px solid var(--accent); }
+  .tile .k { font-family:"IBM Plex Mono",monospace; font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-mute); }
+  .tile .v { font-family:"Gothic A1",sans-serif; font-weight:800; font-size:32px; line-height:1.15; font-variant-numeric:tabular-nums; }
+  .tile .n { font-size:13px; color:var(--ink-soft); }
+
+  section { display:flex; flex-direction:column; gap:18px; }
+  h2 {
+    font-family:"Gothic A1",sans-serif; font-weight:800; font-size:22px;
+    letter-spacing:-.01em; margin:0; display:flex; align-items:baseline; gap:12px;
+  }
+  h2 .num { font-family:"IBM Plex Mono",monospace; font-weight:600; font-size:13px; color:var(--accent); }
+  h2 .tail { font-family:"IBM Plex Sans KR",sans-serif; font-weight:400; font-size:13.5px; color:var(--ink-mute); }
+  .lede { margin:0; color:var(--ink-soft); max-width:66ch; }
+
+  /* 의존 사슬 — 이 문서의 주인공 */
+  .chains {
+    background:var(--surface); border:1px solid var(--rule); border-radius:8px;
+    padding:18px 18px 16px; overflow-x:auto; box-shadow:var(--shadow);
+  }
+  .chain {
+    font-family:"IBM Plex Mono", monospace; font-size:12.5px; line-height:2.1;
+    white-space:pre; margin:0; color:var(--ink-soft);
+  }
+  .chain .ok   { color:var(--sig-green); font-weight:600; }
+  .chain .hot  { color:var(--sig-red);   font-weight:600; }
+  .chain .warn { color:var(--sig-amber); font-weight:600; }
+  .chain .arrow { color:var(--ink-mute); }
+
+  .scroller { overflow-x:auto; border:1px solid var(--rule); border-radius:8px; background:var(--surface); }
+  table { border-collapse:collapse; width:100%; min-width:720px; font-size:13.5px; }
+  th {
+    text-align:left; font-weight:600; font-size:11px; letter-spacing:.09em; text-transform:uppercase;
+    color:var(--ink-mute); font-family:"IBM Plex Mono",monospace;
+    padding:12px 14px; border-bottom:1px solid var(--rule); background:var(--surface-sunk); white-space:nowrap;
+  }
+  td { padding:13px 14px; border-bottom:1px solid var(--rule-soft); vertical-align:top; }
+  tr:last-child td { border-bottom:none; }
+  td.idx { font-family:"IBM Plex Mono",monospace; color:var(--ink-mute); width:1%; white-space:nowrap; padding-right:6px; }
+  td.who { white-space:nowrap; color:var(--ink-soft); font-size:12.5px; }
+  .task { font-weight:600; }
+  .sub { color:var(--ink-mute); font-size:12.5px; display:block; margin-top:3px; }
+  tr.blocking td.idx { box-shadow:inset 3px 0 0 var(--sig-red); }
+  tr.finished { background:color-mix(in srgb, var(--sig-green-bg) 55%, transparent); }
+  tr.finished .task { font-weight:500; }
+
+  .st {
+    display:inline-block; font-family:"IBM Plex Mono",monospace; font-size:10.5px; font-weight:600;
+    letter-spacing:.04em; padding:2px 7px; border-radius:3px; white-space:nowrap;
+  }
+  .st.done { background:var(--sig-green-bg); color:var(--sig-green); }
+  .st.run  { background:var(--accent-soft);  color:var(--accent); }
+  .st.wait { background:var(--sig-amber-bg); color:var(--sig-amber); }
+  .st.todo { background:var(--surface-sunk); color:var(--ink-mute); }
+  .st.hot  { background:var(--sig-red-bg);   color:var(--sig-red); }
+
+  .warnbox {
+    border-left:3px solid var(--sig-amber); background:var(--sig-amber-bg);
+    padding:12px 15px; border-radius:0 5px 5px 0; font-size:13.5px;
+  }
+  .warnbox.crit { border-left-color:var(--sig-red);   background:var(--sig-red-bg); }
+  .warnbox.ok   { border-left-color:var(--sig-green); background:var(--sig-green-bg); }
+  .warnbox p { margin:0; }
+  .warnbox p + p { margin-top:7px; }
+
+  code { font-family:"IBM Plex Mono",monospace; font-size:.92em; background:var(--surface-sunk); padding:1px 5px; border-radius:3px; }
+  a { color:var(--accent); }
+  a:focus-visible, .scroller:focus-visible, .chains:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+  footer { border-top:1px solid var(--rule); padding-top:18px; font-size:13px; color:var(--ink-mute); display:flex; flex-direction:column; gap:6px; }
+  @media (prefers-reduced-motion:reduce){ *{ animation:none!important; transition:none!important; } }
+</style>
+
+<div class="wrap">
+
+  <header class="masthead">
+    <div class="eyebrow">SSF 자율운항선박 · 전 파트 통합</div>
+    <h1>과제 목록</h1>
+    <p class="standfirst">
+      저장소의 미결 항목을 <strong>파트 상관없이 한 표</strong>로 모은 것.
+      각 파트 문서가 계속 주인이고, 여기는 <strong>“무엇이 남았고 무엇이 무엇을 막는가”</strong>만 본다.
+    </p>
+    <div class="meta">
+      <span>09-15 통합 · <strong>09-22 갱신</strong></span>
+      <span>대회 10월</span>
+      <span>⚡ = 09-15 이후 바뀐 것</span>
+      <span>🚨 = 뒤를 막는 것</span>
+    </div>
+  </header>
+
+  <div class="alarm">
+    <span class="lamp"></span>
+    <div>
+      <p><strong>09-15 판은 전기·펌웨어 쪽이 낡아 있었다.</strong> 이미 끝난 7항목이 미착수로 남아 있었고, 해야 할 5항목이 아예 빠져 있었다.</p>
+      <p>그대로 뒀으면 <strong>끝난 일을 다시 계획하고, 빠진 일은 아무도 안 했다.</strong> 이 판에서 정정했다 — ⚡ 표시.</p>
+    </div>
+  </div>
+
+  <div class="tiles">
+    <div class="tile all">
+      <span class="k">전체</span><span class="v">53</span>
+      <span class="n">A 결정 12 · B 구매제작 13 · C 벤치 8 · D 물 위 10 · E 규정 5 · F 추가 5</span>
+    </div>
+    <div class="tile done">
+      <span class="k">완료</span><span class="v">6</span>
+      <span class="n">그중 <strong>규정 검사 2건</strong>(3색 표시등 · 비상스위치)</span>
+    </div>
+    <div class="tile block">
+      <span class="k">🚨 뒤를 막는 것</span><span class="v">6</span>
+      <span class="n">A1 · A2 · C5 · D2 · F1 · F2 — <strong>넷은 돈이 안 든다</strong></span>
+    </div>
+  </div>
+
+  <!-- ── 의존 사슬: 이 문서의 주인공 ── -->
+  <section>
+    <h2><span class="num">00</span> 무엇이 무엇을 막는가</h2>
+    <p class="lede">우선순위는 목록 순서가 아니라 <strong>사슬의 앞</strong>이다. 앞이 풀리지 않으면 뒤는 손도 못 댄다.</p>
+    <div class="chains" tabindex="0">
+<pre class="chain"><span class="hot">A1 부표 높이</span>  <span class="arrow">──▶</span> B6 마스트 장착 높이 <span class="arrow">──▶</span> D4 LiDAR 부표 확인
+<span class="hot">A2 MD-30A</span>     <span class="arrow">──▶</span> B3 인터페이스 보드  <span class="arrow">──▶</span> <span class="ok">(C1 ✅ 이미 통과)</span>
+<span class="ok">C1 펌웨어 벤치 ✅</span> <span class="arrow">──▶</span> <span class="hot">C5 IMU 캘리브</span> <span class="arrow">──▶</span> <span class="warn">D2 자율 조향부호</span> <span class="arrow">──▶</span> D3 PWM 실측 <span class="arrow">──▶</span> D8
+<span class="ok">A6 OAK 모델 ✅</span>  <span class="arrow">──▶</span> B9 발주 <span class="arrow">──▶</span> C6 런북 <span class="arrow">──▶</span> D5 카메라 각도
+<span class="hot">A8 갑판</span>       <span class="arrow">──▶</span> B5 갑판 제작 <span class="arrow">──▶</span> B6 마스트 <span class="arrow">──▶</span> D1 흘수
+<span class="ok">A10 마스트 ✅</span>   <span class="arrow">──▶</span> B10 IMU 실측 <span class="arrow">──▶</span> B6 프린트
+<span class="hot">F1 GPS 측위</span>   <span class="arrow">──▶</span> D7 웨이포인트 녹화</pre>
+    </div>
+    <div class="warnbox ok">
+      <p>⚡ <strong>사슬이 하나 짧아졌다.</strong> C1(펌웨어 벤치)이 09-01~09-03 에 통과해서 <strong>D2 는 더 이상 A2→B3 를 기다리지 않는다.</strong></p>
+      <p>지금 D2 를 막는 것은 <strong>C5(IMU 캘리브레이션) 하나뿐</strong>이고, 그건 <strong>나침반만 있으면 벤치에서 된다.</strong> 가장 값싸게 풀 수 있는 매듭이다.</p>
+    </div>
+    <div class="warnbox">
+      <p>남은 결정 <strong>A1·A11(부표·파고 문의) · A2(MD-30A) · A8(갑판)</strong> 은 전부 <strong>돈이 안 든다.</strong> 발주는 B9 부터(OAK 배송 + 인젝터 2주), 프린트는 B10(IMU 치수) 뒤.</p>
+    </div>
+  </section>
+
+  <!-- ── A ── -->
+  <section>
+    <h2><span class="num">A</span> 결정·확인 <span class="tail">돈 안 들고 빠른데 뒤를 막는다</span></h2>
+    <div class="scroller" tabindex="0">
+      <table>
+        <thead><tr><th>#</th><th>과제</th><th>상태</th><th>담당</th><th>막는 것</th></tr></thead>
+        <tbody>
+          <tr class="blocking"><td class="idx">A1</td><td><span class="task">부표 높이·지름 확인</span><span class="sub">운영측 문의 또는 작년 사진</span></td><td><span class="st hot">🚨 미착수</span></td><td class="who">팀장</td><td>LiDAR·OAK 높이, 마스트 22cm 양립, 비전 최소면적 임계</td></tr>
+          <tr class="blocking"><td class="idx">A2</td><td><span class="task">MD-30A 위치</span><span class="sub">추진 경로인가 5V 전용인가 (Q1)</span></td><td><span class="st hot">🚨 회신 대기</span></td><td class="who">회로</td><td>핀 18 사용 여부, 펌웨어 M 제어, 30A 병목</td></tr>
+          <tr class="finished"><td class="idx">A3</td><td><span class="task">ESC 모델 확정</span><span class="sub">BlueRobotics Basic ESC ×8 보유 · RC 후진 확인 09-15</span></td><td><span class="st done">✅ 완료</span></td><td class="who">회로</td><td>—</td></tr>
+          <tr><td class="idx">A4</td><td><span class="task">ESC 신호 4가닥 독립 확정</span></td><td><span class="st wait">⏸ 대기</span></td><td class="who">회로</td><td>펌웨어 게인 구조</td></tr>
+          <tr><td class="idx">A5</td><td><span class="task">배터리 용량·C 표기</span><span class="sub">Mega·수신기 5V 를 어느 배터리에서</span></td><td><span class="st todo">⬜</span></td><td class="who">회로</td><td>UBEC 배선, 노트북 운용 시간</td></tr>
+          <tr><td class="idx">A6</td><td><span class="task">OAK 구매 모델</span><span class="sub">OAK-1 PoE 고정초점 69° · 인젝터 PSE5502G · 어댑터 AX88179</span></td><td><span class="st run">🔄 확정 / 발주 ⬜</span></td><td class="who">팀장</td><td>B9 발주 → C6 런북</td></tr>
+          <tr><td class="idx">A7</td><td><span class="task">룰북 재확인</span><span class="sub">수동 모드 카메라 조항, 외부 PC 모니터링 허용</span></td><td><span class="st todo">⬜</span></td><td class="who">팀장</td><td>카메라 스트림 채택</td></tr>
+          <tr class="blocking"><td class="idx">A8</td><td><span class="task">갑판 재질·두께, 해치 위치</span><span class="sub">박스 그랜드 면</span></td><td><span class="st hot">🚨 미착수</span></td><td class="who">선체</td><td>마스트 x 좌표·볼트 길이</td></tr>
+          <tr><td class="idx">A9</td><td><span class="task">카메라 2대 동시 장착 확정</span><span class="sub">OAK 비전 / D455 조종</span></td><td><span class="st todo">⬜</span></td><td class="who">팀장</td><td>마스트 브래킷, 케이블 2본</td></tr>
+          <tr class="finished"><td class="idx">A10</td><td><span class="task">마스트 개념 단일화</span><span class="sub">배치 요구사항 채택 + <code>mast.py</code> v2 (09-16)</span></td><td><span class="st done">✅ 완료</span></td><td class="who">팀장+선체</td><td>—</td></tr>
+          <tr><td class="idx">A11</td><td><span class="task">운영측 문의 1건</span><span class="sub">부표 높이·지름 + 파고 + <strong>도크 표식 높이</strong></span></td><td><span class="st todo">⬜</span></td><td class="who">팀장</td><td>A1, LiDAR 슬롯 높이, 카메라 각도</td></tr>
+          <tr><td class="idx">A12</td><td><span class="task">담당자별 하드웨어 위치 회신 수집</span></td><td><span class="st todo">⬜ 발송</span></td><td class="who">팀장</td><td>B10 IMU 치수, 배치 요구사항 전부</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ── B ── -->
+  <section>
+    <h2><span class="num">B</span> 구매·제작</h2>
+    <div class="scroller" tabindex="0">
+      <table>
+        <thead><tr><th>#</th><th>과제</th><th>상태</th><th>담당</th><th>선행</th></tr></thead>
+        <tbody>
+          <tr><td class="idx">B1</td><td><span class="task">P0 구매</span><span class="sub">하네스·케이블 등 — ESC·릴레이·LED 는 보유</span></td><td><span class="st todo">⬜</span></td><td class="who">회로/소프트</td><td>—</td></tr>
+          <tr><td class="idx">B2</td><td><span class="task">P1 구매</span><span class="sub">허브·5V 모듈·퓨즈·배선</span></td><td><span class="st todo">⬜</span></td><td class="who">회로/선체</td><td>—</td></tr>
+          <tr><td class="idx">B3</td><td><span class="task">인터페이스 보드 제작</span></td><td><span class="st wait">⏸ 대기</span></td><td class="who">회로</td><td>A2</td></tr>
+          <tr><td class="idx">B4</td><td><span class="task">방수 박스 배선</span><span class="sub">글랜드·직결·ESC 방열</span></td><td><span class="st todo">⬜</span></td><td class="who">회로</td><td>B2</td></tr>
+          <tr><td class="idx">B5</td><td><span class="task">갑판 제작 + 해치 + 그로밋</span></td><td><span class="st todo">⬜</span></td><td class="who">선체</td><td>A8</td></tr>
+          <tr><td class="idx">B6</td><td><span class="task">마스트 제작</span><span class="sub">PETG/ASA v2 STL 4부품 + FRP 관통 M5×4</span></td><td><span class="st todo">⬜</span></td><td class="who">선체</td><td>B5 · B10</td></tr>
+          <tr><td class="idx">B7</td><td><span class="task">⚡ LiDAR 케이블 수리</span><span class="sub"><strong>09-14 단선 재확인</strong> — 빨강(VCC)·노랑(TX)·초록(RX) 무음, 검정·파랑만 통함. 진단 끝, <strong>케이블 발주만 남음</strong></span></td><td><span class="st run">🔄 진행</span></td><td class="who">소프트</td><td>B1</td></tr>
+          <tr><td class="idx">B8</td><td><span class="task">LTE 0트랙</span><span class="sub">공기계 폰 + 쉐어링 SIM, 밀폐 박스 1h 열 시험</span></td><td><span class="st todo">⬜</span></td><td class="who">소프트</td><td>—</td></tr>
+          <tr><td class="idx">B9</td><td><span class="task">카메라 계통 발주</span><span class="sub">OAK ×2 · PSE5502G ×2 · AX88179 · 2A 퓨즈</span></td><td><span class="st todo">⬜</span></td><td class="who">팀장/회로</td><td>A6 ✅</td></tr>
+          <tr><td class="idx">B10</td><td><span class="task">IMU 포켓 실측 반영</span><span class="sub">케이스 L×W×H·케이블 면 → STL 재생성 (지금은 가정 50×50×20)</span></td><td><span class="st todo">⬜ 치수 대기</span></td><td class="who">소프트+IMU</td><td>B6 프린트 전 필수</td></tr>
+          <tr><td class="idx">B11</td><td><span class="task">1번배 LiDAR 마운트 높이 슬롯 ±10cm</span></td><td><span class="st todo">⬜</span></td><td class="who">선체/소프트</td><td>A11</td></tr>
+          <tr><td class="idx">B12</td><td><span class="task">박스 앞면 케이블 구멍</span><span class="sub">IP67 RJ45 벌크헤드 vs 실란트 마감</span></td><td><span class="st todo">⬜</span></td><td class="who">회로</td><td>—</td></tr>
+          <tr><td class="idx">B13</td><td><span class="task">마스트 v4 — 케이블 출구·크레들 반영</span></td><td><span class="st todo">⬜</span></td><td class="who">소프트</td><td>B10</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ── C ── -->
+  <section>
+    <h2><span class="num">C</span> 벤치 <span class="tail">배 없이 할 수 있다</span></h2>
+    <div class="scroller" tabindex="0">
+      <table>
+        <thead><tr><th>#</th><th>과제</th><th>상태</th><th>담당</th><th>선행</th></tr></thead>
+        <tbody>
+          <tr class="finished"><td class="idx">C1</td><td><span class="task">⚡ 펌웨어 벤치 검증</span><span class="sub">RC 3채널·모드 latch·failsafe·ESC 중립 <strong>전부 확인(09-01~09-03)</strong>. 채널 3개 재배정 · 중앙값 1480/1442 실측 · 조종기 끄면 즉시 1500</span></td><td><span class="st done">✅ 완료</span></td><td class="who">회로+소프트</td><td>—</td></tr>
+          <tr><td class="idx">C2</td><td><span class="task">루프백 → 배 노트북 → 같은 WiFi 실링크</span></td><td><span class="st todo">⬜</span></td><td class="who">소프트</td><td>B1</td></tr>
+          <tr><td class="idx">C3</td><td><span class="task">⚡ 허브 포트 배치</span><span class="sub"><strong>배치는 확정(09-10)</strong> — 아두이노는 노트북 직결 필수(허브 경유 시 수신기 4.09V), 나머지는 허브. udev·autosuspend 확인 완료. <strong>허브 구매만 남음</strong></span></td><td><span class="st run">🔄 진행</span></td><td class="who">소프트</td><td>B2</td></tr>
+          <tr class="finished"><td class="idx">C4</td><td><span class="task">⚡ <code>boat_boot.sh</code></span><span class="sub"><strong>09-10 실행·적용 확인</strong> — 거버너 performance, autosuspend −1, 절전장치 0개. 덮개 절전 억제 추가. ⚠️ 배터리 소모율은 미측정</span></td><td><span class="st done">✅ 완료</span></td><td class="who">소프트</td><td>—</td></tr>
+          <tr class="blocking"><td class="idx">C5</td><td><span class="task">IMU 정북 정렬 실행</span><span class="sub"><code>mount_offset_deg</code>·<code>invert_yaw</code> — <strong>준비가 아니라 실행이다.</strong> 나침반만 있으면 벤치에서 된다</span></td><td><span class="st hot">🚨 미착수</span></td><td class="who">IMU 담당</td><td>— <strong>D2·D7·geofence 가 여기 걸림</strong></td></tr>
+          <tr><td class="idx">C6</td><td><span class="task">OAK 도착일 런북 실행</span><span class="sub">드라이버 병행 설치 · 고정 IP · hfov 재측정 · 각도 부호 검증</span></td><td><span class="st wait">⏸ 대기</span></td><td class="who">카메라 담당</td><td>B9</td></tr>
+          <tr><td class="idx">C7</td><td><span class="task"><code>cam_stream_oak.py</code> 실물 시험</span></td><td><span class="st wait">⏸ 대기</span></td><td class="who">소프트</td><td>C6</td></tr>
+          <tr><td class="idx">C8</td><td><span class="task">파라미터 전수검사</span><span class="sub"><code>tools/check_params.py</code> — yaml 변경 때마다</span></td><td><span class="st run">🔄 상시</span></td><td class="who">소프트</td><td>—</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ── D ── -->
+  <section>
+    <h2><span class="num">D</span> 진수·물 위 <span class="tail">배 완성 후</span></h2>
+    <div class="scroller" tabindex="0">
+      <table>
+        <thead><tr><th>#</th><th>과제</th><th>상태</th><th>담당</th><th>선행</th></tr></thead>
+        <tbody>
+          <tr><td class="idx">D1</td><td><span class="task">흘수(건현) 실측 두 배</span></td><td><span class="st todo">⬜</span></td><td class="who">선체</td><td>B5</td></tr>
+          <tr class="blocking"><td class="idx">D2</td><td><span class="task">⚡ 조향 좌/우 부호 (<code>steer_invert</code>)</span><span class="sub"><strong>수동은 09-07 물 위에서 확인 완료</strong>(좌우 정상). 남은 것은 <strong>자율</strong> 뿐</span></td><td><span class="st run">🔄 진행</span></td><td class="who">소프트</td><td>C1 ✅ · <strong>C5</strong></td></tr>
+          <tr><td class="idx">D3</td><td><span class="task">선폭·순항 PWM·후진 PWM 실측</span><span class="sub">→ <code>boat_a/b.yaml</code></span></td><td><span class="st todo">⬜</span></td><td class="who">소프트</td><td>D2</td></tr>
+          <tr><td class="idx">D4</td><td><span class="task">LiDAR 가 부표를 보는가</span><span class="sub">블랙박스 <code>obstacle_min_dist</code></span></td><td><span class="st todo">⬜</span></td><td class="who">LiDAR 담당</td><td>A1 · B6</td></tr>
+          <tr><td class="idx">D5</td><td><span class="task">카메라 각도 확정</span><span class="sub">D455 <strong>0°</strong>(09-17 LiDAR 가림으로 15°→0°) · OAK 11° · 롤 0</span></td><td><span class="st todo">⬜</span></td><td class="who">카메라 담당</td><td>B6</td></tr>
+          <tr><td class="idx">D6</td><td><span class="task">통신 거리 시험 25m 단위</span><span class="sub">조종기·SSH·RTK·영상·노트북 배터리 % 동시 기록 — 실효거리의 70%</span></td><td><span class="st todo">⬜</span></td><td class="who">소프트</td><td>B8 · C2</td></tr>
+          <tr><td class="idx">D7</td><td><span class="task">웨이포인트 녹화</span><span class="sub">코스 116m 커버 · 경계 GPS 4점</span></td><td><span class="st todo">⬜</span></td><td class="who">소프트</td><td>D6 · <strong>F1</strong></td></tr>
+          <tr><td class="idx">D8</td><td><span class="task">System-ID 주행</span><span class="sub">일부러 흔들기</span></td><td><span class="st todo">⬜</span></td><td class="who">소프트</td><td>D3</td></tr>
+          <tr><td class="idx">D9</td><td><span class="task">대회장 자기편각 계산·입력</span></td><td><span class="st todo">⬜</span></td><td class="who">IMU 담당</td><td>—</td></tr>
+          <tr><td class="idx">D10</td><td><span class="task">도크 규격 공지 후 파라미터</span><span class="sub"><code>contact_dist_m</code>·<code>target_color/shape</code></span></td><td><span class="st wait">⏸ 공지 대기</span></td><td class="who">소프트</td><td>—</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ── E ── -->
+  <section>
+    <h2><span class="num">E</span> 규정·검사 <span class="tail">없으면 참가 불가</span></h2>
+    <div class="scroller" tabindex="0">
+      <table>
+        <thead><tr><th>#</th><th>항목</th><th>상태</th><th>근거</th></tr></thead>
+        <tbody>
+          <tr class="finished"><td class="idx">E1</td><td><span class="task">⚡ 3색 상태 표시등</span><span class="sub"><strong>09-09 완료.</strong> 초록(수동)·노랑(자율) 확인, 빨강은 접촉기 b접점 → 핀 38 배선 후 양쪽 상태 떨림 0회로 확인</span></td><td><span class="st done">✅ 완료</span></td><td class="who">규정 4.2 · 검사 8</td></tr>
+          <tr class="finished"><td class="idx">E2</td><td><span class="task">⚡ 비상스위치 2종</span><span class="sub"><strong>08-20 완료.</strong> 병렬이던 것을 직렬로 바꿔 유선·무선 <strong>각각 단독 차단</strong> 확인. 접촉기가 추진 전원 물리 차단, 제어기는 노트북 USB 로 독립</span></td><td><span class="st done">✅ 완료</span></td><td class="who">검사 9 · 10</td></tr>
+          <tr><td class="idx">E3</td><td><span class="task">흘수선 표시</span><span class="sub">100~110% 부력</span></td><td><span class="st todo">⬜</span></td><td class="who">규정 4.2</td></tr>
+          <tr><td class="idx">E4</td><td><span class="task">전고 ≤ 1m · 길이 ≥ 1m · 최대 24V</span></td><td><span class="st run">설계상 충족</span></td><td class="who">규정</td></tr>
+          <tr><td class="idx">E5</td><td><span class="task">제어 명령은 선내 연산</span><span class="sub">외부 PC 모니터링만 — 카메라 스트림 단방향으로 충족</span></td><td><span class="st run">A7 확인</span></td><td class="who">규정 5.2</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="warnbox crit">
+      <p>🚨 <strong>표시등이 켜지는 것과 심사위원이 볼 수 있는 것은 다르다.</strong> E1 은 끝났지만 <strong>F2(한낮 시인성 시험)</strong> 가 그 뒤에 새로 붙었다 — 지금 밝기 상한 40 은 노트북 USB 폴리퓨즈 0.5A 때문이고, 주광에서 안 보이면 검사 탈락 항목이다.</p>
+    </div>
+  </section>
+
+  <!-- ── F ── -->
+  <section>
+    <h2><span class="num">F</span> 09-15 판에 빠져 있던 것 <span class="tail">09-22 추가</span></h2>
+    <p class="lede">전부 <strong>이 세션의 실측에서 나온</strong> 항목이다. 목록에 없으면 아무도 하지 않는다.</p>
+    <div class="scroller" tabindex="0">
+      <table>
+        <thead><tr><th>#</th><th>과제</th><th>상태</th><th>담당</th><th>왜 필요한가</th></tr></thead>
+        <tbody>
+          <tr class="blocking"><td class="idx">F1</td><td><span class="task">GPS 측위 야외 확인</span></td><td><span class="st hot">🚨 미착수</span></td><td class="who">소프트</td><td>통신은 정상이나 실내라 위성 0개 — <strong>측위 자체를 아직 한 번도 못 봤다.</strong> D7 웨이포인트 녹화의 전제</td></tr>
+          <tr class="blocking"><td class="idx">F2</td><td><span class="task">한낮 LED 시인성 시험</span></td><td><span class="st hot">🚨 미착수</span></td><td class="who">소프트</td><td><strong>규정 4.2 = 검사 탈락 항목.</strong> 안 보이면 UBEC 구매 필요(구매목록 §조건부)</td></tr>
+          <tr><td class="idx">F3</td><td><span class="task">LED 스트립 납땜 고정 + DIN 쪽 “IN” 표시</span></td><td><span class="st todo">⬜</span></td><td class="who">소프트</td><td>점퍼는 물 위에서 흐트러진다(실제로 09-07 뒤 어긋났다). 데이터 방향은 겉으로 구분이 안 된다</td></tr>
+          <tr><td class="idx">F4</td><td><span class="task">라이다 개체 물리 표시</span><span class="sub"><code>D5F1ED93… 1248/0.275</code> · <code>80BFED95… 1439/0.250</code> · <strong>단선품 “쓰지 말 것”</strong></span></td><td><span class="st todo">⬜</span></td><td class="who">소프트</td><td>겉이 똑같아 <strong>죽은 개체를 집어 두 번 진단했다</strong></td></tr>
+          <tr><td class="idx">F5</td><td><span class="task">소프트팀 공지: 브릿지 재연결 = 아두이노 리셋</span></td><td><span class="st todo">⬜</span></td><td class="who">소프트</td><td>시리얼을 여는 순간 DTR 로 보드가 리셋 → 배 정지 + ESC 재시동 15~25초. <strong>경기 중 재시작하면 그 판을 날린다</strong></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <footer>
+    <div>각 파트 문서가 계속 주인이다. 여기는 “무엇이 남았고 무엇이 무엇을 막는가”만 본다.</div>
+    <div>원본 <code>docs/문제와작업/과제_목록_전체.md</code> · 전기·펌웨어 근거 <code>좌측스러스터_접촉기_20260819.md</code> §19~§23</div>
+    <div>같이 보는 문서: <strong>구매 목록</strong> — 무엇을 · 몇 개 · 얼마에 · 언제</div>
+  </footer>
+
+</div>
