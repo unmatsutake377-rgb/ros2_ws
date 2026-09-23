@@ -5,7 +5,7 @@
       규정 위반이었다. → 부표를 중심으로 원을 그리며 도는 orbit 기동으로 재작성.
       부표를 ±90°에 두고(제어법은 orbit_logic.orbit_steer), LiDAR 거리로 반경을 보정한다.
   [2] 🚨 흰색 부표 인식이 없었다. 규정: **빨강·초록 = 시계 / 흰색 = 반시계.** 작년은 색 매핑도
-      엉뚱했다(red→left 등). → /buoy_color 로 색을 받아 회전 방향을 정한다.
+      엉뚱했다(red→left 등). → /image_color 로 색을 받아 회전 방향을 정한다.
   [3] 거리는 LiDAR 에서. /image_distance(카메라 뎁스, OAK-1 에서 죽음) 구독 폐기, /scan 사용.
       부표는 '점 물체'라 방위 매칭이 통한다(도크와 다르다).
 
@@ -19,7 +19,9 @@ FSM: WAIT → SEARCH → APPROACH → ORBIT → COOLDOWN → (다음 부표 위�
 프레임 규약: /image_angle=상대각(0=정면). orbit 조향각을 상대로 구해 rel_to_raw_0_360 으로
   /candidate_angle(0~360) 규약에 맞춰 발행 → ship_direction (B)에서 매핑. LiDAR 80°=정면.
 
-⚠️ /buoy_color 는 5단계 비전이 발행해야 하는 신규 계약(String: "red"/"green"/"white").
+색 토픽 = /image_color (String: "red"/"green"/"white"). 발행자는 basic_image_subscriberturn.
+   🚨 [2026-09-23 정정] 종전엔 /buoy_color 를 구독했는데 그 이름을 발행하는 노드가 없었다.
+   비전은 처음부터 /image_color 로 내보내고 있었다 — 토픽명 불일치로 탐색이 SEARCH 에서 영원히 멈췄을 것이다.
    못 받으면 회전 방향을 모른다 → 그동안 SEARCH 에 머문다(틀린 방향으로 돌지 않는다).
 """
 
@@ -92,7 +94,7 @@ class ShipTurn(Node):
         self.pub_candidate = self.create_publisher(Float32, '/candidate_angle', qos)
         self.create_subscription(Int32, '/wp_mode', self.wp_cb, qos)
         self.create_subscription(Float32, '/image_angle', self.angle_cb, qos)
-        self.create_subscription(String, '/buoy_color', self.color_cb, qos)   # [2] 신규 계약
+        self.create_subscription(String, '/image_color', self.color_cb, qos)  # [2] 비전 turn 노드가 발행 (09-23 /buoy_color→수정)
         self.create_subscription(LaserScan, '/scan', self.scan_cb, SCAN_QOS)
         self.create_subscription(Float64, '/imu/yaw', self.yaw_cb, qos)       # orbit 진행각용
 
@@ -116,7 +118,7 @@ class ShipTurn(Node):
         self.create_timer(self.period_sec, self.timer_cb)
         self.get_logger().info(
             f"ship_turn 시작: orbit r={self.orbit_radius_m}m(⚠️실측), 목표 {self.orbit_target_deg}°.\n"
-            f"   빨강·초록=시계 / 흰색=반시계. 거리는 LiDAR. /buoy_color 없으면 SEARCH 유지."
+            f"   빨강·초록=시계 / 흰색=반시계. 거리는 LiDAR. /image_color 없으면 SEARCH 유지."
         )
 
     # ---------------------- 콜백 ----------------------
