@@ -16,6 +16,8 @@ import types
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 # ---- ROS 모듈 최소 스텁 (import 통과용, 로직엔 안 쓰임) ----
+
+
 def _stub(name, **attrs):
     m = types.ModuleType(name)
     for k, v in attrs.items():
@@ -35,7 +37,12 @@ _stub('rclpy.executors', MultiThreadedExecutor=object)
 _stub('rclpy.qos',
       QoSProfile=lambda **k: types.SimpleNamespace(**k),
       ReliabilityPolicy=_pol, HistoryPolicy=_pol)
-_msg = lambda *a, **k: None
+
+
+def _msg(*a, **k):
+    return None
+
+
 _stub('std_msgs', msg=None)
 _stub('std_msgs.msg', Int32=_msg, Float32=_msg, Float32MultiArray=_msg)
 _stub('sensor_msgs', msg=None)
@@ -51,7 +58,9 @@ def check(name, fn):
     global _p, _t
     _t += 1
     try:
-        fn(); _p += 1; print(f"  ✅ {name}")
+        fn()
+        _p += 1
+        print(f"  ✅ {name}")
     except AssertionError as e:
         print(f"  ❌ {name}\n     {e}")
 

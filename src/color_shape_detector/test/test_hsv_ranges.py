@@ -9,7 +9,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from color_shape_detector.hsv_ranges import (  # noqa: E402
     DEFAULT_RANGES, SUPERSEDED, VALID_COLORS, HsvRangeError,
-    default_flat, flatten, format_yaml, load, parse_flat,
+    default_flat, format_yaml, load, parse_flat,
 )
 
 
@@ -157,6 +157,7 @@ class TestSyncWithDockLogic(unittest.TestCase):
         from color_shape_detector.dock_logic import VALID_COLORS as DOCK_COLORS
         for c in DOCK_COLORS:
             self.assertIn(c, DEFAULT_RANGES, f"'{c}' 는 목표색인데 HSV 범위가 없다")
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -9,7 +9,7 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from ship_turn.orbit_logic import (  # noqa: E402
-    orbit_steer, OrbitProgress, orbit_direction_cw, clamp_pm180)
+    orbit_steer, OrbitProgress, orbit_direction_cw)
 
 fails = 0
 

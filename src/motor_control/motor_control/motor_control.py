@@ -9,7 +9,7 @@ from std_msgs.msg import Bool, Float32, Float32MultiArray, Int32
 # ★ 작년엔 이 값들이 6개 파일에 흩어져 각자 정의돼 어긋났다. 여기 값은 그 표를 따른다.
 SPIN_RIGHT = 5000.0         # 우선회 (ship_dock RIGHT_SPIN 계승)
 SPIN_LEFT = 6000.0          # 좌선회
-CANDIDATE_INVALID = 20000.0 # 미션 없음 → fallback 전진
+CANDIDATE_INVALID = 20000.0  # 미션 없음 → fallback 전진
 STOP_HOLD = 50000.0         # 정지/대기
 
 

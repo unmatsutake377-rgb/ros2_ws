@@ -274,10 +274,17 @@ ros2 topic echo /imu/yaw     # 헤딩 (yaw_mux 단독 발행)
 ros2 topic echo /health_ok   # 출발 가능 여부
 
 # 4) 순수 로직 테스트 (장비 없이도)
-python3 src/ship_direction/test/test_failsafe_logic.py
-python3 src/ssf_heading/test/test_heading_logic.py
-# ... (docs/ 의 테스트 목록 참고)
+tools/run_tests.sh              # 우리 패키지 전체 — 310개
+tools/run_tests.sh ssf_bridge   # 한 패키지만
+
+# 5) lint 포함 전체 (권위 있는 실행기)
+colcon test && colcon test-result --all
 ```
+
+🚨 **`python3 -m pytest src/` 를 그냥 돌리지 마라.** 수집 단계에서 죽어 **하나도 안 돈다**
+(ament 보일러플레이트 파일명이 패키지 10곳에 중복 + 외부 패키지 의존성 누락).
+`tools/run_tests.sh` 가 그 둘을 피해서 돈다 — 그 제외 설정을 `pytest.ini` 로 옮기면
+`colcon test` 가 같은 `addopts` 를 주워 **lint 를 조용히 건너뛴다**(실측 확인, 2026-09-23).
 
 **출발 전 체크리스트는 CLAUDE.md 7-2** (안전 스위치·벤치 실측 항목).
 
@@ -297,6 +304,7 @@ python3 src/ssf_heading/test/test_heading_logic.py
 | `geopy` ImportError | `pip3 install geopy` (5-3) |
 | 노드 clone 후 빈 폴더 | (더는 안 생김 — 내재화 완료. 생기면 저장소 문제) |
 | 12세대 CPU 발열/스로틀 | `tools/boat_boot.sh` 로 거버너 performance (10단계) |
+| flake8 이 `FailedToLoadPlugin` 으로 죽음 | 🚨 **`pip3 install autopep8` 이 원인.** `pycodestyle` 을 최신으로 올려 ROS 의 flake8 과 API 가 어긋난다. 복구: `pip3 uninstall -y autopep8 pycodestyle` (2026-09-23 실제로 겪음) |
 
 ---
 
@@ -317,6 +325,13 @@ python3 src/ssf_heading/test/test_heading_logic.py
 - [ ] (장비) NTRIP 새 계정
 - [ ] `tools/boat_boot.sh` 동작 확인
 - [ ] launch → `/scan`·`/imu/yaw`·`/health_ok` 확인
+- [ ] `tools/run_tests.sh` 310 passed · `colcon test` 0 failures
+
+### 🚨 깔지 말 것
+
+| 패키지 | 왜 |
+|---|---|
+| **autopep8** (pip) | `pycodestyle` 을 끌어올려 **ROS 의 flake8 을 통째로 깨뜨린다.** 서식 정리에 꼭 필요하면 쓰고 **반드시 `pip3 uninstall -y autopep8 pycodestyle` 로 되돌릴 것.** 상시 설치 금지 |
 
 > ⚠️ 명령·버전은 작성 시점 기준. ROS2 apt 키/URL은 공식 문서(docs.ros.org/en/humble)에서
 > 최신 확인 후 진행. 장비 관련(8·9)은 실물이 와야 완성된다.

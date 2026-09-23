@@ -14,9 +14,8 @@ def generate_launch_description():
     dir_north = get_package_share_directory('north_goal_angle')
     dir_ntrip = get_package_share_directory('ntrip_client')
     dir_gps = get_package_share_directory('ublox_gps')
-    dir_ship_direction = get_package_share_directory('ship_direction')
-    dir_ship_goal = get_package_share_directory('ship_goal_angle')
-    dir_realsense = get_package_share_directory('realsense2_camera')
+    # ship_direction·realsense2_camera 는 Node(package=...) 가, ship_goal_angle 은
+    # 119행이 다시 조회한다. 여기 대입은 쓰이지 않아 제거했다(2026-09-23).
     dir_bridge = get_package_share_directory('ssf_bridge')
 
     # 비전 공통 설정 (image_topic, hfov_deg, debug_view).

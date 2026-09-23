@@ -23,7 +23,6 @@ REVERSE_ANGLE = 260.0        # 회피 경로 없음 → 후진
 LIDAR_FORWARD_DEG = 80.0     # LiDAR 프레임에서 정면 (상대방위 0 에 대응)
 
 
-
 # QoS-B: /scan 표준 sensor-data QoS. 작년은 depth=10 기본 RELIABLE 이었다.
 #   [1] 묵은 큐: LiDAR 10Hz × depth 10 = **1초치**가 쌓인다. 콜백이 한 번 밀리면
 #       그 뒤로 묵은 스캔이 burst 로 몰려와 '1초 전 장면' 으로 조향한다.
@@ -38,6 +37,7 @@ SCAN_QOS = QoSProfile(
     history=HistoryPolicy.KEEP_LAST,
     depth=1,
 )
+
 
 class ShipDirection(Node):
     """LiDAR 회피 + 페일세이프. /desired_angle · /obstacle_distance_array · /failsafe_level 발행.
@@ -759,10 +759,14 @@ class ShipDirection(Node):
         valid_safe_zones = []
         min_required_width = self.half_width * 2 + self.clearance
 
+        def _edge_range(i):
+            # inf·nan 이면 '측정 없음' 이라 detection_distance 로 본다.
+            # 같은 판정을 양 끝(s·e)에 쓰므로 한 곳에 모았다(2026-09-23).
+            v = distance_array[i]
+            return detection_distance if (math.isinf(v) or math.isnan(v)) else v
+
         for s, e in safe_zones:
-            r_s = distance_array[s] if not math.isinf(distance_array[s]) and not math.isnan(distance_array[s]) else detection_distance
-            r_e = distance_array[e] if not math.isinf(distance_array[e]) and not math.isnan(distance_array[e]) else detection_distance
-            r_edge = min(r_s, r_e)
+            r_edge = min(_edge_range(s), _edge_range(e))
             arc_len = angle_increment_rad * r_edge * (e - s)
             if arc_len >= min_required_width:
                 valid_safe_zones.append((s, e, r_edge))

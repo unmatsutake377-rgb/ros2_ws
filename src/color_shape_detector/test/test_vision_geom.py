@@ -4,7 +4,6 @@ vision_geom 순수 로직 테스트. ROS/OpenCV 없이 그냥 실행된다:
     python3 src/color_shape_detector/test/test_vision_geom.py
 """
 
-import math
 import os
 import sys
 

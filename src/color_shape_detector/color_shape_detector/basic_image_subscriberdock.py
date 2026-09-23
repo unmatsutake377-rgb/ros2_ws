@@ -16,7 +16,6 @@ from color_shape_detector.dock_logic import (
 import cv2
 import numpy as np
 import time
-from rclpy.executors import MultiThreadedExecutor
 
 IMAGE_ANGLE_INVALID = 10000.0
 
@@ -35,6 +34,7 @@ SENSOR_QOS = QoSProfile(
     history=HistoryPolicy.KEEP_LAST,
     depth=1,
 )
+
 
 class ImageSubscriber(Node):
     def __init__(self):
@@ -74,7 +74,7 @@ class ImageSubscriber(Node):
 
         # 퍼블리셔: angle 만 (이름·타입 불변)
         # V1: /image_distance 발행 제거 — 소비자 0개(6단계에서 ship_dock/turn/back 이 LiDAR 로 전환).
-        self.angle_pub    = self.create_publisher(Float32, '/image_angle', 10)
+        self.angle_pub = self.create_publisher(Float32, '/image_angle', 10)
 
         # fallback
         self.last_valid = {
@@ -149,10 +149,10 @@ class ImageSubscriber(Node):
             hsv_ranges.VALID_COLORS,
             on_error=self.get_logger().error)
 
-
     # ============================================
     # Color topic 콜백
     # ============================================
+
     def wp_mode_callback(self, msg):
         self.mode_gate.update(msg.data, time.monotonic())
 
@@ -212,10 +212,10 @@ class ImageSubscriber(Node):
             else:
                 publish(IMAGE_ANGLE_INVALID)
 
-
     # ============================================
     # 이미지 처리 (도형 인식) — 이번 프레임의 (각도, (색,형상)) 반환
     # ============================================
+
     def process_image(self, cv_image, view_frame):
         # V1(T2-3): depth 가드 제거 (뎁스 없는 카메라에서 콜백이 영원히 막히는 것 방지)
         hsv_image = cv2.cvtColor(cv_image, cv2.COLOR_BGR2HSV)
@@ -281,7 +281,6 @@ class ImageSubscriber(Node):
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
 
         return angle_deg, (self.target_color, self.target_shape)
-
 
 
 def main(args=None):

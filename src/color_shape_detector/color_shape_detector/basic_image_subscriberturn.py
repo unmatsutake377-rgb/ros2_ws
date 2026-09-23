@@ -137,11 +137,9 @@ class ImageSubscriber(Node):
             5: ["red"]
         }
 
-
     def wp_mode_callback(self, msg: Int32):
         self.mode_gate.update(msg.data, time.monotonic())
         self.wp_mode = msg.data
-
 
     def color_callback(self, msg):
         # V1(T2-3): depth 가드 제거 — 뎁스 없는 카메라에서 콜백이 영원히 막히는 것 방지
@@ -188,7 +186,6 @@ class ImageSubscriber(Node):
             else:
                 publish(IMAGE_ANGLE_INVALID, "none")
 
-
     def process_image(self, cv_image, view_frame):
         hsv = cv2.cvtColor(cv_image, cv2.COLOR_BGR2HSV)
         img_h, img_w = cv_image.shape[:2]
@@ -201,7 +198,6 @@ class ImageSubscriber(Node):
         #    맞춘 흔적으로 보여 '색상 무관 + 저채도 + 고명도' 정의로 통일했다.
         #    옛 값은 hsv_ranges.SUPERSEDED["white@turn"] 에 남겨 뒀다 — 실외에서 비교할 것.
         color_ranges = self.color_ranges
-
 
         # ★ 현재 WP에서 사용할 색만 선택
         if self.wp_mode in self.wp_color_map:
@@ -247,11 +243,12 @@ class ImageSubscriber(Node):
                 if not (extent > 0.4 and 0.6 <= aspect <= 1.4):
                     continue
 
+                # 🚨 moments 는 **가드로만** 쓴다 — m00==0 인 퇴화 컨투어를 거른다.
+                #    중심점(cX·cY)을 뽑아 쓰던 코드가 있었으나 지금 각도는 꼭짓점 평균(vX)
+                #    에서 나온다. 대입만 남아 있어 제거했다(2026-09-23). 가드는 건드리지 마라.
                 M = cv2.moments(cnt)
                 if M["m00"] == 0:
                     continue
-                cX = int(M["m10"] / M["m00"])
-                cY = int(M["m01"] / M["m00"])
 
                 vertices = approx.reshape(-1, 2)
                 vX = int(np.mean(vertices[:, 0]))
@@ -300,7 +297,7 @@ class ImageSubscriber(Node):
                             f"{best['color']}  {best['angle']:.1f}deg",
                             (best['vX']+10, best['vY']-10),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.7,
-                            (255,255,255), 2)
+                            (255, 255, 255), 2)
 
 
 def main(args=None):
