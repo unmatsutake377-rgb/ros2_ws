@@ -759,10 +759,14 @@ class ShipDirection(Node):
         valid_safe_zones = []
         min_required_width = self.half_width * 2 + self.clearance
 
+        def _edge_range(i):
+            # inf·nan 이면 '측정 없음' 이라 detection_distance 로 본다.
+            # 같은 판정을 양 끝(s·e)에 쓰므로 한 곳에 모았다(2026-09-23).
+            v = distance_array[i]
+            return detection_distance if (math.isinf(v) or math.isnan(v)) else v
+
         for s, e in safe_zones:
-            r_s = distance_array[s] if not math.isinf(distance_array[s]) and not math.isnan(distance_array[s]) else detection_distance
-            r_e = distance_array[e] if not math.isinf(distance_array[e]) and not math.isnan(distance_array[e]) else detection_distance
-            r_edge = min(r_s, r_e)
+            r_edge = min(_edge_range(s), _edge_range(e))
             arc_len = angle_increment_rad * r_edge * (e - s)
             if arc_len >= min_required_width:
                 valid_safe_zones.append((s, e, r_edge))

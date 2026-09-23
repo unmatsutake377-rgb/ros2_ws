@@ -13,7 +13,7 @@ _src = os.path.join(os.path.dirname(__file__), '..', 'north_goal_angle', 'north_
 _ns = {}
 _code = open(_src, encoding='utf-8').read()
 # MODE_AUTO 와 mission_should_run 정의부만 실행 (import 없이 되는 순수 조각)
-import re
+import re  # noqa: E402  (위 경로 조립 뒤에 와야 한다 — 순수 조각만 추출하는 구조)
 m = re.search(r"^MODE_AUTO = 2\n\n\ndef mission_should_run.*?return boat_mode == mode_auto",
               _code, re.S | re.M)
 exec(m.group(0), _ns)

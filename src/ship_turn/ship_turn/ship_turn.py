@@ -94,7 +94,10 @@ class ShipTurn(Node):
         self.pub_candidate = self.create_publisher(Float32, '/candidate_angle', qos)
         self.create_subscription(Int32, '/wp_mode', self.wp_cb, qos)
         self.create_subscription(Float32, '/image_angle', self.angle_cb, qos)
-        self.create_subscription(String, '/image_color', self.color_cb, qos)  # [2] 비전 turn 노드가 발행 (09-23 /buoy_color→수정)
+        # [2] 비전 turn 노드(basic_image_subscriberturn)가 발행한다.
+        #     🚨 09-23: /buoy_color 를 구독하고 있었는데 그 이름을 내는 노드가 없어
+        #     탐색이 SEARCH 에서 멈췄다. 이름을 바꾸지 마라 — CLAUDE.md §3-9.
+        self.create_subscription(String, '/image_color', self.color_cb, qos)
         self.create_subscription(LaserScan, '/scan', self.scan_cb, SCAN_QOS)
         self.create_subscription(Float64, '/imu/yaw', self.yaw_cb, qos)       # orbit 진행각용
 

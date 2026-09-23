@@ -37,7 +37,12 @@ _stub('rclpy.executors', MultiThreadedExecutor=object)
 _stub('rclpy.qos',
       QoSProfile=lambda **k: types.SimpleNamespace(**k),
       ReliabilityPolicy=_pol, HistoryPolicy=_pol)
-_msg = lambda *a, **k: None
+
+
+def _msg(*a, **k):
+    return None
+
+
 _stub('std_msgs', msg=None)
 _stub('std_msgs.msg', Int32=_msg, Float32=_msg, Float32MultiArray=_msg)
 _stub('sensor_msgs', msg=None)
