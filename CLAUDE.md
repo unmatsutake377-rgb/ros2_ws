@@ -529,7 +529,7 @@ super().__init__('ship_turn')   # ← 복붙 실수. 파일은 ship_back 인데 
 |---|---|---|
 | `ship_gate` | 규정은 **빨강-초록**인데 코드에 yellow 폴백 | ✅ 6b: yellow 제거 + 쌍 제약 + `/gates_passed` 카운트 + LiDAR 거리 |
 | `ship_turn` | 부표를 **비껴 지나감** (규정은 **선회**) | ✅ 6c: orbit 기동으로 재작성 |
-| `ship_turn` | 흰색 부표 인식 없음 | ✅ 6c: /buoy_color 로 빨강·초록=시계 / 흰색=반시계 |
+| `ship_turn` | 흰색 부표 인식 없음 | ✅ 6c: **`/image_color`** 로 빨강·초록=시계 / 흰색=반시계 (09-23 개명 철회) |
 | `ship_back` | **그냥 5초간 PWM 중립** | ✅ 6d: LiDAR 거리로 능동 위치유지(bang-bang+데드밴드) + 이름충돌 수정 |
 | `ship_last` | `/candidate_angle` 에 20000 폴백만 발행 | ✅ 6b: **제거됨.** mode 0 은 ship_gate 가 인수 (발행자 둘 충돌 없이 하나→하나) |
 | 전체 | **경계 이탈 방지(geofence) 없음** | 경기장 밖으로 나가면 실격. `north_goal_angle` 에 추가 |
@@ -554,7 +554,7 @@ super().__init__('ship_turn')   # ← 복붙 실수. 파일은 ship_back 인데 
 | `/failsafe_level` | `Int32` | `ship_direction` | **3단계** | `blackbox`, **`motor_control`**(속도 상한) |
 | `/gates_passed` | `Int32` | `ship_gate` | **5단계** | `blackbox` |
 | `/geofence_state` | `Float32MultiArray` | `north_goal_angle` (**6a**) | **6a 발행 / 6a-2 구독** | `ship_direction` (**6a-2**) |
-| `/buoy_color` | `String` | **비전(5단계)** | 6c 구독 | `ship_turn` (**6c**) |
+| `/image_color` | `String` | `basic_image_subscriberturn` | 작년부터 존재 | `ship_turn` (**6c**), `blackbox` |
 | `/boat_mode` | `Int32` | `ssf_bridge` | **2026-08-10** | `mission_monitor` |
 | `/boat_cmd_watchdog` | `Bool` | `ssf_bridge` | **2026-08-10** | `mission_monitor` |
 | `/boat_estop` | `Bool` | `ssf_bridge` | **2026-08-10** | `mission_monitor` |
@@ -610,9 +610,23 @@ RELIABLE 발행자는 BEST_EFFORT 구독자와도 호환되므로 잃는 게 없
 넣게 된다면 **단방향(자율 해제만, AUTO 전환 불가) + 조종기 우선**이 유일하게 안전한 모양이다.
 근거와 대안은 `docs/절차/boat_launch_checklist.md` §"배 세우는 법 3가지".
 
-**🚨 `/buoy_color`** (String: `"red"`/`"green"`/`"white"`): `ship_turn`(6c)이 회전 방향을 정하는 데 쓴다
-(빨강·초록=시계, 흰색=반시계). **아직 발행자가 없다** — 5단계 비전이 발행해야 한다. 없으면 ship_turn 은
-회전 방향을 몰라 SEARCH 에 머문다(틀린 방향으로 돌지 않는다). 작년엔 `/image_color` 였다(개명).
+**🔒 `/image_color`** (String: `"red"`/`"green"`/`"white"`): `ship_turn`(6c)이 회전 방향을 정하는 데 쓴다
+(빨강·초록=시계, 흰색=반시계). 없으면 ship_turn 은 방향을 몰라 SEARCH 에 머문다(틀린 방향으로 돌지 않는다).
+
+🚨 **[2026-09-23] `/buoy_color` 로 개명하려던 것을 철회했다. 이름을 바꾸지 마라.**
+이 문서가 `/buoy_color` 로 적어둔 탓에 `ship_turn` 이 **발행자가 없는 토픽을 구독**하고 있었고,
+**탐색 미션이 SEARCH 에서 영원히 멈췄다**(수정 커밋 `aa46028`). 비전(`basic_image_subscriberturn`)은
+작년부터 줄곧 `/image_color` 로 내보내고 있었다 — **개명한 쪽은 문서뿐이었다.**
+
+이게 §1-3 "토픽 이름을 바꾸지 않는다" 가 말하는 바로 그 사고다. ROS2 는 이름이 어긋나도
+**에러를 내지 않고 그냥 아무것도 안 준다.** 지금 네 곳이 전부 `/image_color` 로 일치한다:
+
+| 어디 | 역할 |
+|---|---|
+| `basic_image_subscriberturn.py` | 발행 (`active_wp_modes [2,3]` 게이팅) |
+| `ship_turn.py` | 구독 |
+| `test_mode_gate.py` | 정적 검사 — `turn` 이 `/image_angle`·`/image_color` 를 발행한다고 못박음 |
+| `blackbox.py` | 기록 (`image_color_topic` 기본값) |
 
 #### 🔒 `/geofence_state` 계약 — 경계를 **'가짜 LiDAR'** 로 낸다
 
