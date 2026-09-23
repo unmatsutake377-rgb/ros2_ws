@@ -61,7 +61,7 @@ def fake_self():
     return types.SimpleNamespace(
         max_spike_ratio=0.01,
         border_margin=2,
-        half_width=0.45,
+        half_width=0.29,
         clearance=0.25,
         min_obstacle_cells=1,
         temporal=TemporalVote(1, 2),   # OFF(frames=1)

@@ -190,7 +190,7 @@ class ShipDirection(Node):
         # (작년 코드는 wp_mode==2 (위치유지)를 키로 썼는데, 그건 게이트가 아니다.)
         self.gate_wp_modes = list(self.declare_parameter('gate_wp_modes', [0, 1]).value)
 
-        self.half_width = float(self.declare_parameter('half_width', 0.45).value)
+        self.half_width = float(self.declare_parameter('half_width', 0.29).value)
         # 0.20→접촉 1.7회 / 0.25→0.2회 / 0.30→0.8회 / 0.45→807초 폭주(과보수)
         self.clearance = float(self.declare_parameter('clearance', 0.25).value)
         self.border_margin = int(self.declare_parameter('border_margin', 2).value)
