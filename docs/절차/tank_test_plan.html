@@ -121,7 +121,9 @@ pre{background:#f7f6f1;border:1px solid var(--bd);border-radius:8px;padding:12px
 gps_vel(RTK) 로 기록. ★ RTK fix 품질 확인 필수(아래).</pre>
 
 <p><span class="step">4-1</span><b>수조: 코드에 ⚠️실측 표시된 값 채우기 (6m면, 15분)</b> — 09-23 추가. 시뮬은 순항 1.2m/s 가정이라 이게 비면 시뮬 결과가 실물과 안 맞음</p>
-<pre>· base_pwm(지금 1360 추측): 전진 관성(4단계) 때 PWM 을 1400/1360/1300 세 번 → gps_vel 이 1.2m/s 나오는 값 → motor_control.yaml
+<pre>🚨 수조에서 확실한 건 reverse_pwm 방향·max_diff 둘. base_pwm·hold_dist 는 대략값, median 은 야외(물보라 없음), half_width 는 6m 수조에서만.
+   3m 수조면 게이트 실증 불가 — 억지로 재지 말고 "야외" 로 남긴다.
+· base_pwm(지금 1360 추측): 전진 관성(4단계) 때 PWM 을 1400/1360/1300 세 번 → gps_vel 이 1.2m/s 나오는 값 → motor_control.yaml
 · reverse_pwm(1590 추측): 260 후진 명령 → 실제로 뒤로 가는가 + 속도. 브릿지가 >1500=전진으로 부호 뒤집어 놨으니 방향부터
 · max_diff(100 추측): 직진 중 좌조향(110) → 배가 실제로 도는 각속도. 안 돌면 올리고, 홱 돌면 내림
 · median 커널(지금 5): 블랙박스 obstacle_min_dist 에 물보라 튐이 몇 프레임 연속인지 → 2프레임 넘게 튀면 7/9
