@@ -19,7 +19,9 @@ def check(name, fn):
     global _p, _t
     _t += 1
     try:
-        fn(); _p += 1; print(f"  ✅ {name}")
+        fn()
+        _p += 1
+        print(f"  ✅ {name}")
     except AssertionError as e:
         print(f"  ❌ {name}\n     {e}")
 
@@ -136,7 +138,9 @@ def test_confirm_single_frame_glitch_ignored():
     🚨 D2 핵심: 안정된 판정 사이에 오탐 1프레임이 끼면 그 오탐은 발행되면 안 된다.
     """
     c = DetectionConfirmer(confirm_frames=3)
-    c.update(("red", SQUARE)); c.update(("red", SQUARE)); c.update(("red", SQUARE))
+    c.update(("red", SQUARE))
+    c.update(("red", SQUARE))
+    c.update(("red", SQUARE))
     assert c.confirmed == ("red", SQUARE)
     # 오탐 1프레임(초록 삼각)이 끼어듦
     out = c.update(("green", TRIANGLE))
@@ -146,7 +150,8 @@ def test_confirm_single_frame_glitch_ignored():
 
 def test_confirm_reset_on_missing():
     c = DetectionConfirmer(confirm_frames=3)
-    c.update(("red", SQUARE)); c.update(("red", SQUARE))
+    c.update(("red", SQUARE))
+    c.update(("red", SQUARE))
     assert c.update(None) is None, "미검출이면 리셋"
     assert c.update(("red", SQUARE)) is None, "다시 처음부터"
 
@@ -154,7 +159,8 @@ def test_confirm_reset_on_missing():
 def test_confirm_switch_target():
     """목표가 진짜로 바뀌면(연속 N프레임) 새 목표로 확정."""
     c = DetectionConfirmer(confirm_frames=2)
-    c.update(("red", SQUARE)); c.update(("red", SQUARE))
+    c.update(("red", SQUARE))
+    c.update(("red", SQUARE))
     assert c.confirmed == ("red", SQUARE)
     c.update(("blue", CIRCLE))
     assert c.update(("blue", CIRCLE)) == ("blue", CIRCLE), "2프레임 연속이면 전환"

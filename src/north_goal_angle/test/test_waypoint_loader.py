@@ -17,7 +17,9 @@ def check(name, fn):
     global _p, _t
     _t += 1
     try:
-        fn(); _p += 1; print(f"  ✅ {name}")
+        fn()
+        _p += 1
+        print(f"  ✅ {name}")
     except AssertionError as e:
         print(f"  ❌ {name}\n     {e}")
 
@@ -34,7 +36,7 @@ def _raises(raw):
 # 유효한 최소 예시 (대회장 근처 좌표)
 GOOD_DICT = {"waypoints": [
     {"구역": "게이트", "lat": 35.1862, "lon": 128.5655, "mode": 0, "dwell": 3.0},
-    {"구역": "도킹",   "lat": 35.1859, "lon": 128.5655, "mode": 7, "dwell": 60.0},
+    {"구역": "도킹", "lat": 35.1859, "lon": 128.5655, "mode": 7, "dwell": 60.0},
 ]}
 GOOD_LIST = {"waypoints": [
     [35.1862, 128.5655, 0, 3.0],
@@ -94,7 +96,7 @@ def test_lat_out_of_range():
     """위도가 한국 범위 밖 — 위경도 뒤바꿈·오타·빈칸 탐지."""
     assert _raises({"waypoints": [{"lat": 128.5, "lon": 35.1, "mode": 0, "dwell": 3.0}]})  # 뒤바뀜
     assert _raises({"waypoints": [{"lat": 0.0, "lon": 128.5, "mode": 0, "dwell": 3.0}]})   # 빈칸(0)
-    assert _raises({"waypoints": [{"lat": 135.0, "lon": 128.5, "mode": 0, "dwell": 3.0}]}) # 오타
+    assert _raises({"waypoints": [{"lat": 135.0, "lon": 128.5, "mode": 0, "dwell": 3.0}]})  # 오타
 
 
 def test_lon_out_of_range():

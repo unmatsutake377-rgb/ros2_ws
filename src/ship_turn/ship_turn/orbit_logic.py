@@ -8,8 +8,6 @@
 각도 규약: 상대각(0 = 정면, + = 우현/오른쪽). 시계방향(CW) = 위에서 볼 때 시계.
 """
 
-import math
-
 
 def clamp(x, lo, hi):
     return max(lo, min(hi, x))

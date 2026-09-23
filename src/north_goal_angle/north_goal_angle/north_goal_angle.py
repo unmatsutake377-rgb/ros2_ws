@@ -88,6 +88,7 @@ def mission_should_run(boat_mode, require_auto, mode_auto=MODE_AUTO):
         return True
     return boat_mode == mode_auto
 
+
 # 위경도 → 로컬 미터 근사
 M_PER_DEG_LAT = 110540.0
 M_PER_DEG_LON_EQ = 111320.0

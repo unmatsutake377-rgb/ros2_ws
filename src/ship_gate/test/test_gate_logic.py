@@ -9,7 +9,7 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from ship_gate.gate_logic import (  # noqa: E402
-    GateCounter, gate_candidate, circular_mid, clamp_pm180)
+    GateCounter, gate_candidate, circular_mid)
 
 
 fails = 0
@@ -103,8 +103,10 @@ def test_no_double_count():
 def test_two_gates_sequential():
     """두 게이트를 순차 통과 → 2. (사이에 재-arming)"""
     c = GateCounter(75.0)
-    c.update(True, [8.0, 9.0]); c.update(False, [80.0])          # 1
-    c.update(True, [7.0, 6.0]); c.update(False, [79.0])          # 2 (새 게이트 다시 전방에서 봄)
+    c.update(True, [8.0, 9.0])
+    c.update(False, [80.0])          # 1
+    c.update(True, [7.0, 6.0])
+    c.update(False, [79.0])          # 2 (새 게이트 다시 전방에서 봄)
     check("두 게이트 순차 → 2", c.count == 2, f"count={c.count}")
 
 

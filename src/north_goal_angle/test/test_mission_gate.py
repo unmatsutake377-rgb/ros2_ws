@@ -5,7 +5,6 @@ north_goal_angle.py 는 rclpy 를 import 하므로 그대로 못 읽는다(Mac).
 
 import os
 import sys
-import types
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
@@ -28,7 +27,9 @@ def check(name, fn):
     global _p, _t
     _t += 1
     try:
-        fn(); _p += 1; print(f"  ✅ {name}")
+        fn()
+        _p += 1
+        print(f"  ✅ {name}")
     except AssertionError as e:
         print(f"  ❌ {name}\n     {e}")
 

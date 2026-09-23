@@ -15,7 +15,6 @@ from color_shape_detector.dock_logic import DetectionConfirmer
 import cv2
 import numpy as np
 import time
-from rclpy.executors import MultiThreadedExecutor
 
 IMAGE_ANGLE_INVALID = 10000.0
 
@@ -136,10 +135,10 @@ class ImageSubscriber(Node):
         self.last_log_time = time.time()
         self.found_in_frame = {'red': False, 'green': False}
 
-
     # -----------------------------------
     # Color Callback
     # -----------------------------------
+
     def wp_mode_callback(self, msg):
         self.mode_gate.update(msg.data, time.monotonic())
 
@@ -196,11 +195,10 @@ class ImageSubscriber(Node):
         if not self.found_in_frame['green']:
             publish_fallback('green', self.green_angle_pub)
 
-
-
     # -----------------------------------
     # PROCESS IMAGE
     # -----------------------------------
+
     def process_image(self, cv_image, view_frame):
 
         hsv = cv2.cvtColor(cv_image, cv2.COLOR_BGR2HSV)
@@ -248,7 +246,8 @@ class ImageSubscriber(Node):
 
                     if not (extent > 0.4 and 0.6 <= aspect <= 1.4):
                         continue
-                    shape = "Square"
+                    # 여기까지 온 것이 사각형 판정 통과다. 라벨 변수를 두었으나
+                    # 쓰는 곳이 없어 제거했다(2026-09-23). 게이트는 색으로만 가른다.
                 else:
                     continue
 
@@ -264,10 +263,8 @@ class ImageSubscriber(Node):
                 vY = int(np.mean(vertices[:, 1]))
 
                 # y-coordinate filtering: valid detection zone only
-                if not (img_h * 0.15 <= vY <= img_h * 0.55):  #위쪽범위 <= vY <=아래쪽범위
+                if not (img_h * 0.15 <= vY <= img_h * 0.55):  # 위쪽범위 <= vY <=아래쪽범위
                     continue
-
-
 
                 # ---- angle (depth 불필요) ----
                 # ※ depth 유효거리 필터(1.0~6.0m)도 함께 제거했다 — depth 가 없으면
@@ -290,8 +287,6 @@ class ImageSubscriber(Node):
                 if self.debug_view:
                     cv2.drawContours(view_frame, [approx], -1, (0, 255, 0), 2)
                     cv2.circle(view_frame, (cX, cY), 3, (255, 255, 0), -1)
-
-
 
         # ----------------------------
         # 색상별 퍼블리시
@@ -316,7 +311,8 @@ class ImageSubscriber(Node):
             self.last_valid[c]['time'] = now
 
             # publish (각도만 — 거리는 소비자가 LiDAR 로 구한다)
-            msg_a = Float32(); msg_a.data = cand['angle']
+            msg_a = Float32()
+            msg_a.data = cand['angle']
 
             if c == 'red':
                 self.red_angle_pub.publish(msg_a)
@@ -340,8 +336,6 @@ def main(args=None):
     rclpy.spin(node)
     node.destroy_node()
     rclpy.shutdown()
-
-
 
 
 if __name__ == '__main__':

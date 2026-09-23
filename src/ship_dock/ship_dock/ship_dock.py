@@ -50,7 +50,6 @@ IMAGE_INVALID = 10000.0      # /image_angle 의 '표식 없음' 센티널 (작�
 LIDAR_FORWARD_DEG = 80.0     # LiDAR 프레임에서 정면에 해당하는 각도
 
 
-
 # QoS-B: /scan 표준 sensor-data QoS. 작년은 depth=10 기본 RELIABLE 이었다.
 #   [1] 묵은 큐: LiDAR 10Hz × depth 10 = **1초치**가 쌓인다. 콜백이 한 번 밀리면
 #       그 뒤로 묵은 스캔이 burst 로 몰려와 '1초 전 장면' 으로 조향한다.
@@ -65,6 +64,7 @@ SCAN_QOS = QoSProfile(
     history=HistoryPolicy.KEEP_LAST,
     depth=1,
 )
+
 
 class ShipDock(Node):
     def __init__(self):

@@ -24,6 +24,7 @@ import time
 
 # ---------------- 순수 로직 (ROS 비의존, 테스트 대상) ----------------
 
+
 def average_fixes(samples):
     """[(lat, lon), ...] 평균. 빈 리스트면 None. 지터를 줄이려 여러 표본을 평균한다."""
     if not samples:
@@ -209,7 +210,7 @@ def _run_node(out_path, avg_window_sec, cov_warn):
         print(f"   경로: {out_path}")
         print("=" * 66)
         print("   ▶ 복사하지 않고 바로 쓰려면 (기존 waypoints.yaml 을 안 건드린다):")
-        print(f"       ros2 launch north_goal_angle north_goal_angle_launch.py \\")
+        print("       ros2 launch north_goal_angle north_goal_angle_launch.py \\")
         print(f"           waypoints_file:={out_path}")
         print("   ▶ 이걸 실전 파일로 확정하려면 config/waypoints.yaml 로 복사한 뒤 재빌드.")
     else:
