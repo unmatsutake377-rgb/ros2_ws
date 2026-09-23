@@ -891,7 +891,17 @@ log(f"페일세이프 L{prev} → L{level}" + ...)     # ← 같은 소스 위�
 git diff HEAD~1 --stat          # 무엇이 바뀌었나
 git diff HEAD~1                 # 어떻게 바뀌었나
 colcon build --symlink-install  # 빌드는 되나
+tools/run_tests.sh              # 로직 테스트 전체 (우리 패키지만, 310개)
+colcon test                     # 🚨 lint 포함 — 권위 있는 실행기는 이쪽이다
 ```
+
+🚨 **`python3 -m pytest src/` 를 그냥 돌리지 마라.** 수집 단계에서 죽어 **하나도 안 돈다**
+(ament 보일러플레이트 파일명이 패키지 10곳에 중복 + 외부 패키지 의존성 누락).
+`tools/run_tests.sh` 가 그 둘을 피해서 돈다.
+
+🚨 **그 제외 설정을 `pytest.ini` 로 옮기지 마라.** `colcon test` 가 같은 `addopts` 를
+주워서 **lint 검사를 조용히 건너뛴다.** 실측: `color_shape_detector` 가
+`74 tests / 2 failures` → `71 tests / 0 failures` 로 바뀌어 **기존 실패가 통과처럼 보였다.**
 
 넘길 것: **변경된 노드 파일 + `git diff` + 바꾼 이유**
 → 별도 검토 환경에서 **토픽 계약 대조 + 혼합 호환성 시뮬 + 로직 테스트**를 돌린다.
