@@ -116,6 +116,48 @@ const noTable = new Table({ width: { size: TW, type: WidthType.DXA }, columnWidt
   ...noRows.map(r => new TableRow({ children: r.map((v, j) => cell(para(t(v, { bold: j === 0 })), NOCOLS[j])) })),
 ] });
 
+// ---- 금액 정리 (지원금 / 자부담)
+const MCOLS = [4200, 3800, 6570];
+function moneyTable(rows, head, fill, totalLabel) {
+  return new Table({ width: { size: TW, type: WidthType.DXA }, columnWidths: MCOLS, rows: [
+    headerRow(MCOLS, head, fill),
+    ...rows.map((r, i) => {
+      const last = totalLabel && i === rows.length - 1;
+      return new TableRow({ children: r.map((v, j) => cell(
+        para(t(v, { bold: last || j === 0 }), { alignment: j === 1 ? AlignmentType.RIGHT : AlignmentType.LEFT }),
+        MCOLS[j], last ? { fill: 'F2F2F2' } : {})) });
+    }),
+  ] });
+}
+const BIG = [2600, 4200, 7770];
+const bigRow = (a, b, c, color) => new TableRow({ children: [
+  cell(para(t(a, { bold: true, size: 22 })), BIG[0]),
+  cell(para(t(b, { bold: true, size: 24, color }), { alignment: AlignmentType.RIGHT }), BIG[1]),
+  cell(para(t(c)), BIG[2]),
+] });
+const bigTable = new Table({ width: { size: TW, type: WidthType.DXA }, columnWidths: BIG, rows: [
+  headerRow(BIG, ['구분', '금액(원, VAT 포함)', '내용']),
+  bigRow('총 사야 하는 금액', '1,670,380 ~ 1,709,380', '10항목 전체', '000000'),
+  bigRow('지원금', '1,407,200', 'OAK-1 PoE ×2 · Arduino Mega ×1 · RF 무선스위치 ×1 (동아리 2차 활동계획서)', '1F7A3A'),
+  bigRow('자부담 (지원금 제외)', '263,180 ~ 302,180', '나머지 7항목 — 우리가 내야 하는 금액', 'C00000'),
+] });
+const fundRows = [
+  ['OAK-1 PoE ×2', '1,322,000', '계획서 7번'],
+  ['Arduino Mega 2560 R3 ×1', '58,000', '계획서 3번 — 계획서는 2대, 필요 1대'],
+  ['RF 무선스위치 무선릴레이 ×1', '27,200', '계획서 11번'],
+  ['지원금 합계', '1,407,200', ''],
+];
+const selfRows = [
+  ['PoE 인젝터 REVOTECH ×2', '145,240', 'A. OAK 카메라'],
+  ['USB-C 기가비트 어댑터 ×2', '40,000 ~ 60,000', 'A. OAK 카메라'],
+  ['USB 3.0 C↔A 케이블 ×3', '15,000 ~ 30,000', 'B. D455'],
+  ['승압 컨버터 SZH-BPM001 ×2', '26,400', 'D. 비상정지'],
+  ['ipTIME UH308 허브 ×1', '27,900', 'E. USB 허브'],
+  ['XL4015 강압 + DC 플러그 ×1', '3,000 ~ 7,000', 'E. USB 허브'],
+  ['퓨즈홀더 ×4 + 퓨즈 ×4', '5,640', 'A·E'],
+  ['자부담 합계', '263,180 ~ 302,180', ''],
+];
+
 const doc = new Document({
   styles: {
     default: { document: { run: { font: FONT, size: 20 } } },
@@ -175,6 +217,15 @@ const doc = new Document({
       H2('사지 않는 계통'),
       noTable,
       P('보유: T200 6개 · 4S 배터리 5개(예비 1) · ESC 8개(필요 6) · 접촉기·릴레이·버튼 · 노트북 2대 · D455 1대 · RPLIDAR A3 정상 2대.', { size: 18, color: '595959' }),
+
+      H2('금액 정리 — 지원금과 자부담'),
+      bigTable,
+      P('지원금 품목', { bold: true }),
+      moneyTable(fundRows, ['품목', '금액(원)', '근거'], '1F7A3A', true),
+      P('자부담 품목 — 지원금에 없는 것', { bold: true }),
+      moneyTable(selfRows, ['품목', '금액(원)', '계통'], 'C00000', true),
+      P('금액은 품목가 기준이고 배송비는 빠져 있다. 계획서 기준(배송 포함, Mega 2대)으로는 지원 품목이 1,474,900원이다. 계획서 전체 총계는 2,214,500원.', { size: 18, color: '595959' }),
+      P('2번배 몫(컨버터·허브·XL4015 추가분, 접촉기·버튼·수신기·방수 박스·IMU·LED)은 1번배 실험 뒤 추가 구매라 여기 들어 있지 않다. 추가분은 다음 회차 지원금에 넣지 못하면 자부담이다.', { size: 18, color: '595959' }),
     ],
   }],
 });
