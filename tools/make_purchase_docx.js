@@ -63,7 +63,7 @@ const bullet = (s) => new Paragraph({ numbering: { reference: 'chk', level: 0 },
 
 const DM = 'https://www.devicemart.co.kr/goods/view?no=';
 const A = [
-  { name: 'OAK-1 PoE FIXED-FOCUS 69°', use: '자율운항 비전 카메라. 마스트 꼭대기에서 부표·표식 인식. 옵션: 32MP·US Cord 인젝터 선택 금지', qty: '2', price: '1,322,000', pri: 'P0', links: [['리얼리스토어', 'https://reallystore.net/goods/view?no=45']] },
+  { name: 'OAK-1 PoE FIXED-FOCUS 69°', use: '[지원금 들어옴] 자율운항 비전 카메라. 마스트 꼭대기에서 부표·표식 인식. 옵션: 32MP·US Cord 인젝터 선택 금지', qty: '2', price: '1,322,000', pri: 'P0', links: [['리얼리스토어', 'https://reallystore.net/goods/view?no=45']] },
   { name: 'PoE 인젝터 REVOTECH PSE5502G', use: '4S 배터리를 48V PoE 로 변환. 랜선 한 가닥으로 카메라 전원+데이터', qty: '2', price: '145,240', pri: 'P0', links: [['11번가', 'https://www.11st.co.kr/products/9621501833']] },
   { name: 'USB-C 기가비트 어댑터 (AX88179 칩셋)', use: '인젝터 LAN 과 노트북 연결. 노트북에 랜 포트가 없다. 1000Mbps 필수', qty: '2', price: '40,000~60,000 (개당 2~3만)', pri: 'P0', links: [['다나와 검색', 'https://search.danawa.com/dsearch.php?query=AX88179']] },
   { name: '퓨즈홀더 BF303 + 5x20 퓨즈 2A', use: '인젝터 입력 보호. 배터리 ⊕ 와 인젝터 사이', qty: '홀더 2 · 퓨즈 2', price: '2,820', pri: 'P1', links: [['홀더', DM + '14122158'], ['2A', DM + '4538']] },
