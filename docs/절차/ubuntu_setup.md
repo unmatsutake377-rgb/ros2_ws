@@ -200,6 +200,14 @@ SUBSYSTEM=="tty", ATTRS{idVendor}=="10c4", ATTRS{idProduct}=="ea60", ATTRS{seria
 SUBSYSTEM=="tty", ATTRS{idVendor}=="1546", ATTRS{idProduct}=="01a9", SYMLINK+="ttyGPS"   # B배 ZED-F9P (u-blox 9)
 SUBSYSTEM=="tty", ATTRS{idVendor}=="1546", ATTRS{idProduct}=="01a8", SYMLINK+="ttyGPS"   # A배 C94-M8P (u-blox 8) — 2026-09-16 추가. 한 노트북에 GPS 는 한 번에 하나만 꽂는다
 
+# 🚨 [10-07 실측] 싸구려 CP2102 어댑터는 시리얼이 전부 `0001` 이다 — 2번배 노트북 규칙 쓸 때 주의
+#   10-07 구매 A3 의 어댑터가 IMU 어댑터와 시리얼·제품명이 **완전히 같아** 1번배 노트북에서
+#   `/dev/IMU → 라이다` 가 됐다(launch 했으면 IMU·라이다 동시 사망). 유일 시리얼인 어댑터는
+#   `0addfc38…` **하나뿐**이다.
+#   ✅ [10-07 확정] 그 유일 어댑터는 **1번배 라이다** 몫. 2번배에는 IMU 가 **있고** 라이다·IMU 어댑터가
+#      둘 다 0001 → 2번배 노트북은 `KERNELS==` **물리 포트 고정이 유일한 길**이다.
+#      절차·템플릿: `docs/절차/2번배_udev_규칙_초안.md` · `docs/절차/udev_2번배_템플릿.rules`
+#      포트값 찾기: `tools/udev_port_of.sh`
 # Arduino Mega 2560 R3 (정품) — 시리얼번호까지 본다
 SUBSYSTEM=="tty", ATTRS{idVendor}=="2341", ATTRS{idProduct}=="0042", ATTRS{serial}=="03536383236351C07273", SYMLINK+="ttyMEGA"
 ```

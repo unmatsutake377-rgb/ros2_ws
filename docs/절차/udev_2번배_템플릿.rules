@@ -1,0 +1,32 @@
+# /etc/udev/rules.d/99-ssf.rules — 2번배 노트북용 템플릿 (2026-10-07)
+#
+# 🚨 1번배 노트북에는 쓰지 말 것. 1번배는 ubuntu_setup.md §8 의 실측값 규칙을 그대로 쓴다.
+#
+# 2번배는 라이다 어댑터(신규 A3 918A9AF2 에 딸린 것)와 IMU 어댑터가 **둘 다**
+# 시리얼 0001 · 제품명 "CP2102 USB to UART Bridge Controller" 로 완전히 같다.
+# ATTRS{serial} 로는 못 가른다 → 물리 포트(KERNELS) 로 가른다.
+#
+# 채우는 법:
+#   1. 라이다·IMU 를 "앞으로 늘 꽂을 자리" 에 꽂는다
+#   2. bash ~/ros2_ws/tools/udev_port_of.sh   ← 장치마다 KERNELS 값을 찍어준다
+#   3. 어느 ttyUSB 가 라이다인지는 python3 ~/ros2_ws/tools/lidar_id.py 로 확인 (A3 응답 = 라이다)
+#   4. 아래 ____ 를 그 값으로 바꿔 /etc/udev/rules.d/99-ssf.rules 로 복사
+#   5. sudo udevadm control --reload-rules && sudo udevadm trigger
+#   6. ls -l /dev/ttyLiDAR /dev/IMU  → 서로 다른 ttyUSB 를 가리켜야 통과
+#
+# ⚠️ 그 순간부터 "허브의 그 구멍" 이 규칙이다. 구멍을 바꾸면 이름이 바뀐다. 배선도에 적을 것.
+# ⚠️ KERNELS 는 "3-1.4.2" 꼴 (끝에 ":1.0" 붙은 인터페이스 값이 아니라 장치 값).
+
+# RPLIDAR A3 (2번배 개체: 918A9AF2…) — 포트 고정
+SUBSYSTEM=="tty", ATTRS{idVendor}=="10c4", ATTRS{idProduct}=="ea60", KERNELS=="____라이다포트____", SYMLINK+="ttyLiDAR"
+
+# iAHRS IMU — 포트 고정
+SUBSYSTEM=="tty", ATTRS{idVendor}=="10c4", ATTRS{idProduct}=="ea60", KERNELS=="____IMU포트____", SYMLINK+="IMU"
+
+# u-blox GPS — 시리얼 속성을 안 내놓는다 → VID/PID 로. 한 노트북에 GPS 는 한 번에 하나만
+SUBSYSTEM=="tty", ATTRS{idVendor}=="1546", ATTRS{idProduct}=="01a9", SYMLINK+="ttyGPS"   # ZED-F9P (u-blox 9)
+SUBSYSTEM=="tty", ATTRS{idVendor}=="1546", ATTRS{idProduct}=="01a8", SYMLINK+="ttyGPS"   # C94-M8P (u-blox 8)
+
+# Arduino Mega 2560 — 2번배용 Mega 의 시리얼을 넣는다 (udev_port_of.sh 가 /dev/ttyACM* 의 serial 도 찍는다)
+#   GPS 와 같은 ttyACM* 번호를 빼앗으므로 VID/PID 만으로 두면 안 된다
+SUBSYSTEM=="tty", ATTRS{idVendor}=="2341", ATTRS{idProduct}=="0042", ATTRS{serial}=="____2번배Mega시리얼____", SYMLINK+="ttyMEGA"
