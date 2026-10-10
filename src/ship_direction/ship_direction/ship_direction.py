@@ -32,6 +32,33 @@ LIDAR_FORWARD_DEG = 80.0     # LiDAR 프레임에서 정면 (상대방위 0 에 
 #       (그 반대가 비호환). 현행 rplidar_ros 2.1.4 는 rplidar_node.cpp:440 에서
 #       rclcpp::QoS(KeepLast(10)) = RELIABLE 로 발행한다 — 소스 확인함. 드라이버를 갈아도 안 깨진다.
 #   드롭이 생겨도 '콜백 부재 → 스테일 → 페일세이프 발동' 으로 안전한 방향으로 실패한다.
+def edge_range(distance_array, i, detection_distance):
+    """zone 가장자리 셀의 거리. inf·nan 은 '측정 없음' 이라 detection_distance 로 본다.
+
+    모듈 함수로 둔 이유: 노드 메서드 안 클로저였을 땐 테스트가 못 닿았다 (과제 S4).
+    """
+    v = distance_array[i]
+    return detection_distance if (math.isinf(v) or math.isnan(v)) else v
+
+
+def select_valid_zones(safe_zones, distance_array, angle_increment_rad,
+                       detection_distance, min_required_width):
+    """safe zone 중 배가 지나갈 수 있는 것만 고른다 → [(s, e, r_edge), ...].
+
+    폭 = 양 끝 중 가까운 거리(r_edge) × 호 길이. r_edge 를 쓰는 이유는 가장자리가
+    먼 쪽 거리로 재면 실제보다 넓게 보기 때문이다. min_required_width 는
+    half_width*2 + clearance (CLAUDE.md §6, yaml 과 같은 값).
+    """
+    valid = []
+    for s, e in safe_zones:
+        r_edge = min(edge_range(distance_array, s, detection_distance),
+                     edge_range(distance_array, e, detection_distance))
+        arc_len = angle_increment_rad * r_edge * (e - s)
+        if arc_len >= min_required_width:
+            valid.append((s, e, r_edge))
+    return valid
+
+
 SCAN_QOS = QoSProfile(
     reliability=ReliabilityPolicy.BEST_EFFORT,
     history=HistoryPolicy.KEEP_LAST,
@@ -756,20 +783,9 @@ class ShipDirection(Node):
             safe_zones.append((start, len(binary) - 1))
 
         # ---- 통과 가능한 zone 선별 ----
-        valid_safe_zones = []
         min_required_width = self.half_width * 2 + self.clearance
-
-        def _edge_range(i):
-            # inf·nan 이면 '측정 없음' 이라 detection_distance 로 본다.
-            # 같은 판정을 양 끝(s·e)에 쓰므로 한 곳에 모았다(2026-09-23).
-            v = distance_array[i]
-            return detection_distance if (math.isinf(v) or math.isnan(v)) else v
-
-        for s, e in safe_zones:
-            r_edge = min(_edge_range(s), _edge_range(e))
-            arc_len = angle_increment_rad * r_edge * (e - s)
-            if arc_len >= min_required_width:
-                valid_safe_zones.append((s, e, r_edge))
+        valid_safe_zones = select_valid_zones(
+            safe_zones, distance_array, angle_increment_rad, detection_distance, min_required_width)
 
         # ---- yaw_error 를 safe zone 안으로 clamp → 최적 후보 ----
         yaw_raw = yaw_error % 360.0

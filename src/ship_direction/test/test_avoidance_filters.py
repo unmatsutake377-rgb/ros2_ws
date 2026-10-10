@@ -48,7 +48,7 @@ _stub('std_msgs.msg', Int32=_msg, Float32=_msg, Float32MultiArray=_msg)
 _stub('sensor_msgs', msg=None)
 _stub('sensor_msgs.msg', LaserScan=_msg)
 
-from ship_direction.ship_direction import ShipDirection  # noqa: E402
+from ship_direction.ship_direction import ShipDirection, edge_range, select_valid_zones  # noqa: E402
 from ship_direction.failsafe import TemporalVote          # noqa: E402
 
 _p = _t = 0
@@ -166,6 +166,39 @@ def test_dilate_widens_survivor():
     after_dilate = count_ones(b)
     assert after_dilate > after_suppress, (
         f"dilate 가 안 넓힘: {after_suppress} → {after_dilate}")
+
+
+def test_edge_range_inf_nan_falls_back():
+    """가장자리 셀이 inf/nan 이면 detection_distance, 숫자면 그 값 (S4)."""
+    dist = [1.5, float('inf'), float('nan'), 0.0]
+    assert edge_range(dist, 0, 3.0) == 1.5
+    assert edge_range(dist, 1, 3.0) == 3.0, "inf → detection_distance 여야"
+    assert edge_range(dist, 2, 3.0) == 3.0, "nan → detection_distance 여야"
+    assert edge_range(dist, 3, 3.0) == 0.0, "0.0 은 측정값이라 그대로"
+
+
+def test_zone_selection_arc_width():
+    """폭 = r_edge(양 끝 중 가까운 쪽) × 호길이. 기준 미달 zone 은 버린다 (S4)."""
+    inc = 0.01                      # rad/cell
+    need = 0.29 * 2 + 0.25          # 0.83m, yaml 과 같은 값
+    dist = [2.0] * 200
+    dist[150] = 1.0                 # zone B 한쪽 끝만 가깝다
+    zones = [(10, 60),              # 2.0 × 0.01 × 50 = 1.00 ≥ 0.83 → 통과
+             (100, 150),            # min(2.0, 1.0) × 0.01 × 50 = 0.50 → 탈락 (가까운 끝 기준)
+             (160, 170)]            # 2.0 × 0.01 × 10 = 0.20 → 탈락
+    got = select_valid_zones(zones, dist, inc, 3.0, need)
+    assert got == [(10, 60, 2.0)], f"got {got}"
+
+
+def test_zone_selection_inf_edge_uses_detection_distance():
+    """양 끝이 inf 면 detection_distance 로 폭을 재서, 실제보다 넓게 보지 않는다 (S4)."""
+    inc = 0.01
+    dist = [float('inf')] * 100
+    dist[50] = 2.0
+    # 끝이 전부 inf: r_edge = detection_distance 1.0 → 1.0×0.01×40 = 0.40 < 0.83 탈락
+    assert select_valid_zones([(0, 40)], dist, inc, 1.0, 0.83) == []
+    # detection_distance 3.0 이면 1.20 ≥ 0.83 통과, r_edge 는 3.0
+    assert select_valid_zones([(0, 40)], dist, inc, 3.0, 0.83) == [(0, 40, 3.0)]
 
 
 def main():
