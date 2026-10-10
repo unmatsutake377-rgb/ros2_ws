@@ -190,6 +190,15 @@ def test_zone_selection_arc_width():
     assert got == [(10, 60, 2.0)], f"got {got}"
 
 
+def test_zone_selection_boundary_equal_passes():
+    """arc_len 이 min_required_width 와 정확히 같으면 통과 (>= 이지 > 가 아님) (S4 리뷰 권고)."""
+    # 0.1 × 1.0 × 5 = 0.5 — 2진 부동소수로 정확히 떨어지는 조합
+    dist = [1.0] * 10
+    assert select_valid_zones([(0, 5)], dist, 0.1, 3.0, 0.5) == [(0, 5, 1.0)]
+    # (e - s) 가 (e - s + 1) 로 바뀌면 0.6 이 돼 아래 단언이 깨진다
+    assert select_valid_zones([(0, 5)], dist, 0.1, 3.0, 0.51) == []
+
+
 def test_zone_selection_inf_edge_uses_detection_distance():
     """양 끝이 inf 면 detection_distance 로 폭을 재서, 실제보다 넓게 보지 않는다 (S4)."""
     inc = 0.01
