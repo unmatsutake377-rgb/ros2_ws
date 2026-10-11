@@ -12,7 +12,7 @@ tools: Read, Grep, Glob, Bash
 
 ## 점검 목록 (해당하는 것만, 근거는 파일:줄)
 1. **범위**: 계약서의 변경 단위를 벗어났는가. 원자 묶음을 반쪽만 고쳤는가.
-2. **토픽 계약**: 기존 토픽 이름·타입이 바뀌었는가. 새 토픽의 발행자·구독자·CLAUDE.md §3-9 표의 이름이 글자까지 같은가. 구독자 0 / 발행자 0 인 토픽이 생겼는가. 같은 모드에서 한 토픽에 발행자가 둘이 되는가.
+2. **토픽 계약**: 기존 토픽 이름·타입이 바뀌었는가. 새 토픽의 발행자·구독자·CLAUDE.md §3 토픽 표의 이름이 글자까지 같은가. 구독자 0 / 발행자 0 인 토픽이 생겼는가. 같은 모드에서 한 토픽에 발행자가 둘이 되는가.
 3. **QoS**: (a) 이미지·`/scan` 구독은 BEST_EFFORT + KEEP_LAST + depth 1. (b) `/wp_mode` 등 모드·명령 토픽은 RELIABLE. (c) **새 발행자를 BEST_EFFORT 로 만들지 않는다** — RELIABLE 구독자(`ros2 topic echo` 포함)가 아무것도 못 받는다. (d) 그 밖의 QoS 는 기존 값을 바꿨을 때만 지적한다.
 4. **침묵 사망**: 데이터가 안 올 때 조용히 아무것도 안 하거나, 0 같은 가짜 값을 내는 경로. 파라미터 선언이 사용보다 늦은 순서.
 5. **시간·로그**: `time.time()`, 로거 변수 재사용으로 심각도가 바뀌는 호출.
@@ -22,7 +22,7 @@ tools: Read, Grep, Glob, Bash
 9. **타이머 전제**: `/desired_angle` 등 제어 출력이 고정주기 타이머에서 계속 나가는가. 발행이나 페일세이프·stale 판정을 데이터 콜백 안으로만 옮기면 차단(`motor_control` 워치독 0.5s 가 "침묵 = 상류 사망"을 전제한다).
 10. **거짓 정지**: 감속·정지·중립·`/health_ok=false` 를 만드는 새 조건이 monotonic 시계 + ARMED + 연속 N회 + 히스테리시스/자동 복구를 갖췄는가. 진단 전용 신호(온도 등)를 제어나 `/health_ok` 에 물리지 않았는가.
 11. **추력 부호**: ROS 쪽은 `<1500=전진`. 반전은 `ssf_bridge` 의 `invert_thrust_direction` 한 곳뿐이다. 다른 곳에서 PWM 을 뒤집거나, `Motor_run` 을 디코드해 방향을 판정하거나, `steer_invert` 를 건드리면 차단.
-12. **모드 매핑**: `active_wp_mode(s)` 가 바뀌었으면 `ssf_tools/config/ssf_tools.yaml` 매핑표(mode 5·8 은 `none`)와 `test_mode_gate.py` 가 같이 맞춰졌는가.
+12. **모드 매핑**: `active_wp_mode(s)` 가 바뀌었으면 각 미션 노드의 `active_wp_mode` 기본값과 `color_shape_detector/config/vision.yaml` 의 `active_wp_modes`(담당 권위), `ssf_tools/config/ssf_tools.yaml` 매핑표(mode 5·8 은 `none`, healthcheck 기대값), `test_mode_gate.py` 가 같이 맞춰졌는가.
 13. **래퍼 위험**: diff 가 ROS 래퍼(노드 클래스·콜백·로그·파라미터 선언)에 닿으면 "run_tests 통과 ≠ 래퍼 검증"이라고 적고 부팅 스모크 확인을 요청한다.
 
 이 목록 밖이라도 실제 버그로 보이는 것은 적는다. 취향 문제(이름, 주석 스타일)는 적지 않는다.
