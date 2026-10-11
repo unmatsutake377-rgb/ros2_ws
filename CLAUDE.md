@@ -37,7 +37,7 @@ rclpy 는 소스 위치별로 심각도를 캐싱해 `ValueError: Logger severit
 심각도마다 호출 지점을 나눈다. (2026-08-06 실기: 페일세이프 복구 시 `ship_direction` 사망 → 배 영구 정지. 상세 §5)
 
 **1-8. 대회 전 하지 말 것.**
-- 특수 신호 상수 공유 모듈화 — 패키지 8개 `package.xml`/`setup.py` 를 건드려 빌드 전체가 위험. 상수표(§3 특수 신호) + `review_node.py`(⚠️ 미확인: 저장소에 없음 — 위치 확인 필요) 검사로 충분. 대회 후 정리.
+- 특수 신호 상수 공유 모듈화 — 패키지 8개 `package.xml`/`setup.py` 를 건드려 빌드 전체가 위험. 상수표(§3 특수 신호) + `ssf-reviewer` 6번 점검(특수 상수 불일치)으로 충분. 대회 후 정리.
 - 외부 패키지 도입(예: `obstacle_detector`) — 빌드 위험.
 - 🚨 RealSense 경로 삭제: `src/realsense-ros-ros2-master/` 에 `COLCON_IGNORE` 넣지 말고 삭제도 금지, `basic_image_*.py` 삭제 금지(현역 유일 비전 경로). OAK 드라이버(`depthai-ros`)는 교체가 아니라 **추가**.
 - 시뮬·측정 완료된 체인(`motor_control` 인터페이스·base/reverse/SPIN 부호 등)을 뜯는 것.
