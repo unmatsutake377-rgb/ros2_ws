@@ -64,7 +64,7 @@ const bullet = (s) => new Paragraph({ numbering: { reference: 'chk', level: 0 },
 const DM = 'https://www.devicemart.co.kr/goods/view?no=';
 const A = [
   { name: 'OAK-1 PoE FIXED-FOCUS 69°', use: '[지원금 들어옴] 자율운항 비전 카메라. 마스트 꼭대기에서 부표·표식 인식. 주문 후 수입 상품(통관부호 필요) — 납기 먼저 문의', qty: '2', price: '1,322,000', pri: 'P0', links: [['리얼리스토어', 'https://reallystore.net/goods/view?no=45']] },
-  { name: 'PoE 인젝터 REVOTECH PSE5502G', use: '4S 배터리를 48V PoE 로 변환. 랜선 한 가닥으로 카메라 전원+데이터', qty: '2', price: '145,240', pri: 'P0', links: [['11번가', 'https://www.11st.co.kr/products/9621501833']] },
+  { name: 'PoE 인젝터 30W DC 12-48V→48V DIN (옥션, PSE5502G 동급)', use: '4S 배터리를 48V PoE 로 변환. 랜선 한 가닥으로 카메라 전원+데이터. 11번가 PSE5502G 판매중지 → 10-14 옥션으로 확정. 발주 후 3~4일 내 발송 안 되면 하이링크 DIVA-IPoEI(190,000)로 전환', qty: '2', price: '145,420', pri: 'P0', links: [['옥션 F640411167', 'https://itempage3.auction.co.kr/DetailView.aspx?itemno=F640411167'], ['대안 하이링크', 'https://search.danawa.com/dsearch.php?query=DIVA-IPoEI']] },
   { name: 'USB-C 기가비트 어댑터 (AX88179 칩셋)', use: '인젝터 LAN 과 노트북 연결. 노트북에 랜 포트가 없다. 1000Mbps 필수', qty: '2', price: '40,000~60,000 (개당 2~3만)', pri: 'P0', links: [['다나와 검색', 'https://search.danawa.com/dsearch.php?query=AX88179']] },
   { name: '퓨즈홀더 BF303 + 5x20 퓨즈 2A', use: '인젝터 입력 보호. 배터리 ⊕ 와 인젝터 사이', qty: '홀더 2 · 퓨즈 2', price: '2,820', pri: 'P1', links: [['홀더', DM + '14122158'], ['2A', DM + '4538']] },
 ];
@@ -102,13 +102,13 @@ const oakOptTable = new Table({ width: { size: TW, type: WidthType.DXA }, column
 
 const SUMCOLS = [5000, 2000, 3500, 4070];
 const sumRows = [
-  ['A. OAK 카메라', '4', '1,510,060 ~ 1,530,060', 'P0 카메라·인젝터·어댑터, P1 퓨즈'],
+  ['A. OAK 카메라', '4', '1,510,240 ~ 1,530,240', 'P0 카메라·인젝터·어댑터, P1 퓨즈'],
   ['B. D455 조종 카메라', '1', '15,000 ~ 30,000', 'P0'],
   ['C. 라이다', '0', '0', 'A3 1대 10-07 구매 완료(17만원) — 예비 0'],
   ['D. 비상정지', '2', '53,600', 'P0 — 컨버터 + 2번배 무선스위치(지원금)'],
   ['E. USB 허브', '3', '33,720 ~ 37,720', 'P1'],
   ['G. 제어 (Mega)', '1', '58,000', 'P0 — 2번배용. 지원금 들어옴'],
-  ['합계', '10', '1,670,380 ~ 1,709,380', 'OAK 2대가 77~79%'],
+  ['합계', '10', '1,670,560 ~ 1,709,560', 'OAK 2대가 77~79%'],
 ];
 const sumTable = new Table({ width: { size: TW, type: WidthType.DXA }, columnWidths: SUMCOLS, rows: [
   headerRow(SUMCOLS, ['계통', '품목 수', '금액(원)', '비고']),
@@ -152,9 +152,9 @@ const bigRow = (a, b, c, color) => new TableRow({ children: [
 ] });
 const bigTable = new Table({ width: { size: TW, type: WidthType.DXA }, columnWidths: BIG, rows: [
   headerRow(BIG, ['구분', '금액(원, VAT 포함)', '내용']),
-  bigRow('총 사야 하는 금액', '1,670,380 ~ 1,709,380', '10항목 전체', '000000'),
+  bigRow('총 사야 하는 금액', '1,670,560 ~ 1,709,560', '10항목 전체', '000000'),
   bigRow('지원금', '1,407,200', 'OAK-1 PoE ×2 · Arduino Mega ×1 · RF 무선스위치 ×1 (동아리 2차 활동계획서)', '1F7A3A'),
-  bigRow('자부담 (지원금 제외)', '263,180 ~ 302,180', '나머지 7항목 — 우리가 내야 하는 금액', 'C00000'),
+  bigRow('자부담 (지원금 제외)', '263,360 ~ 302,360', '나머지 7항목 — 우리가 내야 하는 금액', 'C00000'),
 ] });
 const fundRows = [
   ['OAK-1 PoE ×2', '1,322,000', '계획서 7번'],
@@ -163,14 +163,14 @@ const fundRows = [
   ['지원금 합계', '1,407,200', ''],
 ];
 const selfRows = [
-  ['PoE 인젝터 REVOTECH ×2', '145,240', 'A. OAK 카메라'],
+  ['PoE 인젝터 30W 12-48V (옥션) ×2', '145,420', 'A. OAK 카메라'],
   ['USB-C 기가비트 어댑터 ×2', '40,000 ~ 60,000', 'A. OAK 카메라'],
   ['USB 3.0 C↔A 케이블 ×3', '15,000 ~ 30,000', 'B. D455'],
   ['승압 컨버터 SZH-BPM001 ×2', '26,400', 'D. 비상정지'],
   ['ipTIME UH308 허브 ×1', '27,900', 'E. USB 허브'],
   ['XL4015 강압 + DC 플러그 ×1', '3,000 ~ 7,000', 'E. USB 허브'],
   ['퓨즈홀더 ×4 + 퓨즈 ×4', '5,640', 'A·E'],
-  ['자부담 합계', '263,180 ~ 302,180', ''],
+  ['자부담 합계', '263,360 ~ 302,360', ''],
 ];
 
 const doc = new Document({
@@ -196,7 +196,7 @@ const doc = new Document({
 
       H2('A. OAK 카메라 계통 — 자율운항 비전'),
       flow('배터리 ⊕ ─ 2A 퓨즈 ─▶ PoE 인젝터 ─ 동봉 2m Cat5e ─▶ OAK-1 PoE        인젝터 LAN ─▶ AX88179 어댑터 ─▶ 노트북'),
-      itemTable(A, '1,510,060 ~ 1,530,060'),
+      itemTable(A, '1,510,240 ~ 1,530,240'),
       P('OAK-1 PoE 주문 옵션 (리얼리스토어 페이지 10-14 확인)', { bold: true }),
       oakOptTable,
       P('랜선(Cat5e 2m)은 OAK 동봉이라 사지 않는다. 인젝터 전원은 접촉기 「앞」에서 딴다 — 비상정지는 추진만 끊는다.', { size: 18 }),
