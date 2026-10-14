@@ -63,7 +63,7 @@ const bullet = (s) => new Paragraph({ numbering: { reference: 'chk', level: 0 },
 
 const DM = 'https://www.devicemart.co.kr/goods/view?no=';
 const A = [
-  { name: 'OAK-1 PoE FIXED-FOCUS 69°', use: '[지원금 들어옴] 자율운항 비전 카메라. 마스트 꼭대기에서 부표·표식 인식. 옵션: 32MP·US Cord 인젝터 선택 금지', qty: '2', price: '1,322,000', pri: 'P0', links: [['리얼리스토어', 'https://reallystore.net/goods/view?no=45']] },
+  { name: 'OAK-1 PoE FIXED-FOCUS 69°', use: '[지원금 들어옴] 자율운항 비전 카메라. 마스트 꼭대기에서 부표·표식 인식. 주문 후 수입 상품(통관부호 필요) — 납기 먼저 문의', qty: '2', price: '1,322,000', pri: 'P0', links: [['리얼리스토어', 'https://reallystore.net/goods/view?no=45']] },
   { name: 'PoE 인젝터 REVOTECH PSE5502G', use: '4S 배터리를 48V PoE 로 변환. 랜선 한 가닥으로 카메라 전원+데이터', qty: '2', price: '145,240', pri: 'P0', links: [['11번가', 'https://www.11st.co.kr/products/9621501833']] },
   { name: 'USB-C 기가비트 어댑터 (AX88179 칩셋)', use: '인젝터 LAN 과 노트북 연결. 노트북에 랜 포트가 없다. 1000Mbps 필수', qty: '2', price: '40,000~60,000 (개당 2~3만)', pri: 'P0', links: [['다나와 검색', 'https://search.danawa.com/dsearch.php?query=AX88179']] },
   { name: '퓨즈홀더 BF303 + 5x20 퓨즈 2A', use: '인젝터 입력 보호. 배터리 ⊕ 와 인젝터 사이', qty: '홀더 2 · 퓨즈 2', price: '2,820', pri: 'P1', links: [['홀더', DM + '14122158'], ['2A', DM + '4538']] },
@@ -84,6 +84,21 @@ const E = [
 const G = [
   { name: 'Arduino Mega 2560 R3 정품 (A000067)', use: '[지원금 들어옴] 2번배 메인 제어기. RC 수신·ESC 신호·LED·비상정지 감지. 보유 1대는 1번배용', qty: '1', price: '58,000', pri: 'P0', links: [['다나와 검색', 'https://search.danawa.com/dsearch.php?query=A000067']] },
 ];
+
+const OPTCOLS = [2600, 4200, 1400, 6370];
+const oakOptRows = [
+  ['Focus 선택', 'AUTO-FOCUS (A00124)', '✗', '렌즈가 전자석으로 움직인다. 배 진동·파도에 초점이 흔들린다. 제조사도 진동 환경엔 고정초점 권장'],
+  ['Focus 선택', 'FIXED-FOCUS (OAK-1-PoE-FF)', '✓ 고른다', 'HFOV 69°(AF 66° 보다 넓음), 50cm~∞ 고정. 부표는 전부 50cm 밖. 코드 hfov_deg 가 이 값 기준'],
+  ['Focus 선택', '32MP (OAK-1-MAX-PoE) +87,000', '✗', 'HFOV 45° 로 좁아진다. 해상도는 남아돌고 시야만 손해. 2대면 174,000 추가'],
+  ['PoE Injector 선택', 'US Cord ; U-POE +42,000', '✗ 빈칸', '110V 벽 콘센트용. 배엔 콘센트 없다. 4S 배터리용 REVOTECH 를 11번가에서 산다'],
+];
+const oakOptTable = new Table({ width: { size: TW, type: WidthType.DXA }, columnWidths: OPTCOLS, rows: [
+  headerRow(OPTCOLS, ['옵션', '선택지', '결론', '이유']),
+  ...oakOptRows.map(r => new TableRow({ children: r.map((v, j) => cell(
+    para(t(v, { bold: j === 2, color: j === 2 ? (r[2].startsWith('✓') ? '1F7A3A' : 'C00000') : '000000' }),
+         { alignment: j === 2 ? AlignmentType.CENTER : AlignmentType.LEFT }),
+    OPTCOLS[j], r[2].startsWith('✓') ? { fill: 'E8F3EA' } : {})) })),
+] });
 
 const SUMCOLS = [5000, 2000, 3500, 4070];
 const sumRows = [
@@ -182,6 +197,8 @@ const doc = new Document({
       H2('A. OAK 카메라 계통 — 자율운항 비전'),
       flow('배터리 ⊕ ─ 2A 퓨즈 ─▶ PoE 인젝터 ─ 동봉 2m Cat5e ─▶ OAK-1 PoE        인젝터 LAN ─▶ AX88179 어댑터 ─▶ 노트북'),
       itemTable(A, '1,510,060 ~ 1,530,060'),
+      P('OAK-1 PoE 주문 옵션 (리얼리스토어 페이지 10-14 확인)', { bold: true }),
+      oakOptTable,
       P('랜선(Cat5e 2m)은 OAK 동봉이라 사지 않는다. 인젝터 전원은 접촉기 「앞」에서 딴다 — 비상정지는 추진만 끊는다.', { size: 18 }),
 
       H2('B. D455 조종 카메라 계통 — 수동 경기 화면'),
@@ -208,7 +225,7 @@ const doc = new Document({
       P('보유 1대는 1번배용이다. 2번배 회로 세팅(10.1~10.15)에 1대가 더 필요하다. 동아리 계획서엔 2대로 올라가 있다.', { size: 18 }),
 
       H2('주문 전에 확인할 것'),
-      bullet('리얼리스토어에 OAK 재고와 발송일을 문의한다. 132만원짜리의 납기를 아직 모른다.'),
+      bullet('리얼리스토어 031-8091-0707 (평일 09~18) 에 납기 문의. 페이지에 "해외에서 수입하여 판매" + 통관부호 수집 — 국내 재고가 아니라 주문 후 수입이다. 답이 2주 이상이어도 바로 발주한다.'),
       bullet('어댑터는 상세 페이지에서 칩셋이 AX88179 인지 직접 확인한다. 이름이 비슷한 TP-Link UE300C 는 RTL8153 이라 다르다.'),
       bullet('디바이스마트 물건(컨버터·허브·퓨즈)은 한 번에 담는다. 약 47,000원이라 66,000원 무료배송선 미달, 배송비 2,700원.'),
       bullet('2번배 몫은 1번배로 실험한 뒤 추가 구매한다: 컨버터·허브·XL4015(지금 1척분), 접촉기·비상정지 버튼·수신기·방수 박스·IMU·LED(보유 대수 미확인).'),
