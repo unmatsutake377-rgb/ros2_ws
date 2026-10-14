@@ -90,7 +90,7 @@ const oakOptRows = [
   ['Focus 선택', 'AUTO-FOCUS (A00124)', '✗', '렌즈가 전자석으로 움직인다. 배 진동·파도에 초점이 흔들린다. 제조사도 진동 환경엔 고정초점 권장'],
   ['Focus 선택', 'FIXED-FOCUS (OAK-1-PoE-FF)', '✓ 고른다', 'HFOV 69°(AF 66° 보다 넓음), 50cm~∞ 고정. 부표는 전부 50cm 밖. 코드 hfov_deg 가 이 값 기준'],
   ['Focus 선택', '32MP (OAK-1-MAX-PoE) +87,000', '✗', 'HFOV 45° 로 좁아진다. 해상도는 남아돌고 시야만 손해. 2대면 174,000 추가'],
-  ['PoE Injector 선택', 'US Cord ; U-POE +42,000', '✗ 빈칸', '110V 벽 콘센트용. 배엔 콘센트 없다. 4S 배터리용 REVOTECH 를 11번가에서 산다'],
+  ['PoE Injector 선택', 'US Cord ; U-POE +42,000', '✗ 빈칸', '110V 벽 콘센트용. 배엔 콘센트 없다. 4S 배터리용 12-48V 인젝터를 옥션에서 따로 산다(위 표)'],
 ];
 const oakOptTable = new Table({ width: { size: TW, type: WidthType.DXA }, columnWidths: OPTCOLS, rows: [
   headerRow(OPTCOLS, ['옵션', '선택지', '결론', '이유']),
