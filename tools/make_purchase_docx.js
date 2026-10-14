@@ -66,7 +66,7 @@ const A = [
   { name: 'OAK-1 PoE FIXED-FOCUS 69°', use: '[지원금 들어옴] 자율운항 비전 카메라. 마스트 꼭대기에서 부표·표식 인식. 주문 후 수입 상품(통관부호 필요) — 납기 먼저 문의', qty: '2', price: '1,322,000', pri: 'P0', links: [['리얼리스토어', 'https://reallystore.net/goods/view?no=45']] },
   { name: 'PoE 인젝터 30W DC 12-48V→48V DIN (옥션, PSE5502G 동급)', use: '4S 배터리를 48V PoE 로 변환. 랜선 한 가닥으로 카메라 전원+데이터. 11번가 PSE5502G 판매중지 → 10-14 옥션으로 확정. 발주 후 3~4일 내 발송 안 되면 하이링크 DIVA-IPoEI(190,000)로 전환', qty: '2', price: '145,420', pri: 'P0', links: [['옥션 F640411167', 'https://itempage3.auction.co.kr/DetailView.aspx?itemno=F640411167'], ['대안 하이링크', 'https://search.danawa.com/dsearch.php?query=DIVA-IPoEI']] },
   { name: 'USB-C 기가비트 어댑터 강원전자 NETmate NM-UCL02', use: '인젝터 LAN 과 노트북 연결. 노트북에 랜 포트가 없다. 칩셋 ASIX AX88179 정확히 일치 — 우분투 기본 드라이버, 설치 0. 10-14 선정', qty: '2', price: '36,980 (개당 18,490, 배송 3,000 별도)', pri: 'P0', links: [['다나와 NM-UCL02', 'https://prod.danawa.com/info/?pcode=15885359']] },
-  { name: '퓨즈홀더 BF303 + 5x20 퓨즈 2A', use: '인젝터 입력 보호. 배터리 ⊕ 와 인젝터 사이', qty: '홀더 2 · 퓨즈 2', price: '2,820', pri: 'P1', links: [['홀더', DM + '14122158'], ['2A', DM + '4538']] },
+  { name: '퓨즈홀더 BF303 + 5x20 퓨즈 2A', use: '인젝터 입력 보호. 배터리 ⊕ 와 인젝터 사이. 퓨즈는 1회용이라 예비 포함 10개(10-14)', qty: '홀더 2 · 퓨즈 10', price: '3,700', pri: 'P1', links: [['홀더', DM + '14122158'], ['2A', DM + '4538']] },
 ];
 const B = [
   { name: 'USB 3.0 C↔A 케이블 1m 이하', use: '수동 경기 조종 화면. USB 2.0 케이블이면 0fps. SS 로고·파란 단자 확인, 충전 전용 금지', qty: '2 + 예비 1', price: '15,000~30,000 (개당 5천~1만)', pri: 'P0', links: [['IN-U3TOC 1m', 'https://prod.danawa.com/info/?pcode=16803692'], ['벨킨 F2CU029bt', 'https://prod.danawa.com/info/?pcode=3404024']] },
@@ -78,7 +78,7 @@ const D = [
 const E = [
   { name: 'ipTIME UH308 전원형 USB 3.0 허브', use: '라이다·IMU·GPS USB 확장. 아두이노는 여기 꽂지 않고 노트북 직결', qty: '1', price: '27,900', pri: 'P1', links: [['다나와', 'https://prod.danawa.com/info/?pcode=2223672'], ['디바이스마트', DM + '1214178']] },
   { name: 'XL4015 강압 5V 5A + DC 플러그 5.5×2.1', use: '배터리에서 허브용 5V 생성. LM2596(3A)은 부족. 허브 연결 전 5.0~5.1V 로 조정', qty: '1', price: '3,000~7,000', pri: 'P1', links: [['메카솔루션', 'https://www.mechasolution.com/goods/goods_view.php?goodsNo=604291']] },
-  { name: '퓨즈홀더 BF303 + 5x20 퓨즈 3A', use: '허브 급전(XL4015 입력) 보호 + 예비 1', qty: '홀더 2 · 퓨즈 2', price: '2,820', pri: 'P1', links: [['홀더', DM + '14122158'], ['3A', DM + '4537']] },
+  { name: '퓨즈홀더 BF303 + 5x20 퓨즈 3A', use: '허브 급전(XL4015 입력) 보호. 퓨즈는 1회용이라 예비 포함 10개(10-14)', qty: '홀더 2 · 퓨즈 10', price: '3,700', pri: 'P1', links: [['홀더', DM + '14122158'], ['3A', DM + '4537']] },
 ];
 
 const G = [
@@ -123,14 +123,14 @@ const F = [
 
 const SUMCOLS = [5000, 2000, 3500, 4070];
 const sumRows = [
-  ['A. OAK 카메라', '4', '1,507,220', 'P0 카메라·인젝터·어댑터, P1 퓨즈'],
+  ['A. OAK 카메라', '4', '1,508,100', 'P0 카메라·인젝터·어댑터, P1 퓨즈'],
   ['B. D455 조종 카메라', '1', '15,000 ~ 30,000', 'P0'],
   ['C. 라이다', '0', '0', 'A3 1대 10-07 구매 완료(17만원) — 예비 0'],
   ['D. 비상정지', '2', '53,600', 'P0 — 컨버터 + 2번배 무선스위치(지원금)'],
-  ['E. USB 허브', '3', '33,720 ~ 37,720', 'P1'],
+  ['E. USB 허브', '3', '34,600 ~ 38,600', 'P1'],
   ['F. 주 전력 (EC5)', '1', '9,000', 'P0 — 분기용 피그테일 ×3'],
   ['G. 제어 (Mega)', '1', '58,000', 'P0 — 2번배용. 지원금 들어옴'],
-  ['합계', '11', '1,676,540 ~ 1,695,540', 'OAK 2대가 78~79%'],
+  ['합계', '11', '1,678,300 ~ 1,697,300', 'OAK 2대가 78~79%'],
 ];
 const sumTable = new Table({ width: { size: TW, type: WidthType.DXA }, columnWidths: SUMCOLS, rows: [
   headerRow(SUMCOLS, ['계통', '품목 수', '금액(원)', '비고']),
@@ -174,9 +174,9 @@ const bigRow = (a, b, c, color) => new TableRow({ children: [
 ] });
 const bigTable = new Table({ width: { size: TW, type: WidthType.DXA }, columnWidths: BIG, rows: [
   headerRow(BIG, ['구분', '금액(원, VAT 포함)', '내용']),
-  bigRow('총 사야 하는 금액', '1,676,540 ~ 1,695,540', '11항목 전체', '000000'),
+  bigRow('총 사야 하는 금액', '1,678,300 ~ 1,697,300', '11항목 전체', '000000'),
   bigRow('지원금', '1,407,200', 'OAK-1 PoE ×2 · Arduino Mega ×1 · RF 무선스위치 ×1 (동아리 2차 활동계획서)', '1F7A3A'),
-  bigRow('자부담 (지원금 제외)', '269,340 ~ 288,340', '나머지 8항목 — 우리가 내야 하는 금액', 'C00000'),
+  bigRow('자부담 (지원금 제외)', '271,100 ~ 290,100', '나머지 8항목 — 우리가 내야 하는 금액', 'C00000'),
 ] });
 const fundRows = [
   ['OAK-1 PoE ×2', '1,322,000', '계획서 7번'],
@@ -191,9 +191,9 @@ const selfRows = [
   ['승압 컨버터 SZH-BPM001 ×2', '26,400', 'D. 비상정지'],
   ['ipTIME UH308 허브 ×1', '27,900', 'E. USB 허브'],
   ['XL4015 강압 + DC 플러그 ×1', '3,000 ~ 7,000', 'E. USB 허브'],
-  ['퓨즈홀더 ×4 + 퓨즈 ×4', '5,640', 'A·E'],
+  ['퓨즈홀더 ×4 + 퓨즈 2A×10·3A×10', '7,400', 'A·E'],
   ['EC5 피그테일 ×3', '9,000', 'F. 주 전력'],
-  ['자부담 합계', '269,340 ~ 288,340', ''],
+  ['자부담 합계', '271,100 ~ 290,100', ''],
 ];
 
 const doc = new Document({
@@ -219,7 +219,7 @@ const doc = new Document({
 
       H2('A. OAK 카메라 계통 — 자율운항 비전'),
       flow('배터리 ⊕ ─ 2A 퓨즈 ─▶ PoE 인젝터 ─ 동봉 2m Cat5e ─▶ OAK-1 PoE        인젝터 LAN ─▶ AX88179 어댑터 ─▶ 노트북'),
-      itemTable(A, '1,507,220'),
+      itemTable(A, '1,508,100'),
       P('OAK-1 PoE 주문 옵션 (리얼리스토어 페이지 10-14 확인)', { bold: true }),
       oakOptTable,
       P('USB-C 기가비트 어댑터 후보 비교 — NM-UCL02 선정 (10-14)', { bold: true }),
@@ -241,7 +241,7 @@ const doc = new Document({
 
       H2('E. USB 허브 계통'),
       flow('배터리 ⊕ ─ 3A 퓨즈 ─▶ XL4015 (5V 5A) ─ DC 플러그 5.5×2.1 ─▶ UH308 ─▶ 라이다·IMU·GPS'),
-      itemTable(E, '33,720 ~ 37,720'),
+      itemTable(E, '34,600 ~ 38,600'),
       P('아두이노는 허브에 꽂지 않는다. 허브를 거치면 수신기 전압이 4.09V 까지 떨어진다(최소 4.0V).', { size: 18 }),
 
       H2('F. 주 전력 계통 — EC5 분기 피그테일'),
@@ -259,7 +259,7 @@ const doc = new Document({
       bullet('어댑터는 NM-UCL02 로 확정(칩셋 AX88179). 다른 걸 살 땐 상세 페이지 칩셋을 직접 확인 — UE300C 는 RTL8153, NM-UCL01 은 AX88179A.'),
       bullet('디바이스마트 물건(컨버터·허브·퓨즈)은 한 번에 담는다. 약 47,000원이라 66,000원 무료배송선 미달, 배송비 2,700원.'),
       bullet('2번배 몫은 1번배로 실험한 뒤 추가 구매한다: 컨버터·허브·XL4015(지금 1척분), 접촉기·비상정지 버튼·수신기·방수 박스·IMU·LED(보유 대수 미확인).'),
-      bullet('BF303 홀더가 도착하면 5x20 퓨즈를 끼워 본다. 안 맞으면 F-520 클립(110원)을 전선에 납땜한다.'),
+      bullet('BF303 홀더가 도착하면 5x20 퓨즈를 끼워 본다. 안 맞으면 F-520 클립(110원)을 전선에 납땜한다. 예비 퓨즈는 배에 항상 2A·3A 몇 개씩 싣는다.'),
 
       H2('사지 않는 계통'),
       noTable,
