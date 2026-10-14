@@ -100,6 +100,23 @@ const oakOptTable = new Table({ width: { size: TW, type: WidthType.DXA }, column
     OPTCOLS[j], r[2].startsWith('✓') ? { fill: 'E8F3EA' } : {})) })),
 ] });
 
+const ADCOLS = [3400, 1600, 2000, 7570];
+const adRows = [
+  ['강원전자 NETmate NM-UCL02', 'AX88179', '18,490', '✓ 고른다 — 칩셋 글자까지 일치, 우분투 기본 드라이버. 국내 브랜드, Linux 명시, 판매처 다수, 리뷰 12'],
+  ['강원전자 NETmate NM-UCL01', 'AX88179A', '12,900', '✗ 더 싸지만 칩셋이 A 버전. 같은 드라이버라도 변수를 안 만든다'],
+  ['UGREEN CM483', 'AX88179A', '26,900', '✗ A 버전 + 판매처 1곳'],
+  ['UGREEN US236', 'AX88179', '26,900', '✗ 칩셋은 맞지만 판매처 1곳, 8,000원 비쌈'],
+  ['벤션 C타입 울트라', 'AX88179', '29,900', '✗ 판매처 2곳, 11,000원 비쌈'],
+  ['TP-Link UE300C (참고)', 'RTL8153', '—', '✗ 이름이 비슷해 헷갈리기 쉬움. 칩셋이 다르다'],
+];
+const adTable = new Table({ width: { size: TW, type: WidthType.DXA }, columnWidths: ADCOLS, rows: [
+  headerRow(ADCOLS, ['후보 (다나와 10-14)', '칩셋', '가격(원)', '결론']),
+  ...adRows.map(r => new TableRow({ children: r.map((v, j) => cell(
+    para(t(v, { bold: j === 0 || (j === 3 && v.startsWith('✓')), color: j === 3 ? (v.startsWith('✓') ? '1F7A3A' : 'C00000') : '000000' }),
+         { alignment: j === 2 ? AlignmentType.RIGHT : AlignmentType.LEFT }),
+    ADCOLS[j], r[3].startsWith('✓') ? { fill: 'E8F3EA' } : {})) })),
+] });
+
 const SUMCOLS = [5000, 2000, 3500, 4070];
 const sumRows = [
   ['A. OAK 카메라', '4', '1,507,220', 'P0 카메라·인젝터·어댑터, P1 퓨즈'],
@@ -199,6 +216,8 @@ const doc = new Document({
       itemTable(A, '1,507,220'),
       P('OAK-1 PoE 주문 옵션 (리얼리스토어 페이지 10-14 확인)', { bold: true }),
       oakOptTable,
+      P('USB-C 기가비트 어댑터 후보 비교 — NM-UCL02 선정 (10-14)', { bold: true }),
+      adTable,
       P('랜선(Cat5e 2m)은 OAK 동봉이라 사지 않는다. 인젝터 전원은 접촉기 「앞」에서 딴다 — 비상정지는 추진만 끊는다.', { size: 18 }),
 
       H2('B. D455 조종 카메라 계통 — 수동 경기 화면'),
