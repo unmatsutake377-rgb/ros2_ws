@@ -17,8 +17,10 @@ K    = lambda L_m,d_m: RHO*CD*d_m*L_m**4/32.
 rate = lambda N,k: math.degrees(math.sqrt(N/k))
 Nm   = lambda ys,yb=0.: (ys+yb)/1e3*(T_F+T_R)                   # y in mm -> Nm
 
-L1,B1=1660.,580.; d1=m/(RHO*(L1/1e3)*(B1/1e3)*CB)*1e3; k1=K(L1/1e3,d1/1e3); y1=B1/2-DB/2-20
-L2,B2=1700.,430.; d2=m/(RHO*(L2/1e3)*(B2/1e3)*CB)*1e3; k2=K(L2/1e3,d2/1e3); y2=B2/2-DB/2-20
+# 1번배: 2026-09-28 줄자 실측 (스러스터·러더 포함 폭 570)
+L1,B1=1660.,570.; d1=m/(RHO*(L1/1e3)*(B1/1e3)*CB)*1e3; k1=K(L1/1e3,d1/1e3); y1=B1/2-DB/2-20
+# 2번배: 2026-10-24 줄자 실측 (설계 1700×430 아님). 선체 깊이 140
+L2,B2=1770.,535.; d2=m/(RHO*(L2/1e3)*(B2/1e3)*CB)*1e3; k2=K(L2/1e3,d2/1e3); y2=B2/2-DB/2-20
 Y_MIN = DB/2+5                                                   # 좌우 본체 안 닿는 최소 y
 X_S   = 150.
 
@@ -71,7 +73,7 @@ for i,(t,xb,yb,ys,c) in enumerate(opts):
     ok = abs(ys-yb)>=need
     ax.text(L2+20,0,f"{N:.1f}Nm → {rate(N,k2):.0f}°/s\n후류 필요 {need:.0f} / 실제 {abs(ys-yb):.0f}mm"
             f"\n{'후류 회피' if ok else '후류 간섭'}",fontsize=9.5,color=c,va="center")
-fig.text(.5,.004,f"2번배 흘수 {d2:.0f}mm, 건현 {185-d2:.0f}mm 로 낮음. 선체폭 430 → y 한계 {y2:.0f}mm, 좌우 본체 안 닿는 최소 y {Y_MIN:.0f}mm."
+fig.text(.5,.004,f"2번배(실측 1770×535, 깊이 140) 흘수 {d2:.0f}mm, 건현 {140-d2:.0f}mm — 낮다. 선체폭 535 → y 한계 {y2:.0f}mm, 좌우 본체 안 닿는 최소 y {Y_MIN:.0f}mm."
          "   CFD 아님: 강체 조종모델 + 횡류항력. 속도 예측은 이 모델 밖.",ha="center",fontsize=9.5,color="#555")
 out=os.path.join(os.path.dirname(os.path.abspath(__file__)),"..","docs","전달용","배치도","thruster_layout.png")
 os.makedirs(os.path.dirname(out),exist_ok=True)
