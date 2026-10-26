@@ -95,6 +95,7 @@ pre{background:#f7f6f1;border:1px solid var(--bd);border-radius:8px;padding:12px
 <p><span class="step">1</span><b>벤치 (물 밖, 30분)</b> — 물 넣기 전에</p>
 <pre>· boat_boot.sh 먼저: sudo ~/ros2_ws/tools/boat_boot.sh  (거버너 performance, USB autosuspend off)
     ★ 08-07 발견: 이거 안 하면 기본이 powersave + USB autosuspend 켜짐 → 시리얼 끊김 위험
+· 벤치 전 세팅: 허브·OAK 결선은 <b>OAK_허브_세팅_설명서.md</b> 순서대로(퓨즈홀더 라벨·5V 확인·극성). 수조 날 처음 꽂지 말 것
 · 헬스체크: 라이다·IMU·GPS·카메라 다 살아있나 (ros2 launch ... healthcheck / ros2 topic echo /health_ok)
 · 포트 확인: /dev/ttyLiDAR · /dev/IMU · /dev/ttyGPS · /dev/ttyMCU(아두이노 — 아직 미연결이면 생략)
 · IMU 정북(C5): 뱃머리 정북 → /imu/yaw 0 근처. (부호 invert_yaw:false 는 08-07 확정 — mount_offset 만 배 고정 후)
