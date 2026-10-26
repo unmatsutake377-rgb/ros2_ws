@@ -52,13 +52,20 @@ LIMIT_H        = 220.0   # 팀 요구 상한 (갑판 위 최고점)
 BASE_W_MIN, BASE_L_MIN, BASE_T_MIN = 160.0, 120.0, 20.0   # [v4] BASE_L 은 포켓에 맞춰 자동
 BASE_HOLE_PITCH = (130.0, 90.0)   # x=현 방향, y=90 = 가로대 2개 중심 간격 → 실측 후 수정
 BASE_HOLE_D     = 5.5             # M5
+# [v5.4 2026-10-26] 🚨 볼트는 **아래에서 위로** 박는다. 앞쪽 두 구멍이 D455 크레들 바닥턱 밑(틈 23mm)이라
+#   위에서 드라이버가 안 들어간다. 베이스 **바닥면**에 M5 너트 육각 포켓을 파서 너트를 밑에서 끼우고,
+#   갑판 아래에서 볼트를 올려 체결한다. 갑판 FRP 1mm(10-26 팀장) → 볼트 M5×12 + 갑판 밑 받침판(≥3mm, 하중 분산 필수).
+BASE_NUT_AF     = 8.3             # M5 너트 대변 8.0 + 0.3
+BASE_NUT_DEPTH  = 5.0             # 너트 두께 4 + 1
+BASE_USB_SLOT   = True            # [v5.4] D455 USB-C 바로 밑 베이스 판 관통 구멍 — 일자 플러그 꺾임 공간(27→47mm). ㄱ자 케이블이면 False 가능
+BASE_USB_SLOT_WH = (30.0, 22.0)   # x 폭 · y 깊이
 CABLE_HOLE_D    = 22.0
 COLLAR_H        = 14.0   # [v3] 20→14: D455 USB 슬롯을 낮추려고 (USB 플러그 끝 ≈33)
 COLLAR_MARGIN   = 2.0
 GUSSET          = 30.0
 
 # IMU (iAHRS RB-SDA-v1) — 매뉴얼 도면 확정값
-IMU_L, IMU_W, IMU_H = 35.0, 35.0, 10.0   # 케이스 (L=선체 좌우 X, W=전후 Y, H=높이)
+IMU_L, IMU_W, IMU_H = 34.0, 34.0, 9.0    # 케이스 (L=선체 좌우 X, W=전후 Y, H=높이) — [v5.4] 10-26 줄자 실측 34×34×9 (도면 35×35×10 보다 작았다)
 IMU_CLEAR   = 1.0      # 전체 +1
 IMU_CABLE_SPACE = 24.0 # [v4.1] 14→24. 14 면 IMU 끝(x=10.5)이 터널 입구(x 6~14)를 56% 막았다
 IMU_CH_D    = 8.0      # 케이블 터널 지름
@@ -224,6 +231,16 @@ else:
 base = cq.Workplane("XY").rect(BASE_W, BASE_L).extrude(BASE_T).translate((0, _yoff, 0)).edges("|Z").fillet(8)
 if not TEST:
     base = base.faces(">Z").workplane().rect(*BASE_HOLE_PITCH, forConstruction=True).vertices().hole(BASE_HOLE_D)
+    # [v5.4] 바닥면 M5 너트 포켓 (육각, 대변 BASE_NUT_AF) — polygon() 은 외접원 지름을 받는다
+    for _sx in (-1, 1):
+        for _sy in (-1, 1):
+            base = base.cut(cq.Workplane("XY").polygon(6, BASE_NUT_AF / math.cos(R(30))).extrude(BASE_NUT_DEPTH)
+                            .translate((_sx * BASE_HOLE_PITCH[0] / 2, _sy * BASE_HOLE_PITCH[1] / 2, 0)))
+    if BASE_USB_SLOT:
+        # D455 USB-C(바닥면, ¼-20 에서 ±37) 바로 밑. 칼라(±collar_half)·+63 리브·거싯을 피해 y = yf+5 ~ yf+27
+        _sw, _sd = BASE_USB_SLOT_WH
+        base = base.cut(cq.Workplane("XY").box(_sw, _sd, BASE_T + 2)
+                        .translate((D455_USB_SIDE * D455_USB_X, TUBE_OD / 2 + 5 + _sd / 2, BASE_T / 2)))
 base = plug_top(base, BASE_T)
 base = base.cut(cq.Workplane("XY").circle(CABLE_HOLE_D / 2).extrude(BASE_T + DECK_T + PLUG_LEN + 1))
 for ang in (0, 90, 180):        # ±X + 뱃머리(+Y) 거싯 — 선미(−Y)는 포켓
