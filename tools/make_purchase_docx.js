@@ -64,7 +64,7 @@ const bullet = (s) => new Paragraph({ numbering: { reference: 'chk', level: 0 },
 const DM = 'https://www.devicemart.co.kr/goods/view?no=';
 const A = [
   { name: 'OAK-1 PoE FIXED-FOCUS 69°', use: '[지원금 들어옴] 자율운항 비전 카메라. 마스트 꼭대기에서 부표·표식 인식. 주문 후 수입 상품(통관부호 필요) — 납기 먼저 문의', qty: '2', price: '1,322,000', pri: 'P0', links: [['리얼리스토어', 'https://reallystore.net/goods/view?no=45']] },
-  { name: 'PoE 인젝터 30W DC 12-48V→48V DIN (G마켓, PSE5502G 동급)', use: '4S 배터리를 48V PoE 로 변환. 랜선 한 가닥으로 카메라 전원+데이터. 옥션분(10-14) 미발송 → 10-26 G마켓 재발주: 오늘출발·무료배송·국내배송만. 도착 시 OAK 로 802.3af 동작 확인', qty: '2', price: '122,000 (개당 61,000)', pri: 'P0', links: [['G마켓 4578145347', 'http://item.gmarket.co.kr/Item?goodscode=4578145347'], ['대안 하이링크', 'https://search.danawa.com/dsearch.php?query=DIVA-IPoEI']] },
+  { name: 'PoE 인젝터 REVOTECH PSE5502G 30W DC 12-48V→48V (G마켓)', use: '4S 배터리를 48V PoE 로 변환. 랜선 한 가닥으로 카메라 전원+데이터. 옥션분(10-14) 미발송 → 10-26 G마켓 재발주: 오늘출발·무료배송·국내배송만. 상세 사진으로 모델 PSE5502G·802.3af/at·30W·기가 확인', qty: '2', price: '122,000 (개당 61,000)', pri: 'P0', links: [['G마켓 4578145347', 'http://item.gmarket.co.kr/Item?goodscode=4578145347'], ['대안 하이링크', 'https://search.danawa.com/dsearch.php?query=DIVA-IPoEI']] },
   { name: 'USB-C 기가비트 어댑터 강원전자 NETmate NM-UCL02', use: '인젝터 LAN 과 노트북 연결. 노트북에 랜 포트가 없다. 칩셋 ASIX AX88179 정확히 일치 — 우분투 기본 드라이버, 설치 0. 10-14 선정', qty: '2', price: '36,980 (개당 18,490, 배송 3,000 별도)', pri: 'P0', links: [['다나와 NM-UCL02', 'https://prod.danawa.com/info/?pcode=15885359']] },
   { name: '퓨즈홀더 BF303 + 5x20 퓨즈 2A', use: '인젝터 입력 보호. 배터리 ⊕ 와 인젝터 사이. 퓨즈는 1회용이라 예비 포함 10개(10-14)', qty: '홀더 2 · 퓨즈 10', price: '3,700', pri: 'P1', links: [['홀더', DM + '14122158'], ['2A', DM + '4538']] },
 ];
