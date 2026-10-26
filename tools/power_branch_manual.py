@@ -69,18 +69,22 @@ def fig1():
     fuse(ax, 2.2, 4.3, "BF303 + 3 A"); fuse(ax, 6.2, 4.3, "BF303 + 2 A")
     lbl(ax, 2.2, 4.62, "허브", ORG, 8); lbl(ax, 6.2, 4.62, "인젝터", ORG, 8)
     # ⊖ 갈래
-    wire(ax, [(3.0, 7.0), (0.5, 7.0), (0.5, 2.3), (1.65, 2.3)], BLK, 2.0); wire(ax, [(0.5, 2.3), (0.5, 0.9), (5.65, 0.9), (5.65, 2.3)], BLK, 2.0)
-    lbl(ax, 0.5, 4.5, "⊖ 분기선\n(퓨즈 없음)", BLK, 8)
+    # ⊖ 분기선: 분기점 ⊖ → 모듈 IN⊖ (왼쪽) / 인젝터 DC IN ⊖ (아래). 퓨즈 없음
+    wire(ax, [(3.0, 7.0), (0.5, 7.0), (0.5, 2.85), (1.0, 2.85)], BLK, 2.0, arrow=True)
+    wire(ax, [(0.5, 2.85), (0.5, 2.05), (5.65, 2.05), (5.65, 2.35)], BLK, 2.0, arrow=True)
+    lbl(ax, 0.5, 4.5, "⊖ 분기선 (검정)\n퓨즈 없음\n두 장치의 ⊖ 로", BLK, 8)
+    lbl(ax, 1.35, 3.08, "IN⊖", BLK, 7.5); lbl(ax, 5.95, 2.2, "DC IN ⊖", BLK, 7.5)
+    lbl(ax, 3.2, 2.2, "⊖ 공통선 (인젝터용)", BLK, 7.5)
     # 5V 모듈 → 허브
     box(ax, 2.2, 2.85, 2.4, 1.0, "SZWENGAO WG-1224S0505\nIN 8~36 V → OUT 5 V 5 A\nIP68 · 비절연", fc="#eafaf1", fs=8.5, bold=True)
     wire(ax, [(2.2, 2.35), (2.2, 1.75)], GRN, 2.0, arrow=True)
-    lbl(ax, 3.4, 2.05, "5 V 출력선 → DC 플러그\n(동봉 어댑터 플러그 재활용 권장, 그림 3)", GRN, 8)
+    lbl(ax, 4.75, 1.3, "5 V 출력선(OUT⊕·OUT⊖) → DC 플러그\n(동봉 어댑터 플러그 재활용, 그림 3)", GRN, 8)
     box(ax, 2.2, 1.25, 2.6, 0.85, "ipTIME UH308 허브  DC 5 V\n→ 노트북 USB-A ②", fc="#eef3ff", fs=8.5, bold=True)
     box(ax, 2.2, 0.35, 3.6, 0.5, "LiDAR A3 · IMU · GPS · D455 (뎁스 OFF)", fc="#ffffff", fs=8)
     wire(ax, [(2.2, 0.82), (2.2, 0.6)], BLU, 1.5)
     # 인젝터 → OAK
     box(ax, 6.2, 2.85, 2.6, 1.0, "PoE 인젝터 PSE5502G\nDC IN 12~48 V (5.5×2.1 중심⊕)\n→ 48 V 802.3af/at 30 W", fc="#eafaf1", fs=8.5, bold=True)
-    lbl(ax, 8.05, 3.65, "입력 0.4~0.8 A", GRY, 7.5)
+    lbl(ax, 7.2, 3.65, "DC IN ⊕ (2 A 퓨즈 뒤)  입력 0.4~0.8 A", GRY, 7.5)
     wire(ax, [(7.5, 2.85), (9.3, 2.85)], BLU, 2.0, arrow=True); lbl(ax, 8.4, 3.05, "PoE OUT  Cat5e 2 m(동봉)", BLU, 8)
     box(ax, 10.6, 2.85, 2.3, 1.0, "OAK-1 PoE FF\n802.3af Class 3 · ≤7.5 W\nRJ45 · 마스트", fc="#e6f4ea", fs=8.5, bold=True)
     wire(ax, [(6.2, 2.35), (6.2, 1.5), (9.3, 1.5)], BLU, 2.0, arrow=True); lbl(ax, 7.6, 1.7, "DATA/LAN  Cat5e", BLU, 8)
