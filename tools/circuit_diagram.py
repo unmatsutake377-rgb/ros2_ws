@@ -27,7 +27,7 @@ for a in range(4):
 
 # ═══ ① 주 전력 ═══
 ax=ax1
-ax.set_title("① 주 전력 — 접촉기가 (+) 한 가닥씩만 끊는다. (-) 는 ESC 직결",
+ax.set_title("① 주 전력 — 접촉기가 (+) 한 가닥씩만 끊는다. (-) 는 ESC 직결   [2번배 4기 기준 · 1번배는 측당 ESC·T200 1기, 핀·접촉기 동일]",
              fontsize=13,loc="left",fontweight="bold",pad=6)
 box(ax,2,64,15,17,"배터리 A\n4S 14.8V\nDXF 8400mAh 120C",fc="#fdecea",bold=True)
 box(ax,2,16,15,17,"배터리 B\n4S 14.8V\nDXF 8400mAh 120C",fc="#fdecea",bold=True)
@@ -36,8 +36,8 @@ lbl(ax,36.5,76,"5",fs=11,bold=True); lbl(ax,48.5,76,"6",fs=11,bold=True)
 lbl(ax,36.5,46,"2",fs=11,bold=True); lbl(ax,48.5,46,"1",fs=11,bold=True)
 lbl(ax,36.5,72,"⊕ 유입",fs=7); lbl(ax,48.5,72,"⊖ 유출",fs=7)
 lbl(ax,36.5,42,"⊕ 유입",fs=7); lbl(ax,48.5,42,"⊖ 유출",fs=7)
-box(ax,62,68,16,13,"ESC 우 ×2\nBESC30-R3",fc="#eafaf1")
-box(ax,62,20,16,13,"ESC 좌 ×2\nBESC30-R3",fc="#eafaf1")
+box(ax,62,68,16,13,"ESC 우 ×2 (1번배 ×1)\nBESC30-R3",fc="#eafaf1")
+box(ax,62,20,16,13,"ESC 좌 ×2 (1번배 ×1)\nBESC30-R3",fc="#eafaf1")
 box(ax,84,68,13,13,"T200 ×2\n(우)",fc="#eafaf1")
 box(ax,84,20,13,13,"T200 ×2\n(좌)",fc="#eafaf1")
 wire(ax,[(17,76),(36.5,76)]); wire(ax,[(48.5,76),(62,76)])
@@ -47,7 +47,7 @@ wire(ax,[(17,68),(26,68),(26,89),(70,89),(70,81)],c=C_GND,lw=1.6)
 wire(ax,[(17,20),(22,20),(22,8),(70,8),(70,20)],c=C_GND,lw=1.6)
 lbl(ax,46,91.5,"배터리 A ⊖ → ESC 우 ⊖ ×2  직결 (접촉기를 지나지 않는다)",c=C_GND,fs=8.5)
 lbl(ax,46,5.5,"배터리 B ⊖ → ESC 좌 ⊖ ×2  직결",c=C_GND,fs=8.5)
-lbl(ax,26,60,"A ⊕ 는 5번 가기 전에\n컨버터·릴레이로 분기 →②",c=C_WARN,fs=8,bold=True)
+lbl(ax,26,60,"A ⊕ 는 5번 가기 전에 EC5 피그테일로 분기\n→ ② 코일 컨버터 · ③ 인젝터 · ③ 허브 5V",c=C_WARN,fs=8,bold=True)
 lbl(ax,88,60,"8~10 AWG\n계통당 42A · 순간 60A",c=C_PWR,fs=8)
 lbl(ax,88,38,"▲ A=우 / B=좌 는 결선표(A→5·6)와\n신규설계(A→우)를 합친 추론이다.\n통전으로 한 번 확인할 것",c=C_WARN,fs=7.5)
 
@@ -56,8 +56,8 @@ ax=ax2
 ax.set_title("② 차단 회로 — 버튼도 무선도 굵은 전류를 안 끊는다. 코일만 끊으면 두 극이 함께 열린다",
              fontsize=13,loc="left",fontweight="bold",pad=6)
 box(ax,2,62,15,16,"배터리 A ⊕\n접촉기 5번보다\n배터리 쪽에서 분기",fc="#fdecea",bold=True)
-box(ax,24,64,17,14,"DC-DC 컨버터\n승압 14.8→24V",fc="#fff8dc",ec=C_WARN,bold=True)
-lbl(ax,30,55,"● 현재 11~16V — 4S 만충 16.8V 가 범위 밖\n재구매 필요(구매목록 #32). 확보 전 16V 초과 충전 금지",c=C_WARN,fs=8,bold=True)
+box(ax,24,64,17,14,"승압 컨버터 SZH-BPM001\n입력 9~20V → 24V 고정 3A\n(10-20 도착 ×2)",fc="#eafaf1",bold=True)
+lbl(ax,30,55,"✓ 입력 9~20V 라 4S 만충 16.8V 커버 — 옛 11~16V 컨버터 교체 완료.\n출력 24V 고정(트리머 없음) · 3A > 코일 흡인 2A",c="#1f7a3a",fs=8,bold=True)
 box(ax,50,64,15,14,"접촉기 코일\nA1 ─ 48Ω ─ A2\nDC 24V",fc="#eef4fb",bold=True)
 box(ax,72,64,12,14,"무선 릴레이\nSRD-12VDC-SL-C\nCOM–NC",fc="#eafaf1")
 box(ax,72,34,12,14,"비상정지 버튼\n한영넉스 NC",fc="#eafaf1")
@@ -94,25 +94,25 @@ lbl(ax,66,36.5,"밝기 상한 40 (USB 폴리퓨즈 0.5A)",fs=7.5,c=C_WARN)
 ax.add_patch(Rectangle((2,24),94,7,fc="#f2f2f2",ec=C_GND,lw=1.4))
 lbl(ax,49,27.5,"공통 GND 버스 —  Mega GND · ESC 신호GND ×4 · 수신기 · LED · 배터리A ⊖ · 배터리B ⊖   "
                 "(굵은 전원은 분리, 신호 GND 는 한 점)",fs=9,c=C_GND,bold=True)
-box(ax,2,7,20,12,"배터리 ⊕\n─ 2A 퓨즈 ─",fc="#fdecea")
-box(ax,27,7,19,12,"PoE 인젝터\n802.3af/at active\n30W · 비방수",fc="#fff8dc",ec=C_WARN)
-box(ax,52,7,16,12,"OAK-1 PoE\n(마스트 위)",fc="#eafaf1")
-box(ax,74,7,22,12,"노트북 이더넷\nAX88179 어댑터",fc="#eaf2fb")
+box(ax,2,7,20,12,"배터리 A ⊕ (접촉기 앞)\nEC5 피그테일 ─ BF303 2A",fc="#fdecea")
+box(ax,27,7,19,12,"PoE 인젝터 PSE5502G\nDC 12-48V in → 48V 802.3af/at\n30W · 비방수 · DC IN 5.5×2.1",fc="#eafaf1")
+box(ax,52,7,16,12,"OAK-1 PoE FF\n(마스트 위, 10-20 도착)",fc="#eafaf1")
+box(ax,74,7,22,12,"NM-UCL02 (AX88179)\n→ 노트북 USB-C 직결",fc="#eaf2fb")
 wire(ax,[(22,13),(27,13)]); wire(ax,[(46,13),(52,13)],c="#111")
 wire(ax,[(37,7),(37,3),(85,3),(85,7)],c=C_SIG,lw=1.6)
-lbl(ax,49,21,"동봉 2m Cat5e",fs=7.5); lbl(ax,61,1,"LAN (데이터)",fs=7.5,c=C_SIG)
+lbl(ax,49,21,"동봉 2m Cat5e (전원+데이터)",fs=7.5); lbl(ax,61,1,"LAN (데이터) — 허브 안 거침",fs=7.5,c=C_SIG)
 lbl(ax,12,21.5,"● 인젝터는 접촉기 앞에서 — 비상정지는 추진만 끊는다",c=C_PWR,fs=8,bold=True)
 
 # ── 허브 계통 ──
-box(ax,2,-16,20,12,"배터리 ⊕ (접촉기 앞)\n- 3A 퓨즈 -",fc="#fdecea")
-box(ax,27,-16,19,12,"XL4015 강압\n14.8V → 5.0~5.1V",fc="#fff8dc",ec=C_WARN)
+box(ax,2,-16,20,12,"배터리 A ⊕ (접촉기 앞)\nEC5 피그테일 ─ BF303 3A",fc="#fdecea")
+box(ax,27,-16,19,12,"SZWENGAO WG-1224S0505\n8~36V → 5V 고정 5A · IP68\n(트리머 없음, 10-22 도착)",fc="#eafaf1")
 box(ax,52,-16,18,12,"ipTIME UH308\n유전원 허브",fc="#eaf2fb")
 box(ax,76,-16,22,12,"LiDAR · IMU · GPS · D455",fc="#eafaf1")
 wire(ax,[(22,-10),(27,-10)]); wire(ax,[(46,-10),(52,-10)])
 wire(ax,[(70,-10),(76,-10)],c=C_SIG)
-lbl(ax,49,-2.5,"DC 플러그 5.5x2.1   ● 중심 + / 바깥 -   ● 출력을 먼저 5.0~5.1V 로 맞춘 뒤 연결",fs=7.5,c=C_PWR,bold=True)
+lbl(ax,49,-2.5,"DC 플러그 5.5x2.1   ● 중심 + / 바깥 - 를 멀티미터로 확인   ● 5V 고정이라 조정 불필요 — 허브 꽂기 전 출력 4.9~5.1V 확인만",fs=7.5,c=C_PWR,bold=True)
 lbl(ax,24,-19.5,"● 퓨즈는 입력측",fs=7.5,c=C_PWR)
-lbl(ax,80,-19.5,"노트북 USB-A #1 → 허브 (데이터)",fs=7.5,c=C_SIG)
+lbl(ax,80,-19.5,"노트북 USB-A② → 허브 · USB-A① → Mega · USB-C → 어댑터",fs=7.5,c=C_SIG)
 
 
 # ═══ ④ 결선표 ═══
@@ -145,7 +145,7 @@ pins=[("2","RC 스로틀  ← 수신기","인터럽트 핀 (2·3·18·19·20·21
       ("16","WS2812 스트립 Din →","=TX2. 09-03 확정. 밝기 상한 40"),
       ("22 / 24 / 26","단색 룰 표시등 초록/노랑/빨강","(예비) 스트립 쓰면 미사용"),
       ("28","점검 LED →","배 ID 깜빡임·워치독. 항상 사용"),
-      ("34 / 36","배 ID — 배선 안 함","09-17 확정. 회로 두 배 동일. 어디서도 분기 안 함. 둘 다 GND 면 FAULT"),
+      ("34 / 36","배 ID — 배선 안 함","09-17 확정. 두 배 동일. 둘 다 GND 면 FAULT"),
       ("38","비상정지 감지  ← 접촉기 21","INPUT_PULLUP · LOW = 차단됨"),
       ("GND","공통 GND 버스","ESC 신호GND ×4 · 수신기 · LED · 배터리 ⊖ ×2")]
 tbl(ax,1,88,47,pins,("Mega 핀","연결","비고"),(9,17,21),"Arduino Mega 2560  —  단일 출처: arduino/ssf_boat/ssf_boat.ino")
@@ -166,17 +166,17 @@ lbl(ax,1,36,"배터리 ⊖ 는 접촉기를 지나지 않는다 :  A ⊖ → ESC
     fs=9,ha="left",c=C_GND,bold=True)
 lbl(ax,1,31,"코일 회로 :  배터리A ⊕ (접촉기 5번보다 배터리 쪽) → 컨버터 IN⊕ / 릴레이 IN+   ·   컨버터 OUT⊕ → A1   ·   A2 → 릴레이 COM → 릴레이 NC → 버튼 NC(1)   ·   버튼 NC(2) → 컨버터 OUT⊖",
     fs=9,ha="left",c=C_PWR)
-lbl(ax,1,26,"카메라 :  배터리 ⊕ (접촉기 앞) → 2A 인라인 퓨즈 → PoE 인젝터 DC IN → 동봉 2m Cat5e → OAK-1 PoE   ·   인젝터 LAN → AX88179 어댑터 → 노트북",
+lbl(ax,1,26,"보조 전원 :  배터리A EC5 ─ EC5 암 피그테일(10AWG) ┬ BF303 2A → PSE5502G DC IN → Cat5e → OAK-1 PoE (LAN → NM-UCL02 → 노트북 USB-C)   ┬ BF303 3A → SZWENGAO 5V → UH308 허브",
     fs=9,ha="left",c="#111")
 lbl(ax,1,19,"● 배선 전 무전원 도통 시험 : 배터리 연결 전에 (+) 와 (-) 가 어디서도 안 만나는지 확인한다. 한쪽 (-) 와 다른 쪽 (+) 가 만나면 29.6V — T200(최대 20V)이 탄다.",
     fs=9,ha="left",c=C_PWR,bold=True)
 lbl(ax,1,14,"● 배터리 연결 순서 : 1·2번 쪽 먼저 → 5·6번 쪽 나중 → 삑 4개 확인 → 15초 대기.  순서가 바뀌면 일부 ESC 만 시동이 걸린다.",
     fs=9,ha="left",c=C_PWR,bold=True)
-lbl(ax,1,9,"▲ 미해결 : 컨버터 재구매(구매목록 #32) · 릴레이 점퍼 자기유지 재시험 · 퓨즈(계통당 1개) · MD-30a 연속통전 Ith 확인",
+lbl(ax,1,9,"▲ 미해결(10-26) : 릴레이 점퍼 자기유지 재시험 · MD-30a 연속통전 Ith · 2번배 동일 회로 결선(Mega·무선스위치 도착) · 인젝터·EC5·DC잭·3A 퓨즈 도착 대기 · 퓨즈홀더 2개 부족",
     fs=9,ha="left",c=C_WARN,bold=True)
 
 fig.text(.5,.006,"출처: 결선표 docs/전달용/회로도_20260824.html · 설계근거 회로_신규설계.md · 핀 arduino/ssf_boat/ssf_boat.ino"
-        "   |   현재 진행상황은 docs/문제와작업/좌측스러스터_접촉기_20260819.md 가 단일 출처",
+        "   |   구매·도착 현황 docs/전달용/구매_목록.md §0-1   |   2026-10-26 갱신",
         ha="center",fontsize=9,color="#666")
 out=os.path.join(os.path.dirname(os.path.abspath(__file__)),"..","docs","전달용","배치도","회로도_통합.png")
 os.makedirs(os.path.dirname(out),exist_ok=True)
