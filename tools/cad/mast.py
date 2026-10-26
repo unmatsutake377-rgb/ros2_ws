@@ -52,17 +52,25 @@ LIMIT_H        = 220.0   # 팀 요구 상한 (갑판 위 최고점)
 BASE_W_MIN, BASE_L_MIN, BASE_T_MIN = 160.0, 120.0, 20.0   # [v4] BASE_L 은 포켓에 맞춰 자동
 BASE_HOLE_PITCH = (130.0, 90.0)   # x=현 방향, y=90 = 가로대 2개 중심 간격 → 실측 후 수정
 BASE_HOLE_D     = 5.5             # M5
+# [v5.4 2026-10-26] 🚨 볼트는 **아래에서 위로** 박는다. 앞쪽 두 구멍이 D455 크레들 바닥턱 밑(틈 23mm)이라
+#   위에서 드라이버가 안 들어간다. 베이스 **바닥면**에 M5 너트 육각 포켓을 파서 너트를 밑에서 끼우고,
+#   갑판 아래에서 볼트를 올려 체결한다. 갑판 FRP 1mm(10-26 팀장) → 볼트 M5×12 + 갑판 밑 받침판(≥3mm, 하중 분산 필수).
+BASE_NUT_AF     = 8.3             # M5 너트 대변 8.0 + 0.3
+BASE_NUT_DEPTH  = 5.0             # 너트 두께 4 + 1
+BASE_USB_SLOT   = True            # [v5.4] D455 USB-C 바로 밑 베이스 판 관통 구멍 — 일자 플러그 꺾임 공간(27→47mm). ㄱ자 케이블이면 False 가능
+BASE_USB_SLOT_WH = (30.0, 22.0)   # x 폭 · y 깊이
 CABLE_HOLE_D    = 22.0
 COLLAR_H        = 14.0   # [v3] 20→14: D455 USB 슬롯을 낮추려고 (USB 플러그 끝 ≈33)
 COLLAR_MARGIN   = 2.0
 GUSSET          = 30.0
 
 # IMU (iAHRS RB-SDA-v1) — 매뉴얼 도면 확정값
-IMU_L, IMU_W, IMU_H = 35.0, 35.0, 10.0   # 케이스 (L=선체 좌우 X, W=전후 Y, H=높이)
+IMU_L, IMU_W, IMU_H = 34.0, 34.0, 9.0    # 케이스 (L=선체 좌우 X, W=전후 Y, H=높이) — [v5.4] 10-26 줄자 실측 34×34×9 (도면 35×35×10 보다 작았다)
 IMU_CLEAR   = 1.0      # 전체 +1
-IMU_CABLE_SPACE = 24.0 # [v4.1] 14→24. 14 면 IMU 끝(x=10.5)이 터널 입구(x 6~14)를 56% 막았다
-IMU_CH_D    = 8.0      # 케이블 터널 지름
-IMU_CH_X    = 10.0     # 터널 x 위치 (중앙 케이블 구멍 Ø22 안)
+IMU_CABLE_SPACE = 22.0 # [v5.4] 커넥터(micro-USB+4핀) 플러그가 케이스 **뒤(−Y)** 로 나온다 — 그 길이. 팀장 10-26: "케이블은 뒤쪽 구멍으로"
+                       #   (v4.1 까지는 −X 옆으로 24 두고 +Y 터널로 중앙 구멍에 보냈다 → 폐기)
+IMU_CH_D    = 9.0      # [v5.4] 포켓 뒤끝 바닥 **수직** 케이블 구멍 지름 — 갑판 관통, 아래서 실리콘/글랜드로 방수
+IMU_CH_X    = 0.0      # [v5.4] 수직 구멍 x (중심선)
 IMU_PAD_T   = 2.0      # [v4] VHB 양면 + 방진패드 두께 (붙이는 방식, 나사 없음)
 LID_T       = 3.0
 LID_MARGIN  = 8.0
@@ -80,7 +88,14 @@ D455_ZC         = 62.0   # [v4.4] 높이는 62 유지, **틸트만 15→0°**: L
 D455_TILT       = 0.0    # [v4.4] 15→0. 틸트가 LiDAR 를 화면 중앙으로 끌어올리는 주범이었다
 D455_PLATE_H, D455_PLATE_T = 30.0, 6.0
 D455_STANDOFF   = 1.0
-D455_USB_X      = 37.0   # ¼-20 기준 USB-C 좌우 오프셋 (부호 실측 → 노치는 ±37 둘 다 뚫는다)
+# ── [v5.3 2026-10-26] 커넥터 좌우 — 실물 끼워본 결과 ─────────────────────────
+#   팀장 실물 확인: "OAK 랜선은 오른쪽, D455 C타입은 왼쪽" (같은 자리에서 본 것으로 간주).
+#   어느 쪽에서 봤는지가 x 부호를 정한다. 코드 x = 뒤에서(렌즈와 같은 방향을 보고) 볼 때 오른쪽이 +.
+#   ⚠️ 아래 한 줄만 바꾸면 OAK·D455 가 함께 거울상이 된다. 틀리면 둘 다 반대로 간다.
+VIEW_FROM_FRONT = True   # True = 렌즈를 마주보고 서서 말한 좌/우 — ✅ 팀장 확인 (10-26 밤)
+_VS = -1 if VIEW_FROM_FRONT else 1   # 보고된 "오른쪽" 의 x 부호
+D455_USB_SIDE   = -_VS   # D455 USB-C = 보고된 "왼쪽"
+D455_USB_X      = 37.0   # ¼-20 기준 USB-C 좌우 오프셋 — Intel 도면 p150 (37.01) 로 확정, 바닥면·¼-20 과 같은 줄
 D455_USB_LEN    = 10.0   # [v4] L자 USB-C 케이블 가정 (스트레이트는 25)
 
 # 크레들 공통 (카메라를 끼우는 U자 — 뒷판 + 바닥턱 + 좌우턱, 위 열림)
@@ -89,7 +104,7 @@ CRADLE_CLEAR    = 1.0    # 카메라 ↔ 안쪽 벽 총 여유
 CRADLE_LIP_D455 = 12.0   # 좌우턱 높이
 CRADLE_LIP_OAK  = 18.0
 CRADLE_NOTCH_W  = 22.0   # 바닥턱 커넥터 노치 기본 폭 (D455 USB-C 10 + 여유)
-CRADLE_NOTCH_OAK = 35.0  # [v4] OAK 그랜드는 Ø27 → 노치 35 (22 면 양옆 2.5 씩 걸려 간섭)
+CRADLE_NOTCH_OAK = 38.0  # [v4] OAK 그랜드 Ø27 → 노치 35 (22 면 양옆 2.5 씩 걸려 간섭) · [v5.3] 38 — 오프셋 ±1 오차 흡수
 D455_SLOT_Z     = None   # 관 앞면 케이블 슬롯 중심 높이. None = 칼라 위 자동
 
 # OAK-1 PoE: 81.9 × 81.9 × 31, 뒷면 M4×4 (45/37.5), 바닥 ¼-20, 그랜드 측면(아래로 장착)
@@ -102,7 +117,8 @@ OAK_PLATE_T    = 6.0
 OAK_PLATE_H    = 82.0    # [v4] 50→82: 크레들 뒷판이 OAK 전체 높이를 덮는다
 OAK_STANDOFF   = 1.0
 OAK_CONN_LEN, OAK_CONN_W = 35.0, 27.0   # RJ45 그랜드 돌출(아래)·지름
-OAK_CONN_X     = 0.0     # 그랜드 좌우 오프셋 (실측)
+OAK_CONN_X     = _VS * 15.6   # [v5.3] 그랜드 = 보고된 "오른쪽". 크기 15.6 은 Luxonis 기판도(60mm 기판)에서
+                              #   RJ45 잭 중심을 픽셀 측정한 값(10-26). 외함 STL 로 재검 가능 — 정밀값 아님(±1)
 OAK_SLOT_W     = 40.0    # [v3] 18→40
 
 # ── 통합(통짜) 출력용 리브 (v5, 2026-09-17) ──────────────────────────────────
@@ -111,9 +127,32 @@ OAK_SLOT_W     = 40.0    # [v3] 18→40
 #   → 브리지 가능한 간격(≤30mm)으로 촘촘히 넣으면 바닥턱이 리브 사이를 다리 놓듯 건너간다.
 #   D455 는 베이스 판이 바로 밑이라 **수직 핀**(오버행 0°), OAK 는 공중이라 **45° 삼각 리브**.
 RIB_T      = 5.0
-RIB_XS_D455 = (-63.0, -50.0, -26.0, -12.0, 12.0, 26.0, 50.0, 63.0)  # USB-C(±32~42) 회피, 최대 간격 26
-RIB_XS_OAK  = (-44.0, -40.0, -22.0, 22.0, 40.0, 44.0)               # 그랜드 노치(±17.5) 바깥.
-                                                                    #   [09-17] ±44 추가 — 바깥 가장자리(|x|>40.5) 596mm² 가 떠 있었다
+# [v5.3 2026-10-26] 🚨 리브가 케이블 길을 막았다 (실물 끼워보고 발견).
+#   D455: 플러그는 노치(±37)를 통과했지만 그 밑에서 관 슬롯으로 꺾이는 길을 x=26·12 리브가 막았다.
+#         → USB 쪽 반쪽은 리브를 63 하나만 남긴다. 바닥턱 밑 서포트탑은 43mm 라 슬라이서 서포트로 충분
+#           (9-17 에 무너진 건 OAK 의 194mm 탑이지 D455 가 아니다).
+#   OAK : 그랜드가 중앙이 아니라 15.6 치우쳐 있었다 → 노치 가장자리와 ±22 리브에 걸렸다.
+#         → 리브를 노치 위치에서 계산한다(노치 양옆 2mm 띄워 하나씩 + 바깥 ±40·44 + 26mm 넘는 빈 구간 보강).
+#   리브는 출력용 받침이라 이미 뽑은 부품에서는 잘라내도 된다(하중은 PETG 의 1/500).
+_RIB_D455_BASE = (12.0, 26.0, 50.0, 63.0)
+RIB_XS_D455 = tuple(-D455_USB_SIDE * x for x in _RIB_D455_BASE) + (D455_USB_SIDE * 63.0,)
+
+def _oak_ribs(cx, w, t=5.0, max_gap=26.0):
+    lo, hi = cx - w / 2, cx + w / 2
+    ribs = {-44.0, -40.0, 40.0, 44.0, lo - 2 - t / 2, hi + 2 + t / 2}
+    ribs = sorted(r for r in ribs if r + t / 2 <= lo or r - t / 2 >= hi)      # 노치와 겹치는 것 제거
+    dedup = []
+    for r in ribs:                                                            # 4mm 안에 겹친 것은 하나로 (±40·44 쌍은 유지)
+        if not dedup or r - dedup[-1] > 3.9:
+            dedup.append(r)
+    out = []
+    for a, b in zip(dedup, dedup[1:]):
+        out.append(a)
+        if not (a < cx < b) and b - a > max_gap:
+            out.append(round((a + b) / 2, 1))
+    out.append(dedup[-1])
+    return tuple(out)
+RIB_XS_OAK = _oak_ribs(OAK_CONN_X, CRADLE_NOTCH_OAK)   # [09-17] ±44 — 바깥 가장자리(|x|>40.5) 596mm² 가 떠 있었다
 RIB_ANG    = 45.0        # OAK 리브 빗면 (45° = 자립 한계)
 
 # 🚫 [v4.4 기각] 보강 브레이스(D455 수직 핀 ±50 / OAK 45° 삼각 웨브)를 넣어봤다가 뺐다.
@@ -159,16 +198,19 @@ from mast_parts import collar_ring, cradle   # 공용 형상 함수 (fit_test.py
 
 
 # ───────────────────────────── 1. 베이스 (IMU 포켓 — 중심선 선미쪽, 접착식) ─────────────────────────────
-pocket_x = IMU_L + IMU_CLEAR + IMU_CABLE_SPACE     # X: IMU + 케이블 꺾임 공간(+X 쪽)
-pocket_y = IMU_W + IMU_CLEAR
+pocket_x = IMU_L + IMU_CLEAR                       # [v5.4] X: 케이스에 꼭 맞게 (34.5)
+pocket_y = IMU_W + IMU_CLEAR + IMU_CABLE_SPACE     # [v5.4] Y: 케이스 + 뒤(−Y) 플러그 공간 22
 pocket_z = IMU_H + IMU_CLEAR + IMU_PAD_T
 lid_x, lid_y = pocket_x + 2 * LID_MARGIN, pocket_y + 2 * LID_MARGIN
 collar_half = TUBE_OD / 2 + COLLAR_MARGIN + PLUG_CLEAR
 pocket_ymax = -(collar_half + 1.5)                 # 포켓 +Y 끝 = 칼라 뒤 1.5
 pcx, pcy = 0.0, pocket_ymax - pocket_y / 2         # [v4] 중심선(X=0), 선미쪽
-imu_cx = pcx - IMU_CABLE_SPACE / 2                 # IMU 케이스 중심 (포켓 −X 쪽에 붙임)
+imu_cx = pcx                                       # [v5.4] IMU 케이스 중심 x = 중심선
+imu_cy = pcy + IMU_CABLE_SPACE / 2                 # [v5.4] 케이스는 포켓 +Y(칼라) 쪽 끝, 플러그는 −Y(선미) 쪽
 BASE_W = max(BASE_W_MIN, lid_x + 24.0)
-BASE_L = max(BASE_L_MIN, 2 * (abs(pcy) + lid_y / 2 + 6.0))
+_base_ymin = pcy - lid_y / 2 - 6.0                 # [v5.4] 베이스를 선미쪽으로만 늘린다 (앞은 73 이면 D455 리브·볼트 구멍까지 충분)
+_base_ymax = 73.0
+BASE_L = max(BASE_L_MIN, _base_ymax - _base_ymin)
 BASE_T = max(BASE_T_MIN, math.ceil(pocket_z + LID_T + 4.0))
 if MAST_H is None:
     MAST_H = OAK_Z - OAK_H / 2 - BASE_T - 2 * DECK_T
@@ -188,11 +230,21 @@ if TEST:
     os.makedirs(OUT, exist_ok=True)
     print(f"ℹ️ MAST_TEST: 베이스 판 {BASE_W:.0f}×{BASE_L:.0f} (중심 y{_yoff:+.1f}), M5 볼트 구멍 생략")
 else:
-    _yoff = 0.0
+    _yoff = (_base_ymax + _base_ymin) / 2          # [v5.4] 비대칭 베이스 중심
 
 base = cq.Workplane("XY").rect(BASE_W, BASE_L).extrude(BASE_T).translate((0, _yoff, 0)).edges("|Z").fillet(8)
 if not TEST:
     base = base.faces(">Z").workplane().rect(*BASE_HOLE_PITCH, forConstruction=True).vertices().hole(BASE_HOLE_D)
+    # [v5.4] 바닥면 M5 너트 포켓 (육각, 대변 BASE_NUT_AF) — polygon() 은 외접원 지름을 받는다
+    for _sx in (-1, 1):
+        for _sy in (-1, 1):
+            base = base.cut(cq.Workplane("XY").polygon(6, BASE_NUT_AF / math.cos(R(30))).extrude(BASE_NUT_DEPTH)
+                            .translate((_sx * BASE_HOLE_PITCH[0] / 2, _sy * BASE_HOLE_PITCH[1] / 2, 0)))
+    if BASE_USB_SLOT:
+        # D455 USB-C(바닥면, ¼-20 에서 ±37) 바로 밑. 칼라(±collar_half)·+63 리브·거싯을 피해 y = yf+5 ~ yf+27
+        _sw, _sd = BASE_USB_SLOT_WH
+        base = base.cut(cq.Workplane("XY").box(_sw, _sd, BASE_T + 2)
+                        .translate((D455_USB_SIDE * D455_USB_X, TUBE_OD / 2 + 5 + _sd / 2, BASE_T / 2)))
 base = plug_top(base, BASE_T)
 base = base.cut(cq.Workplane("XY").circle(CABLE_HOLE_D / 2).extrude(BASE_T + DECK_T + PLUG_LEN + 1))
 for ang in (0, 90, 180):        # ±X + 뱃머리(+Y) 거싯 — 선미(−Y)는 포켓
@@ -209,10 +261,9 @@ screw_pts = [(pcx + sx * (pocket_x / 2 + LID_MARGIN / 2), pcy + sy * (pocket_y /
              for sx in (-1, 1) for sy in (-1, 1)]
 for (sx, sy) in screw_pts:
     base = base.cut(cq.Workplane("XY").workplane(offset=BASE_T - LID_T - 9).center(sx, sy).circle(LID_SCREW_D / 2).extrude(10))
-# 케이블 터널: 포켓 +Y 벽 → 중앙 케이블 구멍 (XZ 법선 −Y)
-ch_z = pocket_floor + IMU_PAD_T + IMU_CH_D / 2 + 0.5
-y_start = pocket_ymax - 1.0
-base = base.cut(cq.Workplane("XZ").workplane(offset=-y_start).center(IMU_CH_X, ch_z).circle(IMU_CH_D / 2).extrude(y_start - 1.0))
+# [v5.4] 케이블 구멍: 포켓 **뒤끝(−Y) 바닥**에서 수직으로 갑판까지. 플러그가 케이스 뒤로 22 나온 뒤 아래로 꺾인다.
+imu_hole_y = pcy - pocket_y / 2 + IMU_CH_D / 2 + 2.0
+base = base.cut(cq.Workplane("XY").workplane(offset=-1).center(IMU_CH_X, imu_hole_y).circle(IMU_CH_D / 2).extrude(pocket_floor + 2))
 # [v4] 포켓 바닥은 접착면이라 평평하게 둔다 → 뱃머리 화살표는 베이스 윗면(뱃머리 쪽)에 각인
 arrow = (cq.Workplane("XY").workplane(offset=BASE_T - 0.6).center(0, collar_half + 14)
          .polyline([(0, 12), (7, 4), (2.5, 4), (2.5, -12), (-2.5, -12), (-2.5, 4), (-7, 4)]).close().extrude(1.0))
@@ -315,6 +366,29 @@ for _rx in RIB_XS_OAK:
 
 cap = cap.union(wedge_o).union(cro).cut(oak_slot)
 
+# [v5.5 2026-10-26] OAK 뒷면 M4 네 개를 전부 뒤에서 박을 수 있게 한다.
+#   구멍(±22.5, ±18.75) 뒤가 쐐기(±30)·각관으로 막혀 드라이버가 못 들어갔다(통짜라 조립 전 체결도 불가).
+#   위 두 구멍(z≈194)은 캡 윗면(170) 위라 쐐기만 뚫으면 되고, 아래 두 구멍(z≈156)은 각관 뒤다
+#   → 통짜(MAST_FUSED)에서는 OAK 바닥 +12 위의 각관을 잘라내고 윗면을 4mm 판으로 막는다(빗물 차단).
+#     그 구간의 관은 구조적으로 불필요 — 하중은 뒷판→바닥턱→리브→134 아래 관으로 간다.
+#   구멍 축은 뒷판에 수직(11° 기울어짐) — 크레들과 같은 회전을 적용한 커터로 자른다.
+OAK_ACCESS_D = 12.0
+OAK_TUBE_CUT_ABOVE = 12.0     # OAK 바닥에서 이만큼 위에서 관을 자른다 (아래 구멍 Ø12 하단 ≈ 바닥+16.75 보다 아래)
+
+def _oak_access_cutter(hzs):
+    """캡 로컬 좌표 커터: 뒷판 뒷면(로컬 y=0)에서 뒤로 40 뚫는 Ø12 원통, 크레들과 같은 회전·이동."""
+    acc = None
+    for hx in (-OAK_HOLE_PITCH[0] / 2, OAK_HOLE_PITCH[0] / 2):
+        for hz in hzs:
+            cyl = (cq.Workplane("XZ").workplane(offset=0.0).center(hx, hz)
+                   .circle(OAK_ACCESS_D / 2).extrude(40.0))        # XZ 법선 −Y → 뒤쪽으로 40
+            acc = cyl if acc is None else acc.union(cyl)
+    return (acc.translate((0, yf + OAK_STANDOFF, zb_l))
+            .rotate((0, yf + OAK_STANDOFF, zb_l), (1, yf + OAK_STANDOFF, zb_l), -OAK_TILT))
+
+_hz_up, _hz_dn = OAK_H / 2 + OAK_HOLE_PITCH[1] / 2, OAK_H / 2 - OAK_HOLE_PITCH[1] / 2
+cap = cap.cut(_oak_access_cutter([_hz_up]))          # 위 2개: 분할·통짜 공통
+
 # ───────────────────────────── 4. 더미 + 검산 ─────────────────────────────
 def cam_dummy(cam_w, cam_d, cam_h, plate_t, standoff, zb, tilt, conn=None):
     yc = yf + standoff + plate_t + cam_d / 2
@@ -328,7 +402,7 @@ d455_dummy = cam_dummy(D455_W, D455_D, D455_H, D455_PLATE_T, D455_STANDOFF, d455
                        conn=(10, 8, D455_USB_LEN, D455_USB_X))
 oak_dummy = cam_dummy(OAK_W, OAK_D, OAK_H, OAK_PLATE_T, OAK_STANDOFF, oak_zb, OAK_TILT,
                       conn=(OAK_CONN_W, 16, OAK_CONN_LEN, OAK_CONN_X))
-imu_dummy = cq.Workplane("XY").box(IMU_L, IMU_W, IMU_H).translate((imu_cx, pcy, pocket_floor + IMU_PAD_T + IMU_H / 2))
+imu_dummy = cq.Workplane("XY").box(IMU_L, IMU_W, IMU_H).translate((imu_cx, imu_cy, pocket_floor + IMU_PAD_T + IMU_H / 2))
 
 def bb(o):
     return o.val().BoundingBox()
@@ -339,7 +413,18 @@ top = max(oak_bb.zmax, cap_top, cap_z0 + bb(cro).zmax)
 gap = oak_bb.zmin - d455_bb.zmax
 
 # ───────────────────────────── 출력 ─────────────────────────────
-parts = {"base": base, "imu_lid": lid, "cap": cap}
+# ── [v5.4] 갑판 밑 받침판 — FRP 1mm(팀장 10-26) 에 M5 네 점으로 매달 수 없다. 하중을 판 전체로 나눈다 ──
+BACKING_T = 3.0
+backing = cq.Workplane("XY").rect(BASE_W, BASE_L).extrude(BACKING_T).translate((0, _yoff, 0)).edges("|Z").fillet(8)
+backing = backing.faces(">Z").workplane().rect(*BASE_HOLE_PITCH, forConstruction=True).vertices().hole(BASE_HOLE_D)
+backing = backing.cut(cq.Workplane("XY").workplane(offset=-1).circle(CABLE_HOLE_D / 2).extrude(BACKING_T + 2))
+backing = backing.cut(cq.Workplane("XY").workplane(offset=-1).center(IMU_CH_X, imu_hole_y).circle(IMU_CH_D / 2).extrude(BACKING_T + 2))
+if BASE_USB_SLOT:
+    _sw, _sd = BASE_USB_SLOT_WH
+    backing = backing.cut(cq.Workplane("XY").box(_sw, _sd, BACKING_T + 2)
+                          .translate((D455_USB_SIDE * D455_USB_X, TUBE_OD / 2 + 5 + _sd / 2, BACKING_T / 2)))
+
+parts = {"base": base, "imu_lid": lid, "cap": cap, "backing": backing}
 for i, sg in enumerate(segments):
     parts[f"seg{i + 1}"] = sg
 for name, pp in parts.items():
@@ -369,6 +454,13 @@ if os.environ.get("MAST_FUSED") == "1":
     for _s in segments:
         fused = fused.union(_s.translate((0, 0, _z))); _z += seg_len + DECK_T
     fused = fused.union(cap.translate((0, 0, _z)))
+    # [v5.5] OAK 바닥 +12 위의 각관 제거 + 윗면 4mm 덮개 → 아래 두 M4 구멍 접근 (위 주석 참고)
+    _cut_z = oak_zb + OAK_TUBE_CUT_ABOVE
+    fused = fused.cut(cq.Workplane("XY").box(TUBE_OD + 2, TUBE_OD + 1, 60)
+                      .translate((0, -0.5, _cut_z + 30)))                       # y −21 ~ +20 (관 앞면까지), 쐐기(≥19.9)는 0.1 만 스침
+    fused = fused.union(cq.Workplane("XY").box(TUBE_OD, TUBE_OD, 4.0).translate((0, 0, _cut_z - 2.0)))
+    fused = fused.cut(_oak_access_cutter([_hz_dn]).translate((0, 0, _z)))      # 아래 2개: 통짜 전용
+    print(f"   [v5.5] 각관을 z={_cut_z:.1f} 에서 절단·덮개, OAK M4 접근 구멍 4개 (위 z≈{_z + zb_l + _hz_up:.0f} / 아래 z≈{_z + zb_l + _hz_dn:.0f})")
     cq.exporters.export(fused, os.path.join(OUT, "mast_fused.stl"), tolerance=0.05)
     _bb = fused.val().BoundingBox()
     print(f"   융합본 {_bb.xlen:.1f}×{_bb.ylen:.1f}×{_bb.zlen:.1f}mm  {fused.val().Volume()/1000:.1f}㎤")
@@ -394,7 +486,7 @@ for a in range(len(names)):
 print(f"마디 {n_seg}개 × {seg_len:.1f} (갑판 {seg_z0:.0f}~{seg_top:.1f}) / 캡 {cap_z0:.1f}~{cap_top:.1f}")
 print(f"OAK  바닥 {oak_bb.zmin:.1f} 상단 {oak_bb.zmax:.1f} (그랜드 포함) / D455 상단 {d455_bb.zmax:.1f} 바닥 {d455_bb.zmin:.1f} (USB 포함)")
 print(f"세로 여유 OAK바닥−D455상단 = {gap:.1f} / 최고점 {top:.1f} / 한계 {LIMIT_H:.0f} → {'OK' if top <= LIMIT_H else '초과!'}")
-print(f"IMU 포켓 {pocket_x:.0f}×{pocket_y:.0f}×{pocket_z:.0f} 중심({pcx:.0f},{pcy:.1f}) IMU중심x {imu_cx:.1f} 터널 +Y Ø{IMU_CH_D:.0f} @x{IMU_CH_X:.0f} / 뚜껑 {lid_x:.0f}×{lid_y:.0f} / 베이스 {BASE_W:.0f}×{BASE_L:.0f}×{BASE_T:.0f}")
+print(f"IMU 포켓 {pocket_x:.1f}×{pocket_y:.1f}×{pocket_z:.0f} 중심({pcx:.0f},{pcy:.1f}) IMU중심 ({imu_cx:.1f},{imu_cy:.1f}) 수직 케이블구멍 Ø{IMU_CH_D:.0f} @({IMU_CH_X:.0f},{imu_hole_y:.1f}) / 뚜껑 {lid_x:.0f}×{lid_y:.0f} / 베이스 {BASE_W:.0f}×{BASE_L:.0f}×{BASE_T:.0f} (y {_base_ymin:.0f}~{_base_ymax:.0f})")
 print("간섭:", ", ".join(bad) if bad else "없음")
 
 # 배치값 덤프 — mast_preview.py 가 읽는다 (수치 하드코딩 방지)
@@ -402,7 +494,7 @@ json.dump({
     "yf": yf, "BASE_T": BASE_T, "BASE_W": BASE_W, "BASE_L": BASE_L, "LID_T": LID_T, "DECK_T": DECK_T,
     "seg_z0": seg_z0, "seg_len": seg_len, "n_seg": n_seg, "cap_z0": cap_z0, "cap_h": cap_h,
     "pcx": pcx, "pcy": pcy, "lid_x": lid_x, "lid_y": lid_y,
-    "imu": [imu_cx, pcy, pocket_floor + IMU_PAD_T + IMU_H / 2, IMU_L, IMU_W, IMU_H],
+    "imu": [imu_cx, imu_cy, pocket_floor + IMU_PAD_T + IMU_H / 2, IMU_L, IMU_W, IMU_H],
     "d455": [D455_W, D455_D, D455_H, d455_zb, D455_TILT, D455_STANDOFF, D455_PLATE_T, D455_USB_X, D455_USB_LEN],
     "oak": [OAK_W, OAK_D, OAK_H, oak_zb, OAK_TILT, OAK_STANDOFF, OAK_PLATE_T, OAK_CONN_X, OAK_CONN_LEN, OAK_CONN_W],
     "top": top, "limit": LIMIT_H, "gap": gap,
