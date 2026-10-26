@@ -64,7 +64,7 @@ const bullet = (s) => new Paragraph({ numbering: { reference: 'chk', level: 0 },
 const DM = 'https://www.devicemart.co.kr/goods/view?no=';
 const A = [
   { name: 'OAK-1 PoE FIXED-FOCUS 69°', use: '[지원금 들어옴] 자율운항 비전 카메라. 마스트 꼭대기에서 부표·표식 인식. 주문 후 수입 상품(통관부호 필요) — 납기 먼저 문의', qty: '2', price: '1,322,000', pri: 'P0', links: [['리얼리스토어', 'https://reallystore.net/goods/view?no=45']] },
-  { name: 'PoE 인젝터 30W DC 12-48V→48V DIN (옥션, PSE5502G 동급)', use: '4S 배터리를 48V PoE 로 변환. 랜선 한 가닥으로 카메라 전원+데이터. 11번가 PSE5502G 판매중지 → 10-14 옥션으로 확정. 발주 후 3~4일 내 발송 안 되면 하이링크 DIVA-IPoEI(190,000)로 전환', qty: '2', price: '145,420', pri: 'P0', links: [['옥션 F640411167', 'https://itempage3.auction.co.kr/DetailView.aspx?itemno=F640411167'], ['대안 하이링크', 'https://search.danawa.com/dsearch.php?query=DIVA-IPoEI']] },
+  { name: 'PoE 인젝터 30W DC 12-48V→48V DIN (G마켓, PSE5502G 동급)', use: '4S 배터리를 48V PoE 로 변환. 랜선 한 가닥으로 카메라 전원+데이터. 옥션분(10-14) 미발송 → 10-26 G마켓 재발주: 오늘출발·무료배송·국내배송만. 도착 시 OAK 로 802.3af 동작 확인', qty: '2', price: '122,000 (개당 61,000)', pri: 'P0', links: [['G마켓 4578145347', 'http://item.gmarket.co.kr/Item?goodscode=4578145347'], ['대안 하이링크', 'https://search.danawa.com/dsearch.php?query=DIVA-IPoEI']] },
   { name: 'USB-C 기가비트 어댑터 강원전자 NETmate NM-UCL02', use: '인젝터 LAN 과 노트북 연결. 노트북에 랜 포트가 없다. 칩셋 ASIX AX88179 정확히 일치 — 우분투 기본 드라이버, 설치 0. 10-14 선정', qty: '2', price: '36,980 (개당 18,490, 배송 3,000 별도)', pri: 'P0', links: [['다나와 NM-UCL02', 'https://prod.danawa.com/info/?pcode=15885359']] },
   { name: '퓨즈홀더 BF303 + 5x20 퓨즈 2A', use: '인젝터 입력 보호. 배터리 ⊕ 와 인젝터 사이. 퓨즈는 1회용이라 예비 포함 10개(10-14)', qty: '홀더 2 · 퓨즈 10', price: '3,700', pri: 'P1', links: [['홀더', DM + '14122158'], ['2A', DM + '4538']] },
 ];
@@ -133,7 +133,7 @@ const arrRows = [
   ['퓨즈 5x20 2A', '10', '10', '롯데 3171-3951-2384, 10 EA', '✓ 도착'],
   ['퓨즈홀더 BF303', '4', '2', '디바이스마트 봉투 2 EA 2,860', '⚠ 2개 부족'],
   ['퓨즈 5x20 3A', '10', '0', '사진 없음', '⚠ 미확인'],
-  ['PoE 인젝터 (옥션)', '2', '0', '사진 없음', '⚠ 미확인 — 발송 확인'],
+  ['PoE 인젝터', '2', '0', '옥션분 미발송 → 10-26 G마켓 61,000 재발주(오늘출발)', '⚠ 재발주'],
   ['RF 무선스위치', '1', '1', '팀 확인 10-22', '✓ 도착'],
   ['EC5 피그테일 (쿠팡)', '3', '0', '사진 없음', '⚠ 미확인'],
   ['DC잭 케이블 세트 (쿠팡)', '1', '0', '사진 없음 (엘레파츠 "외" 일 수도)', '⚠ 미확인'],
@@ -148,14 +148,14 @@ const arrTable = new Table({ width: { size: TW, type: WidthType.DXA }, columnWid
 
 const SUMCOLS = [5000, 2000, 3500, 4070];
 const sumRows = [
-  ['A. OAK 카메라', '4', '1,508,100', 'P0 카메라·인젝터·어댑터, P1 퓨즈'],
+  ['A. OAK 카메라', '4', '1,484,680', 'P0 카메라·인젝터·어댑터, P1 퓨즈'],
   ['B. D455 조종 카메라', '1', '15,000 ~ 30,000', 'P0'],
   ['C. 라이다', '0', '0', 'A3 1대 10-07 구매 완료(17만원) — 예비 0'],
   ['D. 비상정지', '2', '53,600', 'P0 — 컨버터 + 2번배 무선스위치(지원금)'],
   ['E. USB 허브', '3', '46,220', 'P1'],
   ['F. 주 전력 (EC5)', '1', '9,000', 'P0 — 분기용 피그테일 ×3'],
   ['G. 제어 (Mega)', '1', '64,900', 'P0 — 2번배용. 지원금 들어옴'],
-  ['합계', '11', '1,696,820 ~ 1,711,820', 'OAK 2대가 77~78%'],
+  ['합계', '11', '1,673,400 ~ 1,688,400', 'OAK 2대가 78~79%'],
 ];
 const sumTable = new Table({ width: { size: TW, type: WidthType.DXA }, columnWidths: SUMCOLS, rows: [
   headerRow(SUMCOLS, ['계통', '품목 수', '금액(원)', '비고']),
@@ -199,9 +199,9 @@ const bigRow = (a, b, c, color) => new TableRow({ children: [
 ] });
 const bigTable = new Table({ width: { size: TW, type: WidthType.DXA }, columnWidths: BIG, rows: [
   headerRow(BIG, ['구분', '금액(원, VAT 포함)', '내용']),
-  bigRow('총 사야 하는 금액', '1,696,820 ~ 1,711,820', '11항목 전체', '000000'),
+  bigRow('총 사야 하는 금액', '1,673,400 ~ 1,688,400', '11항목 전체', '000000'),
   bigRow('지원금', '1,414,100', 'OAK-1 PoE ×2 · Arduino Mega ×1 · RF 무선스위치 ×1 (동아리 2차 활동계획서)', '1F7A3A'),
-  bigRow('자부담 (지원금 제외)', '282,720 ~ 297,720', '나머지 8항목 — 우리가 내야 하는 금액', 'C00000'),
+  bigRow('자부담 (지원금 제외)', '259,300 ~ 274,300', '나머지 8항목 — 우리가 내야 하는 금액', 'C00000'),
 ] });
 const fundRows = [
   ['OAK-1 PoE ×2', '1,322,000', '계획서 7번'],
@@ -210,7 +210,7 @@ const fundRows = [
   ['지원금 합계', '1,414,100', ''],
 ];
 const selfRows = [
-  ['PoE 인젝터 30W 12-48V (옥션) ×2', '145,420', 'A. OAK 카메라'],
+  ['PoE 인젝터 30W 12-48V (G마켓) ×2', '122,000', 'A. OAK 카메라'],
   ['USB-C 어댑터 NM-UCL02 ×2', '36,980', 'A. OAK 카메라'],
   ['USB 3.0 C↔A 케이블 ×3', '15,000 ~ 30,000', 'B. D455'],
   ['승압 컨버터 SZH-BPM001 ×2', '26,400', 'D. 비상정지'],
@@ -218,7 +218,7 @@ const selfRows = [
   ['5V 고정 강압 모듈 + DC잭 세트', '14,620', 'E. USB 허브'],
   ['퓨즈홀더 ×4 + 퓨즈 2A×10·3A×10', '7,400', 'A·E'],
   ['EC5 피그테일 ×3', '9,000', 'F. 주 전력'],
-  ['자부담 합계', '282,720 ~ 297,720', ''],
+  ['자부담 합계', '259,300 ~ 274,300', ''],
 ];
 
 const doc = new Document({
@@ -239,7 +239,7 @@ const doc = new Document({
     children: [
       H1('SSF 2026 구매 목록 — 계통별'),
       P('2026-10-22 기준 · 단일 출처: 저장소 docs/전달용/구매_목록.md · 가격은 09-14~09-23 다나와·공식샵 기준 추정 · 금액 = 적힌 수량 전체, VAT 포함', { color: '595959', size: 17 }),
-      P('사야 할 것은 11항목, 합계 약 170~171만원이다. 아직 하나도 주문하지 않았다. 같은 계통 안에서 하나만 빠져도 그 계통은 안 돈다.', { bold: true }),
+      P('사야 할 것은 11항목, 합계 약 167~169만원이다. 아직 하나도 주문하지 않았다. 같은 계통 안에서 하나만 빠져도 그 계통은 안 돈다.', { bold: true }),
       sumTable,
 
       H2('도착 현황 (2026-10-22, 송장·라벨 사진 대조)'),
@@ -249,7 +249,7 @@ const doc = new Document({
 
       H2('A. OAK 카메라 계통 — 자율운항 비전'),
       flow('배터리 ⊕ ─ 2A 퓨즈 ─▶ PoE 인젝터 ─ 동봉 2m Cat5e ─▶ OAK-1 PoE      인젝터 LAN ─▶ NM-UCL02(C 플러그) ─▶ 노트북 USB-C 직결'),
-      itemTable(A, '1,508,100'),
+      itemTable(A, '1,484,680'),
       P('OAK-1 PoE 주문 옵션 (리얼리스토어 페이지 10-14 확인)', { bold: true }),
       oakOptTable,
       P('USB-C 기가비트 어댑터 후보 비교 — NM-UCL02 선정 (10-14)', { bold: true }),
