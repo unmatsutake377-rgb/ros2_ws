@@ -366,6 +366,29 @@ for _rx in RIB_XS_OAK:
 
 cap = cap.union(wedge_o).union(cro).cut(oak_slot)
 
+# [v5.5 2026-10-26] OAK 뒷면 M4 네 개를 전부 뒤에서 박을 수 있게 한다.
+#   구멍(±22.5, ±18.75) 뒤가 쐐기(±30)·각관으로 막혀 드라이버가 못 들어갔다(통짜라 조립 전 체결도 불가).
+#   위 두 구멍(z≈194)은 캡 윗면(170) 위라 쐐기만 뚫으면 되고, 아래 두 구멍(z≈156)은 각관 뒤다
+#   → 통짜(MAST_FUSED)에서는 OAK 바닥 +12 위의 각관을 잘라내고 윗면을 4mm 판으로 막는다(빗물 차단).
+#     그 구간의 관은 구조적으로 불필요 — 하중은 뒷판→바닥턱→리브→134 아래 관으로 간다.
+#   구멍 축은 뒷판에 수직(11° 기울어짐) — 크레들과 같은 회전을 적용한 커터로 자른다.
+OAK_ACCESS_D = 12.0
+OAK_TUBE_CUT_ABOVE = 12.0     # OAK 바닥에서 이만큼 위에서 관을 자른다 (아래 구멍 Ø12 하단 ≈ 바닥+16.75 보다 아래)
+
+def _oak_access_cutter(hzs):
+    """캡 로컬 좌표 커터: 뒷판 뒷면(로컬 y=0)에서 뒤로 40 뚫는 Ø12 원통, 크레들과 같은 회전·이동."""
+    acc = None
+    for hx in (-OAK_HOLE_PITCH[0] / 2, OAK_HOLE_PITCH[0] / 2):
+        for hz in hzs:
+            cyl = (cq.Workplane("XZ").workplane(offset=0.0).center(hx, hz)
+                   .circle(OAK_ACCESS_D / 2).extrude(40.0))        # XZ 법선 −Y → 뒤쪽으로 40
+            acc = cyl if acc is None else acc.union(cyl)
+    return (acc.translate((0, yf + OAK_STANDOFF, zb_l))
+            .rotate((0, yf + OAK_STANDOFF, zb_l), (1, yf + OAK_STANDOFF, zb_l), -OAK_TILT))
+
+_hz_up, _hz_dn = OAK_H / 2 + OAK_HOLE_PITCH[1] / 2, OAK_H / 2 - OAK_HOLE_PITCH[1] / 2
+cap = cap.cut(_oak_access_cutter([_hz_up]))          # 위 2개: 분할·통짜 공통
+
 # ───────────────────────────── 4. 더미 + 검산 ─────────────────────────────
 def cam_dummy(cam_w, cam_d, cam_h, plate_t, standoff, zb, tilt, conn=None):
     yc = yf + standoff + plate_t + cam_d / 2
@@ -431,6 +454,13 @@ if os.environ.get("MAST_FUSED") == "1":
     for _s in segments:
         fused = fused.union(_s.translate((0, 0, _z))); _z += seg_len + DECK_T
     fused = fused.union(cap.translate((0, 0, _z)))
+    # [v5.5] OAK 바닥 +12 위의 각관 제거 + 윗면 4mm 덮개 → 아래 두 M4 구멍 접근 (위 주석 참고)
+    _cut_z = oak_zb + OAK_TUBE_CUT_ABOVE
+    fused = fused.cut(cq.Workplane("XY").box(TUBE_OD + 2, TUBE_OD + 1, 60)
+                      .translate((0, -0.5, _cut_z + 30)))                       # y −21 ~ +20 (관 앞면까지), 쐐기(≥19.9)는 0.1 만 스침
+    fused = fused.union(cq.Workplane("XY").box(TUBE_OD, TUBE_OD, 4.0).translate((0, 0, _cut_z - 2.0)))
+    fused = fused.cut(_oak_access_cutter([_hz_dn]).translate((0, 0, _z)))      # 아래 2개: 통짜 전용
+    print(f"   [v5.5] 각관을 z={_cut_z:.1f} 에서 절단·덮개, OAK M4 접근 구멍 4개 (위 z≈{_z + zb_l + _hz_up:.0f} / 아래 z≈{_z + zb_l + _hz_dn:.0f})")
     cq.exporters.export(fused, os.path.join(OUT, "mast_fused.stl"), tolerance=0.05)
     _bb = fused.val().BoundingBox()
     print(f"   융합본 {_bb.xlen:.1f}×{_bb.ylen:.1f}×{_bb.zlen:.1f}mm  {fused.val().Volume()/1000:.1f}㎤")
