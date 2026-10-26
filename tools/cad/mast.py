@@ -67,9 +67,10 @@ GUSSET          = 30.0
 # IMU (iAHRS RB-SDA-v1) — 매뉴얼 도면 확정값
 IMU_L, IMU_W, IMU_H = 34.0, 34.0, 9.0    # 케이스 (L=선체 좌우 X, W=전후 Y, H=높이) — [v5.4] 10-26 줄자 실측 34×34×9 (도면 35×35×10 보다 작았다)
 IMU_CLEAR   = 1.0      # 전체 +1
-IMU_CABLE_SPACE = 24.0 # [v4.1] 14→24. 14 면 IMU 끝(x=10.5)이 터널 입구(x 6~14)를 56% 막았다
-IMU_CH_D    = 8.0      # 케이블 터널 지름
-IMU_CH_X    = 10.0     # 터널 x 위치 (중앙 케이블 구멍 Ø22 안)
+IMU_CABLE_SPACE = 22.0 # [v5.4] 커넥터(micro-USB+4핀) 플러그가 케이스 **뒤(−Y)** 로 나온다 — 그 길이. 팀장 10-26: "케이블은 뒤쪽 구멍으로"
+                       #   (v4.1 까지는 −X 옆으로 24 두고 +Y 터널로 중앙 구멍에 보냈다 → 폐기)
+IMU_CH_D    = 9.0      # [v5.4] 포켓 뒤끝 바닥 **수직** 케이블 구멍 지름 — 갑판 관통, 아래서 실리콘/글랜드로 방수
+IMU_CH_X    = 0.0      # [v5.4] 수직 구멍 x (중심선)
 IMU_PAD_T   = 2.0      # [v4] VHB 양면 + 방진패드 두께 (붙이는 방식, 나사 없음)
 LID_T       = 3.0
 LID_MARGIN  = 8.0
@@ -197,16 +198,19 @@ from mast_parts import collar_ring, cradle   # 공용 형상 함수 (fit_test.py
 
 
 # ───────────────────────────── 1. 베이스 (IMU 포켓 — 중심선 선미쪽, 접착식) ─────────────────────────────
-pocket_x = IMU_L + IMU_CLEAR + IMU_CABLE_SPACE     # X: IMU + 케이블 꺾임 공간(+X 쪽)
-pocket_y = IMU_W + IMU_CLEAR
+pocket_x = IMU_L + IMU_CLEAR                       # [v5.4] X: 케이스에 꼭 맞게 (34.5)
+pocket_y = IMU_W + IMU_CLEAR + IMU_CABLE_SPACE     # [v5.4] Y: 케이스 + 뒤(−Y) 플러그 공간 22
 pocket_z = IMU_H + IMU_CLEAR + IMU_PAD_T
 lid_x, lid_y = pocket_x + 2 * LID_MARGIN, pocket_y + 2 * LID_MARGIN
 collar_half = TUBE_OD / 2 + COLLAR_MARGIN + PLUG_CLEAR
 pocket_ymax = -(collar_half + 1.5)                 # 포켓 +Y 끝 = 칼라 뒤 1.5
 pcx, pcy = 0.0, pocket_ymax - pocket_y / 2         # [v4] 중심선(X=0), 선미쪽
-imu_cx = pcx - IMU_CABLE_SPACE / 2                 # IMU 케이스 중심 (포켓 −X 쪽에 붙임)
+imu_cx = pcx                                       # [v5.4] IMU 케이스 중심 x = 중심선
+imu_cy = pcy + IMU_CABLE_SPACE / 2                 # [v5.4] 케이스는 포켓 +Y(칼라) 쪽 끝, 플러그는 −Y(선미) 쪽
 BASE_W = max(BASE_W_MIN, lid_x + 24.0)
-BASE_L = max(BASE_L_MIN, 2 * (abs(pcy) + lid_y / 2 + 6.0))
+_base_ymin = pcy - lid_y / 2 - 6.0                 # [v5.4] 베이스를 선미쪽으로만 늘린다 (앞은 73 이면 D455 리브·볼트 구멍까지 충분)
+_base_ymax = 73.0
+BASE_L = max(BASE_L_MIN, _base_ymax - _base_ymin)
 BASE_T = max(BASE_T_MIN, math.ceil(pocket_z + LID_T + 4.0))
 if MAST_H is None:
     MAST_H = OAK_Z - OAK_H / 2 - BASE_T - 2 * DECK_T
@@ -226,7 +230,7 @@ if TEST:
     os.makedirs(OUT, exist_ok=True)
     print(f"ℹ️ MAST_TEST: 베이스 판 {BASE_W:.0f}×{BASE_L:.0f} (중심 y{_yoff:+.1f}), M5 볼트 구멍 생략")
 else:
-    _yoff = 0.0
+    _yoff = (_base_ymax + _base_ymin) / 2          # [v5.4] 비대칭 베이스 중심
 
 base = cq.Workplane("XY").rect(BASE_W, BASE_L).extrude(BASE_T).translate((0, _yoff, 0)).edges("|Z").fillet(8)
 if not TEST:
@@ -257,10 +261,9 @@ screw_pts = [(pcx + sx * (pocket_x / 2 + LID_MARGIN / 2), pcy + sy * (pocket_y /
              for sx in (-1, 1) for sy in (-1, 1)]
 for (sx, sy) in screw_pts:
     base = base.cut(cq.Workplane("XY").workplane(offset=BASE_T - LID_T - 9).center(sx, sy).circle(LID_SCREW_D / 2).extrude(10))
-# 케이블 터널: 포켓 +Y 벽 → 중앙 케이블 구멍 (XZ 법선 −Y)
-ch_z = pocket_floor + IMU_PAD_T + IMU_CH_D / 2 + 0.5
-y_start = pocket_ymax - 1.0
-base = base.cut(cq.Workplane("XZ").workplane(offset=-y_start).center(IMU_CH_X, ch_z).circle(IMU_CH_D / 2).extrude(y_start - 1.0))
+# [v5.4] 케이블 구멍: 포켓 **뒤끝(−Y) 바닥**에서 수직으로 갑판까지. 플러그가 케이스 뒤로 22 나온 뒤 아래로 꺾인다.
+imu_hole_y = pcy - pocket_y / 2 + IMU_CH_D / 2 + 2.0
+base = base.cut(cq.Workplane("XY").workplane(offset=-1).center(IMU_CH_X, imu_hole_y).circle(IMU_CH_D / 2).extrude(pocket_floor + 2))
 # [v4] 포켓 바닥은 접착면이라 평평하게 둔다 → 뱃머리 화살표는 베이스 윗면(뱃머리 쪽)에 각인
 arrow = (cq.Workplane("XY").workplane(offset=BASE_T - 0.6).center(0, collar_half + 14)
          .polyline([(0, 12), (7, 4), (2.5, 4), (2.5, -12), (-2.5, -12), (-2.5, 4), (-7, 4)]).close().extrude(1.0))
@@ -376,7 +379,7 @@ d455_dummy = cam_dummy(D455_W, D455_D, D455_H, D455_PLATE_T, D455_STANDOFF, d455
                        conn=(10, 8, D455_USB_LEN, D455_USB_X))
 oak_dummy = cam_dummy(OAK_W, OAK_D, OAK_H, OAK_PLATE_T, OAK_STANDOFF, oak_zb, OAK_TILT,
                       conn=(OAK_CONN_W, 16, OAK_CONN_LEN, OAK_CONN_X))
-imu_dummy = cq.Workplane("XY").box(IMU_L, IMU_W, IMU_H).translate((imu_cx, pcy, pocket_floor + IMU_PAD_T + IMU_H / 2))
+imu_dummy = cq.Workplane("XY").box(IMU_L, IMU_W, IMU_H).translate((imu_cx, imu_cy, pocket_floor + IMU_PAD_T + IMU_H / 2))
 
 def bb(o):
     return o.val().BoundingBox()
@@ -387,7 +390,18 @@ top = max(oak_bb.zmax, cap_top, cap_z0 + bb(cro).zmax)
 gap = oak_bb.zmin - d455_bb.zmax
 
 # ───────────────────────────── 출력 ─────────────────────────────
-parts = {"base": base, "imu_lid": lid, "cap": cap}
+# ── [v5.4] 갑판 밑 받침판 — FRP 1mm(팀장 10-26) 에 M5 네 점으로 매달 수 없다. 하중을 판 전체로 나눈다 ──
+BACKING_T = 3.0
+backing = cq.Workplane("XY").rect(BASE_W, BASE_L).extrude(BACKING_T).translate((0, _yoff, 0)).edges("|Z").fillet(8)
+backing = backing.faces(">Z").workplane().rect(*BASE_HOLE_PITCH, forConstruction=True).vertices().hole(BASE_HOLE_D)
+backing = backing.cut(cq.Workplane("XY").workplane(offset=-1).circle(CABLE_HOLE_D / 2).extrude(BACKING_T + 2))
+backing = backing.cut(cq.Workplane("XY").workplane(offset=-1).center(IMU_CH_X, imu_hole_y).circle(IMU_CH_D / 2).extrude(BACKING_T + 2))
+if BASE_USB_SLOT:
+    _sw, _sd = BASE_USB_SLOT_WH
+    backing = backing.cut(cq.Workplane("XY").box(_sw, _sd, BACKING_T + 2)
+                          .translate((D455_USB_SIDE * D455_USB_X, TUBE_OD / 2 + 5 + _sd / 2, BACKING_T / 2)))
+
+parts = {"base": base, "imu_lid": lid, "cap": cap, "backing": backing}
 for i, sg in enumerate(segments):
     parts[f"seg{i + 1}"] = sg
 for name, pp in parts.items():
@@ -442,7 +456,7 @@ for a in range(len(names)):
 print(f"마디 {n_seg}개 × {seg_len:.1f} (갑판 {seg_z0:.0f}~{seg_top:.1f}) / 캡 {cap_z0:.1f}~{cap_top:.1f}")
 print(f"OAK  바닥 {oak_bb.zmin:.1f} 상단 {oak_bb.zmax:.1f} (그랜드 포함) / D455 상단 {d455_bb.zmax:.1f} 바닥 {d455_bb.zmin:.1f} (USB 포함)")
 print(f"세로 여유 OAK바닥−D455상단 = {gap:.1f} / 최고점 {top:.1f} / 한계 {LIMIT_H:.0f} → {'OK' if top <= LIMIT_H else '초과!'}")
-print(f"IMU 포켓 {pocket_x:.0f}×{pocket_y:.0f}×{pocket_z:.0f} 중심({pcx:.0f},{pcy:.1f}) IMU중심x {imu_cx:.1f} 터널 +Y Ø{IMU_CH_D:.0f} @x{IMU_CH_X:.0f} / 뚜껑 {lid_x:.0f}×{lid_y:.0f} / 베이스 {BASE_W:.0f}×{BASE_L:.0f}×{BASE_T:.0f}")
+print(f"IMU 포켓 {pocket_x:.1f}×{pocket_y:.1f}×{pocket_z:.0f} 중심({pcx:.0f},{pcy:.1f}) IMU중심 ({imu_cx:.1f},{imu_cy:.1f}) 수직 케이블구멍 Ø{IMU_CH_D:.0f} @({IMU_CH_X:.0f},{imu_hole_y:.1f}) / 뚜껑 {lid_x:.0f}×{lid_y:.0f} / 베이스 {BASE_W:.0f}×{BASE_L:.0f}×{BASE_T:.0f} (y {_base_ymin:.0f}~{_base_ymax:.0f})")
 print("간섭:", ", ".join(bad) if bad else "없음")
 
 # 배치값 덤프 — mast_preview.py 가 읽는다 (수치 하드코딩 방지)
@@ -450,7 +464,7 @@ json.dump({
     "yf": yf, "BASE_T": BASE_T, "BASE_W": BASE_W, "BASE_L": BASE_L, "LID_T": LID_T, "DECK_T": DECK_T,
     "seg_z0": seg_z0, "seg_len": seg_len, "n_seg": n_seg, "cap_z0": cap_z0, "cap_h": cap_h,
     "pcx": pcx, "pcy": pcy, "lid_x": lid_x, "lid_y": lid_y,
-    "imu": [imu_cx, pcy, pocket_floor + IMU_PAD_T + IMU_H / 2, IMU_L, IMU_W, IMU_H],
+    "imu": [imu_cx, imu_cy, pocket_floor + IMU_PAD_T + IMU_H / 2, IMU_L, IMU_W, IMU_H],
     "d455": [D455_W, D455_D, D455_H, d455_zb, D455_TILT, D455_STANDOFF, D455_PLATE_T, D455_USB_X, D455_USB_LEN],
     "oak": [OAK_W, OAK_D, OAK_H, oak_zb, OAK_TILT, OAK_STANDOFF, OAK_PLATE_T, OAK_CONN_X, OAK_CONN_LEN, OAK_CONN_W],
     "top": top, "limit": LIMIT_H, "gap": gap,
