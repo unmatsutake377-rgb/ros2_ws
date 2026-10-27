@@ -273,9 +273,9 @@ const children = [
   table(['단계', '처리', '파라미터 / 값'], [
     ['① 입력', 'image_topic 구독, BEST_EFFORT depth 1 (묵은 프레임으로 조향 금지)', '해상도는 매 프레임 msg.width 로 읽음'],
     ['② 색 분리', 'BGR → HSV, 색별 inRange. 빨강은 0° 를 넘어 범위 2개', 'red [0-5]+[165-180], green H 60-85, white V≥220·S≤40 (⚠️ 실외 재확정)'],
-    ['③ 후보 추출', '컨투어 → 최소 면적 필터 → 가장 큰 것 1개', 'min_area_px 40 (gate·turn) / 80 (dock)'],
+    ['③ 후보 추출', '컨투어 → 최소 면적 → 형상 검사(꼭짓점 4~8·extent·종횡비, require_shape) 또는 solidity(면적/볼록껍질) → 가장 큰 것 1개', 'min_area_px 40 (gate·turn) / 80 (dock), min_solidity 0.7, y_zone 카메라별(틸트 0° D455 / 11° OAK)'],
     ['④ 형상 판정 (dock)', 'approxPolyDP 꼭짓점 수 + extent·aspect·circularity 로 삼각/사각/원/십자', 'epsilon 0.0315, square extent≥0.4 aspect 0.6~1.4, circle circ≥0.82'],
-    ['⑤ 확인', '연속 N 프레임 일치해야 발행, 유예 시간 내 유실은 유지', 'confirm_frames 1 (gate·turn) / 3 (dock), grace 2.0 s'],
+    ['⑤ 확인', '최근 M 프레임 중 N 회(미검출은 관용, 색 전환은 리셋) 일치해야 발행. 유예 시간 내 유실은 마지막 값 유지', 'confirm_frames 1 (gate·turn) / 3 (dock), confirm_window = N 기본(켤 땐 3/5), grace 2.0 s — 10-27 개정'],
     ['⑥ 방위각 변환', '픽셀 x → 각도: θ = atan((x − cx) / fx), fx = (W/2)/tan(hfov/2)', 'hfov_deg 80.32 (D455 camera_info 실측) → OAK 스펙 69°, ⚠️ camera_info fx 로 실측 교체'],
     ['⑦ 발행·게이트', '/wp_mode 가 담당 모드일 때만 발행, stale 2 s → 정지. 목표 색·형상 유효값 밖 → ERROR + 정지', 'active_wp_modes: gate [0,1] / turn [2,3] / dock [7]'],
   ], [1700, 4300, 3360]),
