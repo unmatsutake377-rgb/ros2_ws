@@ -97,7 +97,9 @@ class ImageSubscriber(Node):
             self.declare_parameter('hfov_deg', DEFAULT_HFOV_DEG).value)
 
         self.found_in_frame = False
-        self.last_log_time = time.time()
+        # A2(2026-10-27): monotonic (CLAUDE.md 1-5). 아래 color_callback 의 `now` 와 **같은 시계**여야
+        #   한다 — 한쪽만 바꾸면 `now - last_log_time` 이 음수가 돼 [Dock] 로그가 영원히 안 찍힌다(에러 없음).
+        self.last_log_time = time.monotonic()
 
         # ---- D1: 목표 표식 파라미터화 (당일 아침 공지 대응) ----
         # 작년: target_color="red", target_shape="Square" 하드코딩 → 공지된 조합이 다르면
@@ -189,7 +191,8 @@ class ImageSubscriber(Node):
             cv2.imshow("Dock Detection", view_frame)
             cv2.waitKey(1)
 
-        now = time.time()
+        # A2: monotonic — NTP 보정·시간 점프에 grace 판정이 흔들리지 않는다. last_log_time 과 같은 시계.
+        now = time.monotonic()
 
         def publish(angle_val):
             self.angle_pub.publish(Float32(data=float(angle_val)))
