@@ -51,7 +51,7 @@ wire(ax,[(17,68),(26,68),(26,89),(70,89),(70,81)],c=C_GND,lw=1.6)
 wire(ax,[(17,20),(22,20),(22,8),(70,8),(70,20)],c=C_GND,lw=1.6)
 lbl(ax,46,91.5,f"배터리 A ⊖ → ESC 우 ⊖ ×{NS}  직결 (접촉기를 지나지 않는다)",c=C_GND,fs=8.5)
 lbl(ax,46,5.5,f"배터리 B ⊖ → ESC 좌 ⊖ ×{NS}  직결",c=C_GND,fs=8.5)
-lbl(ax,26,60,"A ⊕ 는 5번 가기 전에 EC5 피그테일로 분기\n→ ② 코일 컨버터 · ③ 인젝터 · ③ 허브 5V",c=C_WARN,fs=8,bold=True)
+lbl(ax,26,60,"A ⊕ 는 5번에서 옆으로 분기(둘째 나사 링단자·본선 납땜)\n→ ② 코일 컨버터 · ③ 인젝터 · ③ 허브 5V",c=C_WARN,fs=8,bold=True)
 lbl(ax,88,60,f"8~10 AWG\n계통당 {21*NS}A · 순간 {30*NS}A",c=C_PWR,fs=8)
 lbl(ax,88,38,"▲ A=우 / B=좌 는 결선표(A→5·6)와\n신규설계(A→우)를 합친 추론이다.\n통전으로 한 번 확인할 것",c=C_WARN,fs=7.5)
 
@@ -98,7 +98,7 @@ lbl(ax,66,36.5,"밝기 상한 40 (USB 폴리퓨즈 0.5A)",fs=7.5,c=C_WARN)
 ax.add_patch(Rectangle((2,24),94,7,fc="#f2f2f2",ec=C_GND,lw=1.4))
 lbl(ax,49,27.5,f"공통 GND 버스 —  Mega GND · ESC 신호GND ×{TOT} · 수신기 · LED · 배터리A ⊖ · 배터리B ⊖   "
                 "(굵은 전원은 분리, 신호 GND 는 한 점)",fs=9,c=C_GND,bold=True)
-box(ax,2,7,20,12,"배터리 A ⊕ (접촉기 앞)\nEC5 피그테일 ─ BF303 2A",fc="#fdecea")
+box(ax,2,7,20,12,"배터리 A ⊕ (5번 둘째 나사)\n분기 18AWG ─ BF303 2A",fc="#fdecea")
 box(ax,27,7,19,12,"PoE 인젝터 PSE5502G\nDC 12-48V in → 48V 802.3af/at\n30W · 비방수 · DC IN 5.5×2.1",fc="#eafaf1")
 box(ax,52,7,16,12,"OAK-1 PoE FF\n(마스트 위, 10-20 도착)",fc="#eafaf1")
 box(ax,74,7,22,12,"NM-UCL02 (AX88179)\n→ 노트북 USB-C 직결",fc="#eaf2fb")
@@ -108,7 +108,7 @@ lbl(ax,49,21,"동봉 2m Cat5e (전원+데이터)",fs=7.5); lbl(ax,61,1,"LAN (데
 lbl(ax,12,21.5,"● 인젝터는 접촉기 앞에서 — 비상정지는 추진만 끊는다",c=C_PWR,fs=8,bold=True)
 
 # ── 허브 계통 ──
-box(ax,2,-16,20,12,"배터리 A ⊕ (접촉기 앞)\nEC5 피그테일 ─ BF303 3A",fc="#fdecea")
+box(ax,2,-16,20,12,"배터리 A ⊕ (5번 둘째 나사)\n분기 18AWG ─ BF303 3A",fc="#fdecea")
 box(ax,27,-16,19,12,"SZWENGAO WG-1224S0505\n8~36V → 5V 고정 5A · IP68\n(트리머 없음, 10-22 도착)",fc="#eafaf1")
 box(ax,52,-16,18,12,"ipTIME UH308\n유전원 허브",fc="#eaf2fb")
 box(ax,76,-16,22,12,"LiDAR · IMU · GPS · D455",fc="#eafaf1")
@@ -170,7 +170,7 @@ lbl(ax,1,36,f"배터리 ⊖ 는 접촉기를 지나지 않는다 :  A ⊖ → ES
     fs=9,ha="left",c=C_GND,bold=True)
 lbl(ax,1,31,"코일 회로 :  배터리A ⊕ (접촉기 5번보다 배터리 쪽) → 컨버터 IN⊕ / 릴레이 IN+   ·   컨버터 OUT⊕ → A1   ·   A2 → 릴레이 COM → 릴레이 NC → 버튼 NC(1)   ·   버튼 NC(2) → 컨버터 OUT⊖",
     fs=9,ha="left",c=C_PWR)
-lbl(ax,1,26,"보조 전원 :  배터리A EC5 ─ EC5 암 피그테일(10AWG) ┬ BF303 2A → PSE5502G DC IN → Cat5e → OAK-1 PoE (LAN → NM-UCL02 → 노트북 USB-C)   ┬ BF303 3A → SZWENGAO 5V → UH308 허브",
+lbl(ax,1,26,"보조 전원 :  배터리A ⊕ 접촉기 5번 둘째 나사(링단자) 또는 본선 납땜 ─ 분기 18AWG ┬ BF303 2A → PSE5502G DC IN → Cat5e → OAK-1 PoE (LAN → NM-UCL02 → 노트북 USB-C)   ┬ BF303 3A → SZWENGAO 5V → UH308 허브",
     fs=9,ha="left",c="#111")
 lbl(ax,1,19,"● 배선 전 무전원 도통 시험 : 배터리 연결 전에 (+) 와 (-) 가 어디서도 안 만나는지 확인한다. 한쪽 (-) 와 다른 쪽 (+) 가 만나면 29.6V — T200(최대 20V)이 탄다.",
     fs=9,ha="left",c=C_PWR,bold=True)
