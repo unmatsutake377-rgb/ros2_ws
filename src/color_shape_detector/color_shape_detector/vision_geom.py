@@ -1,5 +1,5 @@
 """
-비전 기하 — 픽셀 오프셋 → 방위각. ROS/OpenCV 비의존 순수 함수.
+비전 기하 — 픽셀 오프셋 → 방위각, 컨투어 채움비(solidity). ROS/OpenCV 비의존 순수 함수.
 
 왜 다시 썼나 (V3, CLAUDE.md 3-3):
   작년 코드는 이랬다.
@@ -88,3 +88,18 @@ def legacy_angle_from_pixel(vX, image_width):
     """
     cx = image_width // 2
     return -math.degrees(math.atan((vX - cx) * LEGACY_PIXEL_TO_ANGLE_K))
+
+
+def solidity(area, hull_area):
+    """
+    채움비 = 컨투어 면적 / 볼록껍질(convex hull) 면적. 볼록한 덩어리=1.0, 들쭉날쭉할수록 낮다.
+
+    A4(2026-10-27): gate·turn 의 `require_shape=false` 경로에서 사각형 검사 대신 쓴다 —
+    규정 부표는 형상 규정이 없어(원통·구) 꼭짓점 수로 거르면 파도에 반쯤 가린 부표를 버린다.
+    윤슬·물보라 조각은 solidity 가 낮아 `min_solidity`(기본 0.7)로 걸러진다.
+
+    hull_area 가 None 이거나 0 이하이면 None(모르면 값을 지어내지 않는다 — 호출부가 버린다).
+    """
+    if hull_area is None or hull_area <= 0.0:
+        return None
+    return area / float(hull_area)

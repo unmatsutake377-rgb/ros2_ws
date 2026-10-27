@@ -12,7 +12,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from color_shape_detector.vision_geom import (  # noqa: E402
     DEFAULT_HFOV_DEG, EXACT_LEGACY_HFOV_DEG, LEGACY_HFOV_DEG,
     LEGACY_PIXEL_TO_ANGLE_K, MEASURED_D455_640x480,
-    angle_from_pixel, fx_from_hfov, legacy_angle_from_pixel,
+    angle_from_pixel, fx_from_hfov, legacy_angle_from_pixel, solidity,
 )
 
 _passed = 0
@@ -214,6 +214,34 @@ def test_wide_lens_changes_angle_a_lot():
     wide = angle_from_pixel(vx, 640, 120.0)
     assert abs(wide - narrow) > 10.0, \
         f"71.5°→120° 인데 각도 차가 {abs(wide-narrow):.1f}° 뿐"
+
+
+# ------------------------------------------------------------------ solidity (A4)
+def test_solidity_convex_is_one():
+    assert near(solidity(100.0, 100.0), 1.0)
+
+
+def test_solidity_boundary_0_7():
+    """min_solidity 기본 0.7 의 경계: 딱 0.7 은 통과(>=), 그 아래는 탈락."""
+    assert near(solidity(70.0, 100.0), 0.7)
+    assert solidity(70.0, 100.0) >= 0.7
+    assert solidity(69.9, 100.0) < 0.7
+
+
+def test_solidity_zero_hull_is_none():
+    """0 나눗셈: 퇴화 컨투어는 None — 0 이나 1 같은 그럴듯한 값을 내지 않는다."""
+    assert solidity(100.0, 0.0) is None
+    assert solidity(100.0, -1.0) is None
+    assert solidity(100.0, None) is None
+
+
+def test_solidity_zero_area_is_zero():
+    assert near(solidity(0.0, 100.0), 0.0)
+
+
+def test_solidity_spiky_is_low():
+    """볼록껍질은 큰데 면적이 작은 들쭉날쭉 조각 → 낮다."""
+    assert solidity(300.0, 1000.0) < 0.7
 
 
 def main():

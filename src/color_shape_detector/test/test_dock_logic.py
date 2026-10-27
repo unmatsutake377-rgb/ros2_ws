@@ -171,6 +171,129 @@ def test_confirm_frames_1_is_immediate():
     assert c.update(("red", SQUARE)) == ("red", SQUARE)
 
 
+# ================================================================ 창 M 중 N (A1, 2026-10-27)
+class _LegacyConfirmer:
+    """2026-08 '연속 N' 구현의 참조 사본 — 창=N 이면 새 구현과 같아야 한다(회귀 비교 전용)."""
+
+    def __init__(self, n):
+        self.n = max(1, int(n))
+        self._cur = None
+        self._count = 0
+        self.confirmed = None
+
+    def update(self, key):
+        if key is None:
+            self._cur = None
+            self._count = 0
+            return None
+        if key == self._cur:
+            self._count += 1
+        else:
+            self._cur = key
+            self._count = 1
+        if self._count >= self.n:
+            self.confirmed = key
+            return key
+        return None
+
+
+def test_window_flicker_one_miss():
+    """깜빡임 r,r,None,r — 창 5 중 3 이면 4번째에 확정(옛 연속 N 은 영원히 미확정)."""
+    c = DetectionConfirmer(confirm_frames=3, confirm_window=5)
+    r = ("red", SQUARE)
+    assert c.update(r) is None
+    assert c.update(r) is None
+    assert c.update(None) is None, "미검출 프레임은 None"
+    assert c.update(r) == r, "창 [r,r,None,r] 에 r 3개 → 확정"
+
+
+def test_window_flicker_alternating():
+    """r,None,r,None,r — 창 5 중 3 이면 5번째에 확정."""
+    c = DetectionConfirmer(confirm_frames=3, confirm_window=5)
+    r = ("red", SQUARE)
+    outs = [c.update(k) for k in (r, None, r, None, r)]
+    assert outs == [None, None, None, None, r], outs
+
+
+def test_window_equals_n_matches_legacy_random():
+    """창=N(기본) 이면 옛 '연속 N' 과 반환값·confirmed 가 전부 같다(N∈{1,2,3} 무작위)."""
+    import random
+    rng = random.Random(20261027)
+    keys = [("red", SQUARE), ("green", TRIANGLE), ("blue", CIRCLE), None, None]
+    for n in (1, 2, 3):
+        for trial in range(200):
+            seq = [rng.choice(keys) for _ in range(rng.randint(1, 30))]
+            new = DetectionConfirmer(confirm_frames=n)          # window 미지정 → = N
+            old = _LegacyConfirmer(n)
+            for i, k in enumerate(seq):
+                a, b = new.update(k), old.update(k)
+                assert a == b, f"N={n} trial={trial} step={i} seq={seq}: new={a} old={b}"
+                assert new.confirmed == old.confirmed, f"N={n} trial={trial} step={i}"
+            assert new.confirm_window == n
+
+
+def test_window_n1_is_immediate_regardless_of_window():
+    c = DetectionConfirmer(confirm_frames=1, confirm_window=5)
+    r = ("red", SQUARE)
+    assert c.update(r) == r
+    assert c.update(("green", TRIANGLE)) == ("green", TRIANGLE)
+    assert c.update(None) is None
+    assert c.update(r) == r
+
+
+def test_window_turn_color_flip_returns_none():
+    """
+    🚨 계약서 위험 2: 창 [red,red,white,red,white] — red 가 3개라도 **이번 프레임이 white** 면
+    None 이어야 한다. red 를 돌려주면 노드는 white 각도를 red 로 발행 → ship_turn 반대 회전.
+    """
+    c = DetectionConfirmer(confirm_frames=3, confirm_window=5)
+    outs = [c.update(k) for k in ("red", "red", "red", "white", "red", "white")]
+    assert outs[2] == "red", "3번째(red): red 3 → red"
+    assert outs[3] is None, f"4번째(white): 다른 키 → 창 리셋, white 1 → None, got {outs[3]}"
+    assert c.confirmed == "red", "직전 확정은 유지"
+    # 키가 바뀔 때마다 창이 비므로 교대 입력에선 어느 쪽도 확정되지 않는다(옛 연속-N 과 같음)
+    assert outs[4] is None and outs[5] is None
+    # white 가 연속 3 (사이에 None 은 허용) 이면 그때 white 로 전환
+    assert c.update("white") is None
+    assert c.update(None) is None
+    assert c.update("white") == "white"
+    assert c.confirmed == "white"
+
+
+def test_window_alternating_colors_never_confirm():
+    """리뷰 권고 1: r,w,r,w,… 교대 입력에서 창>N 이어도 확정이 매 프레임 뒤집히면 안 된다."""
+    c = DetectionConfirmer(confirm_frames=3, confirm_window=5)
+    outs = [c.update(k) for k in ("red", "white") * 6]
+    assert all(o is None for o in outs), f"교대 입력은 영원히 미확정이어야 한다: {outs}"
+    assert c.confirmed is None
+
+
+def test_window_none_frame_returns_none_even_when_confirmed():
+    c = DetectionConfirmer(confirm_frames=2, confirm_window=4)
+    r = ("red", SQUARE)
+    c.update(r)
+    assert c.update(r) == r
+    assert c.update(None) is None, "확정 뒤라도 미검출 프레임의 반환은 None"
+    assert c.confirmed == r
+
+
+def test_window_smaller_than_n_is_corrected():
+    c = DetectionConfirmer(3, confirm_window=1)
+    assert c.confirm_window == 3
+    r = ("red", SQUARE)
+    assert c.update(r) is None
+    assert c.update(r) is None
+    assert c.update(r) == r
+    c2 = DetectionConfirmer(3)
+    assert c2.confirm_window == 3, "미지정이면 = N"
+
+
+def test_window_positional_first_arg_compat():
+    """기존 호출부 DetectionConfirmer(cf) 위치 인자 호환."""
+    c = DetectionConfirmer(2)
+    assert c.confirm_frames == 2 and c.confirm_window == 2
+
+
 def test_valid_sets():
     assert set(VALID_SHAPES) == {TRIANGLE, SQUARE, CIRCLE}
     assert "white" in VALID_COLORS and len(VALID_COLORS) == 6
