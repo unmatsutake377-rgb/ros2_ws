@@ -102,7 +102,11 @@ pre{background:#f7f6f1;border:1px solid var(--bd);border-radius:8px;padding:12px
     ★ 09-23 추가: 맞추기 전에 /imu/yaw_raw 기록 → 전원 껐다 켜 → 다시 기록. 같아야 절대방위. 다르면 부팅마다 상대각이라 mount_offset 무의미 → cog_offset 으로 전환
 · IMU 장착 후(마스트 베이스 포켓, v2): /imu 의 자기장 크기 |m| ≈ 50µT 인가 (80µT 대면 굵은 배선·자석 간섭 → 위치 재검토) → cm 자기보정 → mount_offset_deg (뱃머리 정북에서 /imu/yaw = 0)
 · LiDAR 부표 검출(마스트_요구사항 §2-1-a): 부표 유사물(지름 30~40cm 통, 절반 잠기게) 을 5m 앞에 띄우고 /scan 에 찍히는가 → 1번 배 LiDAR 슬롯 높이(±10cm) 결정. 안 찍히면 내린다
-· 모터: ★프로펠러 제거★(물 밖 T200 장시간 금지), 전진 명령 → 양쪽 다 도는가</pre>
+· 모터: ★프로펠러 제거★(물 밖 T200 장시간 금지), 전진 명령 → 양쪽 다 도는가
+· 비전 확인-N 깜빡임 벤치 (10-27 추가, confirm_window 켜기 전): 부표 모형을 2~3m 앞에 두고 /wp_mode 0 으로 gate 검출기 켠 뒤
+    ros2 topic echo /red_angle 을 보며 손으로 모형을 1초에 2~3번 가렸다 뗐다 한다. 10000(INVALID) 이 **연속으로** 몇 개 나오는지 센다.
+    vision.yaml 의 image_subscriber_gate 절에서 confirm_frames 1 → 3(confirm_window 3) → 3(confirm_window 5) 세 번 비교.
+    기대: 1 과 3/5 는 INVALID 연속 구간이 짧고(grace 2 s 안), 3/3 은 길게 끊긴다(08-12 의 10 연속 무효 재현). 끝나면 **전부 1 로 되돌린다**</pre>
 
 <p><span class="step">2</span><b>수조: 조향 부호 (5분)</b></p>
 <pre>ship_direction 끄고 motor_control 직접. /desired_angle 수동 발행 (Float32):

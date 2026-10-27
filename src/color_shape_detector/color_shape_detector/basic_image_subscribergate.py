@@ -7,7 +7,7 @@ from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 
 from color_shape_detector.mode_gate import ModeGate
 from color_shape_detector.vision_geom import (
-    DEFAULT_HFOV_DEG, angle_from_pixel,
+    DEFAULT_HFOV_DEG, angle_from_pixel, solidity,
 )
 from color_shape_detector import hsv_ranges
 from color_shape_detector.dock_logic import DetectionConfirmer
@@ -90,7 +90,9 @@ class ImageSubscriber(Node):
             'red':    {'angle': None, 'time': 0.0},
             'green': {'angle': None, 'time': 0.0},
         }
-        self.grace_period_s = 2.0
+        # A3(2026-10-27): 예전엔 2.0 이 코드에 박혀 있었다(dock 만 파라미터). 이름은 dock 과 같다.
+        self.grace_period_s = float(
+            self.declare_parameter('grace_period_s', 2.0).value)
 
         # V4(T2-5): 헤드리스(디스플레이 없음)에서 cv2.imshow 는 예외를 던져 노드를 죽인다.
         #   배는 SSH 로 띄운다 — 기본 false 가 맞다. try/except 로 덮지 않고 파라미터로 원천 차단한다.
@@ -129,10 +131,35 @@ class ImageSubscriber(Node):
         #    ⚠️ dock 은 이미 3 을 쓴다. 야외에서 물보라·윤슬 노이즈를 재본 뒤
         #       여기도 3 으로 올릴지 정한다. yaml 한 줄이면 된다.
         cf = int(self.declare_parameter('confirm_frames', 1).value)
-        self.confirm = {c: DetectionConfirmer(cf) for c in ('red', 'green')}
+        # A1(2026-10-27): 창 M 중 N. 기본 = confirm_frames → 옛 "연속 N" 과 동일(동작 불변).
+        #   깜빡임(검출-놓침-검출)에서 연속 N 이 영원히 안 되던 기아를 없애려 켤 땐 3/5 로.
+        #   window < N 이면 DetectionConfirmer 가 N 으로 보정한다.
+        cw = int(self.declare_parameter('confirm_window', cf).value)
+        self.confirm = {c: DetectionConfirmer(cf, confirm_window=cw) for c in ('red', 'green')}
+
+        # ---- A3: 검출 기하 임계 파라미터화 (예전엔 아래 값이 process_image 에 리터럴로 박혀 있었다) ----
+        #   이름은 dock(basic_image_subscriberdock) 과 같다. 기본값 = 옛 리터럴 그대로.
+        #   y_zone: 카메라 틸트 0°(마스트 v4.4)라 수평선이 화면 중앙 → 낮은 부표는 가까워질수록
+        #   0.55h 아래로 내려가 잘릴 수 있다. ⚠️ 실측 필요 — 거리별 부표 화면 높이로 확정.
+        self.approx_epsilon = float(self.declare_parameter('approx_epsilon', 0.0315).value)
+        self.y_zone_lo = float(self.declare_parameter('y_zone_lo', 0.15).value)
+        self.y_zone_hi = float(self.declare_parameter('y_zone_hi', 0.55).value)
+        self.shape_vertices_min = int(self.declare_parameter('shape_vertices_min', 4).value)
+        self.shape_vertices_max = int(self.declare_parameter('shape_vertices_max', 8).value)
+        self.square_extent_min = float(
+            self.declare_parameter('square_extent_min', 0.4).value)
+        self.square_aspect_lo = float(self.declare_parameter('square_aspect_lo', 0.6).value)
+        self.square_aspect_hi = float(self.declare_parameter('square_aspect_hi', 1.4).value)
+
+        # ---- A4: 부표에 사각형 검사를 강제할지 ----
+        #   규정 부표는 형상 규정이 없다(원통·구). 파도에 반쯤 가리면 꼭짓점 3 또는 9+ 가 돼
+        #   색은 맞는데 버린다. false 면 색+면적+solidity(면적/볼록껍질 ≥ min_solidity)로만 거른다.
+        #   🚨 기본 true = 현재 동작 그대로. 야외에서 true/false 유실 횟수를 재본 뒤 바꾼다.
+        self.require_shape = bool(self.declare_parameter('require_shape', True).value)
+        self.min_solidity = float(self.declare_parameter('min_solidity', 0.7).value)
 
         # 내부 상태
-        self.last_log_time = time.time()
+        #   (self.last_log_time 은 선언만 있고 쓰는 곳이 없어 제거했다 — 2026-10-27)
         self.found_in_frame = {'red': False, 'green': False}
 
     # -----------------------------------
@@ -173,7 +200,8 @@ class ImageSubscriber(Node):
             cv2.waitKey(1)
 
         # ---- Fallback ----
-        now = time.time()
+        # A2: monotonic (CLAUDE.md 1-5). last_valid['time'] 을 적는 process_image 와 같은 시계.
+        now = time.monotonic()
 
         def publish_fallback(color, angle_pub):
             lv = self.last_valid[color]
@@ -232,24 +260,33 @@ class ImageSubscriber(Node):
                 if area < self.min_area_px:
                     continue
 
-                # polygon approx
-                approx = cv2.approxPolyDP(cnt, 0.0315 * cv2.arcLength(cnt, True), True)
+                # polygon approx (epsilon 은 파라미터 — A3)
+                approx = cv2.approxPolyDP(
+                    cnt, self.approx_epsilon * cv2.arcLength(cnt, True), True)
                 v = len(approx)
 
-                # ---------------------------
-                # ★ ONLY SQUARES (TURN과 동일)
-                # ---------------------------
-                if 4 <= v <= 8:
+                if self.require_shape:
+                    # ---------------------------
+                    # ★ 사각형 검사 (TURN과 동일) — 기본 경로, 동작 불변
+                    # ---------------------------
+                    if not (self.shape_vertices_min <= v <= self.shape_vertices_max):
+                        continue
                     x, y, w, h = cv2.boundingRect(approx)
                     aspect = w / float(h)
                     extent = area / float(w * h)
-
-                    if not (extent > 0.4 and 0.6 <= aspect <= 1.4):
+                    if not (extent > self.square_extent_min and
+                            self.square_aspect_lo <= aspect <= self.square_aspect_hi):
                         continue
                     # 여기까지 온 것이 사각형 판정 통과다. 라벨 변수를 두었으나
                     # 쓰는 곳이 없어 제거했다(2026-09-23). 게이트는 색으로만 가른다.
                 else:
-                    continue
+                    # ---------------------------
+                    # A4: 형상 무관 — 색+면적+solidity. 윤슬·물보라 조각(들쭉날쭉)을 거른다.
+                    # ---------------------------
+                    hull_area = cv2.contourArea(cv2.convexHull(cnt))
+                    sol = solidity(area, hull_area)
+                    if sol is None or sol < self.min_solidity:
+                        continue
 
                 # 중심점 계산
                 M = cv2.moments(cnt)
@@ -259,11 +296,16 @@ class ImageSubscriber(Node):
                 cY = int(M["m01"] / M["m00"])
 
                 vertices = approx.reshape(-1, 2)
-                vX = int(np.mean(vertices[:, 0]))
-                vY = int(np.mean(vertices[:, 1]))
+                if self.require_shape:
+                    # 기존 경로: 꼭짓점 평균 (동작 불변)
+                    vX = int(np.mean(vertices[:, 0]))
+                    vY = int(np.mean(vertices[:, 1]))
+                else:
+                    # A4: 울퉁불퉁한 컨투어는 꼭짓점 평균이 튄다 → 질량중심(이미 계산돼 있음)
+                    vX, vY = cX, cY
 
-                # y-coordinate filtering: valid detection zone only
-                if not (img_h * 0.15 <= vY <= img_h * 0.55):  # 위쪽범위 <= vY <=아래쪽범위
+                # y-coordinate filtering: valid detection zone only (A3 파라미터)
+                if not (img_h * self.y_zone_lo <= vY <= img_h * self.y_zone_hi):
                     continue
 
                 # ---- angle (depth 불필요) ----
@@ -291,7 +333,7 @@ class ImageSubscriber(Node):
         # ----------------------------
         # 색상별 퍼블리시
         # ----------------------------
-        now = time.time()
+        now = time.monotonic()   # A2: fallback 의 now 와 같은 시계
 
         for c in ['red', 'green']:
             cand = best[c]
