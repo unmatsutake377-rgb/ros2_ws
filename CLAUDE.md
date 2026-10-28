@@ -60,7 +60,7 @@ rclpy 는 소스 위치별로 심각도를 캐싱해 `ValueError: Logger severit
 | GPS | A배 u-blox C94-M8P · B배 u-blox ZED-F9P, 둘 다 NTRIP RTK |
 | MCU | **Arduino Mega 2560 R3**. 통신 = `ssf_bridge` USB 시리얼 (**Due·micro-ROS 아님**, launch 가 micro-ROS 안 띄움). `Motor_run = pwm_r*10000 + pwm_l`, 1500=중립. 펌웨어는 passthrough(모터별 `invert`·`gain_num` 노브 있음 — 현재 좌·우 둘 다 `false`·`10` → 숨은 반전 없음. 방향 디버깅 땐 `ssf_boat.ino:327-328` 도 확인) |
 | ESC | 🔒 **좌/우 2채널뿐** — 핀 12(좌)·11(우). 선수·선미 구분 없음, 측별 팬아웃(2번배 측당 2개·1번배 측당 1개). 펌웨어 동일 → 배 ID 분기 불필요. **게걸음 불가** |
-| 카메라 | **RealSense D455 현역** / OAK-1 W PoE **미구매**(RGB 전용·뎁스 없음·광각 120~150° DFOV·PoE=이더넷). 코드는 **중립화**(상세 §3-3) |
+| 카메라 | **RealSense D455 현역**(비전 3종이 지금 이걸로 돈다) / **OAK-1 PoE 보유**(표준 화각·고정초점 — **W 광각 아님**, 09-15 구매모델 확정. RGB 전용·뎁스 없음·PoE=이더넷). OAK 는 인젝터(알리 10-27 주문) 도착 뒤 D455 와 비교 선정, 바꾸는 날 `image_topic`·`hfov_deg` 실측 — 런북 `docs/절차/oak_arrival_runbook.md`. 코드는 **중립화**(상세 §3-3) |
 | 선체 | 1번배 실측 1.66 × 0.57 × 0.38m → `half_width 0.29`. 2번배는 설계값(0.43m) (§8) |
 
 - 🚨 `docs/전달용/펌웨어_설계문서.md` 의 "선수 좌/우 + 선미 좌/우", `docs/전달용/회로_요구사항서.md` §7 ESC 4행은 **옛 설계** — 그대로 배선하면 없는 채널을 배선한다.
