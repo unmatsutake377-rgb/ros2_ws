@@ -49,7 +49,7 @@
 
 | 패키지 | 출처 | 작년부터 | 올해 바꾼 것 (근거 커밋) |
 |---|---|---|---|
-| `iahrs_driver` | **외부.** iAHRS 드라이버. `package.xml` 관리자 `wbjin`, README 링크 `blog.naver.com/zzang0736`. **정확한 원출처는 담당자가 확인** | 있음 | `/imu/yaw` → `/imu/yaw_raw` 로 발행 토픽 변경, 부팅 0점화·COG 덮어쓰기 제거(`ace1e33`). `/imu/mag_heading` 추가(`b433662`) |
+| `iahrs_driver` | **외부.** iAHRS 드라이버. `package.xml` 관리자 `wbjin`, README 링크 `blog.naver.com/zzang0736`. **정확한 원출처는 담당자가 확인** | 있음 | `/imu/yaw` → `/imu/yaw_raw` 로 발행 토픽 변경, 부팅 0점화·GPS 덮어쓰기를 파라미터로 빼고 기본 OFF(`ace1e33`). `/imu/mag_heading` 추가(`b433662`). NAV-PVT 토픽명 수정(`ed2a144`) |
 | `ship_goal_angle` | 작년 우리 코드 | 있음 | 시작값 None, stale 시 발행 중단, 주기 파라미터화. 파일 안 설명 참고 |
 | `ssf_heading` | **올해 새로 만듦** | 없음 | 전부 신규. diff 대신 파일 자체가 근거 |
 

@@ -1,6 +1,7 @@
 // 보고서 분담 — 파트별 워드 양식 4개 (IMU·GPS·LiDAR·카메라)
-// 실행: NODE_PATH=<docx 모듈 경로> node tools/make_part_templates.js
-//   → docs/전달용/보고서_분담/양식_<센서>.docx
+// 실행: NODE_PATH=<docx 모듈 경로> node tools/make_part_templates.js            → 빈 양식  양식_<센서>.docx
+//       NODE_PATH=<docx 모듈 경로> node tools/make_part_templates.js --drafts   → 초안/<센서>.md 를 양식 모양으로  초안_<센서>.docx
+//       ... --drafts --strip   → [근거: …] 표시를 지운 제출용 모양(검수 끝난 뒤)
 // 스타일(글꼴·제목·표)은 tools/make_report_docx.js 와 같다. 합칠 때 모양이 바뀌지 않게.
 // "현재 원고" 는 00_현재원고_Ⅲ소프트웨어.md 에서 절 번호로 잘라 넣는다(손으로 옮기지 않는다 → 원고와 안 어긋남).
 const fs = require('fs');
@@ -128,7 +129,7 @@ const PARTS = {
       H2('2) 센서 처리'), H3('2.1) 좌표계·헤딩'), ...CUR('### 2.1)'),
       ...eight('2.1', {
         model: ['iAHRS RB-SDA-v1', 'iAHRS RB-SDA-v1'], precisionLabel: '요 정밀도·드리프트',
-        origin: [['iahrs_driver', '외부. ⚠️ 원출처 담당자 확인 (package.xml 관리자 wbjin)', '있음', '/imu/yaw → /imu/yaw_raw, 부팅 0점화·COG 덮어쓰기 제거, /imu/mag_heading 추가', 'ace1e33, b433662'],
+        origin: [['iahrs_driver', '외부. ⚠️ 원출처 담당자 확인 (package.xml 관리자 wbjin)', '있음', '/imu/yaw → /imu/yaw_raw, 부팅 0점화·GPS 덮어쓰기 파라미터화(기본 OFF), /imu/mag_heading 추가, NAV-PVT 토픽명 수정', 'ace1e33, b433662, ed2a144'],
           ['ship_goal_angle', '작년 우리 코드', '있음', '시작값 None, stale 시 발행 중단, 주기 파라미터화', '____'],
           ['ssf_heading', '올해 새로 만듦', '없음', '전부 신규 (yaw_mux, heading_logic)', 'ace1e33 외']],
         fig1: '/imu/yaw_raw → yaw_mux → /imu/yaw → ship_goal_angle → /yaw_error. 작년 구조와 나란히',
@@ -146,7 +147,7 @@ const PARTS = {
       NOTE('현재 원고 2.3 의 지오펜스 문장 (생성 부분만 이 절로 옮긴다):'), B('지오펜스는 경계를 가짜 LiDAR 로 바꿔 ranges = min(real, geofence) 로 병합. 전방 ±60° 에서 2.0 m 안이면 STOP_HOLD.'),
       ...eight('2.2', {
         model: ['u-blox C94-M8P + ANN-MB', 'u-blox ZED-F9P + ANN-MB'], precisionLabel: 'RTK 정밀도·갱신율',
-        origin: [['ublox', '외부. u-blox ROS 드라이버 (package.xml 원저자 Gareth Cross)', '있음', 'B배 F9P 설정·배별 인자, 토픽명 수정·해상 모델, 배별 설정 전달·EEPROM 저장 제거', 'c1b0d81, ed2a144, c7c0c59'],
+        origin: [['ublox', '외부. u-blox ROS 드라이버 (package.xml 저자 Johannes Meyer, 관리자 Gareth Cross)', '있음', 'B배 F9P 설정·배별 인자, F9P 해상 모델, 배별 설정 전달·EEPROM 저장 제거', 'c1b0d81, ed2a144, c7c0c59'],
           ['ntrip_client', '외부. LORD-MicroStrain ntrip_client', '있음', '실행 경로 수정, 계정을 저장소 밖 ~/.ssf/ 로 (diff 보지 말 것)', '89818a5, f98a8f9'],
           ['north_goal_angle', '작년 우리 코드', '있음', 'fix 검증, LOS·필터, 지오펜스, 웨이포인트 파일화', '02944d8, 9221750 외']],
         fig1: 'ntrip_client → 수신기 → /ublox_gps_node/fix → gps_guard → gps_filter → LOS → /north_goal_angle_tp · /candidate_angle · /wp_mode',
@@ -212,7 +213,87 @@ const docStyles = { default: { document: { run: { font: FONT, size: 20 } } },
     { id: 'Heading3', name: 'Heading 3', basedOn: 'Normal', next: 'Normal', quickFormat: true, run: { size: 22, bold: true, font: FONT }, paragraph: { outlineLevel: 2 } },
     { id: 'Heading4', name: 'Heading 4', basedOn: 'Normal', next: 'Normal', quickFormat: true, run: { size: 20, bold: true, font: FONT }, paragraph: { outlineLevel: 3 } } ] };
 
+// ── 초안 md → docx ── (`코드` 는 Consolas)────────────────────────────────────────────
+//  초안 md 뼈대: "## 1.3) …", "## 2.x) …", "### 2.x.k) …", "#### …", "## 4.x) …", "## 5) …", "## 6.1) …", "## 부록 …"
+//  인라인 **굵게**, [근거: …] 는 회색 작은 글씨(--strip 이면 삭제). "그림: …" 한 줄 = 그림 자리.
+const STRIP = process.argv.includes('--strip');
+function runs(text, base = {}) {
+  const out = [];
+  const re = /(\*\*[^*]+\*\*|\[근거:[^\]]*\]|`[^`]+`)/g; let last = 0; let m;
+  while ((m = re.exec(text))) {
+    if (m.index > last) out.push(t(text.slice(last, m.index), base));
+    const tok = m[0];
+    if (tok.startsWith('**')) out.push(...runs(tok.slice(2, -2), { ...base, bold: true }));
+    else if (tok.startsWith('`')) out.push(new TextRun({ text: tok.slice(1, -1), font: 'Consolas', size: (base.size || 20) - 2, bold: base.bold, color: base.color }));
+    else if (!STRIP) out.push(t(tok, { ...base, size: 16, color: '7F7F7F' }));
+    last = m.index + tok.length;
+  }
+  if (last < text.length) out.push(t(text.slice(last), base));
+  return out.length ? out : [t('')];
+}
+const RP = (text) => new Paragraph({ children: runs(text), spacing: { after: 100, line: 300 } });
+const RB = (text) => new Paragraph({ children: [t('•  '), ...runs(text)], spacing: { after: 60, line: 290 }, indent: { left: 360, hanging: 240 } });
+function rtable(rows) {
+  const head = rows[0]; const w = W(...head.map(() => 1));
+  const hr = new TableRow({ tableHeader: true, children: head.map((h, i) => cell(new Paragraph({ children: runs(h, { bold: true }), alignment: AlignmentType.CENTER }), w[i], 'E7E6E6')) });
+  const rs = rows.slice(1).map(r => new TableRow({ children: head.map((_, j) => cell(new Paragraph({ children: runs(r[j] || '') }), w[j])) }));
+  return new Table({ width: { size: TW, type: WidthType.DXA }, columnWidths: w, rows: [hr, ...rs] });
+}
+function draftBody(md) {
+  const L = md.split('\n'); const out = []; let tb = null; const seen = new Set();
+  const parent = (h) => { if (!seen.has(h)) { seen.add(h); out.push(H2(h)); } };
+  const flush = () => { if (tb) { out.push(rtable(tb), SP()); tb = null; } };
+  for (const l of L) {
+    if (l.startsWith('|')) {
+      if (/^\|[\s:|-]+\|\s*$/.test(l)) continue;
+      const cells = l.replace(/^\|\s*|\s*\|\s*$/g, '').split(/\s*\|\s*/);
+      (tb = tb || []).push(cells); continue;
+    }
+    flush();
+    if (!l.trim() || /^# /.test(l)) continue;
+    let m;
+    if ((m = l.match(/^## (.*)$/))) {
+      const h = m[1].trim();
+      if (h.startsWith('1.3)')) { parent('1) 시스템 구성'); out.push(H3(h)); }
+      else if (/^2\.\d\)/.test(h)) { parent('2) 센서 처리'); out.push(H3(h)); }
+      else if (/^4\.\d\)/.test(h)) { parent('4) 임무별 알고리즘'); out.push(H3(h)); }
+      else if (/^6\.\d\)/.test(h)) { parent('6) 시뮬레이션 및 시험 결과'); out.push(H3(h)); }
+      else if (h.startsWith('부록')) { parent('부록 (제출본에서 팀장이 지운다)'); out.push(H3(h.replace(/^부록\s*/, ''))); }
+      else out.push(H2(h));
+    } else if ((m = l.match(/^### (.*)$/))) out.push(H4(m[1]));
+    else if ((m = l.match(/^#### (.*)$/))) out.push(new Paragraph({ children: runs(m[1], { bold: true }), spacing: { before: 100, after: 60 } }));
+    else if ((m = l.match(/^\s*[-*] (.*)$/))) out.push(RB(m[1]));
+    else if ((m = l.match(/^그림:\s*(.*)$/))) out.push(FIGBOX(m[1]), CAP('그림 Ⅲ-__ ' + m[1]));
+    else out.push(RP(l.trim()));
+  }
+  flush();
+  return out;
+}
+function draftCover(name, sheet, sections) {
+  return [
+    new Paragraph({ children: [t('KABOAT 2026 설계보고서', { bold: true, size: 28 })], alignment: AlignmentType.CENTER, spacing: { after: 80 } }),
+    new Paragraph({ children: [t(`Ⅲ장 소프트웨어 — ${name} 초안${STRIP ? '' : ' (검토용)'}`, { bold: true, size: 36 })], alignment: AlignmentType.CENTER, spacing: { after: 200 } }),
+    table(['검토자', '검토일', '지시서', '절'], [['____', '____', sheet, sections]], W(2, 2, 2.6, 3.4)),
+    SP(),
+    NOTE('코드·문서·git 기록만으로 쓴 초안이다. ____ 는 실측이 있어야 채울 수 있는 자리다.'),
+    NOTE('회색 [근거: 파일:행] 은 검토용이다. 그 줄을 열어 내용이 맞는지 확인한다. 제출본에서는 지운다.'),
+    NOTE('검토자가 할 일: ① 근거 대조 ② 장비 사진 ③ 그림 ④ 실측 빈칸 ⑤ 부록 B 확인 필요 해결.'),
+  ];
+}
+
 (async () => {
+  if (process.argv.includes('--drafts')) {
+    for (const [name, p] of Object.entries(PARTS)) {
+      const src = path.join(DIR, '초안', `${name}.md`);
+      if (!fs.existsSync(src)) { console.log('없음(건너뜀):', path.relative(ROOT, src)); continue; }
+      const children = [...draftCover(name, p.sheet, p.sections), H1('Ⅲ. 소프트웨어'), ...draftBody(fs.readFileSync(src, 'utf8'))];
+      const doc = new Document({ styles: docStyles, sections: [{ properties: { page: { size: { width: 11906, height: 16838 }, margin: { top: 1440, bottom: 1440, left: 1273, right: 1273 } } }, children }] });
+      const out = path.join(DIR, STRIP ? `제출용_${name}.docx` : `초안_${name}.docx`);
+      fs.writeFileSync(out, await Packer.toBuffer(doc));
+      console.log('wrote', path.relative(ROOT, out));
+    }
+    return;
+  }
   for (const [name, p] of Object.entries(PARTS)) {
     const children = [...cover(name, p.sheet, p.sections), H1('Ⅲ. 소프트웨어'), ...p.body(), ...appendix()];
     const doc = new Document({ styles: docStyles, sections: [{ properties: { page: { size: { width: 11906, height: 16838 }, margin: { top: 1440, bottom: 1440, left: 1273, right: 1273 } } }, children }] });
