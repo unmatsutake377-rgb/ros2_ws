@@ -238,6 +238,10 @@ sudo udevadm control --reload-rules && sudo udevadm trigger
 ~/ros2_ws/tools/boat_boot.sh --check        # [5] 두 줄 다 ✓ 여야 한다
 ```
 
+- ✅ **설치 후 실측 (10-28, 1번배 노트북)**: 아두이노를 다시 꽂으면 udev 가 `-hupcl` 을 자동으로 건다. 그 뒤 포트를 3번 열었는데
+  **첫 번째부터 재시작 없음**(상태줄 0.18 / 0.08 / 0.07 s) — 꽂힐 때 udev 의 `stty` 가 포트를 먼저 한 번 열어 두기 때문이다.
+  ModemManager 는 다시 꽂을 때 아두이노를 건드리지 않았다. `boat_boot.sh --check` [5] 두 줄 ✓.
+  → **launch 해도 아두이노가 리셋되지 않는다.** 브릿지의 부팅 대기(`_open` 의 sleep)는 이제 그냥 기다림일 뿐 무해하다.
 - 펌웨어 업로드는 그대로 된다(avrdude 가 DTR 을 직접 흔든다 — 10-28 확인).
 - 막지 못하는 것: **USB 케이블이 빠졌다 다시 꽂히는 것**(보드 전원 자체가 끊김) — 케이블 고정. 완전 차단은 Mega 의 RESET-EN 패드를 끊는 하드웨어 조치(펌웨어 확정 후, 업로드 땐 리셋 버튼 수동).
 
