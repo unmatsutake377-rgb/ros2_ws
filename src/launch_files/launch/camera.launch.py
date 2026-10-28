@@ -14,7 +14,9 @@ def generate_launch_description():
 
         # ================================
         # RealSense Camera Only
-        # (Auto Exposure/WhiteBalance OFF)
+        # (자동 화이트밸런스는 아래처럼 켜져 있다 — 옛 머리말 'Auto Exposure/WhiteBalance OFF' 는 틀린 설명.
+        #  ⚠️ rgb_camera.controls.saturation 은 드라이버 버전에 따라 이름이 안 먹을 수 있다 — Ubuntu 에서
+        #     `ros2 param get /camera/camera rgb_camera.saturation` 등으로 실제 이름 확인. 대회 launch 는 이 파일이 아니다.)
         # ================================
         Node(
             package='realsense2_camera',

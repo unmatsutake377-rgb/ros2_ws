@@ -23,8 +23,8 @@ ublox_gps_node:
     frame_id: gps
 
     # 🚨 save 블록을 넣지 않는다.
-    #    c94_m8p_rover.yaml 에는 save:{mask:3103, device:4} 가 있어 **EEPROM 에 영구 저장**한다.
-    #    잘못된 설정이 수신기에 박히면 되돌리기 어렵다. 런타임(RAM)에만 적용한다.
+    #    save:{mask:3103, device:4} 는 **EEPROM 에 영구 저장**한다. 잘못된 설정이 수신기에 박히면
+    #    되돌리기 어렵다. 런타임(RAM)에만 적용한다. (c94_m8p_rover.yaml 의 save 블록도 c7c0c59 에서 뺐다)
 
     # ── 측위 주기 ───────────────────────────────────────────────────────────
     rate: 1.0                   # Hz. 실측에서 /fix·/fix_velocity 가 1.00Hz 로 안정 발행 확인

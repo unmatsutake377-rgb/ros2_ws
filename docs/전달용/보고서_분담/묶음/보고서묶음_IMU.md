@@ -1,5 +1,5 @@
 # 보고서 분담 묶음 — IMU
-만든 시각: 2026-10-28 16:35 · 저장소 커밋: 438ead2
+만든 시각: 2026-10-28 16:46 · 저장소 커밋: c58e27b
 
 이 파일 하나를 AI 에 올리고, 공통 작성규칙 5절의 프롬프트를 붙여 넣는다.
 소스 파일에는 행 번호가 붙어 있다. 근거는 [근거: 파일경로:행] 으로 단다.
@@ -139,7 +139,7 @@ AI 가 3단계까지 끝내면 **사람이 직접** 6절 체크리스트를 확�
 ==================================================================
 ## 문서: docs/전달용/보고서_분담/00_현재원고_Ⅲ소프트웨어.md
 ==================================================================
-# 현재 보고서 Ⅲ장 소프트웨어 원고 (2026-10-28 기준)
+# 현재 보고서 Ⅲ장 소프트웨어 원고 (2026-10-28 기준, 초안 검토 결과 18곳 반영)
 
 > 원본: `docs/전달용/KABOAT2026_보고서_양식_SSF_A.docx` 의 Ⅲ장을 그대로 옮긴 것. 생성기는 `tools/make_report_docx.js`.
 > 이 원고의 **문체·깊이·표 형식이 기준**이다. 담당 절은 이 내용을 바탕으로 **늘리고 고쳐 쓴다.** 지우지 말고, 틀린 곳은 근거와 함께 고친다.
@@ -150,8 +150,8 @@ AI 가 3단계까지 끝내면 **사람이 직접** 6절 체크리스트를 확�
 > |---|---|---|
 > | 1.1 하위 제어 | 측당 ESC 1개 (T200 ×2) | 측당 ESC 2개 팬아웃 (T200 ×4) |
 > | 1.3 LiDAR | RPLIDAR A3 개체 80BF (약 11.1 Hz / 0.250°) | 개체 918A (11.0 Hz / 0.223°) |
-> | 1.3 GPS | u-blox C94-M8P + ANN-MB | u-blox ZED-F9P + ANN-MB |
-> | 4.4 half_width 근거 | 폭 0.57 → 0.285, 공용값 0.29 | 폭 0.535 → 0.2675, 공용값 0.29 사용 |
+> | 1.3 GPS | u-blox C94-M8P (안테나 ⚠️ 실물 확인) | u-blox ZED-F9P + ANN-MB |
+> | 4.4 half_width 근거 | 폭 0.57 → 0.285, 공용값 0.29 | 폭 0.535 → 0.2675, 공용값 0.29 (시뮬 접촉 0.95·정체 0) |
 
 # Ⅲ. 소프트웨어
 
@@ -167,12 +167,12 @@ AI 가 3단계까지 끝내면 **사람이 직접** 6절 체크리스트를 확�
 
 | 노드 | 역할 | 주요 토픽 |
 |---|---|---|
-| rplidar_ros / iahrs_driver / ublox | 센서 드라이버 | /scan, /imu/yaw_raw, /fix |
+| rplidar_ros / iahrs_driver / ublox | 센서 드라이버 | /scan, /imu/yaw_raw, /ublox_gps_node/fix |
 | ssf_heading (yaw_mux) | 헤딩 단일 발행자 | /imu/yaw, /heading_status |
 | north_goal_angle | GPS 목표 방위, 지오펜스 → 가짜 LiDAR | /candidate_angle, /geofence_state |
 | basic_image_subscriber{gate,turn,dock} | 색·형상 검출 (방위각만) | /red_angle, /green_angle, /image_angle, /image_color |
 | ship_gate / ship_back / ship_turn / ship_dock | 임무 노드 (wp_mode 별) | /candidate_angle |
-| ship_direction | LiDAR 갭 선택·회피, 페일세이프 레벨 | /desired_angle, /failsafe_level, /obstacle_distance_array |
+| ship_direction | LiDAR 갭 선택·회피, 페일세이프 레벨 | /desired_angle, /failsafe_level, /obstacle_distance_array, /obstacle_reject_count |
 | motor_control | 각도 → 좌/우 PWM, 감속, 명령 워치독 0.5 s | Motor_run |
 | ssf_bridge | 시리얼 브릿지, 상태줄 파싱 | /boat_mode, /boat_id, /boat_estop, /boat_cmd_watchdog |
 | healthcheck / blackbox / mission_monitor | 진단·기록 (제어에 안 물림) | /health_ok |
@@ -185,9 +185,9 @@ AI 가 3단계까지 끝내면 **사람이 직접** 6절 체크리스트를 확�
 |---|---|---|
 | (사진) | RPLIDAR A3 개체 80BF (약 11.1 Hz / 0.250°) | 장애물·부표 거리, 갭 탐색, 25 m. 각분해능이 개체마다 달라 셀 기반 튜닝값은 배별 |
 | (사진) | iAHRS RB-SDA-v1 9축 | 요(yaw). yaw_mux 가 /imu/yaw 단독 발행 |
-| (사진) | u-blox C94-M8P + ANN-MB | NTRIP RTK 위치·COG |
-| (사진) | Luxonis OAK-1 PoE FF (HFOV 69° 스펙) | 게이트·부표·도크 색/형상 방위각. hfov_deg 는 camera_info 로 실측 교체 |
-| (사진) | Intel RealSense D455 | 수동 조종 화면 (예비 카메라) |
+| (사진) | u-blox C94-M8P (안테나 ⚠️ ANN-MB / 키트 L1 패치 실물 확인) | NTRIP RTK 위치·COG |
+| (사진) | Luxonis OAK-1 PoE FF (HFOV 69° 스펙) | 게이트·부표·도크 색/형상 방위각 후보. PoE 인젝터 도착 뒤 D455 와 비교해 선정, hfov_deg 는 camera_info 로 실측 교체 |
+| (사진) | Intel RealSense D455 | 현재 자율 비전(검출기 3종)과 수동 조종 화면에 쓰는 카메라 |
 
 
 ## 2) 센서 처리
@@ -199,13 +199,13 @@ AI 가 3단계까지 끝내면 **사람이 직접** 6절 체크리스트를 확�
 - ⚠️ IMU 장착 오프셋(mount_offset_deg), 대회장 자기편각 — 벤치·현장 실측.
 
 ### 2.2) GPS RTK
-- NTRIP 보정으로 FIXED 시 ±1.5 cm 급. 보정 서버 자격은 저장소 밖(~/.ssf/).
+- NTRIP 보정. B배 수신기(ZED-F9P) 손 시험(08-07)에서 RTK FIXED 수평 정확도 ±0.015 m, 위성 18개, pDOP 1.63. A배 C94-M8P 와 배에 단 상태는 미측정. 보정 서버 자격은 저장소 밖(~/.ssf/).
 - ⚠️ RTK on/off 위치 산포 비교표: FLOAT ____ m / FIXED ____ m (SeaNU 보고서 방식).
 
 ### 2.3) LiDAR 처리
-- 감속 신호(가장 가까운 장애물)에만 median 커널 5. 회피 마스크에는 걸지 않는다(부표 통째 삭제 방지).
+- 감속 신호(가장 가까운 장애물)에만 median 커널 5 — 물보라 한 점에 속는 가짜 감속을 줄인다. 회피 마스크에는 걸지 않아 회피 접촉 성능은 그대로 둔다.
 - 탐지 거리 기본 3.0 m, 게이트 2.0 m. inf/nan 셀은 탐지 거리로 치환해 갭 가장자리 거리로 쓴다.
-- 지오펜스는 경계를 가짜 LiDAR 로 바꿔 ranges = min(real, geofence) 로 병합. 전방 ±60° 에서 2.0 m 안이면 STOP_HOLD.
+- 지오펜스는 경계를 가짜 LiDAR 로 바꿔 ranges = min(real, geofence) 로 병합. 후보각·제자리 선회 구간에서는 의도한 진행 방향 ±60° 안에 경계가 2.0 m 이내면 STOP_HOLD.
 - ⚠️ 수면 반사·물보라 오탐 통계: 야외 rosbag 에서 median 기각 수(/obstacle_reject_count) ____ 회/분.
 
 ### 2.4) 영상 처리 파이프라인
@@ -215,11 +215,11 @@ AI 가 3단계까지 끝내면 **사람이 직접** 6절 체크리스트를 확�
 |---|---|---|
 | ① 입력 | image_topic 구독, BEST_EFFORT depth 1 (묵은 프레임으로 조향 금지) | 해상도는 매 프레임 msg.width 로 읽음 |
 | ② 색 분리 | BGR → HSV, 색별 inRange. 빨강은 0° 를 넘어 범위 2개 | red [0-5]+[165-180], green H 60-85, white V≥220·S≤40 (⚠️ 실외 재확정) |
-| ③ 후보 추출 | 컨투어 → 최소 면적 → 형상 검사(꼭짓점 4~8·extent·종횡비, require_shape) 또는 solidity(면적/볼록껍질) → 가장 큰 것 1개 | min_area_px 40 (gate·turn) / 80 (dock), min_solidity 0.7, y_zone 카메라별(틸트 0° D455 / 11° OAK) |
-| ④ 형상 판정 (dock) | approxPolyDP 꼭짓점 수 + extent·aspect·circularity 로 삼각/사각/원/십자 | epsilon 0.0315, square extent≥0.4 aspect 0.6~1.4, circle circ≥0.82 |
-| ⑤ 확인 | 최근 M 프레임 중 N 회(미검출은 관용, 색 전환은 리셋) 일치해야 발행. 유예 시간 내 유실은 마지막 값 유지 | confirm_frames 1 (gate·turn) / 3 (dock), confirm_window = N 기본(켤 땐 3/5), grace 2.0 s — 10-27 개정 |
-| ⑥ 방위각 변환 | 픽셀 x → 각도: θ = atan((x − cx) / fx), fx = (W/2)/tan(hfov/2) | hfov_deg 80.32 (D455 camera_info 실측) → OAK 스펙 69°, ⚠️ camera_info fx 로 실측 교체 |
-| ⑦ 발행·게이트 | /wp_mode 가 담당 모드일 때만 발행, stale 2 s → 정지. 목표 색·형상 유효값 밖 → ERROR + 정지 | active_wp_modes: gate [0,1] / turn [2,3] / dock [7] |
+| ③ 후보 추출 | 컨투어 → 최소 면적 → 형상 검사(꼭짓점 4~8·extent·종횡비, require_shape) 또는 solidity(면적/볼록껍질) → 가장 큰 것 1개 | min_area_px 40 (gate·turn) / 80 (dock), min_solidity 0.7, y_zone 검출기별 gate 0.15–0.55 / turn 0.10–0.55 / dock 0.15–0.55 (⚠️ 실측 필요) |
+| ④ 형상 판정 (dock) | approxPolyDP 꼭짓점 수 + extent·aspect·circularity 로 삼각/사각/원 3종 | epsilon 0.0315, square extent≥0.4 aspect 0.6~1.4, circle circ≥0.82 |
+| ⑤ 확인 | 최근 M 프레임 중 N 회(미검출은 관용, 색 전환은 리셋) 일치해야 발행. 유예 시간 내 유실은 마지막 값 유지 | confirm_frames 1 (gate·turn) / 3 (dock). confirm_window 는 gate·turn 만 선언(기본 N, 켤 땐 3/5), dock 은 연속 3. grace 2.0 s — 10-27 개정 |
+| ⑥ 방위각 변환 | 픽셀 x → 각도: θ = −atan((x − cx) / fx), cx = W/2 (영상 중심), fx = (W/2)/tan(hfov/2) | hfov_deg 80.32 (D455 camera_info 실측) → OAK 스펙 69°, ⚠️ camera_info fx 로 실측 교체 |
+| ⑦ 발행·게이트 | /wp_mode 가 담당 모드일 때만 발행, stale 2 s → 정지. dock 목표 색·형상이 유효값 밖이면 기동 시 ERROR, 검출 없이 무효값 10000 발행 | active_wp_modes: gate [0,1] / turn [2,3] / dock [7] |
 
 - 거리는 쓰지 않는다 — 카메라는 방위각만, 거리는 LiDAR 전방 섹터 최소거리 (핀홀 거리 추정의 실해역 오차 회피).
 - ⚠️ 혼동행렬: 야외 부표 영상 ____ 프레임에서 색별 정탐/오탐 ____ — 임계값은 이 수치로 정한다(감으로 튜닝 금지).
@@ -250,23 +250,23 @@ AI 가 3단계까지 끝내면 **사람이 직접** 6절 체크리스트를 확�
 - LiDAR 로 부표 거리를 유지하고 RTK 는 폴백. PD 미채택(체인이 각도 기반). 흰색 부표 방위는 검출기 turn(white).
 
 ### 4.3) 탐색 — ship_turn
-- /image_color 가 red/green 이면 시계 방향, white 면 반시계로 부표 중심 선회. 색 유실 시 SEARCH 상태 유지(토픽 이름 /image_color 고정 — 개명하면 영구 정지한 이력).
+- 검출기 turn 은 모드 2 에서 흰색, 모드 3 에서 빨강 부표만 찾는다. ship_turn 은 /image_color 가 red/green 이면 시계 방향, white 면 반시계로 부표 중심 선회. 색 유실 시 SEARCH 상태 유지(토픽 이름 /image_color 고정 — 개명하면 영구 정지한 이력).
 
 ### 4.4) 장애물 회피 — ship_direction
-LiDAR 스캔에서 안전 구간(연속 빈 셀)을 찾고, 각 구간의 호 길이 arc = Δθ·r_edge·(e−s) 가 min_required_width = half_width×2 + clearance 이상인 구간만 후보로 남긴다. 후보 중 목표 방위에 가장 가까운 구간의 중심을 /desired_angle 로 고정주기 발행한다.
+LiDAR 스캔에서 안전 구간(연속 빈 셀)을 찾고, 각 구간의 호 길이 arc = Δθ·r_edge·(e−s) 가 min_required_width = half_width×2 + clearance 이상인 구간만 후보로 남긴다. 각 후보 구간 안으로 목표 방위를 잘라 넣어(clamp) 목표에 가장 가까운 각을 고르고(동률이면 호가 긴 구간), 그 각을 /desired_angle 로 고정주기 발행한다.
 
 | 파라미터 | 값 | 근거 |
 |---|---|---|
 | half_width | 0.29 m | 1번배 폭 0.57 → 0.285, 공용값 0.29 |
 | clearance | 0.25 m | 20 시드 스윕 최적 (Ⅲ-6.1) |
 | detection_distance 기본 / 게이트 | 3.0 / 2.0 m | 시뮬 스윕 |
-| min_obstacle_cells | 1 | 개체별 각분해능 0.223/0.250° 고려 |
+| min_obstacle_cells | 1 | 3 이면 작은 부표를 무시한다 (두 배 공용) |
 | temporal 투표 | OFF | 무익(시뮬) |
 | rear_obstacle_ignore | 제거 | 부표 통째 삭제 결함 |
 
 
 ### 4.5) 도킹 — ship_dock
-- 도크 3개 중 당일 지정 표식(삼각·원·사각 × 빨강·초록·파랑·주황·노랑)을 찾는다. 검출기 dock 이 target_color·target_shape 와 일치하는 후보의 방위각만 발행, 유효값 밖이면 ERROR + 발행 정지(임계는 혼동행렬 수치로 정함). 도크 간격 1.0 m.
+- 도크 3개 중 당일 지정 표식(삼각·원·사각 × 빨강·주황·노랑·초록·파랑·흰색)을 찾는다. 검출기 dock 이 target_color·target_shape 와 일치하는 후보의 방위각만 발행한다. 목표가 유효값 밖이면 기동 시 ERROR, 검출 없이 무효값 10000 을 낸다(임계는 혼동행렬 수치로 정함). 도크 간격 1.0 m.
 - 접안 거리는 LiDAR 전방 섹터 최소거리 → ⚠️ 도크 규격 확정 후 contact_dist_m.
 
 ### 4.6) 제어기 — motor_control
@@ -304,7 +304,7 @@ PID 가 아니라 각도 기반 차동 조향이다. 상류 체인(/candidate_an
 | 0.64 | 0.32 | 0.25 | 1.44 | 0% |
 | 0.70 | 0.35 | 0.20 | 2.23 | 0% |
 
-작년 값 half_width 0.45 는 1.15 m 갭을 요구해 접촉 3.0 회·정체 1.5 회였다. 최적점의 갭 요구(half_width×2 + clearance)는 0.78~0.90 m 에 모인다. 선회 중 유효 폭 W·cosθ + L·sinθ 는 1번배 10° 에서 0.86 m 이므로 1 m 안팎 틈은 9° 이내 정렬이 필요하다 — 시뮬이 못 잡는 영역이라 수조 게이트 시험으로 확인한다.
+작년 값 half_width 0.45 는 1.15 m 갭을 요구해 접촉 3.0 회·정체 1.5 회였다(1차 단일 시드 스윕). 최적점의 갭 요구(half_width×2 + clearance)는 0.78~0.90 m 에 모인다. 선회 중 유효 폭 W·cosθ + L·sinθ 는 1번배 10° 에서 0.86 m, 15° 에서 0.99 m 라 갭 요구 0.83 m 는 약 9° 이내로 정렬했을 때만 맞는다 — 1 m 안팎 틈은 시뮬이 못 잡는 영역이라 수조 게이트 시험으로 확인한다.
 
 ### 6.2) 수조·야외 시험
 
@@ -1063,8 +1063,8 @@ git diff 9bff661 HEAD -- src/iahrs_driver_ros2-main src/ship_goal_angle
      6	yaw_mux:
      7	  ros__parameters:
      8	    # ------------------------------------------------------------ 소스 선택
-     9	    # imu_relative : 지금 유일하게 구현된 것. IMU 상대 yaw + mount_offset_deg 고정 보정.
-    10	    # cog_offset   : 옵션 B — GPS COG 로 오프셋 추정 (N2, 미구현)
+     9	    # imu_relative : 기본값. IMU 상대 yaw + mount_offset_deg 고정 보정. 입력 조건 없이 바로 발행.
+    10	    # cog_offset   : 옵션 B — GPS COG 로 오프셋 추정 (N2, 구현됨 5a69c0a — 수렴 전엔 발행 안 함)
     11	    # dual_gps     : 옵션 A — 듀얼 F9P relPosNED   (N3, 보드 확보 후)
     12	    # imu_absolute : 옵션 C — IMU 지자기 절대 heading (N4, 드라이버 조사 후)
     13	    # 미구현 소스를 고르면 조용히 0 을 내지 않고 발행을 멈춘다 (NOT_IMPLEMENTED).
@@ -1076,84 +1076,88 @@ git diff 9bff661 HEAD -- src/iahrs_driver_ros2-main src/ship_goal_angle
     19	    # ------------------------------------------------------------ ⚠️ 전부 실측 필요
     20	    # 벤치 절차 (배 완성 후, 물 밖에서):
     21	    #   1) 배를 나침반으로 정북에 맞춰 놓는다
-    22	    #   2) ros2 topic echo /imu/yaw 가 0 을 읽을 때까지 mount_offset_deg 를 조정
-    23	    #   3) 뱃머리를 시계방향(동쪽)으로 90° 돌린다 → 값이 90 으로 '증가' 해야 한다.
-    24	    #      감소하면 invert_yaw: true 로 바꾸고 2) 부터 다시.
-    25	    # 🚨 부호가 틀리면 배가 정반대로 간다. 지금 값은 추측이 아니라 '아직 안 쟀다' 는 뜻의 0 이다.
-    26	    invert_yaw: false
-    27	    mount_offset_deg: 0.0
-    28	
-    29	    # 자기북 → 진북 보정. 한국 약 -8°.
-    30	    # ⚠️ heading_source 가 imu_absolute(지자기) 일 때만 적용된다.
-    31	    #    dual_gps / cog_offset 는 이미 진북 기준이라 여기 값을 넣어도 무시된다 (이중보정 방지).
-    32	    #    imu_relative 는 기준축이 임의라 mount_offset_deg 가 전부 흡수한다 — 역시 무시.
-    33	    magnetic_declination_deg: 0.0
-    34	
-    35	    # ------------------------------------------------------------ 옵션 B (COG 오프셋, N2)
-    36	    # heading_source 가 cog_offset 이 아니어도 추정은 돌아간다.
-    37	    # /heading_status 로 "지금 전환하면 쓸 만한가" 를 물 위에서 미리 볼 수 있다:
-    38	    #   cog_offset:OK  n=142 R=0.97 off=37.4 rej=-
-    39	    #                  └표본  └신뢰도    └추정 오프셋  └마지막 배제 사유
-    40	    # R(원형 결과길이) 0~1. 1 에 가까울수록 표본이 한 방향으로 모임 = 믿을 만함.
-    41	    #
-    42	    # 🚨 옵션 B 의 원리적 한계: COG 는 '간 방향' 이지 '뱃머리' 가 아니다.
-    43	    #    조류·바람에 게걸음하면 그 각도가 offset 에 통째로 흡수된다.
-    44	    #    즉 이 추정치 = 장착 오프셋 + 그날의 평균 게걸음각.
-    45	    #    물살이 일정하면 실용상 문제없다. 절대 헤딩이 정말 필요하면 옵션 A(듀얼 F9P)다.
-    46	
-    47	    cog_min_speed_mps: 0.8      # 이보다 느리면 COG 는 노이즈 → 표본 배제
-    48	                                #   (작년 드라이버는 g_speed 를 안 봐서 속도 0 에서도 통과했다)
-    49	    cog_max_turn_rate_dps: 8.0  # 선회 중엔 COG 가 뱃머리를 못 따라온다 → 표본 배제
-    50	    cog_min_samples: 30.0       # 이만큼 모여야 수렴 인정
-    51	    cog_min_resultant: 0.9      # R 이 이 아래면 못 믿는다 (후진 180° 뒤집힘이 여기서 걸린다)
-    52	    cog_half_life_sec: 60.0     # 오래된 표본 감쇠 반감기. IMU 드리프트를 따라간다
-    53	
-    54	    # 🚨 후진 게이트. R 로는 후진을 못 막는다.
-    55	    #    전·후진이 '섞이면' R 이 무너져 걸리지만, **후진만 일관되게** 지속되면
-    56	    #    표본이 서로 일치한 채 전부 180° 틀려서 R=1.0 으로 정반대 offset 에 수렴한다.
-    57	    #    (검산: 후진만 60표본 → R=1.000, offset 217°(참값 37°))
-    58	    #    전진이 쌓인 뒤의 짧은 후진은 R 이 임계 아래로 내려가 '침묵' 으로 실패하지만
-    59	    #    (60s 전진 후 3s 후진 → R=0.868), 냉시작 직후 후진은 그대로 뚫린다.
-    60	    #    → motor_control 이 /motor_reverse(Bool) 를 발행한다. 모르면 안 모은다.
-    61	    #    ⚠️ true 인데 motor_control 이 안 떠 있으면 영구히 수렴하지 않는다.
-    62	    #       그 상태는 /heading_status 의 rej=no_reverse_gate 와 경고 로그로 보인다.
-    63	    #       헤딩만 벤치할 때는 false 로.
-    64	    #
-    65	    #    🚨🚨 대회 설정에서는 **반드시 true** 다. 벤치 편의 스위치가 실전에 남는 사고는
-    66	    #         이런 스위치의 고전적 말로다. 사람 기억에 맡기지 않는다:
-    67	    #           · yaw_mux 가 부팅 때 ERROR 로그
-    68	    #           · /heading_status 에 gate=off 표시
-    69	    #           · healthcheck 가 heading_source=cog_offset + gate=off 를 보면 /health_ok=false
-    70	    #         (imu_relative 로 도는 동안엔 이 게이트가 무의미해서 꺼져 있어도 무해 → 거짓 정지 없음)
-    71	    #         출발 전 체크리스트: CLAUDE.md 7-2
-    72	    cog_require_reverse_gate: true
-    73	
-    74	    # 🚨 포화 함정: 감쇠가 있으면 표본수 상한이 n_max = 1/(1-0.5^(dt/half_life)) 다.
-    75	    #    cog_min_samples 를 그 위로 잡으면 **영원히 수렴하지 않는다 — 에러도 없이.**
-    76	    #    예: GPS 10Hz + half_life 1s → n_max ≈ 14.9. min_samples 20 이면 절대 못 넘는다.
-    77	    #    yaw_mux 가 부팅 때 이 조합을 검사해 ERROR 로그를 낸다. gps_rate_hz 는 그 검사용.
-    78	    gps_rate_hz: 5.0
-    79	    # 현재값 검사: dt=0.2, half_life=60 → n_max ≈ 433 ≫ 30. 여유 충분.
-    80	
-    81	    # ------------------------------------------------------------ 토픽
-    82	    raw_yaw_topic: "/imu/yaw_raw"   # iahrs_driver 가 내는 보정 전 상대 yaw
-    83	    yaw_topic: "/imu/yaw"           # 소비자 계약 (CLAUDE.md 1-3, 이름 변경 금지)
-    84	    gps_vel_topic: "/ublox_gps_node/fix_velocity"
-    85	    motor_reverse_topic: "/motor_reverse"   # motor_control 이 발행 (PWM 규약 소유자)
-    86	
-    87	    # 🚨 GPS 속도벡터 프레임. 틀리면 헤딩이 90° 돌거나 좌우가 뒤집힌다.
-    88	    #      enu (ROS 표준, ublox 기본): x=동, y=북
-    89	    #      ned                       : x=북, y=동
-    90	    #
-    91	    #    ★ 벤치 판별 절차 (한 방향만으론 부족하다 — 축 스왑이 우연히 통과할 수 있다):
-    92	    #        정북 직진 → off 안정값 기록 → 정동 직진 → off 안정값 기록.
-    93	    #        두 값이 동일(±수 °)하면 프레임 정상. 다르면 enu/ned 또는 부호 오류 — 전환 금지.
+    22	    #      🚨 자기 나침반이 가리키는 건 '자북' 이다. 목표 방위(north_goal_angle)는 '진북' 기준이고,
+    23	    #         imu_relative 는 magnetic_declination_deg 를 쓰지 않는다(아래). 그래서 2) 의 목표값은 0 이 아니라
+    24	    #         진북 기준 뱃머리 = 360 + 편각(동쪽 +). 한국은 편각이 약 -8° → 약 352 를 맞춘다.
+    25	    #         대회장 편각을 먼저 확인할 것(과제 D9). 지도·GPS 로 진북을 직접 잡았다면 그대로 0.
+    26	    #   2) ros2 topic echo /imu/yaw 가 위 목표값(진북 기준 뱃머리)을 읽을 때까지 mount_offset_deg 를 조정
+    27	    #   3) 뱃머리를 시계방향(동쪽)으로 90° 돌린다 → 값이 90 으로 '증가' 해야 한다.
+    28	    #      감소하면 invert_yaw: true 로 바꾸고 2) 부터 다시.
+    29	    # 🚨 부호가 틀리면 배가 정반대로 간다. 지금 값은 추측이 아니라 '아직 안 쟀다' 는 뜻의 0 이다.
+    30	    invert_yaw: false
+    31	    mount_offset_deg: 0.0
+    32	
+    33	    # 자기북 → 진북 보정. 한국 약 -8°.
+    34	    # ⚠️ heading_source 가 imu_absolute(지자기) 일 때만 적용된다.
+    35	    #    dual_gps / cog_offset 는 이미 진북 기준이라 여기 값을 넣어도 무시된다 (이중보정 방지).
+    36	    #    imu_relative 는 기준축이 임의라 mount_offset_deg 가 전부 흡수한다 — 역시 무시.
+    37	    magnetic_declination_deg: 0.0
+    38	
+    39	    # ------------------------------------------------------------ 옵션 B (COG 오프셋, N2)
+    40	    # heading_source 가 cog_offset 이 아니어도 추정은 돌아간다.
+    41	    # /heading_status 로 "지금 전환하면 쓸 만한가" 를 물 위에서 미리 볼 수 있다:
+    42	    #   cog_offset:OK  n=142 R=0.97 off=37.4 rej=-
+    43	    #                  └표본  └신뢰도    └추정 오프셋  └마지막 배제 사유
+    44	    # R(원형 결과길이) 0~1. 1 에 가까울수록 표본이 한 방향으로 모임 = 믿을 만함.
+    45	    #
+    46	    # 🚨 옵션 B 의 원리적 한계: COG 는 '간 방향' 이지 '뱃머리' 가 아니다.
+    47	    #    조류·바람에 게걸음하면 그 각도가 offset 에 통째로 흡수된다.
+    48	    #    즉 이 추정치 = 장착 오프셋 + 그날의 평균 게걸음각.
+    49	    #    물살이 일정하면 실용상 문제없다. 절대 헤딩이 정말 필요하면 옵션 A(듀얼 F9P)다.
+    50	
+    51	    cog_min_speed_mps: 0.8      # 이보다 느리면 COG 는 노이즈 → 표본 배제
+    52	                                #   (작년 드라이버는 g_speed 를 안 봐서 속도 0 에서도 통과했다)
+    53	    cog_max_turn_rate_dps: 8.0  # 선회 중엔 COG 가 뱃머리를 못 따라온다 → 표본 배제
+    54	    cog_min_samples: 30.0       # 이만큼 모여야 수렴 인정
+    55	    cog_min_resultant: 0.9      # R 이 이 아래면 못 믿는다 (후진 180° 뒤집힘이 여기서 걸린다)
+    56	    cog_half_life_sec: 60.0     # 오래된 표본 감쇠 반감기. IMU 드리프트를 따라간다
+    57	
+    58	    # 🚨 후진 게이트. R 로는 후진을 못 막는다.
+    59	    #    전·후진이 '섞이면' R 이 무너져 걸리지만, **후진만 일관되게** 지속되면
+    60	    #    표본이 서로 일치한 채 전부 180° 틀려서 R=1.0 으로 정반대 offset 에 수렴한다.
+    61	    #    (검산: 후진만 60표본 → R=1.000, offset 217°(참값 37°))
+    62	    #    전진이 쌓인 뒤의 짧은 후진은 R 이 임계 아래로 내려가 '침묵' 으로 실패하지만
+    63	    #    (60s 전진 후 3s 후진 → R=0.868), 냉시작 직후 후진은 그대로 뚫린다.
+    64	    #    → motor_control 이 /motor_reverse(Bool) 를 발행한다. 모르면 안 모은다.
+    65	    #    ⚠️ true 인데 motor_control 이 안 떠 있으면 영구히 수렴하지 않는다.
+    66	    #       그 상태는 /heading_status 의 rej=no_reverse_gate 와 경고 로그로 보인다.
+    67	    #       헤딩만 벤치할 때는 false 로.
+    68	    #
+    69	    #    🚨🚨 대회 설정에서는 **반드시 true** 다. 벤치 편의 스위치가 실전에 남는 사고는
+    70	    #         이런 스위치의 고전적 말로다. 사람 기억에 맡기지 않는다:
+    71	    #           · yaw_mux 가 부팅 때 ERROR 로그
+    72	    #           · /heading_status 에 gate=off 표시
+    73	    #           · healthcheck 가 heading_source=cog_offset + gate=off 를 보면 /health_ok=false
+    74	    #         (imu_relative 로 도는 동안엔 이 게이트가 무의미해서 꺼져 있어도 무해 → 거짓 정지 없음)
+    75	    #         출발 전 체크리스트: CLAUDE.md 7-2
+    76	    cog_require_reverse_gate: true
+    77	
+    78	    # 🚨 포화 함정: 감쇠가 있으면 표본수 상한이 n_max = 1/(1-0.5^(dt/half_life)) 다.
+    79	    #    cog_min_samples 를 그 위로 잡으면 **영원히 수렴하지 않는다 — 에러도 없이.**
+    80	    #    예: GPS 10Hz + half_life 1s → n_max ≈ 14.9. min_samples 20 이면 절대 못 넘는다.
+    81	    #    yaw_mux 가 부팅 때 이 조합을 검사해 ERROR 로그를 낸다. gps_rate_hz 는 그 검사용.
+    82	    gps_rate_hz: 5.0
+    83	    # 현재값 검사: dt=0.2, half_life=60 → n_max ≈ 433 ≫ 30. 여유 충분.
+    84	
+    85	    # ------------------------------------------------------------ 토픽
+    86	    raw_yaw_topic: "/imu/yaw_raw"   # iahrs_driver 가 내는 보정 전 상대 yaw
+    87	    yaw_topic: "/imu/yaw"           # 소비자 계약 (CLAUDE.md 1-3, 이름 변경 금지)
+    88	    gps_vel_topic: "/ublox_gps_node/fix_velocity"
+    89	    motor_reverse_topic: "/motor_reverse"   # motor_control 이 발행 (PWM 규약 소유자)
+    90	
+    91	    # 🚨 GPS 속도벡터 프레임. 틀리면 헤딩이 90° 돌거나 좌우가 뒤집힌다.
+    92	    #      enu (ROS 표준, ublox 기본): x=동, y=북
+    93	    #      ned                       : x=북, y=동
     94	    #
-    95	    #    ⚠️ 두 방향으로도 못 잡는 경우가 하나 있다: x·y 가 **둘 다** 부호 반전이면
-    96	    #       두 방향 모두 180° 어긋나 '동일한 off' 로 보인다.
-    97	    #       → off 의 절대값이 mount_offset_deg 예상치(IMU 를 어느 방향으로 달았나)와
-    98	    #         맞는지로 거른다. 180° 어긋나 있으면 부호 반전이다.
-    99	    gps_vel_frame: "enu"
+    95	    #    ★ 벤치 판별 절차 (한 방향만으론 부족하다 — 축 스왑이 우연히 통과할 수 있다):
+    96	    #        정북 직진 → off 안정값 기록 → 정동 직진 → off 안정값 기록.
+    97	    #        두 값이 동일(±수 °)하면 프레임 정상. 다르면 enu/ned 또는 부호 오류 — 전환 금지.
+    98	    #
+    99	    #    ⚠️ 두 방향으로도 못 잡는 경우가 하나 있다: x·y 가 **둘 다** 부호 반전이면
+   100	    #       두 방향 모두 180° 어긋나 '동일한 off' 로 보인다.
+   101	    #       → off 의 절대값이 mount_offset_deg 예상치(IMU 를 어느 방향으로 달았나)와
+   102	    #         맞는지로 거른다. 180° 어긋나 있으면 부호 반전이다.
+   103	    gps_vel_frame: "enu"
 ```
 
 ----- FILE: src/ssf_heading/launch/ssf_heading.launch.py -----
@@ -2231,6 +2235,9 @@ colcon test                     # 🚨 lint 포함 — 권위 있는 실행기
 
 ----- DOC: docs/전달용/IMU_노드_쉬운설명.md -----
 # IMU 노드 모음 — 아주 쉬운 완전 해설
+
+> 🚨 **2025(작년) 구조 설명이다 — 2026 코드와 다르다.** 지금은 드라이버가 `/imu/yaw_raw` 만 내고 `ssf_heading/yaw_mux` 가 `/imu/yaw` 를 단독 발행한다. 최신 설명은 `docs/전달용/보고서_분담/초안/IMU.md`.
+
 
 이 문서는 `IMU_노드_모음.zip` 안에 있는 파일들을 **하나도 빼놓지 않고, 처음 보는 사람도 이해하도록** 설명합니다.
 코드 자체보다 "이 파일이 뭘 하는 애인지, 그리고 노드랑 어떻게 연결되는지"에 초점을 맞췄습니다.

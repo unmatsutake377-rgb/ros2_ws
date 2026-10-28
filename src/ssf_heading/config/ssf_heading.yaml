@@ -6,8 +6,8 @@
 yaw_mux:
   ros__parameters:
     # ------------------------------------------------------------ 소스 선택
-    # imu_relative : 지금 유일하게 구현된 것. IMU 상대 yaw + mount_offset_deg 고정 보정.
-    # cog_offset   : 옵션 B — GPS COG 로 오프셋 추정 (N2, 미구현)
+    # imu_relative : 기본값. IMU 상대 yaw + mount_offset_deg 고정 보정. 입력 조건 없이 바로 발행.
+    # cog_offset   : 옵션 B — GPS COG 로 오프셋 추정 (N2, 구현됨 5a69c0a — 수렴 전엔 발행 안 함)
     # dual_gps     : 옵션 A — 듀얼 F9P relPosNED   (N3, 보드 확보 후)
     # imu_absolute : 옵션 C — IMU 지자기 절대 heading (N4, 드라이버 조사 후)
     # 미구현 소스를 고르면 조용히 0 을 내지 않고 발행을 멈춘다 (NOT_IMPLEMENTED).
@@ -19,7 +19,11 @@ yaw_mux:
     # ------------------------------------------------------------ ⚠️ 전부 실측 필요
     # 벤치 절차 (배 완성 후, 물 밖에서):
     #   1) 배를 나침반으로 정북에 맞춰 놓는다
-    #   2) ros2 topic echo /imu/yaw 가 0 을 읽을 때까지 mount_offset_deg 를 조정
+    #      🚨 자기 나침반이 가리키는 건 '자북' 이다. 목표 방위(north_goal_angle)는 '진북' 기준이고,
+    #         imu_relative 는 magnetic_declination_deg 를 쓰지 않는다(아래). 그래서 2) 의 목표값은 0 이 아니라
+    #         진북 기준 뱃머리 = 360 + 편각(동쪽 +). 한국은 편각이 약 -8° → 약 352 를 맞춘다.
+    #         대회장 편각을 먼저 확인할 것(과제 D9). 지도·GPS 로 진북을 직접 잡았다면 그대로 0.
+    #   2) ros2 topic echo /imu/yaw 가 위 목표값(진북 기준 뱃머리)을 읽을 때까지 mount_offset_deg 를 조정
     #   3) 뱃머리를 시계방향(동쪽)으로 90° 돌린다 → 값이 90 으로 '증가' 해야 한다.
     #      감소하면 invert_yaw: true 로 바꾸고 2) 부터 다시.
     # 🚨 부호가 틀리면 배가 정반대로 간다. 지금 값은 추측이 아니라 '아직 안 쟀다' 는 뜻의 0 이다.
