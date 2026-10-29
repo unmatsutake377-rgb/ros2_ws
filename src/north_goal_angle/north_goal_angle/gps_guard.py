@@ -61,3 +61,53 @@ def fix_is_usable(status, lat, lon):
     if abs(lat) > 90.0 or abs(lon) > 180.0:
         return False
     return True
+
+
+# ───────────────────────── fix 신선도 (계약서_GPS묶음_20261029 C1) ─────────────────────────
+# 🚨 왜 필요한가: have_fix 를 False 로 바꾸는 곳은 gps_cb 의 NO_FIX 분기 하나뿐이다.
+#    /fix 가 아예 끊기면(ublox 사망·USB 분리) 콜백이 안 불리고, GPSFilter 가 계속 거부해도
+#    return 만 한다 → have_fix 가 True 로 남아 **옛 위치로** 방위·거리·geofence 를 계속 낸다.
+#    → 마지막으로 '받아들인' 프레임의 monotonic 시각을 보고, 묵었으면 입을 다문다.
+# 2.5 s = 1 Hz 기준 한 프레임 빠짐(2.0 s)은 견디고 두 프레임 빠짐(3.0 s)부터 stale.
+# 노드 코드 기본값과 config/north_goal_angle.yaml 의 gps_stale_sec 는 이 값과 같아야 한다
+# (대회 launch 가 yaml 을 못 실어도 같은 값 — test_gps_fresh.py 가 검사).
+DEFAULT_GPS_STALE_SEC = 2.5
+
+
+def fix_is_fresh(last_fix_t, now, stale_sec):
+    """마지막으로 받아들인 fix 가 아직 믿을 만큼 새것인가.
+
+    last_fix_t: GPSFilter 가 받아들인 마지막 프레임의 monotonic 시각. None = 한 번도 없음.
+    now:        지금 monotonic 시각.
+    stale_sec:  이보다 오래되면 stale (경계 age == stale_sec 는 fresh).
+
+    None·숫자 아님·NaN 이면 False — 모르면 입을 다문다.
+    """
+    if last_fix_t is None:
+        return False
+    try:
+        age = float(now) - float(last_fix_t)
+        stale_sec = float(stale_sec)
+    except (TypeError, ValueError):
+        return False
+    if not (math.isfinite(age) and math.isfinite(stale_sec)):
+        return False
+    return age <= stale_sec
+
+
+def sanitize_stale_sec(value, default=DEFAULT_GPS_STALE_SEC):
+    """gps_stale_sec 파라미터 검증 → (쓸 값, 정상 여부).
+
+    유한한 양수만 정상. inf(검사 끔)·0 이하·NaN·숫자 아님(문자열·bool·None)이면
+    (default, False) — 노드는 세우지 않고 시작 ERROR 를 낸 뒤 기본값으로 돈다(Davidson 10-29).
+
+    🚨 int 를 받아 주는 분기는 순수 함수 호출용이다. 노드에선 정수(0, 3)가 여기 오지 못한다 —
+       DOUBLE 로 선언한 파라미터에 정수를 주면 Humble rclpy 가 InvalidParameterTypeException 으로
+       노드를 세운다. 실제 yaml 값은 반드시 소수(.0)로 적는다.
+    """
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return float(default), False
+    v = float(value)
+    if not math.isfinite(v) or v <= 0.0:
+        return float(default), False
+    return v, True

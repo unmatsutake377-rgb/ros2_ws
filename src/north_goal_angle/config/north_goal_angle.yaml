@@ -12,6 +12,12 @@
     # ---- GPS 필터 (fix_is_usable 통과분에 품질·이상치·지터 처리) ----
     gps_cov_threshold: 2.0         # position_covariance 이보다 크면 그 프레임 버림 (RTK 품질)
     gps_max_speed_mps: 15.0        # 두 fix 간 속도 상한 — 넘으면 순간이동(멀티패스)으로 버림
+    gps_stale_sec: 2.5             # 🚨 받아들인 마지막 fix 가 이보다 묵으면 tp·goal_distance 멈춤, geofence 빈 배열.
+                                   #   1Hz 한 프레임 빠짐(2.0s)은 견디고 두 프레임(3.0s)부터 stale.
+                                   #   /wp_mode·20000 폴백·시간 초과 진행은 유지. 반드시 소수(2.5) —
+                                   #   inf·0 이하·NaN 이면 시작 ERROR + 2.5. 코드 기본값(gps_guard)과 같게.
+                                   #   🚨 정수(0, 3)는 ERROR+2.5 가 아니라 노드 사망 — DOUBLE 선언과 타입이
+                                   #   달라 rclpy 가 거부한다. 0 도 3 도 반드시 0.0·3.0 으로.
 
     # ---- 🚀 자율 시작 게이트 ----
     require_boat_mode_auto: true   # true=RC 모드 AUTO(/boat_mode==2)여야 미션 전진(수동 이동 중 스킵 방지).

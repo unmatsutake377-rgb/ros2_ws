@@ -55,7 +55,8 @@ from geopy import distance
 from ament_index_python.packages import get_package_share_directory
 
 from north_goal_angle.waypoint_loader import parse_waypoints, WaypointError
-from north_goal_angle.gps_guard import fix_is_usable
+from north_goal_angle.gps_guard import (
+    DEFAULT_GPS_STALE_SEC, fix_is_fresh, fix_is_usable, sanitize_stale_sec)
 from north_goal_angle import los_logic          # LOS 유도 (순수, 테스트됨)
 from north_goal_angle.gps_filter import GPSFilter  # 공분산·점프·스무딩 (순수, 테스트됨)
 from north_goal_angle.wp_timeout import (            # WP 타임아웃 표 (순수, 테스트됨)
@@ -74,6 +75,9 @@ ARRIVE_RADIUS_M = 3.0
 
 # 담당 노드가 없는 모드 = 순수 회피 구간. 여기서만 폴백을 낸다. (CLAUDE.md 3-6)
 FALLBACK_MODES = (5, 8)
+
+# GPS stale 이 이어지는 동안 ERROR 를 다시 찍는 주기(s). 로그 주기일 뿐 제어에는 안 쓴다.
+GPS_STALE_LOG_PERIOD_SEC = 5.0
 
 # 🚀 자율 시작 게이트: 아두이노 모드(ssf_bridge /boat_mode, Int32). 0=WAIT 1=MANUAL 2=AUTO.
 #    상수 공유 모듈화는 대회 전 금지(CLAUDE.md 3-9) → 여기 인라인(값은 ssf_bridge status_parser 와 일치).
@@ -151,6 +155,17 @@ class NorthGoalAngle(Node):
         #    → 묵으면 geofence 도 [inf, nan] 을 낸다. (1단계 ship_goal_angle 과 같은 원칙:
         #      **모르면 입을 다문다.** 틀린 값을 내느니 안 내는 게 낫다.)
         self.imu_stale_sec = float(self.declare_parameter('imu_stale_sec', 0.5).value)
+        # 🚨 GPS fix 신선도 (계약서_GPS묶음_20261029 C1). GPSFilter 가 마지막으로 받아들인
+        #    프레임이 이보다 묵으면 tp·goal_distance 를 멈추고 geofence 는 빈 배열.
+        #    /fix 가 끊기면 콜백이 안 불려 have_fix 가 True 로 남는다 → 옛 위치로 조향하던 구멍.
+        #    inf·0 이하·NaN 은 잘못된 값 → 시작 ERROR + 기본값(노드는 세우지 않는다).
+        #    🚨 단 정수(yaml `gps_stale_sec: 0`·`3`, `-p gps_stale_sec:=0`)는 여기까지 못 온다 —
+        #       기본값 2.5 로 DOUBLE 선언이라 Humble rclpy 가 InvalidParameterTypeException 으로
+        #       노드를 세운다. yaml 값은 반드시 소수(.0)로 적는다.
+        raw_stale = self.declare_parameter('gps_stale_sec', DEFAULT_GPS_STALE_SEC).value
+        self.gps_stale_sec, stale_ok = sanitize_stale_sec(raw_stale)
+        if not stale_ok:
+            self._log_stale_sec_invalid(raw_stale)
 
         # ---- WP 타임아웃 (wp_mode 기준, WP 하나당) — 계약서_WP타임아웃모드기준_20261029 ----
         # ROS2 파라미터는 dict 불가 → 병렬 배열. 표에 없는 모드 = 타임아웃 없음.
@@ -177,6 +192,9 @@ class NorthGoalAngle(Node):
         # ---- 상태 ----
         self.lat, self.lon = 0.0, 0.0
         self.have_fix = False
+        self.last_fix_t = None          # GPSFilter 가 받아들인 마지막 프레임 (monotonic). None=없음
+        self.gps_stale = False          # have_fix 인데 fix 가 묵은 상태(로그 전이용)
+        self.gps_stale_next_log_t = 0.0
         self.yaw = None
         self.last_yaw_t = None          # /imu/yaw 마지막 수신 (monotonic)
         self.wp_idx = 0
@@ -198,7 +216,8 @@ class NorthGoalAngle(Node):
              f"ON({len(self.geofence_polygon) // 2}점)"
         self.get_logger().info(
             f"north_goal_angle 시작: 폴백은 mode {FALLBACK_MODES} 에만 발행"
-            f"(mode 7 폴백 제거 — ship_dock 과 충돌했다). geofence {gf}."
+            f"(mode 7 폴백 제거 — ship_dock 과 충돌했다). geofence {gf}. "
+            f"GPS stale 기준 {self.gps_stale_sec:g}s."
         )
 
     # ───────────────────────── 웨이포인트 로드 ─────────────────────────
@@ -269,8 +288,9 @@ class NorthGoalAngle(Node):
         # fix 는 유효하다 → 품질·이상치·지터를 GPSFilter 로 거른다. 여기서 버리는 건 '한 프레임'만
         # (공분산 큼 / 순간이동)이지 fix 상실이 아니다 → have_fix·이전 위치는 유지한다.
         cov = msg.position_covariance[0] if len(msg.position_covariance) > 0 else None
+        now = time.monotonic()
         accepted, reason = self.gps_filter.update(
-            msg.latitude, msg.longitude, cov, time.monotonic())
+            msg.latitude, msg.longitude, cov, now)
         if not accepted:
             self.get_logger().warn(f"🛰️ GPS fix 한 프레임 버림: {reason}",
                                    throttle_duration_sec=2.0)
@@ -280,6 +300,7 @@ class NorthGoalAngle(Node):
         self.lat = self.gps_filter.filtered_lat
         self.lon = self.gps_filter.filtered_lon
         self.have_fix = True
+        self.last_fix_t = now           # 🚨 받아들인 프레임에서만 — 거부·NO_FIX 는 갱신 안 함
 
     # ⚠️ 로거 호출 지점을 함수로 분리한 이유: rclpy 는 로그 호출을 **소스 위치**로 캐싱해서,
     #    같은 줄이 warn/info 로 번갈아 불리면 ValueError 로 노드가 죽는다 (CLAUDE.md §5 사례 ②).
@@ -290,6 +311,24 @@ class NorthGoalAngle(Node):
 
     def _log_fix_acquired(self, status):
         self.get_logger().info(f"🛰️ GPS fix 확보(status={status}) → 항법 재개")
+
+    # stale 로그도 심각도·용도별로 호출 지점을 나눈다 (CLAUDE.md 1-7).
+    def _log_stale_sec_invalid(self, raw):
+        self.get_logger().error(
+            f"🚨 gps_stale_sec={raw!r} 는 잘못된 값(inf·0 이하·NaN·숫자 아님) → "
+            f"기본값 {self.gps_stale_sec:g}s 로 돈다. north_goal_angle.yaml 확인.")
+
+    def _log_fix_stale_enter(self, age):
+        self.get_logger().error(
+            f"🛰️ GPS fix stale ({age:.1f}s > {self.gps_stale_sec:g}s, /fix 끊김 또는 필터 계속 거부) "
+            "→ 목표 방위·거리 발행 중단, geofence 빈 배열. /wp_mode·시간 초과 진행은 유지")
+
+    def _log_fix_stale_ongoing(self, age):
+        self.get_logger().error(
+            f"🛰️ GPS fix 여전히 stale ({age:.1f}s) → 항법 침묵 중 (ublox·안테나·USB 확인)")
+
+    def _log_fix_stale_recovered(self):
+        self.get_logger().info("🛰️ GPS fix 신선도 복구 → 항법 재개")
 
     def yaw_cb(self, msg):
         self.yaw = float(msg.data)
@@ -308,7 +347,7 @@ class NorthGoalAngle(Node):
         kx = math.cos(math.radians(self.lat)) * M_PER_DEG_LON_EQ
         return ((lon - self.lon) * kx, (lat - self.lat) * M_PER_DEG_LAT)
 
-    def _geofence_ranges(self):
+    def _geofence_ranges(self, gps_ok):
         """경계를 '가짜 LiDAR'로 쏜다 → (angle_min_deg, angle_inc_deg, [r0, r1, ...]) 또는 None.
 
         각 상대방위마다 '이 방향으로 몇 m 가면 경계 밖인가'를 구한다. 멀면 inf.
@@ -316,12 +355,12 @@ class NorthGoalAngle(Node):
         특수 로직이 아예 없어진다. 기존 dilate 가 배 폭 여유를 더하고, 갭-팔로잉이 알아서 피한다.
 
         None(=빈 배열) 을 내는 경우 — 전부 '모르면 입을 다문다':
-          · 폴리곤 미설정 / GPS fix 없음
+          · 폴리곤 미설정 / GPS fix 없음 또는 stale(gps_stale_sec)
           · IMU stale     → yaw 가 얼면 광선 방향이 통째로 틀어져 '없는 벽'을 만든다
           · 이미 경기장 밖 → 경계를 벽으로 세우면 돌아갈 길을 막는다
         """
         poly = self.geofence_polygon
-        if len(poly) < 6 or not self.have_fix:      # 최소 3점(=6수)
+        if len(poly) < 6 or not gps_ok:             # 최소 3점(=6수) / fix 없음·stale
             return None
 
         # 🚨 IMU 신선도 — 광선 방향이 yaw 에 통째로 의존한다. 얼면 벽 전체가 엉뚱해진다.
@@ -361,9 +400,9 @@ class NorthGoalAngle(Node):
 
         return self.ray_min_deg, self.ray_inc_deg, ranges
 
-    def _publish_geofence(self):
+    def _publish_geofence(self, gps_ok):
         msg = Float32MultiArray()
-        gs = self._geofence_ranges()
+        gs = self._geofence_ranges(gps_ok)
         if gs is None:
             msg.data = []                                    # 빈 배열 = 경계 정보 없음
         else:
@@ -381,8 +420,32 @@ class NorthGoalAngle(Node):
                     throttle_duration_sec=10.0)
 
     # ───────────────────────── 메인 루프 ─────────────────────────
+    def _update_gps_fresh(self):
+        """이번 틱에 위치를 믿어도 되나 = have_fix 이고 마지막 수용 프레임이 gps_stale_sec 안.
+
+        🚨 have_fix 는 여기서 바꾸지 않는다(gps_cb 만 바꾼다). stale 은 별도 상태로 들고
+           진입 1회 ERROR + GPS_STALE_LOG_PERIOD_SEC 마다 ERROR + 복구 INFO 만 낸다.
+           have_fix 가 False 인 경우(NO_FIX·부팅 직후)는 기존 _log_fix_lost·'fix 없음' WARN 몫.
+        """
+        now = time.monotonic()
+        fresh = self.have_fix and fix_is_fresh(self.last_fix_t, now, self.gps_stale_sec)
+        stale = self.have_fix and not fresh
+        if stale:
+            age = now - self.last_fix_t if self.last_fix_t is not None else float('inf')
+            if not self.gps_stale:
+                self._log_fix_stale_enter(age)
+                self.gps_stale_next_log_t = now + GPS_STALE_LOG_PERIOD_SEC
+            elif now >= self.gps_stale_next_log_t:
+                self._log_fix_stale_ongoing(age)
+                self.gps_stale_next_log_t = now + GPS_STALE_LOG_PERIOD_SEC
+        elif fresh and self.gps_stale:
+            self._log_fix_stale_recovered()
+        self.gps_stale = stale
+        return fresh
+
     def timer_cb(self):
-        self._publish_geofence()             # 웨이포인트가 끝나도 경계 감시는 계속한다
+        gps_ok = self._update_gps_fresh()    # have_fix + 신선도(gps_stale_sec)
+        self._publish_geofence(gps_ok)       # 웨이포인트가 끝나도 경계 감시는 계속한다
 
         if self.wp_idx >= len(self.waypoints):
             return
@@ -395,7 +458,10 @@ class NorthGoalAngle(Node):
         #    ⚠️ /wp_mode 는 계속 낸다. 미션 단계는 '지금 위치' 에서 나오는 값이 아니고,
         #       멈추면 비전 검출기 3종이 전부 비활성이 된다(CLAUDE.md 3-4) — 부작용이 더 크다.
         #       대신 아래 도착 판정(wp_idx 전진)은 fix 없이는 하지 않는다.
-        if self.have_fix:
+        # 🚨 fix 가 묵어도(stale) 같다 — 옛 위치로 방위를 내지 않는다. ILOS 적분·prev_lat 초기화도
+        #    이 조건 안이라 stale 동안 적분이 쌓이지 않는다. /wp_mode·20000 폴백·
+        #    /wp_remaining_time·시간 초과 진행은 위치와 무관하니 그대로 낸다.
+        if gps_ok:
             # 첫 구간은 이전점이 없다 → 현 위치를 경로 시작으로(=직접 접근). 이후엔 완료한 WP.
             if self.prev_lat is None:
                 self.prev_lat, self.prev_lon = self.lat, self.lon
@@ -416,9 +482,10 @@ class NorthGoalAngle(Node):
             self.pub_bearing.publish(Float32(data=bearing))
         else:
             dist = None
-            self.get_logger().warn(
-                "🛰️ GPS fix 없음 → 목표 방위 미발행 (하늘이 안 보이거나 안테나 확인)",
-                throttle_duration_sec=5.0)
+            if not self.have_fix:            # stale 은 _update_gps_fresh 가 ERROR 로 따로 알린다
+                self.get_logger().warn(
+                    "🛰️ GPS fix 없음 → 목표 방위 미발행 (하늘이 안 보이거나 안테나 확인)",
+                    throttle_duration_sec=5.0)
 
         self.pub_mode.publish(Int32(data=wp_mode))
 
@@ -465,7 +532,7 @@ class NorthGoalAngle(Node):
                 self.wp_enter_time = None
                 return
 
-        # fix 가 없으면 '도착했는지' 를 판단할 근거가 없다 → wp_idx 를 전진시키지 않는다.
+        # fix 가 없거나 stale 이면 '도착했는지' 를 판단할 근거가 없다 → wp_idx 를 전진시키지 않는다.
         # (시간 초과 전진은 위에서 이미 처리한다 — 그건 위치와 무관한 안전장치라 유지)
         # 도착 반경은 속도·모드에 따라 동적(빠르면 넓게 오버슈트 방지, 도킹은 좁게).
         arrive_r = los_logic.get_dynamic_arrive_radius(
