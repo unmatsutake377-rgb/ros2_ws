@@ -15,8 +15,9 @@ def generate_launch_description():
         # ================================
         # RealSense Camera Only
         # (자동 화이트밸런스는 아래처럼 켜져 있다 — 옛 머리말 'Auto Exposure/WhiteBalance OFF' 는 틀린 설명.
-        #  ⚠️ rgb_camera.controls.saturation 은 드라이버 버전에 따라 이름이 안 먹을 수 있다 — Ubuntu 에서
-        #     `ros2 param get /camera/camera rgb_camera.saturation` 등으로 실제 이름 확인. 대회 launch 는 이 파일이 아니다.)
+        #  채도는 대회 launch(launch_files.launch.py)와 같게 `rgb_camera.saturation: 64` — 10-28 Ubuntu 확인:
+        #  옛 `rgb_camera.controls.saturation: 120` 은 없는 이름이라 조용히 무시돼 실제로는 늘 64 였다.
+        #  HSV 튜닝이 전부 64 기준이라 값은 64 그대로 명시만 한다. 대회 launch 는 이 파일이 아니다.)
         # ================================
         Node(
             package='realsense2_camera',
@@ -29,7 +30,7 @@ def generate_launch_description():
                 {"enable_infra1": False},
                 {"enable_infra2": False},
 
-                {"rgb_camera.controls.saturation": 120},
+                {"rgb_camera.saturation": 64},   # 실제로 돌던 값(옛 controls.saturation 120 은 무시됐었다)
 
 
                 # 🎥 30FPS, 640x480
