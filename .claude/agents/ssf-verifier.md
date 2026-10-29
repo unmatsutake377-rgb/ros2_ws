@@ -19,6 +19,7 @@ omitClaudeMd: true
 4. lint 포함 테스트: `cd ~/ros2_ws && source /opt/ros/humble/setup.bash && source install/setup.bash && colcon test --packages-select <패키지들>; colcon test-result --verbose --test-result-base build/<패키지>` (패키지마다 마지막 명령 반복). `colcon test` 가 권위 있는 실행기다.
 5. 부팅 스모크 (노드 파일이 바뀐 경우): 대회 launch(`src/launch_files/launch/launch_files.launch.py`)에서 그 노드의 `Node(...)` 줄을 찾아 **같은 조건**으로 띄운다 — launch 의 `name=` 은 `-r __node:=<이름>` 으로, launch 에 `parameters=` 가 있을 때만 `--params-file` 을 붙인다(없으면 붙이지 않는다). 다른 실행과 섞이지 않게 `ROS_DOMAIN_ID=77` 을 쓴다:
    `cd ~/ros2_ws && source /opt/ros/humble/setup.bash && source install/setup.bash && ROS_DOMAIN_ID=77 timeout 8 ros2 run <패키지> <실행파일> --ros-args -r __node:=<launch 이름> [--params-file <yaml>]; echo exit=$?`
+   🚨 `yaw_mux`(ssf_heading) 는 params 파일이 **두 개**다(10-29): `--params-file <share>/config/ssf_heading.yaml --params-file <share>/config/ssf_heading_<A|B>.yaml` (공통 → 배별 순서, 뒤가 이김). 대회 launch 전체를 띄울 때는 `boat:=A` 또는 `boat:=B` 가 필수다.
    Traceback, `AttributeError`, 파라미터 미선언 에러가 없는지만 본다. timeout 으로 끝난 것(exit 124)은 정상이다. 하드웨어에 붙는 노드(`ssf_bridge`, 센서 드라이버)는 건너뛰고 "하드웨어 노드라 생략"이라고 적는다.
 
 ## 지켜야 할 것

@@ -298,7 +298,7 @@ sudo ~/ros2_ws/tools/boat_boot.sh          # CPU performance, USB autosuspend of
 cd ~/ros2_ws && colcon build --symlink-install && echo "BUILD OK"
 
 # 2) 노드가 뜨나 (장비 연결 후)
-ros2 launch launch_files launch_files.launch.py
+ros2 launch launch_files launch_files.launch.py boat:=A   # 🚨 필수 — 1번배 A / 2번배 B. 없거나 소문자면 launch 가 거부한다(10-29)
 
 # 3) 핵심 토픽이 나오나 (다른 터미널)
 ros2 topic hz /scan          # LiDAR

@@ -54,7 +54,7 @@ git commit -m "작년 대회 최종본 (수정 전 기준선)"
 ### 1-4. 하드코딩 금지 — 파라미터로
 
 `[구판]` 배가 2척(A/B, 크기 다름)이다. 배 폭·PWM·거리 임계값은 **전부 `config/boat_a.yaml` / `boat_b.yaml`** 로 뺀다.
-→ **실제**: `boat_a.yaml`/`boat_b.yaml` 은 저장소에 없다(만든 적 없음). 값은 패키지별 `src/<pkg>/config/<pkg>.yaml` + 코드 기본값에 있고, 배별 분기는 GPS `gps_config` 인자뿐. 계약은 `CLAUDE.md` §1-4 를 따른다.
+→ **실제**: `boat_a.yaml`/`boat_b.yaml` 은 저장소에 없다(만든 적 없음). 값은 패키지별 `src/<pkg>/config/<pkg>.yaml` + 코드 기본값에 있다. 배별 분기는 ① GPS `gps_config` 인자 ② **10-29 신설 `boat:=A|B`(필수, 대문자)** — 지금은 IMU 두 값(`src/ssf_heading/config/ssf_heading_A/B.yaml`, 공통 `ssf_heading.yaml` 뒤에 실려 이김)만. 계약은 `CLAUDE.md` §1-4 와 `docs/문제와작업/계약서_배별IMU설정_20261029.md`.
 아직 모르는 실측값은 **`# ⚠️ 실측 필요` 주석**을 달고 임시값을 넣는다.
 
 ### 1-5. `time.time()` 쓰지 말 것
@@ -493,7 +493,7 @@ heading = imu_yaw_raw + offset   (정지 중에도 IMU 가 유지 — 작년 ove
 
 **⚠️ 아직 안 끝났다 — 벤치 확인이 필수다. 시뮬로 못 잡는다.**
 `mount_offset_deg=0.0`, `invert_yaw=false` 는 **추측한 값이 아니라 "아직 안 쟀다"** 는 뜻이다.
-절차 (`config/ssf_heading.yaml` 에도 적어둠):
+절차 (`config/ssf_heading_A.yaml`·`_B.yaml` 머리말에도 적어둠 — **값은 배별 파일에, 반드시 소수점(37.0)**. 정수 37 이면 yaw_mux 가 부팅 즉시 죽는다(10-29 Ubuntu 실측). 벤치 launch 도 `boat:=A|B`):
 1. 배를 나침반으로 **정북**에 맞춘다 — 🚨 나침반은 **자북**이다
 2. `ros2 topic echo /imu/yaw` 가 **360 + 편각(한국 약 352)** 을 읽을 때까지 `mount_offset_deg` 조정. `imu_relative` 는 편각을 안 쓴다(`SOURCE_IS_MAGNETIC`). 지도·GPS 로 진북을 잡았으면 0 (10-29 정정 — 예전 문구 "0" 은 나침반 기준이면 약 8° 틀린다)
 3. 뱃머리를 **시계방향(동)으로 90°** → 값이 **90 으로 증가**해야 한다. 감소하면 `invert_yaw: true` 후 2 부터 재시작

@@ -149,8 +149,9 @@ USB autosuspend 로 LiDAR/IMU/GPS 시리얼이 끊기는 **실재 이슈**를 �
 
 ### ② 메인 launch — 터미널 1
 ```bash
-ros2 launch launch_files launch_files.launch.py
+ros2 launch launch_files launch_files.launch.py boat:=A   # 🚨 필수 — 1번배 A / 2번배 B. 없거나 소문자면 launch 가 거부한다(10-29)
 ```
+`boat` 는 IMU 배별 값(`ssf_heading_A/B.yaml`)을 고른다. GPS 수신기는 따로 `gps_config:=…`(기본 `zed_f9p_rover.yaml`).
 이 하나로 다음이 전부 뜬다:
 
 | # | 뜨는 것 |
@@ -240,7 +241,7 @@ HUNT p2=1496us  p3=1548us  p4=1404us      ← 이 세 핀에 RC 신호가 있다
 ### 🔍 파라미터가 **실제로 닿았는지** 검사 (2026-08-12 신설)
 
 ```bash
-python3 tools/check_params.py
+python3 tools/check_params.py --boat A   # launch 와 같은 배. launch 에 gps_config 를 줬다면 --gps-config 도 같은 값
 ```
 전체 launch 를 띄운 상태에서 돌린다. config yaml 의 값과 **노드의 실제 값**을 대조한다.
 

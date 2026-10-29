@@ -65,7 +65,7 @@ FS-i6 는 켤 때 아래가 안 맞으면 **송신을 시작하지 않는다.** 
 
 **자율 운용 순서 (대회)**
 ```
-① 노트북: sudo tools/boat_boot.sh → ros2 launch (브릿지 포트 여는 리셋을 배터리 전에 끝낸다 — §1)
+① 노트북: sudo tools/boat_boot.sh → ros2 launch launch_files launch_files.launch.py boat:=A|B (🚨 boat 필수 — 10-29. 브릿지 포트 여는 리셋을 배터리 전에 끝낸다 — §1)
 ② 아두이노는 노트북 직결 (§2)
 ③ 조종기 ON — 스위치 전부 [위] + 왼쪽 스틱 맨 아래 → 수동 상태로 켜진다. 스틱에서 손 뗀다
 ④ 배터리 1·2번 → 5·6번 (접촉기 붙는 소리)

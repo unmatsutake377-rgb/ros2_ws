@@ -133,7 +133,7 @@ xset을 건너뛰게 돼 있다.
 1. `openssh-server` 설치·활성화
 2. 방화벽에서 SSH 허용 (ufw)
 3. 접속 확인 — 다른 노트북에서 실제로 붙어보고, 원격에서
-   `ros2 launch launch_files launch_files.launch.py`와
+   `ros2 launch launch_files launch_files.launch.py boat:=A`(또는 B — 필수)와
    `ros2 run north_goal_angle waypoint_recorder`가 정상 동작하는지 검증
    (waypoint_recorder는 키 입력이 필요하므로 SSH 세션에서 Enter/q가 먹는지 반드시 확인)
 4. 주소 문제 해결책 제시 — 아래 참고
