@@ -12,12 +12,17 @@ from color_shape_detector.vision_geom import (
 from color_shape_detector import hsv_ranges
 from color_shape_detector.dock_logic import (
     VALID_COLORS, VALID_SHAPES, classify_shape, DetectionConfirmer,
+    dock_frame_action, FRAME_SKIP, FRAME_PUBLISH_INVALID,
 )
 import cv2
 import numpy as np
 import time
 
 IMAGE_ANGLE_INVALID = 10000.0
+
+# 담당 모드(7)에서 목표 표식이 무효일 때 ERROR 를 다시 찍는 간격(s). 모드 게이트 경고(5 s)와 같은 주기.
+#   부팅 ERROR 1회만으로는 도킹 직전에 원인이 안 보인다(계약서_도킹게이트_20261028 위험 3).
+TARGET_INVALID_LOG_PERIOD_S = 5.0
 
 # V3(T2-4): 픽셀→각도 환산을 명시형으로 재작성했다.
 #   작년: (rel_x/80.0)*0.09*(distance/0.5) + atan2  ← distance 가 약분되어 실질 fx≈444px **고정**
@@ -104,20 +109,23 @@ class ImageSubscriber(Node):
         # ---- D1: 목표 표식 파라미터화 (당일 아침 공지 대응) ----
         # 작년: target_color="red", target_shape="Square" 하드코딩 → 공지된 조합이 다르면
         #   코드를 고쳐야 했다. 파라미터로 빼서 yaml 한 줄(또는 --ros-args)로 바꾼다.
-        #   유효값 검증: 오타(예: "Squre")면 조용히 아무것도 못 찾는다 → ERROR 로그 + 발행 중단.
+        #   유효값 검증: 오타(예: "Squre")면 조용히 아무것도 못 찾는다 → 그래서 무효면
+        #   부팅 ERROR 1회 + 검출 안 함. 담당 모드(7)에서만 10000 센티널 발행 + 5 s 주기 ERROR,
+        #   그 외 모드에서는 발행 없음(dock_frame_action, 2026-10-28 게이트 순서 수정).
         self.target_color = str(self.declare_parameter('target_color', 'red').value)
         self.target_shape = str(self.declare_parameter('target_shape', 'Square').value)
         self._target_valid = True
+        self._last_target_err_log = None   # 주기 ERROR 마지막 시각(monotonic). None = 아직 안 찍음
         if self.target_color not in VALID_COLORS:
             self._target_valid = False
             self.get_logger().error(
                 f"🚨 target_color '{self.target_color}' 는 유효하지 않다. "
-                f"가능: {list(VALID_COLORS)}. 발행 중단 — 오타로 조용히 못 찾는 것 방지.")
+                f"가능: {list(VALID_COLORS)}. 검출 안 함 — 모드 7 에서는 10000(무효)만 발행.")
         if self.target_shape not in VALID_SHAPES:
             self._target_valid = False
             self.get_logger().error(
                 f"🚨 target_shape '{self.target_shape}' 는 유효하지 않다. "
-                f"가능: {list(VALID_SHAPES)}. 발행 중단.")
+                f"가능: {list(VALID_SHAPES)}. 검출 안 함 — 모드 7 에서는 10000(무효)만 발행.")
 
         # ---- D2: N프레임 시간 안정화 ----
         self.confirm_frames = int(self.declare_parameter('confirm_frames', 3).value)
@@ -159,24 +167,37 @@ class ImageSubscriber(Node):
         self.mode_gate.update(msg.data, time.monotonic())
 
     def color_callback(self, msg):
-        # D1: 목표 표식이 유효하지 않으면(오타 등) 검출을 하지 않는다. 센티널만 발행.
-        #   '조용히 아무것도 못 찾는' 상태를 만들지 않는다 — 소비자는 INVALID 를 명확히 본다.
-        if not self._target_valid:
-            self.angle_pub.publish(Float32(data=IMAGE_ANGLE_INVALID))
-            return
-
-        # 3-4: 내 차례가 아니면 **여기서 끝낸다.**
+        # 3-4: 내 차례가 아니면 **여기서 끝낸다.** 🚨 게이트가 맨 앞이다 — 어떤 발행보다 먼저.
         #   cv_bridge 변환·HSV·컨투어를 전부 건너뛴다 → 비활성 노드의 CPU 는 거의 0.
         #   발행도 안 한다 → /image_angle 발행자 충돌이 원천 차단된다.
+        #   (a007eb0 은 무효 목표 분기를 이 앞에 두어 모드 2·3 에서도 10000 을 냈다 — turn 의
+        #    유효 방위를 ship_turn/ship_back 이 매 프레임 지웠다. 순서는 test_detector_gate_order 가 검사.)
         now_m = time.monotonic()
         active, why = self.mode_gate.state(now_m)
-        if not active:
+        action = dock_frame_action(self._target_valid, active)
+
+        if action == FRAME_SKIP:
             if why != ModeGate.R_OTHER_MODE and (now_m - self._last_gate_log) > 5.0:
                 self._last_gate_log = now_m
                 self.get_logger().warn(
                     f"비활성({why}) → 검출 정지. /wp_mode 가 오고 있나?")
             return
 
+        if action == FRAME_PUBLISH_INVALID:
+            # D1: 담당 모드인데 목표 표식이 무효(오타 등) → 검출하지 않고 센티널만 발행.
+            #   '조용히 아무것도 못 찾는' 상태를 만들지 않는다 — ship_dock 은 INVALID 를 명확히 본다.
+            #   도킹 중에는 5 s 마다 ERROR 로 원인을 다시 드러낸다(§1-7: 전용 호출 지점).
+            if (self._last_target_err_log is None or
+                    (now_m - self._last_target_err_log) > TARGET_INVALID_LOG_PERIOD_S):
+                self._last_target_err_log = now_m
+                self.get_logger().error(
+                    f"🚨 도킹 모드인데 목표 표식 무효 (target_color='{self.target_color}', "
+                    f"target_shape='{self.target_shape}') → 검출 안 함, /image_angle=10000 만 발행. "
+                    f"vision.yaml 의 target_* 를 고쳐라.")
+            self.angle_pub.publish(Float32(data=IMAGE_ANGLE_INVALID))
+            return
+
+        # FRAME_DETECT: 담당 모드 + 유효 목표
         frame = self.br.imgmsg_to_cv2(msg, desired_encoding='bgr8')
         view_frame = frame.copy() if self.debug_view else None
 

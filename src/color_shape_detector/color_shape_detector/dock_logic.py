@@ -160,3 +160,27 @@ class DetectionConfirmer:
     @property
     def confirmed(self):
         return self._confirmed
+
+
+# ---- 프레임 처리 분기 (계약서_도킹게이트_20261028) ----
+# 이미지 한 장이 왔을 때 도킹 검출기가 할 일. 노드(color_callback)는 **이 함수의 결과로만** 분기한다.
+FRAME_SKIP = "skip"                        # 담당 모드 아님/모드 모름 → 아무것도 발행하지 않는다
+FRAME_PUBLISH_INVALID = "publish_invalid"  # 담당 모드인데 목표 표식이 무효 → 10000 센티널만
+FRAME_DETECT = "detect"                    # 담당 모드 + 유효 목표 → 검출 경로
+
+
+def dock_frame_action(target_valid, gate_active):
+    """
+    (목표 유효?, 모드 게이트 활성?) → FRAME_SKIP | FRAME_PUBLISH_INVALID | FRAME_DETECT.
+
+    🚨 **게이트를 먼저 본다.** a007eb0(D1)이 무효 목표 분기를 게이트 앞에 두어, 목표가 무효면
+       모드 2·3 에서도 10000 을 /image_angle 로 냈다 → turn 검출기의 유효 방위를 ship_turn·
+       ship_back 이 매 프레임 지웠다(10000 수신 = buoy_rel None). 담당 모드가 아니면 목표가
+       유효하든 무효하든 침묵한다.
+    무효 목표는 담당 모드(7)에서만 10000 을 낸다 — ship_dock 은 이를 '표식 없음' 으로 본다.
+    """
+    if not gate_active:
+        return FRAME_SKIP
+    if not target_valid:
+        return FRAME_PUBLISH_INVALID
+    return FRAME_DETECT

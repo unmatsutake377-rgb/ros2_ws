@@ -10,7 +10,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from color_shape_detector.dock_logic import (  # noqa: E402
     TRIANGLE, SQUARE, CIRCLE, VALID_SHAPES, VALID_COLORS,
     circularity, classify_shape, DetectionConfirmer,
+    dock_frame_action, FRAME_SKIP, FRAME_PUBLISH_INVALID, FRAME_DETECT,
 )
+from color_shape_detector.mode_gate import ModeGate  # noqa: E402
 
 _p = _t = 0
 
@@ -297,6 +299,70 @@ def test_window_positional_first_arg_compat():
 def test_valid_sets():
     assert set(VALID_SHAPES) == {TRIANGLE, SQUARE, CIRCLE}
     assert "white" in VALID_COLORS and len(VALID_COLORS) == 6
+
+
+# ---- dock_frame_action: 게이트가 무효 목표보다 먼저 (계약서_도킹게이트_20261028) ----
+def _inactive_gates():
+    """ModeGate 비활성 3사유를 실제로 만들어 (사유, active) 로 돌려준다."""
+    out = []
+    g = ModeGate([7], stale_sec=2.0)                 # 부팅 후 /wp_mode 미수신
+    out.append(g.state(0.0))
+    g = ModeGate([7], stale_sec=2.0)                 # 모드 7 이었는데 끊김
+    g.update(7, 0.0)
+    out.append(g.state(2.5))
+    g = ModeGate([7], stale_sec=2.0)                 # 지금은 turn 차례 (2·3)
+    g.update(3, 0.0)
+    out.append(g.state(0.1))
+    return out
+
+
+def test_frame_action_inactive_reasons_all_skip():
+    """게이트 비활성 3사유 모두 → 목표 유효/무효와 상관없이 SKIP (발행 없음)."""
+    states = _inactive_gates()
+    whys = sorted(why for _a, why in states)
+    assert whys == sorted([ModeGate.R_NO_MODE, ModeGate.R_STALE, ModeGate.R_OTHER_MODE]), whys
+    for active, why in states:
+        assert active is False, why
+        for tv in (True, False):
+            got = dock_frame_action(tv, active)
+            assert got == FRAME_SKIP, f"{why} target_valid={tv} → {got}"
+
+
+def test_frame_action_invalid_target_mode_2_3_is_silent():
+    """버그 재현 입력: 무효 목표 + 모드 2·3 → 10000 을 내면 안 된다(turn 방위를 지운다)."""
+    for mode in (0, 1, 2, 3, 5, 8):
+        g = ModeGate([7])
+        g.update(mode, 0.0)
+        active, _why = g.state(0.1)
+        assert dock_frame_action(False, active) == FRAME_SKIP, mode
+
+
+def test_frame_action_active_invalid_publishes_invalid():
+    g = ModeGate([7])
+    g.update(7, 0.0)
+    active, _why = g.state(0.1)
+    assert active is True
+    assert dock_frame_action(False, active) == FRAME_PUBLISH_INVALID
+
+
+def test_frame_action_active_valid_detects():
+    g = ModeGate([7])
+    g.update(7, 0.0)
+    active, _why = g.state(0.1)
+    assert dock_frame_action(True, active) == FRAME_DETECT
+
+
+def test_frame_action_truth_table():
+    """진리표 전수 + 세 값이 서로 다르다."""
+    table = {
+        (False, False): FRAME_SKIP,
+        (True, False): FRAME_SKIP,
+        (False, True): FRAME_PUBLISH_INVALID,
+        (True, True): FRAME_DETECT,
+    }
+    for (tv, ga), want in table.items():
+        assert dock_frame_action(tv, ga) == want, (tv, ga)
+    assert len({FRAME_SKIP, FRAME_PUBLISH_INVALID, FRAME_DETECT}) == 3
 
 
 def main():
