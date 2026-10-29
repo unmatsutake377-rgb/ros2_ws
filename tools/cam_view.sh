@@ -47,7 +47,7 @@ if [ -n "${DUP// /}" ]; then
   exit 1
 fi
 
-echo "=== 카메라 수신 === UDP ${PORT} 대기 (지터버퍼 ${LAT}ms). 끝내려면 창 닫기/Ctrl-C."
+echo "=== 카메라 수신 === UDP ${PORT} 대기 (지터버퍼 ${LAT}ms). 끝내려면 이 터미널에서 Ctrl-C (영상 창만 닫으면 3초 뒤 다시 뜬다)."
 echo "  ⚠️ 화면 좌상단 시계 = 배 시각. 멈추면 영상이 멈춘 것."
 
 while true; do
