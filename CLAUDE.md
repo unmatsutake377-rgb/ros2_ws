@@ -61,7 +61,7 @@ rclpy 는 소스 위치별로 심각도를 캐싱해 `ValueError: Logger severit
 | MCU | **Arduino Mega 2560 R3**. 통신 = `ssf_bridge` USB 시리얼 (**Due·micro-ROS 아님**, launch 가 micro-ROS 안 띄움). `Motor_run = pwm_r*10000 + pwm_l`, 1500=중립. 펌웨어는 passthrough(모터별 `invert`·`gain_num` 노브 있음 — 현재 좌·우 둘 다 `false`·`10` → 숨은 반전 없음. 방향 디버깅 땐 `ssf_boat.ino:327-328` 도 확인) |
 | ESC | 🔒 **좌/우 2채널뿐** — 핀 12(좌)·11(우). 선수·선미 구분 없음, 측별 팬아웃(2번배 측당 2개·1번배 측당 1개). 펌웨어 동일 → 배 ID 분기 불필요. **게걸음 불가** |
 | 카메라 | **RealSense D455 현역**(비전 3종이 지금 이걸로 돈다) / **OAK-1 PoE 보유**(표준 화각·고정초점 — **W 광각 아님**, 09-15 구매모델 확정. RGB 전용·뎁스 없음·PoE=이더넷). OAK 는 인젝터(알리 10-27 주문) 도착 뒤 D455 와 비교 선정, 바꾸는 날 `image_topic`·`hfov_deg` 실측 — 런북 `docs/절차/oak_arrival_runbook.md`. 코드는 **중립화**(상세 §3-3) |
-| 선체 | 1번배 실측 1.66 × 0.57 × 0.38m → `half_width 0.29`. 2번배는 설계값(0.43m) (§8) |
+| 선체 | 1번배 실측 1.66 × 0.57 × 0.38m → `half_width 0.29`. 2번배 실측 1.77 × **0.535**m(10-24 줄자, ⚠️ 스러스터 포함 여부 미확인) — 공용 `half_width 0.29` 가 0.535/2=0.27 보다 넓어 안전 쪽 (§8) |
 
 - 🚨 `docs/전달용/펌웨어_설계문서.md` 의 "선수 좌/우 + 선미 좌/우", `docs/전달용/회로_요구사항서.md` §7 ESC 4행은 **옛 설계** — 그대로 배선하면 없는 채널을 배선한다.
 - 🚨 `/dev/ttyLiDAR` 이 있다고 라이다가 살아있는 게 아니다(udev 는 USB 어댑터 시리얼에 붙고, 어댑터는 개체 사이를 옮겨 다닌다). 개체 확인 `python3 tools/lidar_id.py`. 개체 시리얼 목록 상세 §2-1
@@ -91,7 +91,7 @@ rclpy 는 소스 위치별로 심각도를 캐싱해 `ValueError: Logger severit
 
 - 🚨 `/image_color`(`"red"`/`"green"`/`"white"`; 빨강·초록=시계, 흰색=반시계) 를 `/buoy_color` 로 개명하지 마라 — 2026-09-23 철회. 문서만 개명했다가 `ship_turn` 이 SEARCH 에서 영구 정지(`aa46028`).
 - 🚨 `iahrs_driver` `yaw_topic` 을 `/imu/yaw` 로 되돌리지 마라 → 발행자 2개(에러 없음). 기본값 `/imu/yaw_raw`.
-- 죽은 토픽(구독자 0): `/goal_distance`, `/wp_remaining_time`, `video_frames`, `/red_distance`·`/green_distance`·`/image_distance`(발행 중단).
+- 죽은 토픽(구독자 0): `video_frames`, `/red_distance`·`/green_distance`·`/image_distance`(발행 중단). `/goal_distance`·`/wp_remaining_time` 은 **`mission_monitor` 가 관측용으로 구독**한다(`mission_monitor.py:105-106`) — 제어 구독자는 없다.
 
 **`/boat_*` 값** — `ssf_boat.ino` 의 `enum Mode`·`enum BoatId` 와 **값까지** 같다. 🚨 여기서 번호를 새로 매기거나 변환표를 끼우지 마라.
 - `/boat_mode`: 0=WAIT(대기·중립) 1=MANUAL(RC) 2=AUTO(브릿지 명령)
@@ -146,7 +146,7 @@ SPIN 중심 `spin_forward_pwm`(기본 1500 → 1400/1600 = 제자리 선회). �
 **헤딩·비전 규칙**
 - 각도 평균은 산술평균 금지(359°와 1°→180°) — 단위벡터 합 + `atan2`. COG 수렴 파라미터(`cog_min_samples`·`gps_rate_hz`·`cog_half_life_sec`)는 포화 함정이 있어 바꾸기 전 상세 §3-5.
 - `/health_ok` 는 진단 전용이라 거짓 정지 위험이 없다는 전제로 설계됐다. 제어에 물리려면 먼저 상세 §3-3·§5 를 보고 Davidson 과 검토.
-- 도크 인식(목표 색·형상 유효값 밖이면 ERROR + 발행 정지, 임계는 혼동행렬 수치로 — 감으로 튜닝 금지)을 건드리면 상세 §3-3b.
+- 도크 인식: 목표 색·형상 유효값 밖이면 **부팅 ERROR + 검출 안 함, 담당 모드(7)에서만 `/image_angle`=10000 + 5 s 주기 ERROR, 그 외 모드는 발행 없음**(ff289f7. 이전엔 게이트 전 발행으로 모드 2·3 에 10000 누수 — 10-29 Ubuntu 확인). 임계는 혼동행렬 수치로 — 감으로 튜닝 금지. 건드리면 상세 §3-3b.
 - 헤딩 없으면 발행하지 않는다. 미구현 `heading_source` 는 0 대신 발행 정지. `zero_yaw_on_boot`·`use_gps_heading_override` 기본 false.
 - 자기편각은 **자기북 기준 소스에만**(`SOURCE_IS_MAGNETIC`). 듀얼 GPS·COG 에 더하면 이중 보정(약 8°).
 - 카메라는 **방위각만**, 거리는 LiDAR `/scan`. 도크는 매칭하지 말고 LiDAR 전방 섹터 최소거리. 상세 §3-3
@@ -213,10 +213,11 @@ colcon test                     # 🚨 lint 포함 — 권위 있는 실행기
 | `active_wp_modes` (검출기 3종) | §3 wp_mode 표대로 | `test_mode_gate.py` |
 
 사람이 할 확인(조향 부호·IMU 절대방위·`gps_vel_frame`·`hfov_deg`·`/health_ok` true) 절차는 상세 §7-2. `/health_ok` 빨간불을 켜둔 채 두지 않는다.
+🚨 IMU 절대방위: **나침반은 자북**을 가리킨다. `imu_relative` 는 편각을 안 쓰므로(`SOURCE_IS_MAGNETIC`) 나침반 정북에 맞췄을 때 `/imu/yaw` 목표값은 0 이 아니라 **360 + 편각(한국 약 −8° → 약 352)** 이다. 지도·GPS 로 진북을 직접 잡았으면 0.
 
 ## 8. ⚠️ 아직 모르는 것 (추측하지 말 것 — 필요한 곳엔 `# ⚠️ 실측 필요`)
 
-- 2번배 실측 폭 (현재 설계값 0.43m; 공용 `half_width` 는 1번배 기준)
+- 2번배 폭 0.535m 가 스러스터 포함인지 (10-24 줄자; 공용 `half_width 0.29` 는 1번배 기준이라 어느 쪽이든 안전 쪽)
 - 새 배 추력 → `base_pwm`, `reverse_pwm`
 - IMU 장착 오프셋(`mount_offset_deg`, `invert_yaw` — 0.0/false 는 "아직 안 쟀다"), 대회장 자기편각
 - 도크 규격 → `contact_dist_m`
