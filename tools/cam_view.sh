@@ -9,7 +9,8 @@
 #
 # 설계:
 #   · sync=false        → 프레임을 받는 즉시 그린다(재생 시계에 맞춰 기다리지 않음). 지연 최소.
-#   · jitterbuffer 30ms → 무선 지터 흡수. 늘리면 부드럽지만 지연이 는다(⚠️ 실측으로 조정).
+#   · jitterbuffer 80ms → 무선 지터 흡수. 30ms 는 실내 WiFi 에서 늦은 패킷을 버려 자주 깨졌다(10-29 실측).
+#     늘리면 부드럽지만 그만큼 지연이 는다. CAM_JITTER_MS 로 조정.
 #   · 화면 좌상단의 시계가 **배 시각**이다. 시계가 멈추면 영상이 멈춘 것 — 그 프레임을 믿지 말 것.
 #   · 수신 노트북 자체 시각도 우하단에 박는다. 두 시계 차이 ≈ 전송 지연(양쪽 NTP 맞으면).
 #
@@ -21,7 +22,7 @@
 
 set -uo pipefail
 PORT="${CAM_PORT:-5600}"
-LAT="${CAM_JITTER_MS:-30}"
+LAT="${CAM_JITTER_MS:-80}"
 
 command -v gst-launch-1.0 >/dev/null 2>&1 || { echo "❌ gstreamer 없음. 헤더 참고." >&2; exit 1; }
 

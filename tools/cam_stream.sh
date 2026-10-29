@@ -17,7 +17,7 @@
 #   ./tools/cam_stream.sh 100.101.102.103            # D455 수동 모드(카메라 노드 안 뜸): v4l2 직접
 #   ./tools/cam_stream.sh 100.101.102.103 ros        # 카메라 노드가 떠 있을 때(D455/OAK 공통): 토픽 경유
 #   ./tools/cam_stream.sh 100.101.102.103 oak        # OAK 온보드 인코더 직접 (CPU 0, 시각 각인 없음)
-#   ./tools/cam_stream.sh 100.101.102.103 v4l2 640 480 30 1500
+#   ./tools/cam_stream.sh 100.101.102.103 v4l2 640 480 30 1500   # 기본(424x240·1000)보다 크게
 #   CAM_TOPIC=/oak/rgb/image_raw ./tools/cam_stream.sh 100.101.102.103 ros   # OAK(depthai-ros) 토픽
 #
 # 카메라별 (🚨 OAK-1 PoE(확정 09-15) 로 바뀌면 v4l2 모드는 못 쓴다 — PoE 는 이더넷 장치라 /dev/video 가 없다):
@@ -40,10 +40,14 @@ set -uo pipefail
 
 HOST="${1:-}"
 MODE="${2:-v4l2}"
-W="${3:-640}"
-H="${4:-480}"
+# 기본값 = 10-29 1번배 실측으로 정한 조종 화면 설정 (docs/결과분석/영상지연_실측_20261029.md):
+#   v4l2(D455 직접) 는 424x240@30 · 1000kbps. 640x480 은 1500·3000 둘 다 흔들 때 계속 깨졌다(실내 공유기).
+#   ros/oak 모드는 실측 전이라 옛 기본(640x480 · 1500) 유지.
+if [ "$MODE" = v4l2 ]; then _W=424; _H=240; _K=1000; else _W=640; _H=480; _K=1500; fi
+W="${3:-$_W}"
+H="${4:-$_H}"
 FPS="${5:-30}"
-KBPS="${6:-1500}"      # ⚠️ 실측 필요: 5GHz 랜이면 3000 까지, LTE 면 800~1500 권장
+KBPS="${6:-$_K}"
 PORT="${CAM_PORT:-5600}"
 DEV="${CAM_DEV:-}"     # 비우면 자동 탐색 (D455 컬러 = YUYV 포맷을 내는 노드)
 TOPIC="${CAM_TOPIC:-/camera/camera/color/image_raw}"   # ros 모드 토픽. OAK 는 CAM_TOPIC 으로 덮어씀
