@@ -30,9 +30,9 @@
 #
 # 의존 (배 노트북, Ubuntu 22.04):
 #   sudo apt install gstreamer1.0-tools gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
-#                    gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly gstreamer1.0-libav \
+#                    gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly gstreamer1.0-libav gstreamer1.0-x \
 #                    v4l-utils python3-gi gir1.2-gstreamer-1.0 gir1.2-gst-plugins-base-1.0
-#   (ros 모드는 python3-gi 필요. 인코더는 x264enc = CPU. VAAPI 는 선택, 아래 참고)
+#   (gstreamer1.0-x 가 clockoverlay 를 담는다 — 빠지면 "no element clockoverlay". ros 모드는 python3-gi 필요. 인코더는 x264enc = CPU. VAAPI 는 선택, 아래 참고)
 #
 # 롤백: 이 스크립트를 Ctrl-C 로 끝내면 끝. 시스템 설정을 바꾸지 않는다.
 
