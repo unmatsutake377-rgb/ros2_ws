@@ -55,14 +55,43 @@ if [ -z "$HOST" ]; then
 fi
 command -v gst-launch-1.0 >/dev/null 2>&1 || { echo "❌ gstreamer 없음. 헤더의 apt 줄 참고." >&2; exit 1; }
 
+# ── 중복 실행 막기 + Ctrl-C 한 번에 끝내기 (10-29 1번배 실측) ──────────────────
+# gst-launch 는 Ctrl-C 를 스스로 처리하고 정상 종료한다 → 아래 while 루프는 그걸 "파이프라인이 끝났다" 로 보고
+# 3초 뒤 **다시 켠다.** 꺼진 줄 알고 다른 터미널에서 또 켜면 송신이 두 개가 되어 같은 포트로 영상이 섞이고
+# 화면이 계속 깨진다(실제로 내장 웹캠 video0 송신이 남아 D455 송신과 섞였다).
+trap 'echo; echo "■ 중지 (Ctrl-C)"; exit 0' INT TERM
+others() {   # $1 패턴과 맞는 프로세스 중 나와 내 자식(이 함수의 서브셸)을 뺀 PID
+  local p out=""
+  for p in $(pgrep -f "$1"); do
+    [ "$p" = "$$" ] && continue
+    [ "$(ps -o ppid= -p "$p" 2>/dev/null | tr -d ' ')" = "$$" ] && continue
+    out="$out $p"
+  done
+  echo "$out"
+}
+DUP="$(others "cam_stream.sh")$(others "udpsink host=.* port=${PORT}|cam_stream_(ros|oak)\\.py")"
+if [ -n "${DUP// /}" ]; then
+  echo "❌ 이미 돌고 있는 송신이 있다 (PID:${DUP}). 같은 포트로 두 개면 영상이 섞인다." >&2
+  ps -o pid=,command= -p "$(echo $DUP | tr ' ' ',')" 2>/dev/null | cut -c1-140 >&2
+  echo "   끄려면: kill${DUP}   (또는 그 터미널에서 Ctrl-C)" >&2
+  exit 1
+fi
+
 # ── D455 컬러 노드 자동 탐색 ────────────────────────────────────────────────
 # D455 는 /dev/video 노드를 여러 개 낸다(뎁스·IR·컬러·메타데이터). 컬러만 YUYV 를 낸다.
+# 🚨 노트북 내장 웹캠도 YUYV 를 내고 번호가 앞이다(10-29 1번배: video0=내장, D455 컬러=video6).
+#    → 이름에 RealSense 가 든 노드를 먼저 찾고, 없을 때만 아무 YUYV 노드.
 find_color_dev() {
   command -v v4l2-ctl >/dev/null 2>&1 || { echo ""; return; }
-  for d in /dev/video*; do
-    if v4l2-ctl -d "$d" --list-formats 2>/dev/null | grep -q "YUYV"; then
-      echo "$d"; return
-    fi
+  local d name
+  for pass in realsense any; do
+    for d in /dev/video*; do
+      name="$(cat "/sys/class/video4linux/$(basename "$d")/name" 2>/dev/null)"
+      [ "$pass" = realsense ] && [[ "$name" != *RealSense* ]] && continue
+      if v4l2-ctl -d "$d" --list-formats 2>/dev/null | grep -q "YUYV"; then
+        echo "$d"; return
+      fi
+    done
   done
   echo ""
 }
@@ -97,7 +126,7 @@ while true; do
         echo "⚠️ YUYV 를 내는 /dev/video 노드가 없다. 카메라 USB 확인. 3초 후 재시도." >&2
         sleep 3; continue
       fi
-      echo "  장치    : ${DEV}"
+      echo "  장치    : ${DEV} ($(cat "/sys/class/video4linux/$(basename "$DEV")/name" 2>/dev/null))"
       # v4l2src io-mode=2(mmap). do-timestamp 로 캡처 시각 기준 타임스탬프.
       eval gst-launch-1.0 -q v4l2src device="${DEV}" io-mode=2 do-timestamp=true \
         ! "video/x-raw,format=YUY2,width=${W},height=${H},framerate=${FPS}/1" \

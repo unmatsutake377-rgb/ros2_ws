@@ -25,6 +25,28 @@ LAT="${CAM_JITTER_MS:-30}"
 
 command -v gst-launch-1.0 >/dev/null 2>&1 || { echo "❌ gstreamer 없음. 헤더 참고." >&2; exit 1; }
 
+# ── 중복 실행 막기 + Ctrl-C 한 번에 끝내기 (10-29 1번배 실측) ──────────────────
+# gst-launch 는 Ctrl-C 를 스스로 처리하고 정상 종료한다 → 아래 while 루프는 그걸 "파이프라인이 끝났다" 로 보고
+# 3초 뒤 **다시 켠다.** 꺼진 줄 알고 다른 터미널에서 또 켜면 송신이 두 개가 되어 같은 포트로 영상이 섞이고
+# 화면이 계속 깨진다(실제로 내장 웹캠 video0 송신이 남아 D455 송신과 섞였다).
+trap 'echo; echo "■ 중지 (Ctrl-C)"; exit 0' INT TERM
+others() {   # $1 패턴과 맞는 프로세스 중 나와 내 자식(이 함수의 서브셸)을 뺀 PID
+  local p out=""
+  for p in $(pgrep -f "$1"); do
+    [ "$p" = "$$" ] && continue
+    [ "$(ps -o ppid= -p "$p" 2>/dev/null | tr -d ' ')" = "$$" ] && continue
+    out="$out $p"
+  done
+  echo "$out"
+}
+DUP="$(others "cam_view.sh")$(others "udpsrc port=${PORT}")"
+if [ -n "${DUP// /}" ]; then
+  echo "❌ 이미 돌고 있는 수신이 있다 (PID:${DUP}). 같은 포트로 두 개면 영상이 섞인다." >&2
+  ps -o pid=,command= -p "$(echo $DUP | tr ' ' ',')" 2>/dev/null | cut -c1-140 >&2
+  echo "   끄려면: kill${DUP}   (또는 그 터미널에서 Ctrl-C)" >&2
+  exit 1
+fi
+
 echo "=== 카메라 수신 === UDP ${PORT} 대기 (지터버퍼 ${LAT}ms). 끝내려면 창 닫기/Ctrl-C."
 echo "  ⚠️ 화면 좌상단 시계 = 배 시각. 멈추면 영상이 멈춘 것."
 
