@@ -1,10 +1,45 @@
 from launch import LaunchDescription
-from launch.actions import IncludeLaunchDescription, TimerAction, DeclareLaunchArgument
+from launch.actions import (IncludeLaunchDescription, TimerAction, DeclareLaunchArgument,
+                            LogInfo, OpaqueFunction)
 from launch.substitutions import LaunchConfiguration
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from ament_index_python.packages import get_package_share_directory
 import os
 from launch_ros.actions import Node
+
+
+def yaw_mux_param_files(share_dir, boat):
+    """yaw_mux params 파일 목록. 🚨 순서가 의미다: 공통 → 배별 (뒤 파일이 이긴다).
+
+    ssf_heading.launch.py(벤치)에 같은 함수가 있다 — 바꿀 땐 둘 다 (test_boat_config.py 가 검사).
+    """
+    cfg = os.path.join(share_dir, 'config')
+    return [os.path.join(cfg, 'ssf_heading.yaml'),
+            os.path.join(cfg, f'ssf_heading_{boat}.yaml')]
+
+
+def _yaw_mux(context):
+    # 입력이 끊기거나 소스가 미구현이면 발행을 멈춘다(설계).
+    # → ship_goal_angle 이 /yaw_error 를 멈추고, north_goal_angle geofence 가 침묵한다.
+    boat = LaunchConfiguration('boat').perform(context)
+    files = yaw_mux_param_files(get_package_share_directory('ssf_heading'), boat)  # 공통 → 배별
+    missing = [f for f in files if not os.path.isfile(f)]
+    if missing:
+        # 일부러 launch 전체를 세운다 — 배별 값 없이 뜨면 헤딩이 조용히 틀린다.
+        # 🚨 이 검사는 t=0, 어떤 Node 보다 먼저 돈다(목록 맨 앞) → 아무 프로세스도 안 뜬 채 멈춘다.
+        #    아래 12) 브릿지 주석의 "예외 금지" 는 선택 기능(ntrip·브릿지) 얘기다 — 이 검사를 지우지 말 것.
+        raise RuntimeError(
+            f'yaw_mux params 파일 없음: {missing} — pull 뒤 colcon build 를 했는지 확인')
+    return [
+        LogInfo(msg=f'boat={boat}, 파일={files[0]} → {files[1]}'),
+        Node(
+            package='ssf_heading',
+            executable='yaw_mux',
+            name='yaw_mux',
+            output='screen',
+            parameters=files,
+        ),
+    ]
 
 
 def generate_launch_description():
@@ -32,9 +67,23 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
+        # 🚨 배 (필수, 기본값 없음 — 빠지거나 A/B 가 아니면 launch 거부).
+        #    지금은 yaw_mux 의 배별 IMU 값(ssf_heading_A/B.yaml)만 고른다. GPS 는 아래 gps_config 따로.
+        #    ros2 launch launch_files launch_files.launch.py boat:=A   (또는 boat:=B)
+        #    기본값을 두면 다른 배에서 그 배 값으로 조용히 뜬다(gps_config 가 이미 그렇게 실패 중).
+        DeclareLaunchArgument(
+            'boat', choices=['A', 'B'],
+            description='배 (필수): A 또는 B — yaw_mux 배별 IMU 값 파일 선택'),
         DeclareLaunchArgument(
             'gps_config', default_value='zed_f9p_rover.yaml',
             description='배별 GPS 설정 (B배: zed_f9p_rover.yaml / A배: c94_m8p_rover.yaml)'),
+
+        # ============================================================
+        # 0) yaw_mux — /imu/yaw 의 단독 발행자 (params: 공통 → boat 별, _yaw_mux 참고)
+        # ============================================================
+        # 🚨 맨 앞에 둔다: 배별 파일 확인(raise)이 어떤 노드도 예약되기 전에 돌게.
+        #    iahrs_driver 보다 먼저 떠도 무해하다 — 원시 yaw 가 오기 전엔 발행하지 않는다(stale).
+        OpaqueFunction(function=_yaw_mux),
 
         # ============================================================
         # 1) RPLIDAR
@@ -64,20 +113,7 @@ def generate_launch_description():
             }],
         ),
 
-        # ============================================================
-        # 2b) yaw_mux — /imu/yaw 의 단독 발행자
-        # ============================================================
-        # 입력이 끊기거나 소스가 미구현이면 발행을 멈춘다(설계).
-        # → ship_goal_angle 이 /yaw_error 를 멈추고, north_goal_angle geofence 가 침묵한다.
-        Node(
-            package='ssf_heading',
-            executable='yaw_mux',
-            name='yaw_mux',
-            output='screen',
-            parameters=[os.path.join(
-                get_package_share_directory('ssf_heading'),
-                'config', 'ssf_heading.yaml')],
-        ),
+        # 2b) yaw_mux 는 맨 앞 0) 으로 옮겼다 (배별 파일 확인을 t=0 에 하려고).
 
         # ============================================================
         # 3) U-BLOX GPS

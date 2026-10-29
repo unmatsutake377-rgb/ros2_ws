@@ -1,0 +1,30 @@
+# yaw_mux — A배 전용 IMU 장착값 (나머지 공통값은 ssf_heading.yaml)
+#
+# launch 가 `boat:=A` 일 때 ssf_heading.yaml **뒤에** 이 파일을 넘긴다 → 여기 값이 이긴다.
+#   대회: ros2 launch launch_files launch_files.launch.py boat:=A
+#   벤치: ros2 launch ssf_heading ssf_heading.launch.py boat:=A
+#   🚨 다른 배 인자로 띄워 놓고 이 파일을 고치지 말 것 — launch 첫 줄 "boat=…, 파일=…" 로 확인.
+#
+# 🚨 여기엔 배마다 다른 키 **두 개만** 둔다(test_boat_config.py 가 검사).
+#    cog_require_reverse_gate 같은 안전 스위치(CLAUDE.md 7-2)는 공통 파일에만 —
+#    여기 복사하면 한 배에서만 조용히 꺼질 수 있다.
+#
+# 🚨 mount_offset_deg 는 **반드시 소수점** 으로 적는다 (37 ❌ → 37.0 ✅).
+#    정수로 적으면 yaw_mux 가 부팅 즉시 죽는다 → /imu/yaw 끊김.
+#    (10-29 Ubuntu 실측: InvalidParameterTypeException ... 'INTEGER', expecting 'DOUBLE')
+#
+# 벤치 절차 (배 완성 후, 물 밖에서):
+#   1) 배를 나침반으로 정북에 맞춰 놓는다
+#      🚨 자기 나침반이 가리키는 건 '자북' 이다. 목표 방위(north_goal_angle)는 '진북' 기준이고,
+#         imu_relative 는 magnetic_declination_deg 를 쓰지 않는다. 그래서 2) 의 목표값은 0 이 아니라
+#         진북 기준 뱃머리 = 360 + 편각(동쪽 +). 한국은 편각이 약 -8° → 약 352 를 맞춘다.
+#         대회장 편각을 먼저 확인할 것(과제 D9). 지도·GPS 로 진북을 직접 잡았다면 그대로 0.
+#   2) ros2 topic echo /imu/yaw 가 위 목표값(진북 기준 뱃머리)을 읽을 때까지 mount_offset_deg 를 조정
+#   3) 뱃머리를 시계방향(동쪽)으로 90° 돌린다 → 값이 90 으로 '증가' 해야 한다.
+#      감소하면 invert_yaw: true 로 바꾸고 2) 부터 다시.
+# 🚨 부호가 틀리면 배가 정반대로 간다. 지금 값은 추측이 아니라 '아직 안 쟀다' 는 뜻의 0 이다.
+
+yaw_mux:
+  ros__parameters:
+    invert_yaw: false        # ⚠️ 실측 필요
+    mount_offset_deg: 0.0    # ⚠️ 실측 필요 — 반드시 float (37.0 처럼)

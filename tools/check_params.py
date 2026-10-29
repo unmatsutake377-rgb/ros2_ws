@@ -1,8 +1,16 @@
 #!/usr/bin/env python3
 """check_params — config yaml 의 값이 **실제로 노드에 닿았는지** 대조한다.
 
-    (전체 launch 를 띄운 상태에서)
-    python3 tools/check_params.py
+    (전체 launch 를 띄운 상태에서 — launch 에 준 boat·gps_config 와 **같은 값**으로)
+    python3 tools/check_params.py --boat A --gps-config c94_m8p_rover.yaml
+    python3 tools/check_params.py --boat B                  # gps_config 기본 zed_f9p_rover.yaml
+    python3 tools/check_params.py some.yaml other.yaml      # 파일을 직접 고르면 --boat 불필요
+
+🚨 `--boat` 는 기본 파일 목록을 쓸 때 **필수**다 (2026-10-29, 계약서_배별IMU설정).
+   배별 파일(ssf_heading_A/B.yaml)은 **그 배 것 하나만** 대조한다 — 두 배 파일을 다 넣으면
+   실측 뒤 안 실린 배 파일이 매번 거짓 '불일치' 로 뜨고, 사람들이 경고를 무시하게 된다.
+   GPS 파일은 배에서 자동으로 고르지 않는다 — launch 의 gps_config 가 boat 와 따로이므로
+   (수신기 배정 미확정) 여기서도 `--gps-config` 로 launch 에 준 값을 그대로 받는다.
 
 왜 만들었나 (2026-08-12)
   `rgb_camera.controls.saturation: 120` 이 **존재하지 않는 이름**이라 조용히 무시되고 있었다.
@@ -27,6 +35,7 @@
 """
 
 import argparse
+import os
 import subprocess
 import sys
 
@@ -47,8 +56,21 @@ DEFAULT_FILES = [
     "src/ship_turn/config/ship_turn.yaml",
     "src/ship_back/config/ship_back.yaml",
     "src/ssf_tools/config/ssf_tools.yaml",
-    "src/ublox/ublox_gps/config/zed_f9p_rover.yaml",
 ]
+
+# 배별 파일 — 그 배 것 하나만 목록에 넣는다(위 docstring).
+BOATS = ("A", "B")
+BOAT_FILE = "src/ssf_heading/config/ssf_heading_{boat}.yaml"
+
+# GPS — launch_files.launch.py 의 gps_config 와 같은 이름·같은 기본값.
+GPS_CONFIG_DIR = "src/ublox/ublox_gps/config"
+DEFAULT_GPS_CONFIG = "zed_f9p_rover.yaml"
+
+
+def default_files(boat, gps_config):
+    """기본 대조 목록 = 공통 파일 + **그 배의** 배별 파일 + launch 에 준 GPS 파일."""
+    return DEFAULT_FILES + [BOAT_FILE.format(boat=boat),
+                            os.path.join(GPS_CONFIG_DIR, gps_config)]
 
 
 def sh(cmd, timeout=40):
@@ -110,10 +132,27 @@ def same(expected, actual):
 
 
 def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument('yamls', nargs='*')
+    ap = argparse.ArgumentParser(
+        description="config yaml 값이 실제 노드에 닿았는지 대조 (전체 launch 를 띄운 상태에서)")
+    ap.add_argument('yamls', nargs='*',
+                    help="대조할 yaml (없으면 기본 목록 — 그때는 --boat 필수)")
+    ap.add_argument('--boat', choices=BOATS,
+                    help="launch 에 준 boat 와 같게. 그 배의 ssf_heading_<boat>.yaml 만 대조")
+    ap.add_argument('--gps-config', default=DEFAULT_GPS_CONFIG,
+                    help=f"launch 에 준 gps_config 와 같게 (기본 {DEFAULT_GPS_CONFIG})")
     args = ap.parse_args()
-    files = args.yamls or DEFAULT_FILES
+    if args.yamls:
+        files = args.yamls
+    elif args.boat is None:
+        # 배를 모르면 배별 파일을 고를 수 없다 — 아무거나 고르면 거짓 '불일치' 다.
+        print("🚨 --boat A|B 가 필요하다 (launch 에 준 boat 와 같게). "
+              "예: python3 tools/check_params.py --boat A")
+        return 2
+    else:
+        files = default_files(args.boat, args.gps_config)
+        print(f"boat={args.boat}, gps_config={args.gps_config}")
+        print("  ⚠️ 둘 다 launch 에 준 boat·gps_config 와 같아야 한다 — "
+              "다르면 GPS·IMU 가 거짓 '불일치' 로 나온다 (A배면 보통 --gps-config c94_m8p_rover.yaml)")
 
     nodes = [n for n in sh(["ros2", "node", "list"]).splitlines() if n.startswith("/")]
     if not nodes:
