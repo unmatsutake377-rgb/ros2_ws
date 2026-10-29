@@ -23,7 +23,7 @@
 **1-3. 토픽 이름을 바꾸지 않는다.** 새 기능은 토픽 **추가**. 옛+새 노드 혼합 상태에서도 돌아야 한다(5/5 조합 검증됨).
 ROS2 는 이름이 어긋나도 **에러 없이 아무것도 안 준다** — `/buoy_color` 사고(§3) 참고.
 
-**1-4. 하드코딩 금지.** 배 폭·PWM·거리 임계값은 패키지별 `src/<pkg>/config/<pkg>.yaml` + 코드 기본값에 둔다. 모르는 실측값은 임시값 + **`# ⚠️ 실측 필요`**. 배별 분리 파일(`boat_a.yaml`/`boat_b.yaml`)은 **아직 없다** — 배별 분기는 GPS `gps_config` 인자뿐(A: `c94_m8p_rover.yaml` / B: `zed_f9p_rover.yaml`). 상세 §1-4
+**1-4. 하드코딩 금지.** 배 폭·PWM·거리 임계값은 패키지별 `src/<pkg>/config/<pkg>.yaml` + 코드 기본값에 둔다. 모르는 실측값은 임시값 + **`# ⚠️ 실측 필요`**. 배별 분기 = GPS `gps_config` 인자(A: `c94_m8p_rover.yaml` / B: `zed_f9p_rover.yaml`) + **`boat:=A|B`(필수, 대문자 — 없거나 소문자면 launch 가 노드 하나도 안 띄우고 거부)**. 지금 `boat` 가 고르는 건 IMU 두 값뿐(`ssf_heading_A/B.yaml`, 923b903). 다른 배별 값(half_width·PWM)은 그 노드들에 yaml 이 안 실려 별도 계약. 상세 §1-4
 yaml 은 **노드 이름으로** 적용된다 → `super().__init__('<이름>')` 은 패키지명과 일치해야 한다(전수 감사 완료, 상세 §3-7).
 🚨 대회 launch(`launch_files.launch.py`)는 미션 노드·`ship_direction`·`motor_control` 을 **`parameters=` 없이** 띄운다 → 이 노드들의 값은 **코드 기본값**이 대회값이다. yaml 만 고치면 대회 실행에 반영되지 않으니 코드 기본값과 yaml 을 같이 맞춘다.
 
@@ -125,17 +125,18 @@ SPIN 중심 `spin_forward_pwm`(기본 1500 → 1400/1600 = 제자리 선회). �
 | 0, 1 | 게이트 시작·끝 | `ship_gate` (`active_wp_modes: [0, 1]`, `ship_last` 제거됨) | `gate` → `/red_angle`, `/green_angle` |
 | 2 | 위치유지 | `ship_back` | `turn`(white) → `/image_angle` |
 | 3 | 부표 선회 | `ship_turn` | `turn`(red) → `/image_angle`, `/image_color` |
-| 5 | 회피(50초) | **없음 = 정상** | 없음 — `ship_direction` 순수 회피 |
-| 7 | 도킹(60초) | `ship_dock` | `dock` → `/image_angle` |
+| 5 | 회피 (dwell 50 s) | **없음 = 정상** | 없음 — `ship_direction` 순수 회피 |
+| 7 | 도킹 (dwell 60 s) | `ship_dock` | `dock` → `/image_angle` |
 | 8 | 토너먼트 회피 | **없음 = 정상** | 없음 |
 
+- 표의 50 s·60 s 는 **규정 시간이 아니라 작년 dwell 값**이다. WP 시간 초과는 **mode 기준** — 0·1·2·5 = 120 s, 3 = 90 s, 7 = 150 s, 8 = 없음(`north_goal_angle.yaml` `wp_timeout_modes`/`wp_timeout_sec`, b337ad8). 🚨 `wp_timeout_sec` 는 원소마다 소수점 — 정수면 노드가 안 뜬다(10-29 실측).
 - mode 5·8 을 healthcheck 가 '누락' 으로 경고하면 매 실행 거짓 경보다 → 매핑표에 `none` 으로 명시(반영됨). `north_goal_angle` 의 20000 폴백은 5·8 에만.
 - 🚨 `dock`·`turn` 이 둘 다 `/image_angle` 을 발행 → `active_wp_modes` 겹치면 발행자 2개. `test_mode_gate.py` 의 `check_publisher_conflicts` 가 정적 검사.
 - 검출기는 상주한다(subprocess 매니저 폐기). `/wp_mode` 미수신·stale(2.0s 초과) → **발행 정지** + 5초 주기 경고. 게이트는 `color_callback` 맨 앞.
 - `healthcheck` 는 빠진 모드 / 중복 모드 / 침묵 노드를 검사한다.
 
 **`/geofence_state`** — 경계를 '가짜 LiDAR' 로: `data = [angle_min_deg, angle_inc_deg, r0, r1, …]`, 상대방위(0=정면), 멀면 `inf`.
-정보 없으면 **빈 배열**(미설정·GPS fix 없음 / IMU stale `imu_stale_sec` 0.5s / 이미 이탈). 소비: `ranges[i] = min(real, geofence)`, `geofence_stale_sec`(2.0s) 넘게 묵으면 병합 안 함. min 병합은 (C) 자율 회피 구간에만 들어가지만, **별도로** candidate/SPIN 구간엔 하드 가드가 있다 — 경계 최소거리가 `geofence_stop_margin_m`(2.0) 안이고 상대방위가 전진방향 ±`geofence_stop_cone_deg`(60°)와 겹치면 candidate/SPIN 무시하고 STOP_HOLD(`ship_direction.py:149`). 도킹 중 정지 원인이 될 수 있다.
+정보 없으면 **빈 배열**(미설정·GPS fix 없음 / **GPS fix stale `gps_stale_sec` 2.5 s**(b288014) / IMU stale `imu_stale_sec` 0.5s / 이미 이탈). 소비: `ranges[i] = min(real, geofence)`, `geofence_stale_sec`(2.0s) 넘게 묵으면 병합 안 함. min 병합은 (C) 자율 회피 구간에만 들어가지만, **별도로** candidate/SPIN 구간엔 하드 가드가 있다 — 경계 최소거리가 `geofence_stop_margin_m`(2.0) 안이고 상대방위가 전진방향 ±`geofence_stop_cone_deg`(60°)와 겹치면 candidate/SPIN 무시하고 STOP_HOLD(`ship_direction.py:149`). 도킹 중 정지 원인이 될 수 있다.
 🚨 구독자 0 = 경계 방어 없음(실격) → `north_goal_angle` 부팅 5초 뒤 ERROR + `healthcheck` 가 `/health_ok=false`. ⚠️ 상세 §3-9 에 구판 소비 방식(±40° 원뿔 칠하기)이 남아 충돌 — 코드 확인.
 
 **QoS**
@@ -219,7 +220,7 @@ colcon test                     # 🚨 lint 포함 — 권위 있는 실행기
 
 - 2번배 폭 0.535m 가 스러스터 포함인지 (10-24 줄자; 공용 `half_width 0.29` 는 1번배 기준이라 어느 쪽이든 안전 쪽)
 - 새 배 추력 → `base_pwm`, `reverse_pwm`
-- IMU 장착 오프셋(`mount_offset_deg`, `invert_yaw` — 0.0/false 는 "아직 안 쟀다"), 대회장 자기편각
+- IMU 장착 오프셋(`mount_offset_deg`, `invert_yaw` — 0.0/false 는 "아직 안 쟀다"). 값은 **배별 파일 `ssf_heading_A/B.yaml`**, 🚨 **반드시 소수점**(`37.0` — `37` 이면 `yaw_mux` 가 부팅 즉시 죽는다, 10-29 실측). 대회장 자기편각
 - 도크 규격 → `contact_dist_m`
 - 🚨 **조향 좌/우 부호**(`steer_invert`) — 틀리면 모든 게 무의미. 가장 흔한 사고. 벤치 필수
 - LiDAR 장착 높이 = 부표 높이인지 (안 맞으면 부표를 못 본다 → 위치유지 소스 판단, §6-2)
