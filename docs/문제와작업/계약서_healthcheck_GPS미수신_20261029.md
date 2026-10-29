@@ -1,6 +1,6 @@
 # 변경 계약서: healthcheck — 부팅 뒤 마감 안에 `/ublox_gps_node/fix` 를 한 번도 못 받으면 GPS 실패 (GPS C2 와 같은 시점)
 
-> ssf-contract 작성 2026-10-29. 상태: **계약 작성됨 — 구현은 C2 직전 커밋 권장**(먼저 넣어도 무해). 사람 결정 대기.
+> ssf-contract 작성 2026-10-29. 상태: **⏹ 하지 않음 — Davidson 10-29 "굳이 할 필요 없다"**. 기록으로 남김. C2(ublox respawn) 뒤에는 장치 없이 부팅해도 `/health_ok=true` 가 될 수 있다는 점(H2)·라이다·IMU·카메라 '영원히 대기'(H5)는 운용 점검(출발 전 `ros2 topic hz`)으로 확인한다.
 
 ## 0. 문제 실재 확인
 
