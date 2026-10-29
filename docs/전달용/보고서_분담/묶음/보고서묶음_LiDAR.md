@@ -1,5 +1,5 @@
 # 보고서 분담 묶음 — LiDAR
-만든 시각: 2026-10-29 13:26 · 저장소 커밋: 32a8146
+만든 시각: 2026-10-29 13:47 · 저장소 커밋: b288014
 
 이 파일 하나를 AI 에 올리고, 공통 작성규칙 5절의 프롬프트를 붙여 넣는다.
 소스 파일에는 행 번호가 붙어 있다. 근거는 [근거: 파일경로:행] 으로 단다.
@@ -1760,275 +1760,311 @@ git diff 19cfde7 HEAD -- src/rplidar_ros
 ----- FILE: src/launch_files/launch/launch_files.launch.py -----
 ```
      1	from launch import LaunchDescription
-     2	from launch.actions import IncludeLaunchDescription, TimerAction, DeclareLaunchArgument
-     3	from launch.substitutions import LaunchConfiguration
-     4	from launch.launch_description_sources import PythonLaunchDescriptionSource
-     5	from ament_index_python.packages import get_package_share_directory
-     6	import os
-     7	from launch_ros.actions import Node
-     8	
+     2	from launch.actions import (IncludeLaunchDescription, TimerAction, DeclareLaunchArgument,
+     3	                            LogInfo, OpaqueFunction)
+     4	from launch.substitutions import LaunchConfiguration
+     5	from launch.launch_description_sources import PythonLaunchDescriptionSource
+     6	from ament_index_python.packages import get_package_share_directory
+     7	import os
+     8	from launch_ros.actions import Node
      9	
-    10	def generate_launch_description():
-    11	
-    12	    # 패키지 경로
-    13	    dir_rplidar = get_package_share_directory('rplidar_ros')
-    14	    dir_north = get_package_share_directory('north_goal_angle')
-    15	    dir_ntrip = get_package_share_directory('ntrip_client')
-    16	    dir_gps = get_package_share_directory('ublox_gps')
-    17	    # ship_direction·realsense2_camera 는 Node(package=...) 가, ship_goal_angle 은
-    18	    # 119행이 다시 조회한다. 여기 대입은 쓰이지 않아 제거했다(2026-09-23).
-    19	    dir_bridge = get_package_share_directory('ssf_bridge')
+    10	
+    11	def yaw_mux_param_files(share_dir, boat):
+    12	    """yaw_mux params 파일 목록. 🚨 순서가 의미다: 공통 → 배별 (뒤 파일이 이긴다).
+    13	
+    14	    ssf_heading.launch.py(벤치)에 같은 함수가 있다 — 바꿀 땐 둘 다 (test_boat_config.py 가 검사).
+    15	    """
+    16	    cfg = os.path.join(share_dir, 'config')
+    17	    return [os.path.join(cfg, 'ssf_heading.yaml'),
+    18	            os.path.join(cfg, f'ssf_heading_{boat}.yaml')]
+    19	
     20	
-    21	    # 비전 공통 설정 (image_topic, hfov_deg, debug_view).
-    22	    # 3-4 이후로는 launch 가 노드를 직접 띄우므로 파라미터가 **그대로 닿는다** —
-    23	    # V5 의 vision_* 중계(매니저가 --ros-args 로 넘기던 것)는 3-4 에서 제거됐다.
-    24	    VISION_CFG = os.path.join(
-    25	        get_package_share_directory('color_shape_detector'), 'config', 'vision.yaml')
-    26	
-    27	    # NTRIP 2초 지연
-    28	    ntrip_launch = IncludeLaunchDescription(
-    29	        PythonLaunchDescriptionSource(
-    30	            os.path.join(dir_ntrip, 'launch', 'ntrip_client_launch.py')
-    31	        )
-    32	    )
-    33	
-    34	    return LaunchDescription([
-    35	        DeclareLaunchArgument(
-    36	            'gps_config', default_value='zed_f9p_rover.yaml',
-    37	            description='배별 GPS 설정 (B배: zed_f9p_rover.yaml / A배: c94_m8p_rover.yaml)'),
-    38	
-    39	        # ============================================================
-    40	        # 1) RPLIDAR
-    41	        # ============================================================
-    42	        IncludeLaunchDescription(
-    43	            PythonLaunchDescriptionSource(
-    44	                os.path.join(dir_rplidar, 'launch', 'rplidar_a3_launch.py')
-    45	            )
-    46	        ),
-    47	
-    48	        # ============================================================
-    49	        # 2) AHRS (IMU) — 보정 안 한 상대 yaw 를 /imu/yaw_raw 로만 낸다
-    50	        # ============================================================
-    51	        # 🚨 CLAUDE.md 3-5. 작년엔 이 노드가 /imu/yaw 를 직접 냈는데 그 값이 절대방위가 아니었다
-    52	        #    (부팅 0점화 + GPS COG override). 절대방위 합성은 아래 yaw_mux 가 전담한다.
-    53	        #    파라미터는 드라이버 기본값과 같지만 **일부러 명시**한다 —
-    54	        #    나중에 누가 yaml 로 되살려도 여기서 눈에 띄게 하려는 것이다.
-    55	        Node(
-    56	            package='iahrs_driver',
-    57	            executable='iahrs_driver',
-    58	            name='iahrs_driver',
-    59	            output='screen',
-    60	            parameters=[{
-    61	                'yaw_topic': '/imu/yaw_raw',        # ← /imu/yaw 로 되돌리면 발행자 2개가 된다
-    62	                'zero_yaw_on_boot': False,
-    63	                'use_gps_heading_override': False,
-    64	            }],
-    65	        ),
-    66	
-    67	        # ============================================================
-    68	        # 2b) yaw_mux — /imu/yaw 의 단독 발행자
-    69	        # ============================================================
-    70	        # 입력이 끊기거나 소스가 미구현이면 발행을 멈춘다(설계).
-    71	        # → ship_goal_angle 이 /yaw_error 를 멈추고, north_goal_angle geofence 가 침묵한다.
-    72	        Node(
-    73	            package='ssf_heading',
-    74	            executable='yaw_mux',
-    75	            name='yaw_mux',
-    76	            output='screen',
-    77	            parameters=[os.path.join(
-    78	                get_package_share_directory('ssf_heading'),
-    79	                'config', 'ssf_heading.yaml')],
-    80	        ),
-    81	
-    82	        # ============================================================
-    83	        # 3) U-BLOX GPS
-    84	        # ============================================================
-    85	        # 🚨 배별 설정을 넘긴다. 예전엔 인자 없이 include 해서 ublox launch 의 기본값(B배 F9P)이
-    86	        #    A배(M8P)에서도 그대로 쓰였다 — 에러 없이 조용히 어긋나는 류. (2026-09-16)
-    87	        #    A배:  ros2 launch launch_files launch_files.launch.py gps_config:=c94_m8p_rover.yaml
-    88	        #    B배:  인자 없이 (기본 zed_f9p_rover.yaml)
-    89	        IncludeLaunchDescription(
-    90	            PythonLaunchDescriptionSource(
-    91	                os.path.join(dir_gps, 'launch', 'ublox_gps_node-launch.py')
-    92	            ),
-    93	            launch_arguments={'config': LaunchConfiguration('gps_config')}.items(),
-    94	        ),
-    95	
-    96	        # ============================================================
-    97	        # 4) NTRIP 2초 딜레이
-    98	        # ============================================================
-    99	        TimerAction(
-   100	            period=2.0,
-   101	            actions=[ntrip_launch]
-   102	        ),
-   103	
-   104	        # ============================================================
-   105	        # 5) NORTH 기준 각도 계산
-   106	        # ============================================================
-   107	        IncludeLaunchDescription(
-   108	            PythonLaunchDescriptionSource(
-   109	                os.path.join(dir_north, 'launch', 'north_goal_angle_launch.py')
-   110	            )
-   111	        ),
-   112	
-   113	        # ============================================================
-   114	        # 6) SHIP goal angle
-   115	        # ============================================================
-   116	        IncludeLaunchDescription(
-   117	            PythonLaunchDescriptionSource(
-   118	                os.path.join(get_package_share_directory('ship_goal_angle'),
-   119	                             'launch', 'ship_goal_angle_launch_file.launch.py')
-   120	            )
-   121	        ),
-   122	
-   123	        # ============================================================
-   124	        # 7) RealSense Camera
-   125	        # ============================================================
-   126	        # 🚨 [2026-08-12 정정] 이 절 제목이 "Auto Exposure/WhiteBalance OFF" 였는데
-   127	        #    **둘 다 켜져 있었다.** 실측으로 확인:
-   128	        #      rgb_camera.enable_auto_white_balance = True   (아래 줄이 True 로 주고 있었다)
-   129	        #      rgb_camera.enable_auto_exposure      = True   (설정 자체가 없어 드라이버 기본값)
-   130	        #    제목만 보고 "고정돼 있구나" 로 읽으면 색 캘리브레이션의 전제가 통째로 틀린다.
-   131	        #    → 제목을 지우고, 실제 값을 **명시**한다. 기본값에 기대지 않는다.
-   132	        Node(
-   133	            package='realsense2_camera',
-   134	            executable='realsense2_camera_node',
-   135	            name='camera',
-   136	            namespace='camera',
-   137	            output='screen',
-   138	            parameters=[
-   139	                # ── 색 안정성에 직결되는 값. 현재는 **자동** 이고, 그 상태로 검증했다 ──
-   140	                # ⚠️ 색 기반 검출에서 자동 WB 는 원리상 위험하다 — 화면에 뭐가 들어오냐에
-   141	                #    따라 같은 부표의 H 가 밀린다(흰 배가 지나가면 색조가 변한다).
-   142	                #    그래서 끄려고 했는데, **실측이 그 주장을 뒷받침하지 않았다**:
-   143	                #      정지 장면 A/B (auto ON vs OFF 4600K) → ΔH 0.0, ΔS 0.2, ΔV 0.2
-   144	                #    자동 WB 가 고정값과 거의 같은 곳에 수렴했다. 측정 근거 없이 바꾸지 않는다.
-   145	                # 🚨 **실외에서 다시 판정할 것.** 해가 움직이고 큰 물체가 드나드는 환경이
-   146	                #    진짜 시험이다. 절차: 부표를 고정해 두고 화면에 밝은 물체를 넣었다 뺐다
-   147	                #    하며 `tools/vision_probe.py --log-csv` 로 H 가 밀리는지 본다.
-   148	                #    밀리면 auto_white_balance:=False + white_balance 고정(주간 5500~6500K).
-   149	                {"rgb_camera.enable_auto_white_balance": True},
-   150	                {"rgb_camera.enable_auto_exposure": True},
-   151	
-   152	                {"enable_infra1": False},
-   153	                {"enable_infra2": False},
-   154	
-   155	                # 🚨 카메라 내장 IMU(자이로·가속도)를 끈다 — 안 끄면 노드가 예외로 죽는다.
-   156	                #    librealsense 가 D455 의 HID/IIO 센서를 열려고 하는데 udev 규칙이 없어
-   157	                #    Permission denied 가 나고, 그 예외가 rs_node_setup 의 센서 설정을 통째로
-   158	                #    중단시킨다 (2026-08-07 실기 확인):
-   159	                #      Failed to open .../iio:device1/scan_elements/in_anglvel_x_en
-   160	                #      → Error updating the sensors
-   161	                #    ⚠️ udev 규칙을 까는 방법도 있지만 **우리는 이 IMU 를 쓰지 않는다** —
-   162	                #      헤딩은 iAHRS(/imu/yaw_raw → yaw_mux)가 담당한다(CLAUDE.md 3-5).
-   163	                #      안 쓰는 센서 때문에 시스템에 규칙을 남기는 대신 명시적으로 끈다.
-   164	                #    ※ OAK(PoE=이더넷)로 바꾸면 USB HID 자체가 없어져 이 줄은 불필요해진다.
-   165	                {"enable_gyro": False},
-   166	                {"enable_accel": False},
-   167	
-   168	                # 🚨 [2026-08-12] 여기 `rgb_camera.controls.saturation: 120` 이 있었는데
-   169	                #    **그런 파라미터는 존재하지 않는다.** 실물로 확인:
-   170	                #      ros2 param set … rgb_camera.controls.saturation
-   171	                #        → "cannot be set because it was not declared"
-   172	                #      실제 이름은 `rgb_camera.saturation` 이고, 값은 계속 기본값 **64** 였다.
-   173	                #    즉 **120 은 한 번도 먹은 적이 없다.** 에러도 안 났다(조용히 무시).
-   174	                #    → 지금 120 으로 고치면 '검증된 적 없는 값' 으로 동작이 바뀐다.
-   175	                #      오늘 검출 검증(빨강·초록 100%)은 전부 **64 에서** 나온 결과다.
-   176	                #      그래서 실제로 돌던 값 64 를 **명시**만 한다. 120 이 나은지는 측정 후에.
-   177	                {"rgb_camera.saturation": 64},
-   178	
-   179	
-   180	                # 🚨 [2026-09-10 실측] 뎁스 스트림을 끈다. **켜면 카메라가 USB 에서 떨어진다.**
-   181	                #    D455 를 노트북 USB3 포트에 직결(SuperSpeed 5000M)한 상태에서 측정:
-   182	                #      컬러+뎁스 : 컬러 10.8fps · 뎁스 0.6fps · 최대공백 1.75s
-   183	                #                  2분간 USB 끊김 13회 · 드라이버 오류 583,090 줄
-   184	                #                  (xioctl(VIDIOC_QBUF) failed ... error: No such device 무한 재시도)
-   185	                #      컬러 전용 : **30.0fps · 최대공백 0.03s · 오류 0 줄**
-   186	                #    허브·USB2.0 문제가 아니었다. 직결·SuperSpeed 에서도 같았고,
-   187	                #    USB autosuspend 를 꺼도(boat_boot.sh 적용) 그대로였다. **뎁스 부하 자체가 원인이다.**
-   188	                #
-   189	                #    ⚠️ 끄는 게 안전한 근거: **뎁스를 구독하는 코드가 하나도 없다.**
-   190	                #       V1(2026-07-23)에서 비전 3종의 depth 의존을 전부 제거했고
-   191	                #       거리는 LiDAR `/scan` 에서 얻는다(CLAUDE.md 3-3). 전수 검색으로 재확인함.
-   192	                #    ⚠️ 되살릴 일이 생기면 **먼저 USB 케이블을 바꿔서** 재측정할 것.
-   193	                #       마지막까지 남은 의심은 케이블 품질이다(오늘 아두이노·라이다도 같은 증상이었다).
-   194	                {"enable_depth": False},
-   195	
-   196	                # 🎥 30FPS, 640x480
-   197	                {"rgb_camera.color_profile": "640x480x30"},
-   198	            ]
-   199	        ),
-   200	
-   201	        # ============================================================
-   202	        # 8) 비전 검출기 — **상주**. 각자 /wp_mode 를 보고 자기 차례일 때만 일한다
-   203	        # ============================================================
-   204	        # 🚨 3-4: 작년엔 subscriber_mode_manager 가 subprocess 로 이 노드들을 죽였다 살렸다.
-   205	        #    모드 전환마다 비전이 몇 초 멈추고, 좀비가 남으면 카메라가 잠기고, 추적기를 못 썼다.
-   206	        #    지금은 상주 + 모드 게이팅이다. 매니저는 폐기했다(entry point 도 제거).
-   207	        #
-   208	        #    담당 모드는 **각 노드가 소유**한다 (미션 노드와 같은 패턴).
-   209	        #    권위 출처 = 미션 노드의 active_wp_mode. 바꿀 땐 양쪽을 함께 바꿔라:
-   210	        #      mode 0,1 → ship_gate  ← gate 검출기 (/red_angle, /green_angle)
-   211	        #      mode 2   → ship_back  ← turn 검출기 (white 부표, /image_angle)
-   212	        #      mode 3   → ship_turn  ← turn 검출기 (red 부표)
-   213	        #      mode 7   → ship_dock  ← dock 검출기 (/image_angle)
-   214	        #      mode 5,8 → 순수 회피(담당 없음) → 검출기 전부 비활성
-   215	        #
-   216	        #    🚨 dock 과 turn 은 둘 다 /image_angle 을 발행한다. 모드가 겹치면 한 토픽에
-   217	        #       발행자 2개가 되어 **에러 없이** 값이 섞인다. 겹침 없음은
-   218	        #       test_mode_gate.py 의 check_publisher_conflicts 가 정적으로 검사한다.
-   219	        Node(package='color_shape_detector', executable='basic_image_subscribergate',
-   220	             name='image_subscriber_gate', output='screen', parameters=[VISION_CFG]),
-   221	        Node(package='color_shape_detector', executable='basic_image_subscriberturn',
-   222	             name='image_subscriber_turn', output='screen', parameters=[VISION_CFG]),
-   223	        Node(package='color_shape_detector', executable='basic_image_subscriberdock',
-   224	             name='image_subscriber_dock', output='screen', parameters=[VISION_CFG]),
-   225	        # basic_image_subscriberhsv 는 튜닝 전용 — 대회 launch 에 넣지 않는다.
-   226	
-   227	        # ============================================================
-   228	        # 9) SHIP mission nodes (WP 루틴)
-   229	        # ============================================================
-   230	        Node(package='ship_gate', executable='ship_gate', name='ship_gate', output='screen'),
-   231	        Node(package='ship_dock', executable='ship_dock', name='ship_dock', output='screen'),
-   232	        Node(package='ship_turn', executable='ship_turn', name='ship_turn', output='screen'),
-   233	        # ship_last 제거됨(6b): mode 0 을 ship_gate 가 인수. 하던 일은 /candidate_angle 에 20000
-   234	        #   폴백을 내는 것뿐이라 중복이었다. (mode 5,8 폴백은 north_goal_angle 이 담당)
-   235	        Node(package='ship_back', executable='ship_back', name='ship_back', output='screen'),
+    21	def _yaw_mux(context):
+    22	    # 입력이 끊기거나 소스가 미구현이면 발행을 멈춘다(설계).
+    23	    # → ship_goal_angle 이 /yaw_error 를 멈추고, north_goal_angle geofence 가 침묵한다.
+    24	    boat = LaunchConfiguration('boat').perform(context)
+    25	    files = yaw_mux_param_files(get_package_share_directory('ssf_heading'), boat)  # 공통 → 배별
+    26	    missing = [f for f in files if not os.path.isfile(f)]
+    27	    if missing:
+    28	        # 일부러 launch 전체를 세운다 — 배별 값 없이 뜨면 헤딩이 조용히 틀린다.
+    29	        # 🚨 이 검사는 t=0, 어떤 Node 보다 먼저 돈다(목록 맨 앞) → 아무 프로세스도 안 뜬 채 멈춘다.
+    30	        #    아래 12) 브릿지 주석의 "예외 금지" 는 선택 기능(ntrip·브릿지) 얘기다 — 이 검사를 지우지 말 것.
+    31	        raise RuntimeError(
+    32	            f'yaw_mux params 파일 없음: {missing} — pull 뒤 colcon build 를 했는지 확인')
+    33	    return [
+    34	        LogInfo(msg=f'boat={boat}, 파일={files[0]} → {files[1]}'),
+    35	        Node(
+    36	            package='ssf_heading',
+    37	            executable='yaw_mux',
+    38	            name='yaw_mux',
+    39	            output='screen',
+    40	            parameters=files,
+    41	        ),
+    42	    ]
+    43	
+    44	
+    45	def generate_launch_description():
+    46	
+    47	    # 패키지 경로
+    48	    dir_rplidar = get_package_share_directory('rplidar_ros')
+    49	    dir_north = get_package_share_directory('north_goal_angle')
+    50	    dir_ntrip = get_package_share_directory('ntrip_client')
+    51	    dir_gps = get_package_share_directory('ublox_gps')
+    52	    # ship_direction·realsense2_camera 는 Node(package=...) 가, ship_goal_angle 은
+    53	    # 119행이 다시 조회한다. 여기 대입은 쓰이지 않아 제거했다(2026-09-23).
+    54	    dir_bridge = get_package_share_directory('ssf_bridge')
+    55	
+    56	    # 비전 공통 설정 (image_topic, hfov_deg, debug_view).
+    57	    # 3-4 이후로는 launch 가 노드를 직접 띄우므로 파라미터가 **그대로 닿는다** —
+    58	    # V5 의 vision_* 중계(매니저가 --ros-args 로 넘기던 것)는 3-4 에서 제거됐다.
+    59	    VISION_CFG = os.path.join(
+    60	        get_package_share_directory('color_shape_detector'), 'config', 'vision.yaml')
+    61	
+    62	    # NTRIP 2초 지연
+    63	    ntrip_launch = IncludeLaunchDescription(
+    64	        PythonLaunchDescriptionSource(
+    65	            os.path.join(dir_ntrip, 'launch', 'ntrip_client_launch.py')
+    66	        )
+    67	    )
+    68	
+    69	    return LaunchDescription([
+    70	        # 🚨 배 (필수, 기본값 없음 — 빠지거나 A/B 가 아니면 launch 거부).
+    71	        #    지금은 yaw_mux 의 배별 IMU 값(ssf_heading_A/B.yaml)만 고른다. GPS 는 아래 gps_config 따로.
+    72	        #    ros2 launch launch_files launch_files.launch.py boat:=A   (또는 boat:=B)
+    73	        #    기본값을 두면 다른 배에서 그 배 값으로 조용히 뜬다(gps_config 가 이미 그렇게 실패 중).
+    74	        DeclareLaunchArgument(
+    75	            'boat', choices=['A', 'B'],
+    76	            description='배 (필수): A 또는 B — yaw_mux 배별 IMU 값 파일 선택'),
+    77	        DeclareLaunchArgument(
+    78	            'gps_config', default_value='zed_f9p_rover.yaml',
+    79	            description='배별 GPS 설정 (B배: zed_f9p_rover.yaml / A배: c94_m8p_rover.yaml)'),
+    80	
+    81	        # ============================================================
+    82	        # 0) yaw_mux — /imu/yaw 의 단독 발행자 (params: 공통 → boat 별, _yaw_mux 참고)
+    83	        # ============================================================
+    84	        # 🚨 맨 앞에 둔다: 배별 파일 확인(raise)이 어떤 노드도 예약되기 전에 돌게.
+    85	        #    iahrs_driver 보다 먼저 떠도 무해하다 — 원시 yaw 가 오기 전엔 발행하지 않는다(stale).
+    86	        OpaqueFunction(function=_yaw_mux),
+    87	
+    88	        # ============================================================
+    89	        # 1) RPLIDAR
+    90	        # ============================================================
+    91	        IncludeLaunchDescription(
+    92	            PythonLaunchDescriptionSource(
+    93	                os.path.join(dir_rplidar, 'launch', 'rplidar_a3_launch.py')
+    94	            )
+    95	        ),
+    96	
+    97	        # ============================================================
+    98	        # 2) AHRS (IMU) — 보정 안 한 상대 yaw 를 /imu/yaw_raw 로만 낸다
+    99	        # ============================================================
+   100	        # 🚨 CLAUDE.md 3-5. 작년엔 이 노드가 /imu/yaw 를 직접 냈는데 그 값이 절대방위가 아니었다
+   101	        #    (부팅 0점화 + GPS COG override). 절대방위 합성은 아래 yaw_mux 가 전담한다.
+   102	        #    파라미터는 드라이버 기본값과 같지만 **일부러 명시**한다 —
+   103	        #    나중에 누가 yaml 로 되살려도 여기서 눈에 띄게 하려는 것이다.
+   104	        Node(
+   105	            package='iahrs_driver',
+   106	            executable='iahrs_driver',
+   107	            name='iahrs_driver',
+   108	            output='screen',
+   109	            parameters=[{
+   110	                'yaw_topic': '/imu/yaw_raw',        # ← /imu/yaw 로 되돌리면 발행자 2개가 된다
+   111	                'zero_yaw_on_boot': False,
+   112	                'use_gps_heading_override': False,
+   113	            }],
+   114	        ),
+   115	
+   116	        # 2b) yaw_mux 는 맨 앞 0) 으로 옮겼다 (배별 파일 확인을 t=0 에 하려고).
+   117	
+   118	        # ============================================================
+   119	        # 3) U-BLOX GPS
+   120	        # ============================================================
+   121	        # 🚨 배별 설정을 넘긴다. 예전엔 인자 없이 include 해서 ublox launch 의 기본값(B배 F9P)이
+   122	        #    A배(M8P)에서도 그대로 쓰였다 — 에러 없이 조용히 어긋나는 류. (2026-09-16)
+   123	        #    A배:  ros2 launch launch_files launch_files.launch.py gps_config:=c94_m8p_rover.yaml
+   124	        #    B배:  인자 없이 (기본 zed_f9p_rover.yaml)
+   125	        IncludeLaunchDescription(
+   126	            PythonLaunchDescriptionSource(
+   127	                os.path.join(dir_gps, 'launch', 'ublox_gps_node-launch.py')
+   128	            ),
+   129	            launch_arguments={'config': LaunchConfiguration('gps_config')}.items(),
+   130	        ),
+   131	
+   132	        # ============================================================
+   133	        # 4) NTRIP 2초 딜레이
+   134	        # ============================================================
+   135	        TimerAction(
+   136	            period=2.0,
+   137	            actions=[ntrip_launch]
+   138	        ),
+   139	
+   140	        # ============================================================
+   141	        # 5) NORTH 기준 각도 계산
+   142	        # ============================================================
+   143	        IncludeLaunchDescription(
+   144	            PythonLaunchDescriptionSource(
+   145	                os.path.join(dir_north, 'launch', 'north_goal_angle_launch.py')
+   146	            )
+   147	        ),
+   148	
+   149	        # ============================================================
+   150	        # 6) SHIP goal angle
+   151	        # ============================================================
+   152	        IncludeLaunchDescription(
+   153	            PythonLaunchDescriptionSource(
+   154	                os.path.join(get_package_share_directory('ship_goal_angle'),
+   155	                             'launch', 'ship_goal_angle_launch_file.launch.py')
+   156	            )
+   157	        ),
+   158	
+   159	        # ============================================================
+   160	        # 7) RealSense Camera
+   161	        # ============================================================
+   162	        # 🚨 [2026-08-12 정정] 이 절 제목이 "Auto Exposure/WhiteBalance OFF" 였는데
+   163	        #    **둘 다 켜져 있었다.** 실측으로 확인:
+   164	        #      rgb_camera.enable_auto_white_balance = True   (아래 줄이 True 로 주고 있었다)
+   165	        #      rgb_camera.enable_auto_exposure      = True   (설정 자체가 없어 드라이버 기본값)
+   166	        #    제목만 보고 "고정돼 있구나" 로 읽으면 색 캘리브레이션의 전제가 통째로 틀린다.
+   167	        #    → 제목을 지우고, 실제 값을 **명시**한다. 기본값에 기대지 않는다.
+   168	        Node(
+   169	            package='realsense2_camera',
+   170	            executable='realsense2_camera_node',
+   171	            name='camera',
+   172	            namespace='camera',
+   173	            output='screen',
+   174	            parameters=[
+   175	                # ── 색 안정성에 직결되는 값. 현재는 **자동** 이고, 그 상태로 검증했다 ──
+   176	                # ⚠️ 색 기반 검출에서 자동 WB 는 원리상 위험하다 — 화면에 뭐가 들어오냐에
+   177	                #    따라 같은 부표의 H 가 밀린다(흰 배가 지나가면 색조가 변한다).
+   178	                #    그래서 끄려고 했는데, **실측이 그 주장을 뒷받침하지 않았다**:
+   179	                #      정지 장면 A/B (auto ON vs OFF 4600K) → ΔH 0.0, ΔS 0.2, ΔV 0.2
+   180	                #    자동 WB 가 고정값과 거의 같은 곳에 수렴했다. 측정 근거 없이 바꾸지 않는다.
+   181	                # 🚨 **실외에서 다시 판정할 것.** 해가 움직이고 큰 물체가 드나드는 환경이
+   182	                #    진짜 시험이다. 절차: 부표를 고정해 두고 화면에 밝은 물체를 넣었다 뺐다
+   183	                #    하며 `tools/vision_probe.py --log-csv` 로 H 가 밀리는지 본다.
+   184	                #    밀리면 auto_white_balance:=False + white_balance 고정(주간 5500~6500K).
+   185	                {"rgb_camera.enable_auto_white_balance": True},
+   186	                {"rgb_camera.enable_auto_exposure": True},
+   187	
+   188	                {"enable_infra1": False},
+   189	                {"enable_infra2": False},
+   190	
+   191	                # 🚨 카메라 내장 IMU(자이로·가속도)를 끈다 — 안 끄면 노드가 예외로 죽는다.
+   192	                #    librealsense 가 D455 의 HID/IIO 센서를 열려고 하는데 udev 규칙이 없어
+   193	                #    Permission denied 가 나고, 그 예외가 rs_node_setup 의 센서 설정을 통째로
+   194	                #    중단시킨다 (2026-08-07 실기 확인):
+   195	                #      Failed to open .../iio:device1/scan_elements/in_anglvel_x_en
+   196	                #      → Error updating the sensors
+   197	                #    ⚠️ udev 규칙을 까는 방법도 있지만 **우리는 이 IMU 를 쓰지 않는다** —
+   198	                #      헤딩은 iAHRS(/imu/yaw_raw → yaw_mux)가 담당한다(CLAUDE.md 3-5).
+   199	                #      안 쓰는 센서 때문에 시스템에 규칙을 남기는 대신 명시적으로 끈다.
+   200	                #    ※ OAK(PoE=이더넷)로 바꾸면 USB HID 자체가 없어져 이 줄은 불필요해진다.
+   201	                {"enable_gyro": False},
+   202	                {"enable_accel": False},
+   203	
+   204	                # 🚨 [2026-08-12] 여기 `rgb_camera.controls.saturation: 120` 이 있었는데
+   205	                #    **그런 파라미터는 존재하지 않는다.** 실물로 확인:
+   206	                #      ros2 param set … rgb_camera.controls.saturation
+   207	                #        → "cannot be set because it was not declared"
+   208	                #      실제 이름은 `rgb_camera.saturation` 이고, 값은 계속 기본값 **64** 였다.
+   209	                #    즉 **120 은 한 번도 먹은 적이 없다.** 에러도 안 났다(조용히 무시).
+   210	                #    → 지금 120 으로 고치면 '검증된 적 없는 값' 으로 동작이 바뀐다.
+   211	                #      오늘 검출 검증(빨강·초록 100%)은 전부 **64 에서** 나온 결과다.
+   212	                #      그래서 실제로 돌던 값 64 를 **명시**만 한다. 120 이 나은지는 측정 후에.
+   213	                {"rgb_camera.saturation": 64},
+   214	
+   215	
+   216	                # 🚨 [2026-09-10 실측] 뎁스 스트림을 끈다. **켜면 카메라가 USB 에서 떨어진다.**
+   217	                #    D455 를 노트북 USB3 포트에 직결(SuperSpeed 5000M)한 상태에서 측정:
+   218	                #      컬러+뎁스 : 컬러 10.8fps · 뎁스 0.6fps · 최대공백 1.75s
+   219	                #                  2분간 USB 끊김 13회 · 드라이버 오류 583,090 줄
+   220	                #                  (xioctl(VIDIOC_QBUF) failed ... error: No such device 무한 재시도)
+   221	                #      컬러 전용 : **30.0fps · 최대공백 0.03s · 오류 0 줄**
+   222	                #    허브·USB2.0 문제가 아니었다. 직결·SuperSpeed 에서도 같았고,
+   223	                #    USB autosuspend 를 꺼도(boat_boot.sh 적용) 그대로였다. **뎁스 부하 자체가 원인이다.**
+   224	                #
+   225	                #    ⚠️ 끄는 게 안전한 근거: **뎁스를 구독하는 코드가 하나도 없다.**
+   226	                #       V1(2026-07-23)에서 비전 3종의 depth 의존을 전부 제거했고
+   227	                #       거리는 LiDAR `/scan` 에서 얻는다(CLAUDE.md 3-3). 전수 검색으로 재확인함.
+   228	                #    ⚠️ 되살릴 일이 생기면 **먼저 USB 케이블을 바꿔서** 재측정할 것.
+   229	                #       마지막까지 남은 의심은 케이블 품질이다(오늘 아두이노·라이다도 같은 증상이었다).
+   230	                {"enable_depth": False},
+   231	
+   232	                # 🎥 30FPS, 640x480
+   233	                {"rgb_camera.color_profile": "640x480x30"},
+   234	            ]
+   235	        ),
    236	
    237	        # ============================================================
-   238	        # 10) Fusion: 라이다 기반 항로 유지
+   238	        # 8) 비전 검출기 — **상주**. 각자 /wp_mode 를 보고 자기 차례일 때만 일한다
    239	        # ============================================================
-   240	        Node(
-   241	            package='ship_direction',
-   242	            executable='ship_direction',
-   243	            name='ship_direction',
-   244	            output='screen'
-   245	        ),
-   246	
-   247	        # ============================================================
-   248	        # 11) Motor Control
-   249	        # ============================================================
-   250	        Node(
-   251	            package='motor_control',
-   252	            executable='motor_control',
-   253	            name='motor_control',
-   254	            output='screen'
-   255	        ),
-   256	
-   257	        # ============================================================
-   258	        # 12) 시리얼 브릿지 (Motor_run → 아두이노 Mega, 상태 → /boat_mode)
-   259	        # ============================================================
-   260	        # 🚨 이게 없으면 motor_control 이 Motor_run 을 내도 **받는 쪽이 없다.**
-   261	        #    사슬의 마지막 조각이다: motor_control → Motor_run → [브릿지] → Mega
-   262	        # 아두이노가 아직 없어도 안전하다 — 브릿지 launch 가 포트 존재를 먼저 보고
-   263	        # 없으면 노드를 안 띄우고 넘어간다(예외를 던지면 launch 전체가 죽는다.
-   264	        # ntrip_client 가 파일 하나 못 찾아 노드 15개를 같이 죽인 사고가 실제로 있었다).
-   265	        IncludeLaunchDescription(
-   266	            PythonLaunchDescriptionSource(
-   267	                os.path.join(dir_bridge, 'launch', 'ssf_bridge.launch.py')
-   268	            )
-   269	        ),
-   270	    ])
+   240	        # 🚨 3-4: 작년엔 subscriber_mode_manager 가 subprocess 로 이 노드들을 죽였다 살렸다.
+   241	        #    모드 전환마다 비전이 몇 초 멈추고, 좀비가 남으면 카메라가 잠기고, 추적기를 못 썼다.
+   242	        #    지금은 상주 + 모드 게이팅이다. 매니저는 폐기했다(entry point 도 제거).
+   243	        #
+   244	        #    담당 모드는 **각 노드가 소유**한다 (미션 노드와 같은 패턴).
+   245	        #    권위 출처 = 미션 노드의 active_wp_mode. 바꿀 땐 양쪽을 함께 바꿔라:
+   246	        #      mode 0,1 → ship_gate  ← gate 검출기 (/red_angle, /green_angle)
+   247	        #      mode 2   → ship_back  ← turn 검출기 (white 부표, /image_angle)
+   248	        #      mode 3   → ship_turn  ← turn 검출기 (red 부표)
+   249	        #      mode 7   → ship_dock  ← dock 검출기 (/image_angle)
+   250	        #      mode 5,8 → 순수 회피(담당 없음) → 검출기 전부 비활성
+   251	        #
+   252	        #    🚨 dock 과 turn 은 둘 다 /image_angle 을 발행한다. 모드가 겹치면 한 토픽에
+   253	        #       발행자 2개가 되어 **에러 없이** 값이 섞인다. 겹침 없음은
+   254	        #       test_mode_gate.py 의 check_publisher_conflicts 가 정적으로 검사한다.
+   255	        Node(package='color_shape_detector', executable='basic_image_subscribergate',
+   256	             name='image_subscriber_gate', output='screen', parameters=[VISION_CFG]),
+   257	        Node(package='color_shape_detector', executable='basic_image_subscriberturn',
+   258	             name='image_subscriber_turn', output='screen', parameters=[VISION_CFG]),
+   259	        Node(package='color_shape_detector', executable='basic_image_subscriberdock',
+   260	             name='image_subscriber_dock', output='screen', parameters=[VISION_CFG]),
+   261	        # basic_image_subscriberhsv 는 튜닝 전용 — 대회 launch 에 넣지 않는다.
+   262	
+   263	        # ============================================================
+   264	        # 9) SHIP mission nodes (WP 루틴)
+   265	        # ============================================================
+   266	        Node(package='ship_gate', executable='ship_gate', name='ship_gate', output='screen'),
+   267	        Node(package='ship_dock', executable='ship_dock', name='ship_dock', output='screen'),
+   268	        Node(package='ship_turn', executable='ship_turn', name='ship_turn', output='screen'),
+   269	        # ship_last 제거됨(6b): mode 0 을 ship_gate 가 인수. 하던 일은 /candidate_angle 에 20000
+   270	        #   폴백을 내는 것뿐이라 중복이었다. (mode 5,8 폴백은 north_goal_angle 이 담당)
+   271	        Node(package='ship_back', executable='ship_back', name='ship_back', output='screen'),
+   272	
+   273	        # ============================================================
+   274	        # 10) Fusion: 라이다 기반 항로 유지
+   275	        # ============================================================
+   276	        Node(
+   277	            package='ship_direction',
+   278	            executable='ship_direction',
+   279	            name='ship_direction',
+   280	            output='screen'
+   281	        ),
+   282	
+   283	        # ============================================================
+   284	        # 11) Motor Control
+   285	        # ============================================================
+   286	        Node(
+   287	            package='motor_control',
+   288	            executable='motor_control',
+   289	            name='motor_control',
+   290	            output='screen'
+   291	        ),
+   292	
+   293	        # ============================================================
+   294	        # 12) 시리얼 브릿지 (Motor_run → 아두이노 Mega, 상태 → /boat_mode)
+   295	        # ============================================================
+   296	        # 🚨 이게 없으면 motor_control 이 Motor_run 을 내도 **받는 쪽이 없다.**
+   297	        #    사슬의 마지막 조각이다: motor_control → Motor_run → [브릿지] → Mega
+   298	        # 아두이노가 아직 없어도 안전하다 — 브릿지 launch 가 포트 존재를 먼저 보고
+   299	        # 없으면 노드를 안 띄우고 넘어간다(예외를 던지면 launch 전체가 죽는다.
+   300	        # ntrip_client 가 파일 하나 못 찾아 노드 15개를 같이 죽인 사고가 실제로 있었다).
+   301	        IncludeLaunchDescription(
+   302	            PythonLaunchDescriptionSource(
+   303	                os.path.join(dir_bridge, 'launch', 'ssf_bridge.launch.py')
+   304	            )
+   305	        ),
+   306	    ])
 ```
 
 ==================================================================
