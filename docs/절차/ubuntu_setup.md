@@ -247,6 +247,13 @@ sudo udevadm control --reload-rules && sudo udevadm trigger
 
 ## 9. NTRIP (RTK GPS 보정) — 새 계정
 
+> ✅ **10-29 계정 확인**: 서버 `gnssdata.or.kr:2101` 에 우리 계정으로 접속 → `ICY 200 OK`, RTCM 3.2 정상 수신
+> (1006 기준국 위치 · 1033 · 1230 · MSM5 1075 GPS / 1085 GLONASS / 1095 Galileo / 1115 QZSS / 1125 BeiDou, 1 Hz).
+> 지금 접속점은 **`SEJN-RTCM32`(세종)**. 🚨 **작년 코스(창원·마산, 35.19N 128.57E)에서 세종까지 187 km** — RTK 고정(FIXED)은 보통 기준국 수십 km 안이어야 잘 된다.
+> 같은 계정으로 **`CHWN-RTCM32`(창원, 코스에서 12.8 km)** 접속도 확인(`ICY 200 OK`). 다음 후보 `GOSG-RTCM32`(고성, 32.7 km).
+> → **대회장이 정해지면 그곳에서 가장 가까운 RTCM 3.2 접속점으로 `~/.ssf/ntrip_credentials.yaml` 의 `mountpoint` 를 바꾼다.** 연습 장소에선 그 근처 접속점.
+> 계정 파일은 저장소 밖이라 **두 노트북 각자** 바꿔야 한다. 확인 방법: 소스테이블 `GET /` 로 접속점 위치를 보고, 인증 접속 첫 줄이 `ICY 200 OK` 인지.
+
 - NTRIP 계정(아이디/비번/캐스터 주소)을 **새로 발급**받는다(작년 것 폐기).
 - 🚨 **계정 정보는 저장소에 넣지 않는다. `~/.ssf/ntrip_credentials.yaml`(저장소 밖)에 둔다.**
 
