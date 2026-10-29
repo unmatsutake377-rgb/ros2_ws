@@ -221,6 +221,30 @@ SUBSYSTEM=="tty", ATTRS{idVendor}=="2341", ATTRS{idProduct}=="0042", ATTRS{seria
 
 ---
 
+### 8-1. 🚨 아두이노 재시작 방지 규칙 (2026-10-28) — 대회 노트북 필수
+
+포트가 열릴 때마다 Mega 가 리셋되면 ESC 가 15~25초 재시동한다. 경기 중이면 그 판은 끝난다.
+막는 규칙 두 개를 `tools/udev/98-ssf-serial-safety.rules` 한 파일에 담았다.
+
+| 규칙 | 막는 것 | 10-28 근거 |
+|---|---|---|
+| ModemManager 제외 (`ID_MM_DEVICE_IGNORE`) | 우분투 기본 서비스가 Mega·CP2102 를 모뎀으로 보고 **열어 보는 것** | MM 로그에 Mega(3-9)·라이다/IMU 어댑터 검사 기록 |
+| `-hupcl` (꽂을 때 자동) | 브릿지 재연결·진단 스크립트가 **다시 열 때** 리셋 | 기본은 매번 재시작(5.0 s), `-hupcl` 은 두 번째부터 재시작 안 함(0.07 s) |
+
+```bash
+sudo cp ~/ros2_ws/tools/udev/98-ssf-serial-safety.rules /etc/udev/rules.d/
+sudo udevadm control --reload-rules && sudo udevadm trigger
+# 아두이노 USB 를 한 번 뽑았다 꽂은 뒤
+~/ros2_ws/tools/boat_boot.sh --check        # [5] 두 줄 다 ✓ 여야 한다
+```
+
+- ✅ **설치 후 실측 (10-28, 1번배 노트북)**: 아두이노를 다시 꽂으면 udev 가 `-hupcl` 을 자동으로 건다. 그 뒤 포트를 3번 열었는데
+  **첫 번째부터 재시작 없음**(상태줄 0.18 / 0.08 / 0.07 s) — 꽂힐 때 udev 의 `stty` 가 포트를 먼저 한 번 열어 두기 때문이다.
+  ModemManager 는 다시 꽂을 때 아두이노를 건드리지 않았다. `boat_boot.sh --check` [5] 두 줄 ✓.
+  → **launch 해도 아두이노가 리셋되지 않는다.** 브릿지의 부팅 대기(`_open` 의 sleep)는 이제 그냥 기다림일 뿐 무해하다.
+- 펌웨어 업로드는 그대로 된다(avrdude 가 DTR 을 직접 흔든다 — 10-28 확인).
+- 막지 못하는 것: **USB 케이블이 빠졌다 다시 꽂히는 것**(보드 전원 자체가 끊김) — 케이블 고정. 완전 차단은 Mega 의 RESET-EN 패드를 끊는 하드웨어 조치(펌웨어 확정 후, 업로드 땐 리셋 버튼 수동).
+
 ## 9. NTRIP (RTK GPS 보정) — 새 계정
 
 - NTRIP 계정(아이디/비번/캐스터 주소)을 **새로 발급**받는다(작년 것 폐기).

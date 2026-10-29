@@ -1,0 +1,19 @@
+# /etc/udev/rules.d/98-ssf-serial-safety.rules — 경기 중 아두이노가 재시작되지 않게 (2026-10-28)
+#
+# 아두이노 Mega 는 포트가 열릴 때 DTR 로 **리셋**된다 → 2초 신호 공백 → ESC 가 15~25초 재시동 →
+# 그동안 배는 수동·자율 어느 명령도 안 받는다. 경기 중이면 그 판은 끝이다.
+# 이 파일은 그 리셋 경로 두 개를 막는다. 설치·확인: docs/절차/ubuntu_setup.md §8-1, `tools/boat_boot.sh --check`
+#
+# ① ModemManager 가 우리 시리얼 장치를 모뎀으로 보고 **열어 보지 않게** 한다.
+#    Mega 의 USB 칩(16U2)이 CDC-ACM "AT 명령" 프로토콜(01)을 광고해서 MM 이 탐색 대상으로 잡는다.
+#    10-28 MM 로그: Mega(3-9)와 허브 아래 CP2102(라이다·IMU 어댑터)를 검사한 기록이 있었다.
+#    u-blox GPS 는 MM 자체 규칙(77-mm-ublox-port-types)이 이미 제외하지만 명시해 둔다.
+SUBSYSTEMS=="usb", ATTRS{idVendor}=="2341", ENV{ID_MM_DEVICE_IGNORE}="1"
+SUBSYSTEMS=="usb", ATTRS{idVendor}=="10c4", ATTRS{idProduct}=="ea60", ENV{ID_MM_DEVICE_IGNORE}="1"
+SUBSYSTEMS=="usb", ATTRS{idVendor}=="1546", ENV{ID_MM_DEVICE_IGNORE}="1"
+
+# ② Mega 포트를 닫을 때 DTR 을 내리지 않게(-hupcl) 한다.
+#    10-28 벤치: 기본(hupcl)은 열 때마다 재시작(상태줄까지 5.0 s). -hupcl 이면 첫 열기만 재시작, 그 뒤 0.07 s.
+#    → 브릿지 재연결·진단 스크립트가 포트를 열어도 아두이노는 계속 돈다. 펌웨어 업로드는 그대로 된다(avrdude 가 DTR 을 직접 흔든다).
+#    장치가 꽂힐 때마다 udev 가 다시 건다(stty 설정은 재열거하면 사라지므로).
+ACTION=="add", SUBSYSTEM=="tty", ATTRS{idVendor}=="2341", ATTRS{idProduct}=="0042", RUN+="/bin/stty -F /dev/%k -hupcl"

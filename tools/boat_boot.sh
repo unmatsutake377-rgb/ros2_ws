@@ -130,12 +130,36 @@ power_note(){
   skip "AC 어댑터 정보 없음"
 }
 
+# ─────────────────────────────────────────── 5) 아두이노 재시작 방지 (2026-10-28)
+#   포트가 열릴 때마다 Mega 가 리셋되면 ESC 가 15~25초 재시동한다 — 경기 중이면 판이 끝난다.
+#   영구 설정은 udev 규칙(tools/udev/98-ssf-serial-safety.rules)이 하고, 여기선 확인 + 런타임 보강만 한다.
+serial_safety(){
+  echo "[5] 아두이노 재시작 방지"
+  local dev=/dev/ttyMEGA
+  if [ ! -e "$dev" ]; then skip "$dev 없음 (아두이노 미연결)"; return; fi
+  if stty -F "$dev" -a 2>/dev/null | grep -q -- '-hupcl'; then
+    ok "-hupcl (포트를 다시 열어도 재시작 안 함)"
+  elif [ "$CHECK_ONLY" -eq 1 ]; then
+    warn "hupcl — 포트를 열 때마다 재시작된다. sudo $0 로 적용하거나 udev 규칙 설치"
+  else
+    stty -F "$dev" -hupcl && ok "-hupcl 적용 (런타임 — 다시 꽂으면 udev 규칙이 건다)"
+  fi
+  if udevadm info -q property -n "$dev" 2>/dev/null | grep -q '^ID_MM_DEVICE_IGNORE=1'; then
+    ok "ModemManager 제외 (ID_MM_DEVICE_IGNORE=1)"
+  elif systemctl is-active --quiet ModemManager 2>/dev/null; then
+    warn "ModemManager 가 켜져 있고 아두이노가 제외 안 됨 → 포트를 열어 볼 수 있다. udev 규칙 설치: docs/절차/ubuntu_setup.md §8-1"
+  else
+    ok "ModemManager 꺼져 있음"
+  fi
+}
+
 echo "=== boat_boot $([ "$CHECK_ONLY" -eq 1 ] && echo '(상태 확인만)') ==="
 need_root
 cpu_governor
 usb_autosuspend
 screen_sleep
 power_note
+serial_safety
 echo
 if [ "$CHECK_ONLY" -eq 1 ]; then
   echo "상태 확인 완료. 적용하려면: sudo $0"
