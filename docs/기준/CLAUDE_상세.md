@@ -479,7 +479,7 @@ heading = imu_yaw_raw + offset   (정지 중에도 IMU 가 유지 — 작년 ove
   `n_max = 1/(1 − 0.5^(dt/half_life))`. `cog_min_samples` 를 그 위로 잡으면
   **영원히 수렴하지 않는다 — 에러도 없이.** 예: GPS 10Hz + half_life 1s → n_max ≈ 14.9.
   `yaw_mux` 가 부팅 때 이 조합을 검사해 ERROR 로그를 낸다.
-  현재값(5Hz, half_life 60s) → n_max ≈ 433 ≫ 30. 여유 충분. 수렴까지 직진 약 6초.
+  현재값(1 Hz, half_life 60 s) → n_max ≈ 87 > 30. 수렴은 된다. 수렴까지 직진 약 30 초(5 Hz 였다면 약 6 초). (F10 10-29: 실제 수신기가 1 Hz 라 5.0 → 1.0)
 - 소스가 `cog_offset` 이 **아니어도 추정은 돌아간다.** `/heading_status` 에 `n / R / off / rej` 를
   실어 "지금 전환하면 쓸 만한가" 를 물 위에서 미리 볼 수 있다.
 - ⚠️ `gps_vel_frame`(enu/ned) 을 틀리면 헤딩이 90° 돌거나 좌우가 뒤집힌다. **벤치 확인 항목:**

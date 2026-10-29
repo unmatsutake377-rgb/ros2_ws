@@ -73,7 +73,7 @@ yaw_mux:
     #    cog_min_samples 를 그 위로 잡으면 **영원히 수렴하지 않는다 — 에러도 없이.**
     #    예: GPS 10Hz + half_life 1s → n_max ≈ 14.9. min_samples 20 이면 절대 못 넘는다.
     #    yaw_mux 가 부팅 때 이 조합을 검사해 ERROR 로그를 낸다. gps_rate_hz 는 그 검사용.
-    gps_rate_hz: 5.0
+    gps_rate_hz: 1.0   # 실제 수신기 1 Hz(zed_f9p_rover.yaml·c94_m8p_rover.yaml rate: 1.0, 10-28 실측). 소수점 필수(F10, 10-29)
     # 현재값 검사: dt=0.2, half_life=60 → n_max ≈ 433 ≫ 30. 여유 충분.
 
     # ------------------------------------------------------------ 토픽

@@ -67,7 +67,7 @@ class YawMux(Node):
         # 🚨 프레임을 틀리면 헤딩이 90° 돌거나 좌우가 뒤집힌다. 벤치 확인 항목.
         #    배를 정북으로 천천히 전진시키고 /heading_status 의 cog 가 0 근처인지 본다.
         self.gps_vel_frame = str(self.declare_parameter('gps_vel_frame', 'enu').value)
-        gps_rate_hz = float(self.declare_parameter('gps_rate_hz', 5.0).value)
+        gps_rate_hz = float(self.declare_parameter('gps_rate_hz', 1.0).value)
 
         self.mux = HeadingMux(
             source,
