@@ -58,6 +58,10 @@ from north_goal_angle.waypoint_loader import parse_waypoints, WaypointError
 from north_goal_angle.gps_guard import fix_is_usable
 from north_goal_angle import los_logic          # LOS 유도 (순수, 테스트됨)
 from north_goal_angle.gps_filter import GPSFilter  # 공분산·점프·스무딩 (순수, 테스트됨)
+from north_goal_angle.wp_timeout import (            # WP 타임아웃 표 (순수, 테스트됨)
+    DEFAULT_WP_TIMEOUT_MODES, DEFAULT_WP_TIMEOUT_SEC, WpTimeoutError,
+    build_timeout_table, dwell_conflicts, per_wp_timeouts, timeout_for_mode,
+)
 
 # 🚨 대회 좌표는 코드가 아니라 config/waypoints.yaml 에서 읽는다 (비전공자도 편집 가능).
 #    대회장에서 GPS 좌표를 바꿀 사람은 그 파일의 lat/lon 만 고치면 된다 — 이 파일은 안 건드린다.
@@ -66,8 +70,7 @@ from north_goal_angle.gps_filter import GPSFilter  # 공분산·점프·스무�
 
 CANDIDATE_INVALID = 20000.0
 ARRIVE_RADIUS_M = 3.0
-DEFAULT_TIMEOUT = 120.0
-TURN_TIMEOUT = 90.0
+# WP 타임아웃은 순번이 아니라 wp_mode 기준 — 파라미터 wp_timeout_modes / wp_timeout_sec (wp_timeout.py)
 
 # 담당 노드가 없는 모드 = 순수 회피 구간. 여기서만 폴백을 낸다. (CLAUDE.md 3-6)
 FALLBACK_MODES = (5, 8)
@@ -149,6 +152,14 @@ class NorthGoalAngle(Node):
         #      **모르면 입을 다문다.** 틀린 값을 내느니 안 내는 게 낫다.)
         self.imu_stale_sec = float(self.declare_parameter('imu_stale_sec', 0.5).value)
 
+        # ---- WP 타임아웃 (wp_mode 기준, WP 하나당) — 계약서_WP타임아웃모드기준_20261029 ----
+        # ROS2 파라미터는 dict 불가 → 병렬 배열. 표에 없는 모드 = 타임아웃 없음.
+        # 🚨 yaml 의 wp_timeout_sec 는 전부 .0 (정수 섞이면 Humble 이 노드를 죽이거나 params 파싱 실패).
+        # 타이머 생성보다 먼저 선언·검증한다.
+        self.wp_timeout_table = self._load_wp_timeouts(
+            self.declare_parameter('wp_timeout_modes', list(DEFAULT_WP_TIMEOUT_MODES)).value,
+            self.declare_parameter('wp_timeout_sec', list(DEFAULT_WP_TIMEOUT_SEC)).value)
+
         # ---- 발행 (토픽 이름 불변 + /geofence_state 신규, CLAUDE.md 3-9) ----
         self.pub_dist = self.create_publisher(Float32, '/goal_distance', qos)
         self.pub_mode = self.create_publisher(Int32, '/wp_mode', qos)
@@ -221,6 +232,28 @@ class NorthGoalAngle(Node):
         self.get_logger().info(
             f"웨이포인트 {len(wps)}개 로드: {path}\n   미션 순서(mode): {modes}")
         return wps
+
+    def _load_wp_timeouts(self, modes, secs):
+        """wp_timeout_modes/sec 를 검증해 {mode: sec} 표로. 틀리면 ERROR + 예외로 노드를 세운다.
+
+        빈 표·≤0·NaN·길이 불일치·허용 밖 모드·중복은 출발 전에 거부한다(waypoints.yaml 과 같은 방식).
+        timeout ≤ dwell 인 WP 는 반경 도착이 불가능하므로 WARN 만 낸다(세우지는 않는다).
+        """
+        try:
+            table = build_timeout_table(modes, secs)
+        except WpTimeoutError as e:
+            self.get_logger().error(f"🚨 WP 타임아웃 파라미터 오류 → {e}")
+            raise
+
+        for idx, mode, t, dwell in dwell_conflicts(self.waypoints, table):
+            self.get_logger().warn(
+                f"⚠️ WP{idx}(mode {mode}): 타임아웃 {t:.1f}s ≤ dwell {dwell:.1f}s — "
+                f"반경 도착은 불가능하고 늘 시간 초과로만 넘어간다. wp_timeout_sec 확인.")
+
+        per_wp = ['없음' if t is None else f"{t:g}" for t in per_wp_timeouts(self.waypoints, table)]
+        self.get_logger().info(
+            f"WP 타임아웃(mode 기준, WP 하나당) 표={table} → WP별(s): {per_wp}")
+        return table
 
     # ───────────────────────── 콜백 ─────────────────────────
     def gps_cb(self, msg):
@@ -415,18 +448,16 @@ class NorthGoalAngle(Node):
         if self.wp_enter_time is None:
             self.wp_enter_time = now
 
-        timeout = None
-        if self.wp_idx in (3, 4, 5):
-            timeout = TURN_TIMEOUT
-        elif self.wp_idx <= 6:
-            timeout = DEFAULT_TIMEOUT
+        # WP 하나당 타임아웃 — wp_mode 기준. 표에 없는 모드(기본: 8)는 None = 타임아웃 없음.
+        timeout = timeout_for_mode(self.wp_timeout_table, wp_mode)
 
         if timeout is not None:
             remain = max(timeout - (now - self.wp_enter_time), 0.0)
             self.pub_remain.publish(Float32(data=remain))
 
             if remain <= 0:
-                self.get_logger().warn(f"🕒 WP{self.wp_idx} 시간 초과 → 다음 WP 이동")
+                self.get_logger().warn(
+                    f"🕒 WP{self.wp_idx}(mode {wp_mode}) 시간 초과 {timeout:g}s → 다음 WP 이동")
                 self.prev_lat, self.prev_lon = wp_lat, wp_lon   # 새 경로선 시작점
                 self.integral_xte = 0.0                          # ILOS 적분 리셋
                 self.wp_idx += 1
