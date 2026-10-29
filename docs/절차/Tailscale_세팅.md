@@ -40,9 +40,12 @@ sudo tailscale up --hostname=ssf-boat-a        # 2번배는 ssf-boat-b
 
 | 기기 | Tailscale 이름 | 100.x IP |
 |---|---|---|
-| 물가 MacBook Air | | |
-| 1번배 노트북 | ssf-boat-a | |
-| 2번배 노트북 | ssf-boat-b | |
+| 물가 MacBook Air | macbookair | 100.93.158.11 |
+| 1번배 노트북 (IdeaPad Slim 3 15IAH8) | ssf-boat-a | 100.84.57.20 |
+| 2번배 노트북 (IdeaPad Slim 3 **15ABR8** — 1번배와 다른 기종) | 지금 `ssfb-ideapad-slim-3-15abr8` → `sudo tailscale set --hostname=ssf-boat-b` 로 바꿀 것 | 100.119.219.33 |
+
+> 10-29 첫 연결: 세 기기 같은 계정 확인. 1번배 → MacBook `tailscale ping` = `via 192.168.0.1:41641 in 9ms` (**직접 연결**, 같은 공유기).
+> 🚨 영상 보낼 때 `cam_stream.sh` 뒤에는 **MacBook 주소(100.93.158.11)**. 배 자기 주소를 넣으면 자기에게 보내 화면이 안 뜬다(첫 시도 때 실제로 그랬다).
 
 ## 4. 확인 순서
 1. 세 기기 모두 `tailscale status` 에 서로 보인다.
