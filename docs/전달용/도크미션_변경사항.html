@@ -127,7 +127,9 @@ self.target_shape = "Square"</div>
 self.target_shape = declare_parameter(
     'target_shape', 'Square')
 # 유효값 검증: 색 6종·형상 3종 밖이면
-#   ERROR 로그 + 발행 중단</div>
+#   ERROR 로그 + 발행 중단
+#   → 현행(10-28 ff289f7): 부팅 ERROR + 검출 안 함,
+#     모드 7 에서만 10000 + 5 s 주기 ERROR, 그 외 모드 발행 없음</div>
   </div>
   <div class="loc"><b>위치</b>  basic_image_subscriberdock.py : L105–116  (검색어: <b>target_color</b>)
 <b>설정</b>  vision.yaml → image_subscriber_dock:  target_color / target_shape</div>
