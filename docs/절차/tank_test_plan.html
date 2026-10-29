@@ -100,8 +100,8 @@ pre{background:#f7f6f1;border:1px solid var(--bd);border-radius:8px;padding:12px
 · 포트 확인: /dev/ttyLiDAR · /dev/IMU · /dev/ttyGPS · /dev/ttyMCU(아두이노 — 아직 미연결이면 생략)
 · IMU 정북(C5): 나침반(자북)으로 뱃머리 정북 → /imu/yaw 가 360+편각(한국 약 352) 근처가 되게 mount_offset_deg 조정. (부호 invert_yaw:false 는 08-07 확정 — mount_offset 만 배 고정 후)
     ★ 10-29: 값은 배별 파일 src/ssf_heading/config/ssf_heading_A.yaml / _B.yaml 에, 반드시 소수점(예 37.0 — 정수면 yaw_mux 즉사). launch 는 boat:=A|B 필수
-    ★ 09-23 추가: 맞추기 전에 /imu/yaw_raw 기록 → 전원 껐다 켜 → 다시 기록. 같아야 절대방위. 다르면 부팅마다 상대각이라 mount_offset 무의미 → cog_offset 으로 전환
-· IMU 장착 후(마스트 베이스 포켓, v2): /imu 의 자기장 크기 |m| ≈ 50µT 인가 (80µT 대면 굵은 배선·자석 간섭 → 위치 재검토) → cm 자기보정 → mount_offset_deg (뱃머리 정북에서 /imu/yaw = 0)
+    ★ 09-23 추가: 맞추기 전에 /imu/yaw_raw 기록 → 전원 껐다 켜 → 다시 기록. 같아야 절대방위. 다르면 부팅마다 상대각이라 mount_offset 무의미 → <b>cog_offset 은 F11 수정 전까지 쓰지 말 것</b>(그 경로는 mount 를 두 번 더하고 invert 를 추정 뒤에 뒤집어, invert_yaw:true 면 180° 틀릴 수 있다 — 계약서_F11). 결과만 기록하고 Mac 세션에 넘긴다
+· IMU 장착 후(마스트 베이스 포켓, v2): /imu 의 자기장 크기 |m| ≈ 50µT 인가 (80µT 대면 굵은 배선·자석 간섭 → 위치 재검토) → cm 자기보정 → mount_offset_deg (뱃머리 정북에서 /imu/yaw = 360+편각 ≈ 352 — 나침반은 자북)
 · LiDAR 부표 검출(마스트_요구사항 §2-1-a): 부표 유사물(지름 30~40cm 통, 절반 잠기게) 을 5m 앞에 띄우고 /scan 에 찍히는가 → 1번 배 LiDAR 슬롯 높이(±10cm) 결정. 안 찍히면 내린다
 · 모터: ★프로펠러 제거★(물 밖 T200 장시간 금지), 전진 명령 → 양쪽 다 도는가
 · 비전 확인-N 깜빡임 벤치 (10-27 추가, confirm_window 켜기 전): 부표 모형을 2~3m 앞에 두고 /wp_mode 0 으로 gate 검출기 켠 뒤
@@ -118,7 +118,17 @@ pre{background:#f7f6f1;border:1px solid var(--bd);border-radius:8px;padding:12px
     일부러 [3, 3] 같은 정수 yaml 로 띄우면 출발 전에 ERROR 로 멈춰야 정상
 · GPS 신선도 (10-29 추가, C1): fix 잡힌 상태에서 GPS USB 를 뽑는다 → 약 2.5~3 s 뒤 north_goal_angle ERROR "stale",
     /north_goal_angle_tp 정지, /geofence_state 빈 배열, /wp_mode 는 계속, 약 8 s 안에 /failsafe_level 2(정지).
-    다시 꽂아 /fix 가 돌아오는지 기록 — 안 돌아오면 launch 재시작(아두이노는 udev 규칙으로 리셋 안 됨)</pre>
+    다시 꽂아 /fix 가 돌아오는지 기록 — 안 돌아오면 launch 재시작(아두이노는 udev 규칙으로 리셋 안 됨)
+· 📼 보고서용 기록 (10-29 추가) — 수조·야외 매 회차:
+    ① 블랙박스 CSV 는 ssf_tools launch 에 자동(~/ssf_logs/blackbox_*.csv). 회차 끝나면 파일 이름에 회차 메모.
+       그림: python3 tools/blackbox_plots.py ~/ssf_logs/blackbox_….csv --name 수조1차 [--waypoints] → 궤적·시간 그래프
+    ② rosbag(LiDAR·조향, 가벼움 — 회차 내내):
+       ros2 bag record -o ~/ssf_bags/<회차> /scan /wp_mode /yaw_error /candidate_angle /desired_angle /geofence_state /imu/yaw /ublox_gps_node/fix
+       그림 Ⅲ-3 실제 장면: python3 tools/gap_selection_figure.py --bag ~/ssf_bags/<회차> --t <초>  (모드 5·8 자율 회피 구간의 시각만 — 계산값과 기록 /desired_angle 이 나란히 찍힌다)
+    ③ rosbag(카메라, 무거움 — 640×480 30 fps ≈ 1.6 GB/분): 부표·도크 앞 60 s 씩만 따로
+       ros2 bag record -o ~/ssf_bags/<회차>_cam /camera/camera/color/image_raw /wp_mode /red_angle /green_angle /image_angle /image_color
+       → 원본·HSV 마스크·검출 비교 그림, 혼동행렬(Ⅲ-2.4, Ⅲ-4.5)
+    ④ 휴대폰·액션캠으로 배 외관·주행 장면 — Ⅱ장 제작·Ⅶ장 사진</pre>
 
 <p><span class="step">2</span><b>수조: 조향 부호 (5분)</b></p>
 <pre>ship_direction 끄고 motor_control 직접. /desired_angle 수동 발행 (Float32):
