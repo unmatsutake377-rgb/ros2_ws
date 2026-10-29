@@ -1,5 +1,5 @@
 # 보고서 분담 묶음 — GPS
-만든 시각: 2026-10-29 12:43 · 저장소 커밋: 3db735b
+만든 시각: 2026-10-29 13:26 · 저장소 커밋: 32a8146
 
 이 파일 하나를 AI 에 올리고, 공통 작성규칙 5절의 프롬프트를 붙여 넣는다.
 소스 파일에는 행 번호가 붙어 있다. 근거는 [근거: 파일경로:행] 으로 단다.
@@ -502,477 +502,508 @@ git diff 9bff661 HEAD -- src/north_goal_angle src/ublox
     58	from north_goal_angle.gps_guard import fix_is_usable
     59	from north_goal_angle import los_logic          # LOS 유도 (순수, 테스트됨)
     60	from north_goal_angle.gps_filter import GPSFilter  # 공분산·점프·스무딩 (순수, 테스트됨)
-    61	
-    62	# 🚨 대회 좌표는 코드가 아니라 config/waypoints.yaml 에서 읽는다 (비전공자도 편집 가능).
-    63	#    대회장에서 GPS 좌표를 바꿀 사람은 그 파일의 lat/lon 만 고치면 된다 — 이 파일은 안 건드린다.
-    64	#    로드/검증은 waypoint_loader.parse_waypoints (순수 로직, 테스트됨).
-    65	#    파일이 없거나 형식이 틀리면 노드를 띄우지 않는다 — 틀린 좌표로 달리느니 멈춘다.
-    66	
-    67	CANDIDATE_INVALID = 20000.0
-    68	ARRIVE_RADIUS_M = 3.0
-    69	DEFAULT_TIMEOUT = 120.0
-    70	TURN_TIMEOUT = 90.0
-    71	
-    72	# 담당 노드가 없는 모드 = 순수 회피 구간. 여기서만 폴백을 낸다. (CLAUDE.md 3-6)
-    73	FALLBACK_MODES = (5, 8)
+    61	from north_goal_angle.wp_timeout import (            # WP 타임아웃 표 (순수, 테스트됨)
+    62	    DEFAULT_WP_TIMEOUT_MODES, DEFAULT_WP_TIMEOUT_SEC, WpTimeoutError,
+    63	    build_timeout_table, dwell_conflicts, per_wp_timeouts, timeout_for_mode,
+    64	)
+    65	
+    66	# 🚨 대회 좌표는 코드가 아니라 config/waypoints.yaml 에서 읽는다 (비전공자도 편집 가능).
+    67	#    대회장에서 GPS 좌표를 바꿀 사람은 그 파일의 lat/lon 만 고치면 된다 — 이 파일은 안 건드린다.
+    68	#    로드/검증은 waypoint_loader.parse_waypoints (순수 로직, 테스트됨).
+    69	#    파일이 없거나 형식이 틀리면 노드를 띄우지 않는다 — 틀린 좌표로 달리느니 멈춘다.
+    70	
+    71	CANDIDATE_INVALID = 20000.0
+    72	ARRIVE_RADIUS_M = 3.0
+    73	# WP 타임아웃은 순번이 아니라 wp_mode 기준 — 파라미터 wp_timeout_modes / wp_timeout_sec (wp_timeout.py)
     74	
-    75	# 🚀 자율 시작 게이트: 아두이노 모드(ssf_bridge /boat_mode, Int32). 0=WAIT 1=MANUAL 2=AUTO.
-    76	#    상수 공유 모듈화는 대회 전 금지(CLAUDE.md 3-9) → 여기 인라인(값은 ssf_bridge status_parser 와 일치).
-    77	MODE_AUTO = 2
-    78	
-    79	
-    80	def mission_should_run(boat_mode, require_auto, mode_auto=MODE_AUTO):
-    81	    """미션 FSM(웨이포인트 전진)을 돌려도 되나 — ROS 비의존 순수 판정.
+    75	# 담당 노드가 없는 모드 = 순수 회피 구간. 여기서만 폴백을 낸다. (CLAUDE.md 3-6)
+    76	FALLBACK_MODES = (5, 8)
+    77	
+    78	# 🚀 자율 시작 게이트: 아두이노 모드(ssf_bridge /boat_mode, Int32). 0=WAIT 1=MANUAL 2=AUTO.
+    79	#    상수 공유 모듈화는 대회 전 금지(CLAUDE.md 3-9) → 여기 인라인(값은 ssf_bridge status_parser 와 일치).
+    80	MODE_AUTO = 2
+    81	
     82	
-    83	    require_auto=False → 항상 True (아두이노 없이 벤치 테스트용).
-    84	    require_auto=True  → boat_mode 가 AUTO(2)일 때만. WAIT/MANUAL/None(모름) 이면 False.
-    85	      → 기본이 '안 돈다'라 안전하다: RC 를 AUTO 로 넘기기 전엔 미션이 전진하지 않는다.
-    86	    """
-    87	    if not require_auto:
-    88	        return True
-    89	    return boat_mode == mode_auto
-    90	
-    91	
-    92	# 위경도 → 로컬 미터 근사
-    93	M_PER_DEG_LAT = 110540.0
-    94	M_PER_DEG_LON_EQ = 111320.0
-    95	
-    96	
-    97	class NorthGoalAngle(Node):
-    98	    def __init__(self):
-    99	        super().__init__('north_goal_angle')
-   100	        qos = QoSProfile(depth=2, reliability=ReliabilityPolicy.RELIABLE)
-   101	
-   102	        # ---- 웨이포인트(GPS 좌표) 로드 — config/waypoints.yaml 에서 읽는다 ----
-   103	        # 파일 경로는 파라미터로도 바꿀 수 있다(기본: 패키지 share 의 config/waypoints.yaml).
-   104	        default_wp = os.path.join(
-   105	            get_package_share_directory('north_goal_angle'), 'config', 'waypoints.yaml')
-   106	        self.waypoints_file = str(
-   107	            self.declare_parameter('waypoints_file', default_wp).value)
-   108	        self.waypoints = self._load_waypoints(self.waypoints_file)
-   109	
-   110	        # ---- 파라미터 (config/north_goal_angle.yaml, CLAUDE.md 1-4) ----
-   111	        self.period_sec = float(self.declare_parameter('period_sec', 0.5).value)
+    83	def mission_should_run(boat_mode, require_auto, mode_auto=MODE_AUTO):
+    84	    """미션 FSM(웨이포인트 전진)을 돌려도 되나 — ROS 비의존 순수 판정.
+    85	
+    86	    require_auto=False → 항상 True (아두이노 없이 벤치 테스트용).
+    87	    require_auto=True  → boat_mode 가 AUTO(2)일 때만. WAIT/MANUAL/None(모름) 이면 False.
+    88	      → 기본이 '안 돈다'라 안전하다: RC 를 AUTO 로 넘기기 전엔 미션이 전진하지 않는다.
+    89	    """
+    90	    if not require_auto:
+    91	        return True
+    92	    return boat_mode == mode_auto
+    93	
+    94	
+    95	# 위경도 → 로컬 미터 근사
+    96	M_PER_DEG_LAT = 110540.0
+    97	M_PER_DEG_LON_EQ = 111320.0
+    98	
+    99	
+   100	class NorthGoalAngle(Node):
+   101	    def __init__(self):
+   102	        super().__init__('north_goal_angle')
+   103	        qos = QoSProfile(depth=2, reliability=ReliabilityPolicy.RELIABLE)
+   104	
+   105	        # ---- 웨이포인트(GPS 좌표) 로드 — config/waypoints.yaml 에서 읽는다 ----
+   106	        # 파일 경로는 파라미터로도 바꿀 수 있다(기본: 패키지 share 의 config/waypoints.yaml).
+   107	        default_wp = os.path.join(
+   108	            get_package_share_directory('north_goal_angle'), 'config', 'waypoints.yaml')
+   109	        self.waypoints_file = str(
+   110	            self.declare_parameter('waypoints_file', default_wp).value)
+   111	        self.waypoints = self._load_waypoints(self.waypoints_file)
    112	
-   113	        # ---- LOS 유도 (경로선 추종 + 조류 보상 ILOS) ----
-   114	        # 직접 방위(현위치→목표)는 조류·초기오차로 밀리면 비스듬히 접근한다. LOS 는 이전 WP→목표
-   115	        # '경로 선'으로 되돌아오게 하고, ILOS 적분항이 지속 외란(조류·바람)을 상쇄한다.
-   116	        self.los_min_lookahead_m = float(self.declare_parameter('los_min_lookahead_m', 2.0).value)
-   117	        self.los_max_lookahead_m = float(self.declare_parameter('los_max_lookahead_m', 6.0).value)
-   118	        self.los_speed_gain = float(self.declare_parameter('los_speed_gain', 1.2).value)
-   119	        self.ilos_ki = float(self.declare_parameter('ilos_ki', 0.02).value)
-   120	        self.ilos_max = float(self.declare_parameter('ilos_integral_max', 50.0).value)  # anti-windup
-   121	        # GPS 필터 (fix_is_usable 통과분에 품질·이상치·지터 처리)
-   122	        self.gps_cov_threshold = float(self.declare_parameter('gps_cov_threshold', 2.0).value)
-   123	        self.gps_max_speed_mps = float(self.declare_parameter('gps_max_speed_mps', 15.0).value)
-   124	
-   125	        # 🚀 자율 시작 게이트: True 면 RC 모드가 AUTO(/boat_mode==2) 여야 미션이 전진한다.
-   126	        #    기본 True = 안전(수동 이동 중 미션 스킵 방지). 벤치(아두이노 없음)는 false 로.
-   127	        self.require_auto = bool(self.declare_parameter('require_boat_mode_auto', True).value)
-   128	        # 경기장 폴리곤: [lat1, lon1, lat2, lon2, ...] 평탄 배열.
-   129	        # ⚠️ 실측 필요 — 대회장 경계 좌표를 아직 모른다. 비어 있으면 geofence 는 꺼진다.
-   130	        self.geofence_polygon = list(
-   131	            self.declare_parameter('geofence_polygon', []).value or [])
-   132	        # 경계를 '가짜 LiDAR'로 쏜다 — 스캔과 같은 각도 격자(상대방위).
-   133	        # ★ 왜 광선인가: 벽은 '점'이 아니라 '선'이다. 최근접점 한 방향으로 ±각도 원뿔을 막는 건
-   134	        #   기하학적으로 틀렸다. 40x40 모서리에서 배가 대각선(45°)을 보면 북벽 최근접점은 -45°,
-   135	        #   동벽은 +45° 인데 **탈출구(모서리)는 정면 0°** 라 원뿔 사이 '틈'으로 그대로 빠져나간다.
-   136	        #   광선으로 쏘면 정면 방향의 경계 거리(2.12m)가 그대로 잡혀 벽이 된다. 튜닝도 필요 없다.
-   137	        self.ray_min_deg = float(self.declare_parameter('geofence_ray_min_deg', -80.0).value)
-   138	        self.ray_max_deg = float(self.declare_parameter('geofence_ray_max_deg', 80.0).value)
-   139	        self.ray_inc_deg = float(self.declare_parameter('geofence_ray_inc_deg', 1.0).value)
-   140	        self.geofence_max_range_m = float(
-   141	            self.declare_parameter('geofence_max_range_m', 30.0).value)   # 이보다 멀면 inf
-   142	        # 구독자 0 경고를 시작할 시각
-   143	        self.geofence_check_after_sec = float(
-   144	            self.declare_parameter('geofence_check_after_sec', 5.0).value)
-   145	        # 🚨 IMU 신선도. geofence 상대방위는 /imu/yaw 로 계산하므로 IMU 에 의존한다.
-   146	        #    IMU 가 죽으면 yaw 가 얼어붙고 → 경계 방위가 엉뚱해지고 → ship_direction 이
-   147	        #    '없는 벽'을 칠한다 → 배가 갇힌다.
-   148	        #    → 묵으면 geofence 도 [inf, nan] 을 낸다. (1단계 ship_goal_angle 과 같은 원칙:
-   149	        #      **모르면 입을 다문다.** 틀린 값을 내느니 안 내는 게 낫다.)
-   150	        self.imu_stale_sec = float(self.declare_parameter('imu_stale_sec', 0.5).value)
-   151	
-   152	        # ---- 발행 (토픽 이름 불변 + /geofence_state 신규, CLAUDE.md 3-9) ----
-   153	        self.pub_dist = self.create_publisher(Float32, '/goal_distance', qos)
-   154	        self.pub_mode = self.create_publisher(Int32, '/wp_mode', qos)
-   155	        self.pub_candidate = self.create_publisher(Float32, '/candidate_angle', qos)
-   156	        self.pub_bearing = self.create_publisher(Float32, '/north_goal_angle_tp', qos)
-   157	        self.pub_remain = self.create_publisher(Float32, '/wp_remaining_time', qos)
-   158	        self.pub_geofence = self.create_publisher(Float32MultiArray, '/geofence_state', qos)
-   159	
-   160	        # ---- 구독 ----
-   161	        self.create_subscription(NavSatFix, '/ublox_gps_node/fix', self.gps_cb, qos)
-   162	        self.create_subscription(Float64, '/imu/yaw', self.yaw_cb, qos)   # 경계 상대방위 계산용
-   163	        # 🚀 아두이노 모드(ssf_bridge 발행). AUTO 일 때만 미션 전진. RELIABLE 발행이라 qos 호환.
-   164	        self.create_subscription(Int32, '/boat_mode', self.boat_mode_cb, qos)
-   165	
-   166	        # ---- 상태 ----
-   167	        self.lat, self.lon = 0.0, 0.0
-   168	        self.have_fix = False
-   169	        self.yaw = None
-   170	        self.last_yaw_t = None          # /imu/yaw 마지막 수신 (monotonic)
-   171	        self.wp_idx = 0
-   172	        self.t_start = None
-   173	        self.wp_enter_time = None
-   174	        self.t0 = time.monotonic()
-   175	
-   176	        # LOS 상태
-   177	        self.gps_filter = GPSFilter(
-   178	            cov_threshold=self.gps_cov_threshold, max_speed_mps=self.gps_max_speed_mps)
-   179	        self.integral_xte = 0.0          # ILOS 적분 (WP 전환 시 리셋)
-   180	        self.prev_lat = None             # 경로선 시작점(이전 WP). None=첫 구간
-   181	        self.prev_lon = None
-   182	        self.boat_mode = None            # ssf_bridge /boat_mode (0 WAIT/1 MANUAL/2 AUTO). None=아직 모름
-   183	
-   184	        self.create_timer(self.period_sec, self.timer_cb)
-   185	
-   186	        gf = "OFF(폴리곤 미설정 — ⚠️ 실측 필요)" if len(self.geofence_polygon) < 6 else \
-   187	             f"ON({len(self.geofence_polygon) // 2}점)"
-   188	        self.get_logger().info(
-   189	            f"north_goal_angle 시작: 폴백은 mode {FALLBACK_MODES} 에만 발행"
-   190	            f"(mode 7 폴백 제거 — ship_dock 과 충돌했다). geofence {gf}."
-   191	        )
-   192	
-   193	    # ───────────────────────── 웨이포인트 로드 ─────────────────────────
-   194	    def _load_waypoints(self, path):
-   195	        """config/waypoints.yaml 을 읽어 검증한다. 실패하면 노드를 세운다(예외).
+   113	        # ---- 파라미터 (config/north_goal_angle.yaml, CLAUDE.md 1-4) ----
+   114	        self.period_sec = float(self.declare_parameter('period_sec', 0.5).value)
+   115	
+   116	        # ---- LOS 유도 (경로선 추종 + 조류 보상 ILOS) ----
+   117	        # 직접 방위(현위치→목표)는 조류·초기오차로 밀리면 비스듬히 접근한다. LOS 는 이전 WP→목표
+   118	        # '경로 선'으로 되돌아오게 하고, ILOS 적분항이 지속 외란(조류·바람)을 상쇄한다.
+   119	        self.los_min_lookahead_m = float(self.declare_parameter('los_min_lookahead_m', 2.0).value)
+   120	        self.los_max_lookahead_m = float(self.declare_parameter('los_max_lookahead_m', 6.0).value)
+   121	        self.los_speed_gain = float(self.declare_parameter('los_speed_gain', 1.2).value)
+   122	        self.ilos_ki = float(self.declare_parameter('ilos_ki', 0.02).value)
+   123	        self.ilos_max = float(self.declare_parameter('ilos_integral_max', 50.0).value)  # anti-windup
+   124	        # GPS 필터 (fix_is_usable 통과분에 품질·이상치·지터 처리)
+   125	        self.gps_cov_threshold = float(self.declare_parameter('gps_cov_threshold', 2.0).value)
+   126	        self.gps_max_speed_mps = float(self.declare_parameter('gps_max_speed_mps', 15.0).value)
+   127	
+   128	        # 🚀 자율 시작 게이트: True 면 RC 모드가 AUTO(/boat_mode==2) 여야 미션이 전진한다.
+   129	        #    기본 True = 안전(수동 이동 중 미션 스킵 방지). 벤치(아두이노 없음)는 false 로.
+   130	        self.require_auto = bool(self.declare_parameter('require_boat_mode_auto', True).value)
+   131	        # 경기장 폴리곤: [lat1, lon1, lat2, lon2, ...] 평탄 배열.
+   132	        # ⚠️ 실측 필요 — 대회장 경계 좌표를 아직 모른다. 비어 있으면 geofence 는 꺼진다.
+   133	        self.geofence_polygon = list(
+   134	            self.declare_parameter('geofence_polygon', []).value or [])
+   135	        # 경계를 '가짜 LiDAR'로 쏜다 — 스캔과 같은 각도 격자(상대방위).
+   136	        # ★ 왜 광선인가: 벽은 '점'이 아니라 '선'이다. 최근접점 한 방향으로 ±각도 원뿔을 막는 건
+   137	        #   기하학적으로 틀렸다. 40x40 모서리에서 배가 대각선(45°)을 보면 북벽 최근접점은 -45°,
+   138	        #   동벽은 +45° 인데 **탈출구(모서리)는 정면 0°** 라 원뿔 사이 '틈'으로 그대로 빠져나간다.
+   139	        #   광선으로 쏘면 정면 방향의 경계 거리(2.12m)가 그대로 잡혀 벽이 된다. 튜닝도 필요 없다.
+   140	        self.ray_min_deg = float(self.declare_parameter('geofence_ray_min_deg', -80.0).value)
+   141	        self.ray_max_deg = float(self.declare_parameter('geofence_ray_max_deg', 80.0).value)
+   142	        self.ray_inc_deg = float(self.declare_parameter('geofence_ray_inc_deg', 1.0).value)
+   143	        self.geofence_max_range_m = float(
+   144	            self.declare_parameter('geofence_max_range_m', 30.0).value)   # 이보다 멀면 inf
+   145	        # 구독자 0 경고를 시작할 시각
+   146	        self.geofence_check_after_sec = float(
+   147	            self.declare_parameter('geofence_check_after_sec', 5.0).value)
+   148	        # 🚨 IMU 신선도. geofence 상대방위는 /imu/yaw 로 계산하므로 IMU 에 의존한다.
+   149	        #    IMU 가 죽으면 yaw 가 얼어붙고 → 경계 방위가 엉뚱해지고 → ship_direction 이
+   150	        #    '없는 벽'을 칠한다 → 배가 갇힌다.
+   151	        #    → 묵으면 geofence 도 [inf, nan] 을 낸다. (1단계 ship_goal_angle 과 같은 원칙:
+   152	        #      **모르면 입을 다문다.** 틀린 값을 내느니 안 내는 게 낫다.)
+   153	        self.imu_stale_sec = float(self.declare_parameter('imu_stale_sec', 0.5).value)
+   154	
+   155	        # ---- WP 타임아웃 (wp_mode 기준, WP 하나당) — 계약서_WP타임아웃모드기준_20261029 ----
+   156	        # ROS2 파라미터는 dict 불가 → 병렬 배열. 표에 없는 모드 = 타임아웃 없음.
+   157	        # 🚨 yaml 의 wp_timeout_sec 는 전부 .0 (정수 섞이면 Humble 이 노드를 죽이거나 params 파싱 실패).
+   158	        # 타이머 생성보다 먼저 선언·검증한다.
+   159	        self.wp_timeout_table = self._load_wp_timeouts(
+   160	            self.declare_parameter('wp_timeout_modes', list(DEFAULT_WP_TIMEOUT_MODES)).value,
+   161	            self.declare_parameter('wp_timeout_sec', list(DEFAULT_WP_TIMEOUT_SEC)).value)
+   162	
+   163	        # ---- 발행 (토픽 이름 불변 + /geofence_state 신규, CLAUDE.md 3-9) ----
+   164	        self.pub_dist = self.create_publisher(Float32, '/goal_distance', qos)
+   165	        self.pub_mode = self.create_publisher(Int32, '/wp_mode', qos)
+   166	        self.pub_candidate = self.create_publisher(Float32, '/candidate_angle', qos)
+   167	        self.pub_bearing = self.create_publisher(Float32, '/north_goal_angle_tp', qos)
+   168	        self.pub_remain = self.create_publisher(Float32, '/wp_remaining_time', qos)
+   169	        self.pub_geofence = self.create_publisher(Float32MultiArray, '/geofence_state', qos)
+   170	
+   171	        # ---- 구독 ----
+   172	        self.create_subscription(NavSatFix, '/ublox_gps_node/fix', self.gps_cb, qos)
+   173	        self.create_subscription(Float64, '/imu/yaw', self.yaw_cb, qos)   # 경계 상대방위 계산용
+   174	        # 🚀 아두이노 모드(ssf_bridge 발행). AUTO 일 때만 미션 전진. RELIABLE 발행이라 qos 호환.
+   175	        self.create_subscription(Int32, '/boat_mode', self.boat_mode_cb, qos)
+   176	
+   177	        # ---- 상태 ----
+   178	        self.lat, self.lon = 0.0, 0.0
+   179	        self.have_fix = False
+   180	        self.yaw = None
+   181	        self.last_yaw_t = None          # /imu/yaw 마지막 수신 (monotonic)
+   182	        self.wp_idx = 0
+   183	        self.t_start = None
+   184	        self.wp_enter_time = None
+   185	        self.t0 = time.monotonic()
+   186	
+   187	        # LOS 상태
+   188	        self.gps_filter = GPSFilter(
+   189	            cov_threshold=self.gps_cov_threshold, max_speed_mps=self.gps_max_speed_mps)
+   190	        self.integral_xte = 0.0          # ILOS 적분 (WP 전환 시 리셋)
+   191	        self.prev_lat = None             # 경로선 시작점(이전 WP). None=첫 구간
+   192	        self.prev_lon = None
+   193	        self.boat_mode = None            # ssf_bridge /boat_mode (0 WAIT/1 MANUAL/2 AUTO). None=아직 모름
+   194	
+   195	        self.create_timer(self.period_sec, self.timer_cb)
    196	
-   197	        🚨 '모르면 침묵 말고 알린다' — 파일이 없거나 좌표가 이상하면 조용히 기본값으로
-   198	        넘어가지 않고, 어디가 왜 틀렸는지 ERROR 로그를 내고 예외를 던져 노드를 멈춘다.
-   199	        틀린 좌표로 배가 달리는 것보다 출발 전에 멈추는 게 안전하다.
-   200	        """
-   201	        try:
-   202	            with open(path, 'r', encoding='utf-8') as f:
-   203	                raw = yaml.safe_load(f)
-   204	        except FileNotFoundError:
-   205	            self.get_logger().error(
-   206	                f"🚨 웨이포인트 파일이 없다: {path}\n"
-   207	                f"   config/waypoints.yaml 이 설치됐는지 확인하라(colcon build 필요).")
-   208	            raise
-   209	        except yaml.YAMLError as e:
-   210	            self.get_logger().error(
-   211	                f"🚨 waypoints.yaml 문법 오류(콤마·중괄호·들여쓰기 확인): {e}")
-   212	            raise
-   213	
-   214	        try:
-   215	            wps = parse_waypoints(raw)
-   216	        except WaypointError as e:
-   217	            self.get_logger().error(f"🚨 웨이포인트 내용 오류 → {e}")
-   218	            raise
-   219	
-   220	        modes = [w[2] for w in wps]
-   221	        self.get_logger().info(
-   222	            f"웨이포인트 {len(wps)}개 로드: {path}\n   미션 순서(mode): {modes}")
-   223	        return wps
+   197	        gf = "OFF(폴리곤 미설정 — ⚠️ 실측 필요)" if len(self.geofence_polygon) < 6 else \
+   198	             f"ON({len(self.geofence_polygon) // 2}점)"
+   199	        self.get_logger().info(
+   200	            f"north_goal_angle 시작: 폴백은 mode {FALLBACK_MODES} 에만 발행"
+   201	            f"(mode 7 폴백 제거 — ship_dock 과 충돌했다). geofence {gf}."
+   202	        )
+   203	
+   204	    # ───────────────────────── 웨이포인트 로드 ─────────────────────────
+   205	    def _load_waypoints(self, path):
+   206	        """config/waypoints.yaml 을 읽어 검증한다. 실패하면 노드를 세운다(예외).
+   207	
+   208	        🚨 '모르면 침묵 말고 알린다' — 파일이 없거나 좌표가 이상하면 조용히 기본값으로
+   209	        넘어가지 않고, 어디가 왜 틀렸는지 ERROR 로그를 내고 예외를 던져 노드를 멈춘다.
+   210	        틀린 좌표로 배가 달리는 것보다 출발 전에 멈추는 게 안전하다.
+   211	        """
+   212	        try:
+   213	            with open(path, 'r', encoding='utf-8') as f:
+   214	                raw = yaml.safe_load(f)
+   215	        except FileNotFoundError:
+   216	            self.get_logger().error(
+   217	                f"🚨 웨이포인트 파일이 없다: {path}\n"
+   218	                f"   config/waypoints.yaml 이 설치됐는지 확인하라(colcon build 필요).")
+   219	            raise
+   220	        except yaml.YAMLError as e:
+   221	            self.get_logger().error(
+   222	                f"🚨 waypoints.yaml 문법 오류(콤마·중괄호·들여쓰기 확인): {e}")
+   223	            raise
    224	
-   225	    # ───────────────────────── 콜백 ─────────────────────────
-   226	    def gps_cb(self, msg):
-   227	        # 🚨 status 를 반드시 본다. 드라이버는 fix 가 없어도 /fix 를 1Hz 로 계속 내며,
-   228	        #    그때 lat/lon 은 0.0 이다. 예전 코드는 이걸 그대로 믿고 (0,0) 기준 방위를
-   229	        #    계산해 발행했다 — 실측 47.96° = calc_angle(0, 0, WP0). 판정은 gps_guard 참고.
-   230	        if not fix_is_usable(msg.status.status, msg.latitude, msg.longitude):
-   231	            if self.have_fix:
-   232	                self._log_fix_lost(msg.status.status)
-   233	            self.have_fix = False
-   234	            return
+   225	        try:
+   226	            wps = parse_waypoints(raw)
+   227	        except WaypointError as e:
+   228	            self.get_logger().error(f"🚨 웨이포인트 내용 오류 → {e}")
+   229	            raise
+   230	
+   231	        modes = [w[2] for w in wps]
+   232	        self.get_logger().info(
+   233	            f"웨이포인트 {len(wps)}개 로드: {path}\n   미션 순서(mode): {modes}")
+   234	        return wps
    235	
-   236	        # fix 는 유효하다 → 품질·이상치·지터를 GPSFilter 로 거른다. 여기서 버리는 건 '한 프레임'만
-   237	        # (공분산 큼 / 순간이동)이지 fix 상실이 아니다 → have_fix·이전 위치는 유지한다.
-   238	        cov = msg.position_covariance[0] if len(msg.position_covariance) > 0 else None
-   239	        accepted, reason = self.gps_filter.update(
-   240	            msg.latitude, msg.longitude, cov, time.monotonic())
-   241	        if not accepted:
-   242	            self.get_logger().warn(f"🛰️ GPS fix 한 프레임 버림: {reason}",
-   243	                                   throttle_duration_sec=2.0)
-   244	            return
-   245	        if not self.have_fix:
-   246	            self._log_fix_acquired(msg.status.status)
-   247	        self.lat = self.gps_filter.filtered_lat
-   248	        self.lon = self.gps_filter.filtered_lon
-   249	        self.have_fix = True
-   250	
-   251	    # ⚠️ 로거 호출 지점을 함수로 분리한 이유: rclpy 는 로그 호출을 **소스 위치**로 캐싱해서,
-   252	    #    같은 줄이 warn/info 로 번갈아 불리면 ValueError 로 노드가 죽는다 (CLAUDE.md §5 사례 ②).
-   253	    def _log_fix_lost(self, status):
-   254	        self.get_logger().warn(
-   255	            f"🛰️ GPS fix 상실(status={status}) → 목표 방위·거리 발행 중단. "
-   256	            "모르면 입을 다문다 (소비자는 침묵을 처리하도록 설계돼 있다)")
+   236	    def _load_wp_timeouts(self, modes, secs):
+   237	        """wp_timeout_modes/sec 를 검증해 {mode: sec} 표로. 틀리면 ERROR + 예외로 노드를 세운다.
+   238	
+   239	        빈 표·≤0·NaN·길이 불일치·허용 밖 모드·중복은 출발 전에 거부한다(waypoints.yaml 과 같은 방식).
+   240	        timeout ≤ dwell 인 WP 는 반경 도착이 불가능하므로 WARN 만 낸다(세우지는 않는다).
+   241	        """
+   242	        try:
+   243	            table = build_timeout_table(modes, secs)
+   244	        except WpTimeoutError as e:
+   245	            self.get_logger().error(f"🚨 WP 타임아웃 파라미터 오류 → {e}")
+   246	            raise
+   247	
+   248	        for idx, mode, t, dwell in dwell_conflicts(self.waypoints, table):
+   249	            self.get_logger().warn(
+   250	                f"⚠️ WP{idx}(mode {mode}): 타임아웃 {t:.1f}s ≤ dwell {dwell:.1f}s — "
+   251	                f"반경 도착은 불가능하고 늘 시간 초과로만 넘어간다. wp_timeout_sec 확인.")
+   252	
+   253	        per_wp = ['없음' if t is None else f"{t:g}" for t in per_wp_timeouts(self.waypoints, table)]
+   254	        self.get_logger().info(
+   255	            f"WP 타임아웃(mode 기준, WP 하나당) 표={table} → WP별(s): {per_wp}")
+   256	        return table
    257	
-   258	    def _log_fix_acquired(self, status):
-   259	        self.get_logger().info(f"🛰️ GPS fix 확보(status={status}) → 항법 재개")
-   260	
-   261	    def yaw_cb(self, msg):
-   262	        self.yaw = float(msg.data)
-   263	        self.last_yaw_t = time.monotonic()
-   264	
-   265	    def boat_mode_cb(self, msg):
-   266	        # 0=WAIT 1=MANUAL 2=AUTO. AUTO 로 바뀌면 미션이 WP0 부터 시작한다(timer_cb 게이트).
-   267	        prev = self.boat_mode
-   268	        self.boat_mode = int(msg.data)
-   269	        if prev != self.boat_mode and self.boat_mode == MODE_AUTO:
-   270	            self.get_logger().info("🚀 AUTO 전환 감지 → 미션 시작 (WP0 부터)")
-   271	
-   272	    # ───────────────────────── Geofence ─────────────────────────
-   273	    def _local_xy(self, lat, lon):
-   274	        """보트 기준 로컬 미터 (east, north)."""
-   275	        kx = math.cos(math.radians(self.lat)) * M_PER_DEG_LON_EQ
-   276	        return ((lon - self.lon) * kx, (lat - self.lat) * M_PER_DEG_LAT)
-   277	
-   278	    def _geofence_ranges(self):
-   279	        """경계를 '가짜 LiDAR'로 쏜다 → (angle_min_deg, angle_inc_deg, [r0, r1, ...]) 또는 None.
-   280	
-   281	        각 상대방위마다 '이 방향으로 몇 m 가면 경계 밖인가'를 구한다. 멀면 inf.
-   282	        소비자(ship_direction)는 이걸 실제 스캔과 min() 으로 병합하기만 하면 된다 —
-   283	        특수 로직이 아예 없어진다. 기존 dilate 가 배 폭 여유를 더하고, 갭-팔로잉이 알아서 피한다.
-   284	
-   285	        None(=빈 배열) 을 내는 경우 — 전부 '모르면 입을 다문다':
-   286	          · 폴리곤 미설정 / GPS fix 없음
-   287	          · IMU stale     → yaw 가 얼면 광선 방향이 통째로 틀어져 '없는 벽'을 만든다
-   288	          · 이미 경기장 밖 → 경계를 벽으로 세우면 돌아갈 길을 막는다
-   289	        """
-   290	        poly = self.geofence_polygon
-   291	        if len(poly) < 6 or not self.have_fix:      # 최소 3점(=6수)
-   292	            return None
+   258	    # ───────────────────────── 콜백 ─────────────────────────
+   259	    def gps_cb(self, msg):
+   260	        # 🚨 status 를 반드시 본다. 드라이버는 fix 가 없어도 /fix 를 1Hz 로 계속 내며,
+   261	        #    그때 lat/lon 은 0.0 이다. 예전 코드는 이걸 그대로 믿고 (0,0) 기준 방위를
+   262	        #    계산해 발행했다 — 실측 47.96° = calc_angle(0, 0, WP0). 판정은 gps_guard 참고.
+   263	        if not fix_is_usable(msg.status.status, msg.latitude, msg.longitude):
+   264	            if self.have_fix:
+   265	                self._log_fix_lost(msg.status.status)
+   266	            self.have_fix = False
+   267	            return
+   268	
+   269	        # fix 는 유효하다 → 품질·이상치·지터를 GPSFilter 로 거른다. 여기서 버리는 건 '한 프레임'만
+   270	        # (공분산 큼 / 순간이동)이지 fix 상실이 아니다 → have_fix·이전 위치는 유지한다.
+   271	        cov = msg.position_covariance[0] if len(msg.position_covariance) > 0 else None
+   272	        accepted, reason = self.gps_filter.update(
+   273	            msg.latitude, msg.longitude, cov, time.monotonic())
+   274	        if not accepted:
+   275	            self.get_logger().warn(f"🛰️ GPS fix 한 프레임 버림: {reason}",
+   276	                                   throttle_duration_sec=2.0)
+   277	            return
+   278	        if not self.have_fix:
+   279	            self._log_fix_acquired(msg.status.status)
+   280	        self.lat = self.gps_filter.filtered_lat
+   281	        self.lon = self.gps_filter.filtered_lon
+   282	        self.have_fix = True
+   283	
+   284	    # ⚠️ 로거 호출 지점을 함수로 분리한 이유: rclpy 는 로그 호출을 **소스 위치**로 캐싱해서,
+   285	    #    같은 줄이 warn/info 로 번갈아 불리면 ValueError 로 노드가 죽는다 (CLAUDE.md §5 사례 ②).
+   286	    def _log_fix_lost(self, status):
+   287	        self.get_logger().warn(
+   288	            f"🛰️ GPS fix 상실(status={status}) → 목표 방위·거리 발행 중단. "
+   289	            "모르면 입을 다문다 (소비자는 침묵을 처리하도록 설계돼 있다)")
+   290	
+   291	    def _log_fix_acquired(self, status):
+   292	        self.get_logger().info(f"🛰️ GPS fix 확보(status={status}) → 항법 재개")
    293	
-   294	        # 🚨 IMU 신선도 — 광선 방향이 yaw 에 통째로 의존한다. 얼면 벽 전체가 엉뚱해진다.
-   295	        if self.yaw is None or self.last_yaw_t is None:
-   296	            self.get_logger().warn(
-   297	                "/imu/yaw 없음 → geofence 침묵(빈 배열)", throttle_duration_sec=5.0)
-   298	            return None
-   299	        yaw_age = time.monotonic() - self.last_yaw_t
-   300	        if yaw_age > self.imu_stale_sec:
-   301	            self.get_logger().warn(
-   302	                f"/imu/yaw stale ({yaw_age:.2f}s > {self.imu_stale_sec}s) → geofence 침묵. "
-   303	                f"틀린 방향으로 '없는 벽'을 세우느니 안 내는 게 낫다.",
-   304	                throttle_duration_sec=2.0)
-   305	            return None
-   306	
-   307	        pts = [self._local_xy(poly[i], poly[i + 1]) for i in range(0, len(poly) - 1, 2)]
-   308	
-   309	        if not _point_in_polygon((0.0, 0.0), pts):
-   310	            # 🚨 이미 밖이다. 경계를 벽으로 세우면 복귀로를 막는다 → 아무것도 내지 않는다.
-   311	            self.get_logger().error(
-   312	                "🚨 경기장 경계 밖이다 (실격 위험). GPS 웨이포인트로 복귀 중.",
-   313	                throttle_duration_sec=2.0)
-   314	            return None
-   315	
-   316	        if self.ray_inc_deg <= 0.0 or self.ray_max_deg < self.ray_min_deg:
-   317	            return None
-   318	
-   319	        n = int(round((self.ray_max_deg - self.ray_min_deg) / self.ray_inc_deg)) + 1
-   320	        ranges = []
-   321	        for k in range(n):
-   322	            rel = self.ray_min_deg + k * self.ray_inc_deg
-   323	            th = math.radians((self.yaw + rel) % 360.0)      # 절대 방위(compass)
-   324	            d = (math.sin(th), math.cos(th))                 # (east, north) 단위벡터
-   325	            t = _ray_polygon_dist((0.0, 0.0), d, pts)
-   326	            ranges.append(float(t) if (t is not None and t <= self.geofence_max_range_m)
-   327	                          else float('inf'))
-   328	
-   329	        return self.ray_min_deg, self.ray_inc_deg, ranges
-   330	
-   331	    def _publish_geofence(self):
-   332	        msg = Float32MultiArray()
-   333	        gs = self._geofence_ranges()
-   334	        if gs is None:
-   335	            msg.data = []                                    # 빈 배열 = 경계 정보 없음
-   336	        else:
-   337	            a0, inc, ranges = gs
-   338	            msg.data = [float(a0), float(inc)] + [float(r) for r in ranges]
-   339	        self.pub_geofence.publish(msg)
-   340	
-   341	        # 🚨 '잊으면 최악' 방어: 구독자가 0 이면 경계 방어가 통째로 없는 것이다.
-   342	        #    (도킹이 1년간 침묵했던 것과 똑같은 사고 — 침묵하는 기능은 에러를 내지 않는다)
-   343	        if (time.monotonic() - self.t0) > self.geofence_check_after_sec:
-   344	            if self.pub_geofence.get_subscription_count() == 0:
-   345	                self.get_logger().error(
-   346	                    "🚨 /geofence_state 구독자가 0 이다 — 경계 이탈 방어가 작동하지 않는다(실격 위험). "
-   347	                    "6a-2 에서 ship_direction 이 구독해야 한다.",
-   348	                    throttle_duration_sec=10.0)
-   349	
-   350	    # ───────────────────────── 메인 루프 ─────────────────────────
-   351	    def timer_cb(self):
-   352	        self._publish_geofence()             # 웨이포인트가 끝나도 경계 감시는 계속한다
-   353	
-   354	        if self.wp_idx >= len(self.waypoints):
-   355	            return
-   356	
-   357	        wp_lat, wp_lon, wp_mode, dwell = self.waypoints[self.wp_idx]
-   358	
-   359	        # 🚨 위치에서 나오는 값(거리·방위)은 fix 가 유효할 때만 낸다.
-   360	        #    fix 가 없으면 lat/lon 이 0 이거나 옛값이라 방위가 통째로 틀린다.
-   361	        #    소비자(ship_goal_angle)는 침묵을 이미 처리한다 — /yaw_error 를 멈춘다.
-   362	        #    ⚠️ /wp_mode 는 계속 낸다. 미션 단계는 '지금 위치' 에서 나오는 값이 아니고,
-   363	        #       멈추면 비전 검출기 3종이 전부 비활성이 된다(CLAUDE.md 3-4) — 부작용이 더 크다.
-   364	        #       대신 아래 도착 판정(wp_idx 전진)은 fix 없이는 하지 않는다.
-   365	        if self.have_fix:
-   366	            # 첫 구간은 이전점이 없다 → 현 위치를 경로 시작으로(=직접 접근). 이후엔 완료한 WP.
-   367	            if self.prev_lat is None:
-   368	                self.prev_lat, self.prev_lon = self.lat, self.lon
-   369	
-   370	            dist = los_logic.calc_dist(self.lat, self.lon, wp_lat, wp_lon)
-   371	            self.pub_dist.publish(Float32(data=dist))
-   372	
-   373	            # LOS: 경로선(prev→wp)에서 벗어난 만큼 전방주시거리 안에서 되돌아오는 방위.
-   374	            lookahead = los_logic.get_dynamic_lookahead(
-   375	                self.gps_filter.estimated_speed_mps, self.los_speed_gain,
-   376	                self.los_min_lookahead_m, self.los_max_lookahead_m)
-   377	            bearing, xte = los_logic.calc_los_bearing(
-   378	                self.prev_lat, self.prev_lon, wp_lat, wp_lon, self.lat, self.lon,
-   379	                lookahead, self.integral_xte, self.ilos_ki)
-   380	            # ILOS 적분 + anti-windup 클램프
-   381	            self.integral_xte += xte * self.period_sec
-   382	            self.integral_xte = max(-self.ilos_max, min(self.ilos_max, self.integral_xte))
-   383	            self.pub_bearing.publish(Float32(data=bearing))
-   384	        else:
-   385	            dist = None
-   386	            self.get_logger().warn(
-   387	                "🛰️ GPS fix 없음 → 목표 방위 미발행 (하늘이 안 보이거나 안테나 확인)",
-   388	                throttle_duration_sec=5.0)
+   294	    def yaw_cb(self, msg):
+   295	        self.yaw = float(msg.data)
+   296	        self.last_yaw_t = time.monotonic()
+   297	
+   298	    def boat_mode_cb(self, msg):
+   299	        # 0=WAIT 1=MANUAL 2=AUTO. AUTO 로 바뀌면 미션이 WP0 부터 시작한다(timer_cb 게이트).
+   300	        prev = self.boat_mode
+   301	        self.boat_mode = int(msg.data)
+   302	        if prev != self.boat_mode and self.boat_mode == MODE_AUTO:
+   303	            self.get_logger().info("🚀 AUTO 전환 감지 → 미션 시작 (WP0 부터)")
+   304	
+   305	    # ───────────────────────── Geofence ─────────────────────────
+   306	    def _local_xy(self, lat, lon):
+   307	        """보트 기준 로컬 미터 (east, north)."""
+   308	        kx = math.cos(math.radians(self.lat)) * M_PER_DEG_LON_EQ
+   309	        return ((lon - self.lon) * kx, (lat - self.lat) * M_PER_DEG_LAT)
+   310	
+   311	    def _geofence_ranges(self):
+   312	        """경계를 '가짜 LiDAR'로 쏜다 → (angle_min_deg, angle_inc_deg, [r0, r1, ...]) 또는 None.
+   313	
+   314	        각 상대방위마다 '이 방향으로 몇 m 가면 경계 밖인가'를 구한다. 멀면 inf.
+   315	        소비자(ship_direction)는 이걸 실제 스캔과 min() 으로 병합하기만 하면 된다 —
+   316	        특수 로직이 아예 없어진다. 기존 dilate 가 배 폭 여유를 더하고, 갭-팔로잉이 알아서 피한다.
+   317	
+   318	        None(=빈 배열) 을 내는 경우 — 전부 '모르면 입을 다문다':
+   319	          · 폴리곤 미설정 / GPS fix 없음
+   320	          · IMU stale     → yaw 가 얼면 광선 방향이 통째로 틀어져 '없는 벽'을 만든다
+   321	          · 이미 경기장 밖 → 경계를 벽으로 세우면 돌아갈 길을 막는다
+   322	        """
+   323	        poly = self.geofence_polygon
+   324	        if len(poly) < 6 or not self.have_fix:      # 최소 3점(=6수)
+   325	            return None
+   326	
+   327	        # 🚨 IMU 신선도 — 광선 방향이 yaw 에 통째로 의존한다. 얼면 벽 전체가 엉뚱해진다.
+   328	        if self.yaw is None or self.last_yaw_t is None:
+   329	            self.get_logger().warn(
+   330	                "/imu/yaw 없음 → geofence 침묵(빈 배열)", throttle_duration_sec=5.0)
+   331	            return None
+   332	        yaw_age = time.monotonic() - self.last_yaw_t
+   333	        if yaw_age > self.imu_stale_sec:
+   334	            self.get_logger().warn(
+   335	                f"/imu/yaw stale ({yaw_age:.2f}s > {self.imu_stale_sec}s) → geofence 침묵. "
+   336	                f"틀린 방향으로 '없는 벽'을 세우느니 안 내는 게 낫다.",
+   337	                throttle_duration_sec=2.0)
+   338	            return None
+   339	
+   340	        pts = [self._local_xy(poly[i], poly[i + 1]) for i in range(0, len(poly) - 1, 2)]
+   341	
+   342	        if not _point_in_polygon((0.0, 0.0), pts):
+   343	            # 🚨 이미 밖이다. 경계를 벽으로 세우면 복귀로를 막는다 → 아무것도 내지 않는다.
+   344	            self.get_logger().error(
+   345	                "🚨 경기장 경계 밖이다 (실격 위험). GPS 웨이포인트로 복귀 중.",
+   346	                throttle_duration_sec=2.0)
+   347	            return None
+   348	
+   349	        if self.ray_inc_deg <= 0.0 or self.ray_max_deg < self.ray_min_deg:
+   350	            return None
+   351	
+   352	        n = int(round((self.ray_max_deg - self.ray_min_deg) / self.ray_inc_deg)) + 1
+   353	        ranges = []
+   354	        for k in range(n):
+   355	            rel = self.ray_min_deg + k * self.ray_inc_deg
+   356	            th = math.radians((self.yaw + rel) % 360.0)      # 절대 방위(compass)
+   357	            d = (math.sin(th), math.cos(th))                 # (east, north) 단위벡터
+   358	            t = _ray_polygon_dist((0.0, 0.0), d, pts)
+   359	            ranges.append(float(t) if (t is not None and t <= self.geofence_max_range_m)
+   360	                          else float('inf'))
+   361	
+   362	        return self.ray_min_deg, self.ray_inc_deg, ranges
+   363	
+   364	    def _publish_geofence(self):
+   365	        msg = Float32MultiArray()
+   366	        gs = self._geofence_ranges()
+   367	        if gs is None:
+   368	            msg.data = []                                    # 빈 배열 = 경계 정보 없음
+   369	        else:
+   370	            a0, inc, ranges = gs
+   371	            msg.data = [float(a0), float(inc)] + [float(r) for r in ranges]
+   372	        self.pub_geofence.publish(msg)
+   373	
+   374	        # 🚨 '잊으면 최악' 방어: 구독자가 0 이면 경계 방어가 통째로 없는 것이다.
+   375	        #    (도킹이 1년간 침묵했던 것과 똑같은 사고 — 침묵하는 기능은 에러를 내지 않는다)
+   376	        if (time.monotonic() - self.t0) > self.geofence_check_after_sec:
+   377	            if self.pub_geofence.get_subscription_count() == 0:
+   378	                self.get_logger().error(
+   379	                    "🚨 /geofence_state 구독자가 0 이다 — 경계 이탈 방어가 작동하지 않는다(실격 위험). "
+   380	                    "6a-2 에서 ship_direction 이 구독해야 한다.",
+   381	                    throttle_duration_sec=10.0)
+   382	
+   383	    # ───────────────────────── 메인 루프 ─────────────────────────
+   384	    def timer_cb(self):
+   385	        self._publish_geofence()             # 웨이포인트가 끝나도 경계 감시는 계속한다
+   386	
+   387	        if self.wp_idx >= len(self.waypoints):
+   388	            return
    389	
-   390	        self.pub_mode.publish(Int32(data=wp_mode))
+   390	        wp_lat, wp_lon, wp_mode, dwell = self.waypoints[self.wp_idx]
    391	
-   392	        # [3] 폴백은 '담당 노드가 없는 모드'(5, 8)에만.
-   393	        #     작년엔 mode 7(도킹)에도 냈다 → ship_dock 을 7 로 고치면 발행자가 둘이 되어
-   394	        #     도킹 중 조향이 GPS 방위로 튄다. 원자적 한 쌍이라 같은 커밋에서 고친다.
-   395	        if wp_mode in FALLBACK_MODES:
-   396	            self.pub_candidate.publish(Float32(data=CANDIDATE_INVALID))
-   397	
-   398	        # 🚀 자율 시작 게이트 — AUTO 가 아니면 미션을 '전진'시키지 않는다(WP0 에서 대기).
-   399	        #    수동(RC)으로 시작점까지 몰고 가는 동안 GPS 도착/타임아웃으로 wp_idx 가 새는 걸 막는다.
-   400	        #    (위에서 방위·거리·wp_mode 는 계속 낸다 — 정보용. 모터는 아두이노 MANUAL 이 무시한다.)
-   401	        #    RC 모드를 AUTO 로 넘기는 순간부터 아래 도착/타임아웃 로직이 살아나 WP0 부터 진짜 시작한다.
-   402	        if not mission_should_run(self.boat_mode, self.require_auto):
-   403	            self.wp_enter_time = None         # 타임아웃 시계 리셋 → AUTO 시작 시점부터 카운트
-   404	            self.t_start = None               # dwell 리셋
-   405	            self.integral_xte = 0.0           # LOS 적분 리셋
-   406	            self.prev_lat = self.prev_lon = None   # 경로선 시작점 = AUTO 전환 시점 위치
-   407	            self.get_logger().info(
-   408	                "🕹 AUTO 대기 — RC 모드를 AUTO 로 넘기면 WP0 부터 자율 시작 "
-   409	                "(벤치는 require_boat_mode_auto:=false 또는 /boat_mode 2 발행)",
-   410	                throttle_duration_sec=5.0)
-   411	            return
-   412	
-   413	        now = time.monotonic()               # 벽시계 금지 (CLAUDE.md 1-5)
-   414	
-   415	        if self.wp_enter_time is None:
-   416	            self.wp_enter_time = now
-   417	
-   418	        timeout = None
-   419	        if self.wp_idx in (3, 4, 5):
-   420	            timeout = TURN_TIMEOUT
-   421	        elif self.wp_idx <= 6:
-   422	            timeout = DEFAULT_TIMEOUT
-   423	
-   424	        if timeout is not None:
-   425	            remain = max(timeout - (now - self.wp_enter_time), 0.0)
-   426	            self.pub_remain.publish(Float32(data=remain))
-   427	
-   428	            if remain <= 0:
-   429	                self.get_logger().warn(f"🕒 WP{self.wp_idx} 시간 초과 → 다음 WP 이동")
-   430	                self.prev_lat, self.prev_lon = wp_lat, wp_lon   # 새 경로선 시작점
-   431	                self.integral_xte = 0.0                          # ILOS 적분 리셋
-   432	                self.wp_idx += 1
-   433	                self.t_start = None
-   434	                self.wp_enter_time = None
-   435	                return
-   436	
-   437	        # fix 가 없으면 '도착했는지' 를 판단할 근거가 없다 → wp_idx 를 전진시키지 않는다.
-   438	        # (시간 초과 전진은 위에서 이미 처리한다 — 그건 위치와 무관한 안전장치라 유지)
-   439	        # 도착 반경은 속도·모드에 따라 동적(빠르면 넓게 오버슈트 방지, 도킹은 좁게).
-   440	        arrive_r = los_logic.get_dynamic_arrive_radius(
-   441	            wp_mode, self.gps_filter.estimated_speed_mps)
-   442	        if dist is None:
-   443	            self.t_start = None
-   444	        elif dist < arrive_r:
-   445	            if self.t_start is None:
-   446	                self.t_start = now
-   447	            elif (now - self.t_start) >= dwell:
-   448	                self.get_logger().info(
-   449	                    f"✔ WP{self.wp_idx} 완료 (반경 {arrive_r:.1f}m) → 다음 WP 이동")
-   450	                self.prev_lat, self.prev_lon = wp_lat, wp_lon   # 새 경로선 시작점
-   451	                self.integral_xte = 0.0                          # ILOS 적분 리셋
-   452	                self.wp_idx += 1
-   453	                self.t_start = None
-   454	                self.wp_enter_time = None
-   455	        else:
-   456	            self.t_start = None
+   392	        # 🚨 위치에서 나오는 값(거리·방위)은 fix 가 유효할 때만 낸다.
+   393	        #    fix 가 없으면 lat/lon 이 0 이거나 옛값이라 방위가 통째로 틀린다.
+   394	        #    소비자(ship_goal_angle)는 침묵을 이미 처리한다 — /yaw_error 를 멈춘다.
+   395	        #    ⚠️ /wp_mode 는 계속 낸다. 미션 단계는 '지금 위치' 에서 나오는 값이 아니고,
+   396	        #       멈추면 비전 검출기 3종이 전부 비활성이 된다(CLAUDE.md 3-4) — 부작용이 더 크다.
+   397	        #       대신 아래 도착 판정(wp_idx 전진)은 fix 없이는 하지 않는다.
+   398	        if self.have_fix:
+   399	            # 첫 구간은 이전점이 없다 → 현 위치를 경로 시작으로(=직접 접근). 이후엔 완료한 WP.
+   400	            if self.prev_lat is None:
+   401	                self.prev_lat, self.prev_lon = self.lat, self.lon
+   402	
+   403	            dist = los_logic.calc_dist(self.lat, self.lon, wp_lat, wp_lon)
+   404	            self.pub_dist.publish(Float32(data=dist))
+   405	
+   406	            # LOS: 경로선(prev→wp)에서 벗어난 만큼 전방주시거리 안에서 되돌아오는 방위.
+   407	            lookahead = los_logic.get_dynamic_lookahead(
+   408	                self.gps_filter.estimated_speed_mps, self.los_speed_gain,
+   409	                self.los_min_lookahead_m, self.los_max_lookahead_m)
+   410	            bearing, xte = los_logic.calc_los_bearing(
+   411	                self.prev_lat, self.prev_lon, wp_lat, wp_lon, self.lat, self.lon,
+   412	                lookahead, self.integral_xte, self.ilos_ki)
+   413	            # ILOS 적분 + anti-windup 클램프
+   414	            self.integral_xte += xte * self.period_sec
+   415	            self.integral_xte = max(-self.ilos_max, min(self.ilos_max, self.integral_xte))
+   416	            self.pub_bearing.publish(Float32(data=bearing))
+   417	        else:
+   418	            dist = None
+   419	            self.get_logger().warn(
+   420	                "🛰️ GPS fix 없음 → 목표 방위 미발행 (하늘이 안 보이거나 안테나 확인)",
+   421	                throttle_duration_sec=5.0)
+   422	
+   423	        self.pub_mode.publish(Int32(data=wp_mode))
+   424	
+   425	        # [3] 폴백은 '담당 노드가 없는 모드'(5, 8)에만.
+   426	        #     작년엔 mode 7(도킹)에도 냈다 → ship_dock 을 7 로 고치면 발행자가 둘이 되어
+   427	        #     도킹 중 조향이 GPS 방위로 튄다. 원자적 한 쌍이라 같은 커밋에서 고친다.
+   428	        if wp_mode in FALLBACK_MODES:
+   429	            self.pub_candidate.publish(Float32(data=CANDIDATE_INVALID))
+   430	
+   431	        # 🚀 자율 시작 게이트 — AUTO 가 아니면 미션을 '전진'시키지 않는다(WP0 에서 대기).
+   432	        #    수동(RC)으로 시작점까지 몰고 가는 동안 GPS 도착/타임아웃으로 wp_idx 가 새는 걸 막는다.
+   433	        #    (위에서 방위·거리·wp_mode 는 계속 낸다 — 정보용. 모터는 아두이노 MANUAL 이 무시한다.)
+   434	        #    RC 모드를 AUTO 로 넘기는 순간부터 아래 도착/타임아웃 로직이 살아나 WP0 부터 진짜 시작한다.
+   435	        if not mission_should_run(self.boat_mode, self.require_auto):
+   436	            self.wp_enter_time = None         # 타임아웃 시계 리셋 → AUTO 시작 시점부터 카운트
+   437	            self.t_start = None               # dwell 리셋
+   438	            self.integral_xte = 0.0           # LOS 적분 리셋
+   439	            self.prev_lat = self.prev_lon = None   # 경로선 시작점 = AUTO 전환 시점 위치
+   440	            self.get_logger().info(
+   441	                "🕹 AUTO 대기 — RC 모드를 AUTO 로 넘기면 WP0 부터 자율 시작 "
+   442	                "(벤치는 require_boat_mode_auto:=false 또는 /boat_mode 2 발행)",
+   443	                throttle_duration_sec=5.0)
+   444	            return
+   445	
+   446	        now = time.monotonic()               # 벽시계 금지 (CLAUDE.md 1-5)
+   447	
+   448	        if self.wp_enter_time is None:
+   449	            self.wp_enter_time = now
+   450	
+   451	        # WP 하나당 타임아웃 — wp_mode 기준. 표에 없는 모드(기본: 8)는 None = 타임아웃 없음.
+   452	        timeout = timeout_for_mode(self.wp_timeout_table, wp_mode)
+   453	
+   454	        if timeout is not None:
+   455	            remain = max(timeout - (now - self.wp_enter_time), 0.0)
+   456	            self.pub_remain.publish(Float32(data=remain))
    457	
-   458	
-   459	# ───────────────────────── 순수 기하 (테스트 가능) ─────────────────────────
-   460	def _ray_polygon_dist(o, d, pts):
-   461	    """원점 o 에서 방향 d 로 쏜 광선이 폴리곤 변에 처음 닿는 거리. 안 닿으면 None.
-   462	
-   463	    ★ 이게 '벽은 선이다'를 정직하게 푸는 방법이다. 최근접점 한 방향으로 원뿔을 막으면
-   464	      모서리에서 정면(탈출구)이 원뿔 사이 '틈'으로 열려 배가 대각선으로 빠져나간다.
-   465	    """
-   466	    ox, oy = o
-   467	    dx, dy = d
-   468	    best = None
-   469	    n = len(pts)
-   470	    for i in range(n):
-   471	        ax, ay = pts[i]
-   472	        bx, by = pts[(i + 1) % n]
-   473	        ex, ey = bx - ax, by - ay
-   474	
-   475	        denom = dx * ey - dy * ex
-   476	        if abs(denom) < 1e-12:
-   477	            continue                       # 광선과 변이 평행
-   478	
-   479	        rx, ry = ax - ox, ay - oy
-   480	        t = (rx * ey - ry * ex) / denom    # 광선 위 거리
-   481	        s = (rx * dy - ry * dx) / denom    # 변 위 위치 (0~1 이어야 선분 안)
-   482	
-   483	        if t >= 0.0 and 0.0 <= s <= 1.0:
-   484	            if best is None or t < best:
-   485	                best = t
-   486	    return best
-   487	
+   458	            if remain <= 0:
+   459	                self.get_logger().warn(
+   460	                    f"🕒 WP{self.wp_idx}(mode {wp_mode}) 시간 초과 {timeout:g}s → 다음 WP 이동")
+   461	                self.prev_lat, self.prev_lon = wp_lat, wp_lon   # 새 경로선 시작점
+   462	                self.integral_xte = 0.0                          # ILOS 적분 리셋
+   463	                self.wp_idx += 1
+   464	                self.t_start = None
+   465	                self.wp_enter_time = None
+   466	                return
+   467	
+   468	        # fix 가 없으면 '도착했는지' 를 판단할 근거가 없다 → wp_idx 를 전진시키지 않는다.
+   469	        # (시간 초과 전진은 위에서 이미 처리한다 — 그건 위치와 무관한 안전장치라 유지)
+   470	        # 도착 반경은 속도·모드에 따라 동적(빠르면 넓게 오버슈트 방지, 도킹은 좁게).
+   471	        arrive_r = los_logic.get_dynamic_arrive_radius(
+   472	            wp_mode, self.gps_filter.estimated_speed_mps)
+   473	        if dist is None:
+   474	            self.t_start = None
+   475	        elif dist < arrive_r:
+   476	            if self.t_start is None:
+   477	                self.t_start = now
+   478	            elif (now - self.t_start) >= dwell:
+   479	                self.get_logger().info(
+   480	                    f"✔ WP{self.wp_idx} 완료 (반경 {arrive_r:.1f}m) → 다음 WP 이동")
+   481	                self.prev_lat, self.prev_lon = wp_lat, wp_lon   # 새 경로선 시작점
+   482	                self.integral_xte = 0.0                          # ILOS 적분 리셋
+   483	                self.wp_idx += 1
+   484	                self.t_start = None
+   485	                self.wp_enter_time = None
+   486	        else:
+   487	            self.t_start = None
    488	
-   489	def _point_in_polygon(p, pts):
-   490	    """레이 캐스팅. 점 p 가 폴리곤 안인가."""
-   491	    px, py = p
-   492	    inside = False
-   493	    n = len(pts)
-   494	    for i in range(n):
-   495	        x1, y1 = pts[i]
-   496	        x2, y2 = pts[(i + 1) % n]
-   497	        if (y1 > py) != (y2 > py):
-   498	            xint = x1 + (py - y1) * (x2 - x1) / (y2 - y1)
-   499	            if px < xint:
-   500	                inside = not inside
-   501	    return inside
-   502	
-   503	
-   504	def calc_angle(lat1, lon1, lat2, lon2):
-   505	    from math import atan2, cos, radians, sin, degrees
-   506	    lat1, lon1, lat2, lon2 = map(radians, [lat1, lon1, lat2, lon2])
-   507	    dlon = lon2 - lon1
-   508	    x = sin(dlon) * cos(lat2)
-   509	    y = cos(lat1) * sin(lat2) - sin(lat1) * cos(lat2) * cos(dlon)
-   510	    return (degrees(atan2(x, y)) + 360) % 360
-   511	
-   512	
-   513	def calc_dist(lat1, lon1, lat2, lon2):
-   514	    return distance.distance((lat1, lon1), (lat2, lon2)).m
-   515	
-   516	
-   517	def main(args=None):
-   518	    rclpy.init(args=args)
-   519	    node = NorthGoalAngle()
-   520	    try:
-   521	        rclpy.spin(node)
-   522	    except KeyboardInterrupt:
-   523	        pass
-   524	    finally:
-   525	        node.destroy_node()
-   526	        if rclpy.ok():
-   527	            rclpy.shutdown()
-   528	
-   529	
-   530	if __name__ == '__main__':
-   531	    main()
+   489	
+   490	# ───────────────────────── 순수 기하 (테스트 가능) ─────────────────────────
+   491	def _ray_polygon_dist(o, d, pts):
+   492	    """원점 o 에서 방향 d 로 쏜 광선이 폴리곤 변에 처음 닿는 거리. 안 닿으면 None.
+   493	
+   494	    ★ 이게 '벽은 선이다'를 정직하게 푸는 방법이다. 최근접점 한 방향으로 원뿔을 막으면
+   495	      모서리에서 정면(탈출구)이 원뿔 사이 '틈'으로 열려 배가 대각선으로 빠져나간다.
+   496	    """
+   497	    ox, oy = o
+   498	    dx, dy = d
+   499	    best = None
+   500	    n = len(pts)
+   501	    for i in range(n):
+   502	        ax, ay = pts[i]
+   503	        bx, by = pts[(i + 1) % n]
+   504	        ex, ey = bx - ax, by - ay
+   505	
+   506	        denom = dx * ey - dy * ex
+   507	        if abs(denom) < 1e-12:
+   508	            continue                       # 광선과 변이 평행
+   509	
+   510	        rx, ry = ax - ox, ay - oy
+   511	        t = (rx * ey - ry * ex) / denom    # 광선 위 거리
+   512	        s = (rx * dy - ry * dx) / denom    # 변 위 위치 (0~1 이어야 선분 안)
+   513	
+   514	        if t >= 0.0 and 0.0 <= s <= 1.0:
+   515	            if best is None or t < best:
+   516	                best = t
+   517	    return best
+   518	
+   519	
+   520	def _point_in_polygon(p, pts):
+   521	    """레이 캐스팅. 점 p 가 폴리곤 안인가."""
+   522	    px, py = p
+   523	    inside = False
+   524	    n = len(pts)
+   525	    for i in range(n):
+   526	        x1, y1 = pts[i]
+   527	        x2, y2 = pts[(i + 1) % n]
+   528	        if (y1 > py) != (y2 > py):
+   529	            xint = x1 + (py - y1) * (x2 - x1) / (y2 - y1)
+   530	            if px < xint:
+   531	                inside = not inside
+   532	    return inside
+   533	
+   534	
+   535	def calc_angle(lat1, lon1, lat2, lon2):
+   536	    from math import atan2, cos, radians, sin, degrees
+   537	    lat1, lon1, lat2, lon2 = map(radians, [lat1, lon1, lat2, lon2])
+   538	    dlon = lon2 - lon1
+   539	    x = sin(dlon) * cos(lat2)
+   540	    y = cos(lat1) * sin(lat2) - sin(lat1) * cos(lat2) * cos(dlon)
+   541	    return (degrees(atan2(x, y)) + 360) % 360
+   542	
+   543	
+   544	def calc_dist(lat1, lon1, lat2, lon2):
+   545	    return distance.distance((lat1, lon1), (lat2, lon2)).m
+   546	
+   547	
+   548	def main(args=None):
+   549	    rclpy.init(args=args)
+   550	    node = NorthGoalAngle()
+   551	    try:
+   552	        rclpy.spin(node)
+   553	    except KeyboardInterrupt:
+   554	        pass
+   555	    finally:
+   556	        node.destroy_node()
+   557	        if rclpy.ok():
+   558	            rclpy.shutdown()
+   559	
+   560	
+   561	if __name__ == '__main__':
+   562	    main()
 ```
 
 ----- FILE: src/north_goal_angle/north_goal_angle/gps_guard.py -----
@@ -1592,28 +1623,40 @@ git diff 9bff661 HEAD -- src/north_goal_angle src/ublox
     17	    require_boat_mode_auto: true   # true=RC 모드 AUTO(/boat_mode==2)여야 미션 전진(수동 이동 중 스킵 방지).
     18	                                   #   벤치(아두이노 없음)는 false 로, 또는 ros2 topic pub /boat_mode 2
     19	
-    20	    # ---- Geofence (경계 이탈 = 실격) ----
-    21	    # 경기장 폴리곤: [lat1, lon1, lat2, lon2, ...] 평탄 배열. 최소 3점(=6개 수).
-    22	    # ⚠️ 실측 필요 — 대회장 경계 좌표를 아직 모른다. 비어 있으면 geofence 는 꺼진다(=빈 배열).
-    23	    geofence_polygon: []
-    24	    # 경계를 '가짜 LiDAR'로 쏘는 각도 격자 (상대방위, 0=정면)
-    25	    # ★ 원뿔(half_block) 방식은 폐기했다: 벽은 '점'이 아니라 '선'이다. 최근접점 한 방향으로
-    26	    #   ±각도를 막으면 40x40 모서리에서 탈출구(정면 0°)가 원뿔 사이 '틈'으로 열려 배가
-    27	    #   대각선으로 빠져나간다(실격). 광선으로 쏘면 정면 경계 거리가 그대로 벽이 된다.
-    28	    geofence_ray_min_deg: -80.0
-    29	    geofence_ray_max_deg: 80.0
-    30	    geofence_ray_inc_deg: 1.0      # 161방향 x 변 개수 @2Hz — 무시할 수준
-    31	    geofence_max_range_m: 30.0     # 이보다 멀면 그 방향은 inf
-    32	    geofence_check_after_sec: 5.0  # 부팅 후 이 시간이 지나면 구독자 0 검사를 시작한다
-    33	    imu_stale_sec: 0.5             # 🚨 /imu/yaw 가 이보다 묵으면 geofence 는 빈 배열을 낸다.
-    34	                                   # 광선 '방향'이 yaw 에 통째로 의존한다. yaw 가 얼면 벽 전체가
-    35	                                   # 엉뚱한 곳에 서고 → 배가 '없는 벽'에 갇힌다.
-    36	                                   # 모르면 입을 다문다(1단계와 같은 원칙).
-    37	
-    38	    # 🚨 /geofence_state 는 6a 에서 '발행만' 한다. 구독자(ship_direction)는 6a-2 에서 붙인다.
-    39	    #    발행자만 있는 토픽은 무해하지만, '넣었다'고 믿고 잊으면 도킹이 1년간 침묵한 것과
-    40	    #    똑같은 사고가 된다. → 구독자가 0 이면 노드가 ERROR 를 계속 찍는다.
-    41	    #    healthcheck 도 출발 전에 이걸 검사한다 (ssf_tools).
+    20	    # ---- WP 타임아웃 (wp_mode 기준, WP 하나당) ----
+    21	    # 두 배열은 같은 순서로 짝을 이룬다: wp_timeout_modes[i] 모드의 WP 하나당 제한시간 = wp_timeout_sec[i].
+    22	    # 만료되면 위치와 무관하게 다음 WP 로 넘어간다(GPS 가 죽어도 진행하는 유일한 수단).
+    23	    # 표에 없는 모드 = 타임아웃 없음 (지금은 mode 8 토너먼트 = 마지막 WP).
+    24	    # 🚨 wp_timeout_sec 는 **모든 원소에 .0** — [120, 90] 이면 노드가 죽고,
+    25	    #    [120.0, 90] 처럼 섞이면 이 파일 전체를 못 읽는다(Ubuntu 10-29 실측).
+    26	    # 🚨 '없음'을 0 으로 적지 마라(틱마다 WP 를 건너뛴다) — 그 모드를 표에서 빼라.
+    27	    #    0 이하·NaN·길이 불일치·없는 모드·중복이면 노드가 출발 전에 멈춘다.
+    28	    # 코드 기본값(wp_timeout.py)과 똑같이 둔다 — 다르면 test_wp_timeout.py 가 잡는다.
+    29	    wp_timeout_modes: [0, 1, 2, 3, 5, 7]
+    30	    wp_timeout_sec: [120.0, 120.0, 120.0, 90.0, 120.0, 150.0]   # 3=부표 90 s, 7=도킹 150 s(dwell 60 보다 커야)
+    31	
+    32	    # ---- Geofence (경계 이탈 = 실격) ----
+    33	    # 경기장 폴리곤: [lat1, lon1, lat2, lon2, ...] 평탄 배열. 최소 3점(=6개 수).
+    34	    # ⚠️ 실측 필요 — 대회장 경계 좌표를 아직 모른다. 비어 있으면 geofence 는 꺼진다(=빈 배열).
+    35	    geofence_polygon: []
+    36	    # 경계를 '가짜 LiDAR'로 쏘는 각도 격자 (상대방위, 0=정면)
+    37	    # ★ 원뿔(half_block) 방식은 폐기했다: 벽은 '점'이 아니라 '선'이다. 최근접점 한 방향으로
+    38	    #   ±각도를 막으면 40x40 모서리에서 탈출구(정면 0°)가 원뿔 사이 '틈'으로 열려 배가
+    39	    #   대각선으로 빠져나간다(실격). 광선으로 쏘면 정면 경계 거리가 그대로 벽이 된다.
+    40	    geofence_ray_min_deg: -80.0
+    41	    geofence_ray_max_deg: 80.0
+    42	    geofence_ray_inc_deg: 1.0      # 161방향 x 변 개수 @2Hz — 무시할 수준
+    43	    geofence_max_range_m: 30.0     # 이보다 멀면 그 방향은 inf
+    44	    geofence_check_after_sec: 5.0  # 부팅 후 이 시간이 지나면 구독자 0 검사를 시작한다
+    45	    imu_stale_sec: 0.5             # 🚨 /imu/yaw 가 이보다 묵으면 geofence 는 빈 배열을 낸다.
+    46	                                   # 광선 '방향'이 yaw 에 통째로 의존한다. yaw 가 얼면 벽 전체가
+    47	                                   # 엉뚱한 곳에 서고 → 배가 '없는 벽'에 갇힌다.
+    48	                                   # 모르면 입을 다문다(1단계와 같은 원칙).
+    49	
+    50	    # 🚨 /geofence_state 는 6a 에서 '발행만' 한다. 구독자(ship_direction)는 6a-2 에서 붙인다.
+    51	    #    발행자만 있는 토픽은 무해하지만, '넣었다'고 믿고 잊으면 도킹이 1년간 침묵한 것과
+    52	    #    똑같은 사고가 된다. → 구독자가 0 이면 노드가 ERROR 를 계속 찍는다.
+    53	    #    healthcheck 도 출발 전에 이걸 검사한다 (ssf_tools).
 ```
 
 ----- FILE: src/north_goal_angle/config/waypoints.yaml -----
@@ -2477,6 +2520,29 @@ git diff 9bff661 HEAD -- src/north_goal_angle src/ublox
     54:def test_format_label_and_fields():
     62:def test_format_auto_label():
     68:def test_format_roundtrip_parseable():
+- src/north_goal_angle/test/test_wp_timeout.py : 22 개
+    74:def test_default_table():
+    79:def test_accepts_tuple_and_int_secs():
+    84:def test_reject_empty_table():
+    90:def test_reject_none():
+    98:def test_reject_length_mismatch():
+    103:def test_reject_duplicate_mode():
+    107:def test_reject_mode_outside_valid():
+    113:def test_reject_non_int_mode():
+    119:def test_reject_zero_and_negative():
+    124:def test_reject_nan_and_inf():
+    129:def test_reject_non_number_sec():
+    136:def test_timeout_for_mode_present():
+    142:def test_timeout_for_mode_absent_is_none():
+    150:def test_regression_real_waypoints():
+    161:def test_follows_mode_not_index():
+    169:def test_dwell_conflicts_none_for_real():
+    173:def test_dwell_conflicts_detected():
+    183:def test_yaml_sec_all_float():
+    189:def test_yaml_modes_all_int():
+    195:def test_yaml_valid_and_matches_code_default():
+    202:def test_code_default_types():
+    207:def test_node_declares_with_code_defaults():
 
 ==================================================================
 ## 관련 문서
@@ -2546,7 +2612,7 @@ rclpy 는 소스 위치별로 심각도를 캐싱해 `ValueError: Logger severit
 | MCU | **Arduino Mega 2560 R3**. 통신 = `ssf_bridge` USB 시리얼 (**Due·micro-ROS 아님**, launch 가 micro-ROS 안 띄움). `Motor_run = pwm_r*10000 + pwm_l`, 1500=중립. 펌웨어는 passthrough(모터별 `invert`·`gain_num` 노브 있음 — 현재 좌·우 둘 다 `false`·`10` → 숨은 반전 없음. 방향 디버깅 땐 `ssf_boat.ino:327-328` 도 확인) |
 | ESC | 🔒 **좌/우 2채널뿐** — 핀 12(좌)·11(우). 선수·선미 구분 없음, 측별 팬아웃(2번배 측당 2개·1번배 측당 1개). 펌웨어 동일 → 배 ID 분기 불필요. **게걸음 불가** |
 | 카메라 | **RealSense D455 현역**(비전 3종이 지금 이걸로 돈다) / **OAK-1 PoE 보유**(표준 화각·고정초점 — **W 광각 아님**, 09-15 구매모델 확정. RGB 전용·뎁스 없음·PoE=이더넷). OAK 는 인젝터(알리 10-27 주문) 도착 뒤 D455 와 비교 선정, 바꾸는 날 `image_topic`·`hfov_deg` 실측 — 런북 `docs/절차/oak_arrival_runbook.md`. 코드는 **중립화**(상세 §3-3) |
-| 선체 | 1번배 실측 1.66 × 0.57 × 0.38m → `half_width 0.29`. 2번배는 설계값(0.43m) (§8) |
+| 선체 | 1번배 실측 1.66 × 0.57 × 0.38m → `half_width 0.29`. 2번배 실측 1.77 × **0.535**m(10-24 줄자, ⚠️ 스러스터 포함 여부 미확인) — 공용 `half_width 0.29` 가 0.535/2=0.27 보다 넓어 안전 쪽 (§8) |
 
 - 🚨 `docs/전달용/펌웨어_설계문서.md` 의 "선수 좌/우 + 선미 좌/우", `docs/전달용/회로_요구사항서.md` §7 ESC 4행은 **옛 설계** — 그대로 배선하면 없는 채널을 배선한다.
 - 🚨 `/dev/ttyLiDAR` 이 있다고 라이다가 살아있는 게 아니다(udev 는 USB 어댑터 시리얼에 붙고, 어댑터는 개체 사이를 옮겨 다닌다). 개체 확인 `python3 tools/lidar_id.py`. 개체 시리얼 목록 상세 §2-1
@@ -2576,7 +2642,7 @@ rclpy 는 소스 위치별로 심각도를 캐싱해 `ValueError: Logger severit
 
 - 🚨 `/image_color`(`"red"`/`"green"`/`"white"`; 빨강·초록=시계, 흰색=반시계) 를 `/buoy_color` 로 개명하지 마라 — 2026-09-23 철회. 문서만 개명했다가 `ship_turn` 이 SEARCH 에서 영구 정지(`aa46028`).
 - 🚨 `iahrs_driver` `yaw_topic` 을 `/imu/yaw` 로 되돌리지 마라 → 발행자 2개(에러 없음). 기본값 `/imu/yaw_raw`.
-- 죽은 토픽(구독자 0): `/goal_distance`, `/wp_remaining_time`, `video_frames`, `/red_distance`·`/green_distance`·`/image_distance`(발행 중단).
+- 죽은 토픽(구독자 0): `video_frames`, `/red_distance`·`/green_distance`·`/image_distance`(발행 중단). `/goal_distance`·`/wp_remaining_time` 은 **`mission_monitor` 가 관측용으로 구독**한다(`mission_monitor.py:105-106`) — 제어 구독자는 없다.
 
 **`/boat_*` 값** — `ssf_boat.ino` 의 `enum Mode`·`enum BoatId` 와 **값까지** 같다. 🚨 여기서 번호를 새로 매기거나 변환표를 끼우지 마라.
 - `/boat_mode`: 0=WAIT(대기·중립) 1=MANUAL(RC) 2=AUTO(브릿지 명령)
@@ -2631,7 +2697,7 @@ SPIN 중심 `spin_forward_pwm`(기본 1500 → 1400/1600 = 제자리 선회). �
 **헤딩·비전 규칙**
 - 각도 평균은 산술평균 금지(359°와 1°→180°) — 단위벡터 합 + `atan2`. COG 수렴 파라미터(`cog_min_samples`·`gps_rate_hz`·`cog_half_life_sec`)는 포화 함정이 있어 바꾸기 전 상세 §3-5.
 - `/health_ok` 는 진단 전용이라 거짓 정지 위험이 없다는 전제로 설계됐다. 제어에 물리려면 먼저 상세 §3-3·§5 를 보고 Davidson 과 검토.
-- 도크 인식(목표 색·형상 유효값 밖이면 ERROR + 발행 정지, 임계는 혼동행렬 수치로 — 감으로 튜닝 금지)을 건드리면 상세 §3-3b.
+- 도크 인식: 목표 색·형상 유효값 밖이면 **부팅 ERROR + 검출 안 함, 담당 모드(7)에서만 `/image_angle`=10000 + 5 s 주기 ERROR, 그 외 모드는 발행 없음**(ff289f7. 이전엔 게이트 전 발행으로 모드 2·3 에 10000 누수 — 10-29 Ubuntu 확인). 임계는 혼동행렬 수치로 — 감으로 튜닝 금지. 건드리면 상세 §3-3b.
 - 헤딩 없으면 발행하지 않는다. 미구현 `heading_source` 는 0 대신 발행 정지. `zero_yaw_on_boot`·`use_gps_heading_override` 기본 false.
 - 자기편각은 **자기북 기준 소스에만**(`SOURCE_IS_MAGNETIC`). 듀얼 GPS·COG 에 더하면 이중 보정(약 8°).
 - 카메라는 **방위각만**, 거리는 LiDAR `/scan`. 도크는 매칭하지 말고 LiDAR 전방 섹터 최소거리. 상세 §3-3
@@ -2698,10 +2764,11 @@ colcon test                     # 🚨 lint 포함 — 권위 있는 실행기
 | `active_wp_modes` (검출기 3종) | §3 wp_mode 표대로 | `test_mode_gate.py` |
 
 사람이 할 확인(조향 부호·IMU 절대방위·`gps_vel_frame`·`hfov_deg`·`/health_ok` true) 절차는 상세 §7-2. `/health_ok` 빨간불을 켜둔 채 두지 않는다.
+🚨 IMU 절대방위: **나침반은 자북**을 가리킨다. `imu_relative` 는 편각을 안 쓰므로(`SOURCE_IS_MAGNETIC`) 나침반 정북에 맞췄을 때 `/imu/yaw` 목표값은 0 이 아니라 **360 + 편각(한국 약 −8° → 약 352)** 이다. 지도·GPS 로 진북을 직접 잡았으면 0.
 
 ## 8. ⚠️ 아직 모르는 것 (추측하지 말 것 — 필요한 곳엔 `# ⚠️ 실측 필요`)
 
-- 2번배 실측 폭 (현재 설계값 0.43m; 공용 `half_width` 는 1번배 기준)
+- 2번배 폭 0.535m 가 스러스터 포함인지 (10-24 줄자; 공용 `half_width 0.29` 는 1번배 기준이라 어느 쪽이든 안전 쪽)
 - 새 배 추력 → `base_pwm`, `reverse_pwm`
 - IMU 장착 오프셋(`mount_offset_deg`, `invert_yaw` — 0.0/false 는 "아직 안 쟀다"), 대회장 자기편각
 - 도크 규격 → `contact_dist_m`
@@ -3282,9 +3349,11 @@ ros2 run north_goal_angle waypoint_recorder
 **도착 반경 안에 들어온 뒤 몇 초 머물다 다음으로 넘어갈지.**
 도착 반경은 고정 3m 가 아니다 — 도킹(mode 7) 2.0m, 그 밖은 속도 2 m/s 미만 2.5m · 5 m/s 미만 3.5m · 그 이상 4.5m (`los_logic.get_dynamic_arrive_radius`).
 3초짜리는 도착 판정 여유, 50/60초짜리는 **경기 규정의 미션 수행 시간**이다.
-※ 도달 못 해도 타임아웃으로 넘어간다. 🚨 타임아웃은 mode 가 아니라 **목록 순번**으로 정해진다(`north_goal_angle.py` 의 wp_idx):
-   0부터 세어 3·4·5 번째 = 90s(TURN_TIMEOUT), 0·1·2·6 번째 = 120s(DEFAULT_TIMEOUT), 7 번째부터 = 타임아웃 없음.
-   **웨이포인트를 끼워 넣거나 순서를 바꾸면 타임아웃이 다른 구간에 걸린다** — 바꿀 땐 이 순번을 다시 맞춰 볼 것.
+※ 도달 못 해도 타임아웃으로 넘어간다. 타임아웃은 **WP 의 mode** 로 정해진다(10-29 b337ad8, 그 전엔 목록 순번이었다):
+   게이트·위치유지·회피(mode 0·1·2·5) = WP 하나당 120 s, 부표(3) = 90 s, 도킹(7) = 150 s, 토너먼트(8) = 없음.
+   → 웨이포인트를 끼워 넣거나 순서를 바꿔도 타임아웃은 mode 를 따라간다. 값은 `config/north_goal_angle.yaml` 의
+   `wp_timeout_modes` / `wp_timeout_sec`(🚨 sec 는 전부 `.0` — 정수가 섞이면 노드가 죽는다).
+   타임아웃 시계에는 dwell 이 포함된다 — timeout ≤ dwell 이면 부팅 때 WARN 이 뜬다(도착으로는 못 넘어간다).
 
 ### 구역 이름
 동작에는 영향이 없다. **에러 메시지에 찍힌다** — 오타가 났을 때 "몇 번째" 가 아니라
@@ -3351,6 +3420,7 @@ cd ~/ros2_ws && colcon build --symlink-install --packages-select north_goal_angl
 ==================================================================
 ## 작년 최종본(9bff661) 이후 커밋 목록
 ==================================================================
+- b337ad8 2026-10-29 fix(north_goal_angle): 웨이포인트 타임아웃을 목록 순번 → wp_mode 기준 파라미터로 — WP7 무제한 해소, 도킹 150 s
 - a2dd4a9 2026-10-28 docs: 초안 검토 결과 반영 — 본 보고서 Ⅲ장 18곳 정정, 정북 정렬 편각 절차, 낡은 주석·문서 정리
 - 5390785 2026-09-23 test: pep257 을 끈다 — 결함 0건, 전부 서식이고 절반은 한국어에 적용 불가
 - 4386901 2026-09-23 style: flake8 최대 줄 길이 99 → 120, 잔여 5건 수정 — 10개 패키지 전부 0건
@@ -3385,12 +3455,14 @@ cd ~/ros2_ws && colcon build --symlink-install --packages-select north_goal_angl
 - src/north_goal_angle/north_goal_angle/los_logic.py
 - src/north_goal_angle/north_goal_angle/waypoint_loader.py
 - src/north_goal_angle/north_goal_angle/waypoint_recorder.py
+- src/north_goal_angle/north_goal_angle/wp_timeout.py
 - src/north_goal_angle/test/test_gps_filter.py
 - src/north_goal_angle/test/test_gps_guard.py
 - src/north_goal_angle/test/test_los_logic.py
 - src/north_goal_angle/test/test_mission_gate.py
 - src/north_goal_angle/test/test_waypoint_loader.py
 - src/north_goal_angle/test/test_waypoint_recorder.py
+- src/north_goal_angle/test/test_wp_timeout.py
 - src/ublox/ublox_gps/config/zed_f9p_rover.yaml
 
 작년 파일 중 바뀌거나 지워진 것의 diff (문맥 1줄):
@@ -3454,10 +3526,10 @@ index f04423a..9d393dc 100755
 +            ],
          ),
 diff --git a/src/north_goal_angle/north_goal_angle/north_goal_angle.py b/src/north_goal_angle/north_goal_angle/north_goal_angle.py
-index e7a1e6a..3cc153b 100755
+index e7a1e6a..6cc3079 100755
 --- a/src/north_goal_angle/north_goal_angle/north_goal_angle.py
 +++ b/src/north_goal_angle/north_goal_angle/north_goal_angle.py
-@@ -1,24 +1,66 @@
+@@ -1,24 +1,70 @@
 -# north_goal_angle.py (FSM 전담)
 -import rclpy
 +"""north_goal_angle — 웨이포인트 FSM + 경계 이탈 방지(geofence). 6a.
@@ -3518,11 +3590,6 @@ index e7a1e6a..3cc153b 100755
  from sensor_msgs.msg import NavSatFix
 +from geopy import distance
 +from ament_index_python.packages import get_package_share_directory
-+
-+from north_goal_angle.waypoint_loader import parse_waypoints, WaypointError
-+from north_goal_angle.gps_guard import fix_is_usable
-+from north_goal_angle import los_logic          # LOS 유도 (순수, 테스트됨)
-+from north_goal_angle.gps_filter import GPSFilter  # 공분산·점프·스무딩 (순수, 테스트됨)
  
 -waypoints = [
 -    [35.1862375, 128.5655118, 0, 3.0], #WP0 게이트 시작
@@ -3537,13 +3604,26 @@ index e7a1e6a..3cc153b 100755
 -    [35.1859269, 128.5655428, 7, 60.0], #WP9 도킹
 -    [35.1861956, 128.5660033, 8, 60.0] #WP 토너먼트 회피
 -]
++from north_goal_angle.waypoint_loader import parse_waypoints, WaypointError
++from north_goal_angle.gps_guard import fix_is_usable
++from north_goal_angle import los_logic          # LOS 유도 (순수, 테스트됨)
++from north_goal_angle.gps_filter import GPSFilter  # 공분산·점프·스무딩 (순수, 테스트됨)
++from north_goal_angle.wp_timeout import (            # WP 타임아웃 표 (순수, 테스트됨)
++    DEFAULT_WP_TIMEOUT_MODES, DEFAULT_WP_TIMEOUT_SEC, WpTimeoutError,
++    build_timeout_table, dwell_conflicts, per_wp_timeouts, timeout_for_mode,
++)
++
 +# 🚨 대회 좌표는 코드가 아니라 config/waypoints.yaml 에서 읽는다 (비전공자도 편집 가능).
 +#    대회장에서 GPS 좌표를 바꿀 사람은 그 파일의 lat/lon 만 고치면 된다 — 이 파일은 안 건드린다.
 +#    로드/검증은 waypoint_loader.parse_waypoints (순수 로직, 테스트됨).
 +#    파일이 없거나 형식이 틀리면 노드를 띄우지 않는다 — 틀린 좌표로 달리느니 멈춘다.
  
-@@ -29,2 +71,26 @@ TURN_TIMEOUT = 90.0
- 
+@@ -26,4 +72,27 @@ CANDIDATE_INVALID = 20000.0
+ ARRIVE_RADIUS_M = 3.0
+-DEFAULT_TIMEOUT = 120.0
+-TURN_TIMEOUT = 90.0
++# WP 타임아웃은 순번이 아니라 wp_mode 기준 — 파라미터 wp_timeout_modes / wp_timeout_sec (wp_timeout.py)
++
 +# 담당 노드가 없는 모드 = 순수 회피 구간. 여기서만 폴백을 낸다. (CLAUDE.md 3-6)
 +FALLBACK_MODES = (5, 8)
 +
@@ -3567,9 +3647,8 @@ index e7a1e6a..3cc153b 100755
 +# 위경도 → 로컬 미터 근사
 +M_PER_DEG_LAT = 110540.0
 +M_PER_DEG_LON_EQ = 111320.0
-+
  
-@@ -35,13 +101,71 @@ class NorthGoalAngle(Node):
+@@ -35,13 +104,79 @@ class NorthGoalAngle(Node):
  
 -        self.pub_dist      = self.create_publisher(Float32, '/goal_distance', qos)
 -        self.pub_mode      = self.create_publisher(Int32,   '/wp_mode', qos)
@@ -3623,6 +3702,14 @@ index e7a1e6a..3cc153b 100755
 +        #      **모르면 입을 다문다.** 틀린 값을 내느니 안 내는 게 낫다.)
 +        self.imu_stale_sec = float(self.declare_parameter('imu_stale_sec', 0.5).value)
 +
++        # ---- WP 타임아웃 (wp_mode 기준, WP 하나당) — 계약서_WP타임아웃모드기준_20261029 ----
++        # ROS2 파라미터는 dict 불가 → 병렬 배열. 표에 없는 모드 = 타임아웃 없음.
++        # 🚨 yaml 의 wp_timeout_sec 는 전부 .0 (정수 섞이면 Humble 이 노드를 죽이거나 params 파싱 실패).
++        # 타이머 생성보다 먼저 선언·검증한다.
++        self.wp_timeout_table = self._load_wp_timeouts(
++            self.declare_parameter('wp_timeout_modes', list(DEFAULT_WP_TIMEOUT_MODES)).value,
++            self.declare_parameter('wp_timeout_sec', list(DEFAULT_WP_TIMEOUT_SEC)).value)
++
 +        # ---- 발행 (토픽 이름 불변 + /geofence_state 신규, CLAUDE.md 3-9) ----
 +        self.pub_dist = self.create_publisher(Float32, '/goal_distance', qos)
 +        self.pub_mode = self.create_publisher(Int32, '/wp_mode', qos)
@@ -3647,7 +3734,7 @@ index e7a1e6a..3cc153b 100755
 +        self.yaw = None
 +        self.last_yaw_t = None          # /imu/yaw 마지막 수신 (monotonic)
          self.wp_idx = 0
-@@ -49,21 +173,217 @@ class NorthGoalAngle(Node):
+@@ -49,21 +184,239 @@ class NorthGoalAngle(Node):
          self.wp_enter_time = None
 +        self.t0 = time.monotonic()
 +
@@ -3667,12 +3754,11 @@ index e7a1e6a..3cc153b 100755
 +            f"north_goal_angle 시작: 폴백은 mode {FALLBACK_MODES} 에만 발행"
 +            f"(mode 7 폴백 제거 — ship_dock 과 충돌했다). geofence {gf}."
 +        )
- 
--        self.create_timer(0.5, self.timer_cb)
++
 +    # ───────────────────────── 웨이포인트 로드 ─────────────────────────
 +    def _load_waypoints(self, path):
 +        """config/waypoints.yaml 을 읽어 검증한다. 실패하면 노드를 세운다(예외).
- 
++
 +        🚨 '모르면 침묵 말고 알린다' — 파일이 없거나 좌표가 이상하면 조용히 기본값으로
 +        넘어가지 않고, 어디가 왜 틀렸는지 ERROR 로그를 내고 예외를 던져 노드를 멈춘다.
 +        틀린 좌표로 배가 달리는 것보다 출발 전에 멈추는 게 안전하다.
@@ -3689,7 +3775,7 @@ index e7a1e6a..3cc153b 100755
 +            self.get_logger().error(
 +                f"🚨 waypoints.yaml 문법 오류(콤마·중괄호·들여쓰기 확인): {e}")
 +            raise
- 
++
 +        try:
 +            wps = parse_waypoints(raw)
 +        except WaypointError as e:
@@ -3700,6 +3786,29 @@ index e7a1e6a..3cc153b 100755
 +        self.get_logger().info(
 +            f"웨이포인트 {len(wps)}개 로드: {path}\n   미션 순서(mode): {modes}")
 +        return wps
++
++    def _load_wp_timeouts(self, modes, secs):
++        """wp_timeout_modes/sec 를 검증해 {mode: sec} 표로. 틀리면 ERROR + 예외로 노드를 세운다.
+ 
+-        self.create_timer(0.5, self.timer_cb)
++        빈 표·≤0·NaN·길이 불일치·허용 밖 모드·중복은 출발 전에 거부한다(waypoints.yaml 과 같은 방식).
++        timeout ≤ dwell 인 WP 는 반경 도착이 불가능하므로 WARN 만 낸다(세우지는 않는다).
++        """
++        try:
++            table = build_timeout_table(modes, secs)
++        except WpTimeoutError as e:
++            self.get_logger().error(f"🚨 WP 타임아웃 파라미터 오류 → {e}")
++            raise
+ 
++        for idx, mode, t, dwell in dwell_conflicts(self.waypoints, table):
++            self.get_logger().warn(
++                f"⚠️ WP{idx}(mode {mode}): 타임아웃 {t:.1f}s ≤ dwell {dwell:.1f}s — "
++                f"반경 도착은 불가능하고 늘 시간 초과로만 넘어간다. wp_timeout_sec 확인.")
+ 
++        per_wp = ['없음' if t is None else f"{t:g}" for t in per_wp_timeouts(self.waypoints, table)]
++        self.get_logger().info(
++            f"WP 타임아웃(mode 기준, WP 하나당) 표={table} → WP별(s): {per_wp}")
++        return table
 +
 +    # ───────────────────────── 콜백 ─────────────────────────
      def gps_cb(self, msg):
@@ -3712,7 +3821,7 @@ index e7a1e6a..3cc153b 100755
 +                self._log_fix_lost(msg.status.status)
 +            self.have_fix = False
 +            return
- 
++
 +        # fix 는 유효하다 → 품질·이상치·지터를 GPSFilter 로 거른다. 여기서 버리는 건 '한 프레임'만
 +        # (공분산 큼 / 순간이동)이지 fix 상실이 아니다 → have_fix·이전 위치는 유지한다.
 +        cov = msg.position_covariance[0] if len(msg.position_covariance) > 0 else None
@@ -3727,7 +3836,7 @@ index e7a1e6a..3cc153b 100755
 +        self.lat = self.gps_filter.filtered_lat
 +        self.lon = self.gps_filter.filtered_lon
 +        self.have_fix = True
- 
++
 +    # ⚠️ 로거 호출 지점을 함수로 분리한 이유: rclpy 는 로그 호출을 **소스 위치**로 캐싱해서,
 +    #    같은 줄이 warn/info 로 번갈아 불리면 ValueError 로 노드가 죽는다 (CLAUDE.md §5 사례 ②).
 +    def _log_fix_lost(self, status):
@@ -3754,10 +3863,10 @@ index e7a1e6a..3cc153b 100755
 +        """보트 기준 로컬 미터 (east, north)."""
 +        kx = math.cos(math.radians(self.lat)) * M_PER_DEG_LON_EQ
 +        return ((lon - self.lon) * kx, (lat - self.lat) * M_PER_DEG_LAT)
-+
+ 
 +    def _geofence_ranges(self):
 +        """경계를 '가짜 LiDAR'로 쏜다 → (angle_min_deg, angle_inc_deg, [r0, r1, ...]) 또는 None.
-+
+ 
 +        각 상대방위마다 '이 방향으로 몇 m 가면 경계 밖인가'를 구한다. 멀면 inf.
 +        소비자(ship_direction)는 이걸 실제 스캔과 min() 으로 병합하기만 하면 된다 —
 +        특수 로직이 아예 없어진다. 기존 dilate 가 배 폭 여유를 더하고, 갭-팔로잉이 알아서 피한다.
@@ -3873,7 +3982,7 @@ index e7a1e6a..3cc153b 100755
 +                "🛰️ GPS fix 없음 → 목표 방위 미발행 (하늘이 안 보이거나 안테나 확인)",
 +                throttle_duration_sec=5.0)
  
-@@ -71,6 +391,24 @@ class NorthGoalAngle(Node):
+@@ -71,6 +424,24 @@ class NorthGoalAngle(Node):
  
 -        if wp_mode == 7:
 +        # [3] 폴백은 '담당 노드가 없는 모드'(5, 8)에만.
@@ -3900,11 +4009,16 @@ index e7a1e6a..3cc153b 100755
 +
 +        now = time.monotonic()               # 벽시계 금지 (CLAUDE.md 1-5)
  
-@@ -79,3 +417,2 @@ class NorthGoalAngle(Node):
+@@ -79,16 +450,14 @@ class NorthGoalAngle(Node):
  
 -        # WP별 타임아웃 정책
-         timeout = None
-@@ -86,6 +423,5 @@ class NorthGoalAngle(Node):
+-        timeout = None
+-        if self.wp_idx in (3, 4, 5):
+-            timeout = TURN_TIMEOUT
+-        elif self.wp_idx <= 6:
+-            timeout = DEFAULT_TIMEOUT
++        # WP 하나당 타임아웃 — wp_mode 기준. 표에 없는 모드(기본: 8)는 None = 타임아웃 없음.
++        timeout = timeout_for_mode(self.wp_timeout_table, wp_mode)
  
 -        # ⭐ 타임아웃 남은 시간 퍼블리시
          if timeout is not None:
@@ -3912,12 +4026,14 @@ index e7a1e6a..3cc153b 100755
 -            self.pub_remain.publish(Float32(data=remain))  # ★ 퍼블리시
 +            self.pub_remain.publish(Float32(data=remain))
  
-@@ -93,2 +429,4 @@ class NorthGoalAngle(Node):
-                 self.get_logger().warn(f"🕒 WP{self.wp_idx} 시간 초과 → 다음 WP 이동")
+             if remain <= 0:
+-                self.get_logger().warn(f"🕒 WP{self.wp_idx} 시간 초과 → 다음 WP 이동")
++                self.get_logger().warn(
++                    f"🕒 WP{self.wp_idx}(mode {wp_mode}) 시간 초과 {timeout:g}s → 다음 WP 이동")
 +                self.prev_lat, self.prev_lon = wp_lat, wp_lon   # 새 경로선 시작점
 +                self.integral_xte = 0.0                          # ILOS 적분 리셋
                  self.wp_idx += 1
-@@ -98,4 +436,10 @@ class NorthGoalAngle(Node):
+@@ -98,4 +467,10 @@ class NorthGoalAngle(Node):
  
 -        # 정상 도착 확인
 -        if dist < ARRIVE_RADIUS_M:
@@ -3930,7 +4046,7 @@ index e7a1e6a..3cc153b 100755
 +            self.t_start = None
 +        elif dist < arrive_r:
              if self.t_start is None:
-@@ -103,3 +447,6 @@ class NorthGoalAngle(Node):
+@@ -103,3 +478,6 @@ class NorthGoalAngle(Node):
              elif (now - self.t_start) >= dwell:
 -                self.get_logger().info(f"✔ WP{self.wp_idx} 완료 → 다음 WP 이동")
 +                self.get_logger().info(
@@ -3938,7 +4054,7 @@ index e7a1e6a..3cc153b 100755
 +                self.prev_lat, self.prev_lon = wp_lat, wp_lon   # 새 경로선 시작점
 +                self.integral_xte = 0.0                          # ILOS 적분 리셋
                  self.wp_idx += 1
-@@ -111,3 +458,49 @@ class NorthGoalAngle(Node):
+@@ -111,3 +489,49 @@ class NorthGoalAngle(Node):
  
 +# ───────────────────────── 순수 기하 (테스트 가능) ─────────────────────────
 +def _ray_polygon_dist(o, d, pts):
@@ -3988,7 +4104,7 @@ index e7a1e6a..3cc153b 100755
  def calc_angle(lat1, lon1, lat2, lon2):
 +    from math import atan2, cos, radians, sin, degrees
      lat1, lon1, lat2, lon2 = map(radians, [lat1, lon1, lat2, lon2])
-@@ -115,5 +508,6 @@ def calc_angle(lat1, lon1, lat2, lon2):
+@@ -115,5 +539,6 @@ def calc_angle(lat1, lon1, lat2, lon2):
      x = sin(dlon) * cos(lat2)
 -    y = cos(lat1)*sin(lat2) - sin(lat1)*cos(lat2)*cos(dlon)
 +    y = cos(lat1) * sin(lat2) - sin(lat1) * cos(lat2) * cos(dlon)
@@ -3996,7 +4112,7 @@ index e7a1e6a..3cc153b 100755
  
 +
  def calc_dist(lat1, lon1, lat2, lon2):
-@@ -125,5 +519,10 @@ def main(args=None):
+@@ -125,5 +550,10 @@ def main(args=None):
      node = NorthGoalAngle()
 -    rclpy.spin(node)
 -    node.destroy_node()

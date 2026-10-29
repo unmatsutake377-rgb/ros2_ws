@@ -110,7 +110,11 @@ pre{background:#f7f6f1;border:1px solid var(--bd);border-radius:8px;padding:12px
 · 도킹 게이트 회귀 (10-28 추가, ff289f7): 카메라·배 없이 1분 — bash tools/repro/dock_gate.sh
     기대(수정 후): 2번(turn + dock 오타)에서도 10000 이 0건, 부표 방위만. 1·3번과 같은 개수.
     모드 7 확인은 따로: 오타 yaml 로 dock 을 띄우고 /wp_mode 7 → /image_angle 이 10000 만, 로그에 ERROR 가 약 5 s 마다.
-    /wp_mode 를 끊으면 dock 출력이 멈추고 5 s 마다 WARN(무효 목표여도 이제 이 WARN 이 보인다 — 정상)</pre>
+    /wp_mode 를 끊으면 dock 출력이 멈추고 5 s 마다 WARN(무효 목표여도 이제 이 WARN 이 보인다 — 정상)
+· WP 타임아웃 mode 기준 (10-29 추가, b337ad8): north_goal_angle 단독 launch, require_boat_mode_auto:=false,
+    wp_timeout_sec 를 짧게(예: 전부 3.0) 바꾼 yaml 복사본으로 GPS 없이 실행 → /wp_mode 가 0,1,2,3,3,3,5,5,7,7,8 순서로 넘어가고
+    /wp_remaining_time 이 WP7(두 번째 회피)에서도 나오는지. 부팅 INFO 의 'WP별(s)' 목록이 120,120,120,90,90,90,120,120,150,150,없음 인지.
+    일부러 [3, 3] 같은 정수 yaml 로 띄우면 출발 전에 ERROR 로 멈춰야 정상</pre>
 
 <p><span class="step">2</span><b>수조: 조향 부호 (5분)</b></p>
 <pre>ship_direction 끄고 motor_control 직접. /desired_angle 수동 발행 (Float32):

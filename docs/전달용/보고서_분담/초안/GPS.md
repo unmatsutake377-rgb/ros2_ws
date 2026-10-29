@@ -2,13 +2,13 @@
 ## 1.3) 센서 — 담당 줄
 | 장비명 | 용도 |
 |---|---|
-| u-blox C94-M8P (A배) | NTRIP RTK 위치(`/ublox_gps_node/fix`, 1 Hz)로 다음 웨이포인트 방위·임무 번호(`/wp_mode`)·지오펜스 광선을 만든다. 속도(`/ublox_gps_node/fix_velocity`)는 헤딩 보정에 쓴다(Ⅲ-2.1) [근거: src/ublox/ublox_gps/config/c94_m8p_rover.yaml:17] [근거: src/north_goal_angle/north_goal_angle/north_goal_angle.py:153-161] [근거: src/ssf_heading/config/ssf_heading.yaml:84] |
+| u-blox C94-M8P (A배) | NTRIP RTK 위치(`/ublox_gps_node/fix`, 1 Hz)로 다음 웨이포인트 방위·임무 번호(`/wp_mode`)·지오펜스 광선을 만든다. 속도(`/ublox_gps_node/fix_velocity`)는 헤딩 보정에 쓴다(Ⅲ-2.1) [근거: src/ublox/ublox_gps/config/c94_m8p_rover.yaml:17] [근거: src/north_goal_angle/north_goal_angle/north_goal_angle.py:164-172] [근거: src/ssf_heading/config/ssf_heading.yaml:84] |
 | u-blox ZED-F9P + ANN-MB (B배) | A배와 같다. 노드·파라미터는 같고 수신기 설정 파일만 다르다 [근거: src/launch_files/launch/launch_files.launch.py:35-37] [근거: src/ublox/ublox_gps/config/zed_f9p_rover.yaml:30] |
 
 ## 2.2) GPS RTK
-GPS 처리는 세 패키지로 이뤄진다. 수신기 드라이버 `ublox_gps`, RTK 보정을 받아 오는 `ntrip_client`, 위치를 항법 정보로 바꾸는 `north_goal_angle` 이다 [근거: src/launch_files/launch/launch_files.launch.py:84-111]. `north_goal_angle` 은 RTK 위치로 다음 웨이포인트로 가는 방위 `/north_goal_angle_tp`, 현재 임무 번호 `/wp_mode`, 경기장 경계를 가짜 LiDAR 광선으로 바꾼 `/geofence_state` 를 0.5 s 주기로 낸다 [근거: src/north_goal_angle/north_goal_angle/north_goal_angle.py:154-158] [근거: src/north_goal_angle/config/north_goal_angle.yaml:4].
+GPS 처리는 세 패키지로 이뤄진다. 수신기 드라이버 `ublox_gps`, RTK 보정을 받아 오는 `ntrip_client`, 위치를 항법 정보로 바꾸는 `north_goal_angle` 이다 [근거: src/launch_files/launch/launch_files.launch.py:84-111]. `north_goal_angle` 은 RTK 위치로 다음 웨이포인트로 가는 방위 `/north_goal_angle_tp`, 현재 임무 번호 `/wp_mode`, 경기장 경계를 가짜 LiDAR 광선으로 바꾼 `/geofence_state` 를 0.5 s 주기로 낸다 [근거: src/north_goal_angle/north_goal_angle/north_goal_angle.py:165-169] [근거: src/north_goal_angle/config/north_goal_angle.yaml:4].
 
-설계 원칙은 "모르면 입을 다문다"이다. fix 가 유효하지 않으면 방위를 내지 않고, IMU 헤딩이 묵었거나 이미 경계 밖이면 지오펜스는 빈 배열을 낸다 [근거: src/north_goal_angle/north_goal_angle/north_goal_angle.py:359-388] [근거: src/north_goal_angle/north_goal_angle/north_goal_angle.py:285-288]. 올해는 fix 없이 항법하던 결함을 막는 검증, 이상치 필터, 경로선 추종(LOS·ILOS), 광선 지오펜스, 파일 기반 웨이포인트를 새로 넣었다 [근거: 커밋 02944d8] [근거: 커밋 9221750] [근거: 커밋 b678154] [근거: 커밋 2758653].
+설계 원칙은 "모르면 입을 다문다"이다. fix 가 유효하지 않으면 방위를 내지 않고, IMU 헤딩이 묵었거나 이미 경계 밖이면 지오펜스는 빈 배열을 낸다 [근거: src/north_goal_angle/north_goal_angle/north_goal_angle.py:392-421] [근거: src/north_goal_angle/north_goal_angle/north_goal_angle.py:318-321]. 올해는 fix 없이 항법하던 결함을 막는 검증, 이상치 필터, 경로선 추종(LOS·ILOS), 광선 지오펜스, 파일 기반 웨이포인트를 새로 넣었다 [근거: 커밋 02944d8] [근거: 커밋 9221750] [근거: 커밋 b678154] [근거: 커밋 2758653].
 
 ### 2.2.1) 장비 사양과 선정 이유
 | 항목 | A배 | B배 | 출처 |
@@ -38,13 +38,13 @@ LOS·필터는 팀원이 제출한 GPS 코드에서 LOS, 동적 전방주시, �
 | 토픽 | 입력·출력 | 메시지 타입 | 주기 | QoS | 상대 노드 |
 |---|---|---|---|---|---|
 | `/rtcm` | `ntrip_client` → `ublox_gps_node` | `rtcm_msgs` 패키지 메시지 | ____ (휴대 시험 5.4 Hz, 2.2.8 참고) | 드라이버 기본 | 수신기에 USB 로 주입 [근거: src/ublox/ublox_gps/config/zed_f9p_rover.yaml:56-58] [근거: src/ntrip_client/launch/ntrip_client_launch.py:125] |
-| `/ublox_gps_node/fix` | 입력 | `sensor_msgs/NavSatFix` | 1 Hz (설정) | RELIABLE, depth 2 (구독) | `ublox_gps_node` [근거: src/north_goal_angle/north_goal_angle/north_goal_angle.py:100] [근거: src/north_goal_angle/north_goal_angle/north_goal_angle.py:161] |
-| `/imu/yaw` | 입력 | `std_msgs/Float64` | IMU 측 | RELIABLE, depth 2 | `yaw_mux` — 지오펜스 광선 방향 계산용 [근거: src/north_goal_angle/north_goal_angle/north_goal_angle.py:162] |
-| `/boat_mode` | 입력 | `std_msgs/Int32` | 브릿지 측 | RELIABLE, depth 2 | `ssf_bridge` — 자율 시작 게이트 [근거: src/north_goal_angle/north_goal_angle/north_goal_angle.py:164] |
-| `/north_goal_angle_tp` | 출력 | `std_msgs/Float32` (0=북, 시계방향 °) | 2 Hz, fix 유효 시만 | RELIABLE, depth 2 | `ship_goal_angle` [근거: src/north_goal_angle/north_goal_angle/north_goal_angle.py:383] [근거: src/ship_goal_angle/ship_goal_angle/ship_goal_angle.py:46] |
-| `/wp_mode` | 출력 | `std_msgs/Int32` | 2 Hz, fix 무관 | RELIABLE, depth 2 | 임무 노드·검출기·`ship_direction` [근거: src/north_goal_angle/north_goal_angle/north_goal_angle.py:390] [근거: src/ship_direction/ship_direction/ship_direction.py:265] |
-| `/candidate_angle` | 출력 | `std_msgs/Float32` | 2 Hz, mode 5·8 에서만 `20000.0` | RELIABLE, depth 2 | `ship_direction` [근거: src/north_goal_angle/north_goal_angle/north_goal_angle.py:395-396] [근거: src/ship_direction/ship_direction/ship_direction.py:264] |
-| `/geofence_state` | 출력 | `std_msgs/Float32MultiArray` | 2 Hz | RELIABLE, depth 2 | `ship_direction` [근거: src/north_goal_angle/north_goal_angle/north_goal_angle.py:352] [근거: src/ship_direction/ship_direction/ship_direction.py:266] |
+| `/ublox_gps_node/fix` | 입력 | `sensor_msgs/NavSatFix` | 1 Hz (설정) | RELIABLE, depth 2 (구독) | `ublox_gps_node` [근거: src/north_goal_angle/north_goal_angle/north_goal_angle.py:103] [근거: src/north_goal_angle/north_goal_angle/north_goal_angle.py:172] |
+| `/imu/yaw` | 입력 | `std_msgs/Float64` | IMU 측 | RELIABLE, depth 2 | `yaw_mux` — 지오펜스 광선 방향 계산용 [근거: src/north_goal_angle/north_goal_angle/north_goal_angle.py:173] |
+| `/boat_mode` | 입력 | `std_msgs/Int32` | 브릿지 측 | RELIABLE, depth 2 | `ssf_bridge` — 자율 시작 게이트 [근거: src/north_goal_angle/north_goal_angle/north_goal_angle.py:175] |
+| `/north_goal_angle_tp` | 출력 | `std_msgs/Float32` (0=북, 시계방향 °) | 2 Hz, fix 유효 시만 | RELIABLE, depth 2 | `ship_goal_angle` [근거: src/north_goal_angle/north_goal_angle/north_goal_angle.py:416] [근거: src/ship_goal_angle/ship_goal_angle/ship_goal_angle.py:46] |
+| `/wp_mode` | 출력 | `std_msgs/Int32` | 2 Hz, fix 무관 | RELIABLE, depth 2 | 임무 노드·검출기·`ship_direction` [근거: src/north_goal_angle/north_goal_angle/north_goal_angle.py:423] [근거: src/ship_direction/ship_direction/ship_direction.py:265] |
+| `/candidate_angle` | 출력 | `std_msgs/Float32` | 2 Hz, mode 5·8 에서만 `20000.0` | RELIABLE, depth 2 | `ship_direction` [근거: src/north_goal_angle/north_goal_angle/north_goal_angle.py:428-429] [근거: src/ship_direction/ship_direction/ship_direction.py:264] |
+| `/geofence_state` | 출력 | `std_msgs/Float32MultiArray` | 2 Hz | RELIABLE, depth 2 | `ship_direction` [근거: src/north_goal_angle/north_goal_angle/north_goal_angle.py:385] [근거: src/ship_direction/ship_direction/ship_direction.py:266] |
 | `/goal_distance`, `/wp_remaining_time` | 출력 | `std_msgs/Float32` | 2 Hz | RELIABLE, depth 2 | `mission_monitor` (관측 전용) [근거: src/ssf_tools/ssf_tools/mission_monitor.py:102-106] |
 
 그림: Ⅲ-2.2-1 GPS 처리 흐름도 — `ntrip_client` → `/rtcm` → 수신기(`ublox_gps_node`) → `/ublox_gps_node/fix` → `gps_guard`(fix 검증) → `gps_filter`(공분산·점프·스무딩) → `los_logic`(LOS·ILOS) → `/north_goal_angle_tp` → `ship_goal_angle`. 같은 노드에서 웨이포인트 FSM → `/wp_mode`·`/candidate_angle`, 지오펜스 → `/geofence_state` → `ship_direction` 으로 갈라지는 가지를 함께 그린다. `/imu/yaw`·`/boat_mode` 입력 화살표 포함.
@@ -58,17 +58,17 @@ LOS·필터는 팀원이 제출한 GPS 코드에서 LOS, 동적 전방주시, �
 #### ② fix 검증과 필터
 작년 코드는 `/ublox_gps_node/fix` 의 위경도를 상태 확인 없이 그대로 썼다 [근거: 커밋 9bff661 src/north_goal_angle/north_goal_angle/north_goal_angle.py:54-55]. 드라이버는 fix 가 없어도 status=-1, 위경도 0.0 인 메시지를 1 Hz 로 계속 내므로, 노드가 위도 0°·경도 0°(Null Island)에서 대회장까지의 방위를 발행했다. 2026-08-06 실기에서 fix 없이 `/north_goal_angle_tp` = 47.96° 가 관측됐고, 이는 `calc_angle(0, 0, WP0)` 와 일치했다 [근거: src/north_goal_angle/north_goal_angle/gps_guard.py:3-13]. 값이 그럴듯해 눈으로는 잡기 어렵다 [근거: src/north_goal_angle/north_goal_angle/gps_guard.py:15].
 
-`gps_guard.fix_is_usable` 은 status < 0(NO_FIX), 위경도가 NaN·inf, |위도|·|경도| ≤ 1e-7 인 (0, 0), 위도 ±90°·경도 ±180° 범위 밖을 모두 거부한다 [근거: src/north_goal_angle/north_goal_angle/gps_guard.py:36] [근거: src/north_goal_angle/north_goal_angle/gps_guard.py:55-62]. 거부되면 `have_fix` 를 내리고 방위·거리 발행을 멈춘다 [근거: src/north_goal_angle/north_goal_angle/north_goal_angle.py:230-234].
+`gps_guard.fix_is_usable` 은 status < 0(NO_FIX), 위경도가 NaN·inf, |위도|·|경도| ≤ 1e-7 인 (0, 0), 위도 ±90°·경도 ±180° 범위 밖을 모두 거부한다 [근거: src/north_goal_angle/north_goal_angle/gps_guard.py:36] [근거: src/north_goal_angle/north_goal_angle/gps_guard.py:55-62]. 거부되면 `have_fix` 를 내리고 방위·거리 발행을 멈춘다 [근거: src/north_goal_angle/north_goal_angle/north_goal_angle.py:263-267].
 
 검증을 통과한 fix 는 `GPSFilter` 가 세 단계로 처리한다 [근거: src/north_goal_angle/north_goal_angle/gps_filter.py:3-8].
-- 공분산 필터: `position_covariance[0]` 이 `gps_cov_threshold`(2.0)를 넘는 프레임을 버린다. 0 이하는 정보 없음으로 보고 통과시킨다 [근거: src/north_goal_angle/north_goal_angle/north_goal_angle.py:238] [근거: src/north_goal_angle/north_goal_angle/gps_filter.py:43-45].
+- 공분산 필터: `position_covariance[0]` 이 `gps_cov_threshold`(2.0)를 넘는 프레임을 버린다. 0 이하는 정보 없음으로 보고 통과시킨다 [근거: src/north_goal_angle/north_goal_angle/north_goal_angle.py:271] [근거: src/north_goal_angle/north_goal_angle/gps_filter.py:43-45].
 - 점프 필터: 직전 원시 fix 와의 haversine 거리를 시간차로 나눈 속도가 `gps_max_speed_mps`(15.0 m/s)를 넘으면 순간이동(멀티패스)으로 보고 버린다. 통과한 속도는 `estimated_speed_mps` 로 남겨 전방주시 거리와 도착 반경에 쓴다 [근거: src/north_goal_angle/north_goal_angle/gps_filter.py:47-55].
 - 적응형 스무딩: 필터 위치와 새 fix 의 거리 e 에 따라 e < 0.5 m 이면 α = 0.15, e < 1.5 m 이면 0.30, 그 이상이면 0.80 으로 놓고 p ← α·p_raw + (1 − α)·p 로 갱신한다. 작은 흔들림은 강하게 누르고 큰 이동은 빨리 따라간다 [근거: src/north_goal_angle/north_goal_angle/gps_filter.py:59-72].
 
-필터가 버리는 것은 한 프레임뿐이며 fix 상실로 보지 않는다. `have_fix` 와 직전 위치는 그대로 둔다 [근거: src/north_goal_angle/north_goal_angle/north_goal_angle.py:236-244]. NO_FIX 는 "품질이 나쁜 fix"가 아니라 "fix 가 아닌 것"이라 가드와 필터를 별도 층으로 둔다 [근거: src/north_goal_angle/north_goal_angle/gps_guard.py:20-23].
+필터가 버리는 것은 한 프레임뿐이며 fix 상실로 보지 않는다. `have_fix` 와 직전 위치는 그대로 둔다 [근거: src/north_goal_angle/north_goal_angle/north_goal_angle.py:269-277]. NO_FIX 는 "품질이 나쁜 fix"가 아니라 "fix 가 아닌 것"이라 가드와 필터를 별도 층으로 둔다 [근거: src/north_goal_angle/north_goal_angle/gps_guard.py:20-23].
 
 #### ③ 웨이포인트와 LOS·ILOS 유도
-웨이포인트는 코드가 아니라 `config/waypoints.yaml` 에 `{구역, lat, lon, mode, dwell}` 항목의 목록으로 둔다 [근거: src/north_goal_angle/config/waypoints.yaml:9] [근거: src/north_goal_angle/config/waypoints.yaml:19-30]. `waypoint_loader.parse_waypoints` 는 `waypoints` 키·빈 목록·누락 필드, 위도 33~39°·경도 124~132° 범위(빈칸 0.0, 위경도 뒤바뀜 탐지), mode ∈ {0, 1, 2, 3, 5, 7, 8}, dwell ≥ 0 을 검사한다 [근거: src/north_goal_angle/north_goal_angle/waypoint_loader.py:17-21] [근거: src/north_goal_angle/north_goal_angle/waypoint_loader.py:42-91]. 하나라도 틀리면 몇 번째 항목이 왜 틀렸는지 ERROR 로 남기고 예외로 노드를 세운다. 틀린 좌표로 출발하느니 출발 전에 멈춘다 [근거: src/north_goal_angle/north_goal_angle/north_goal_angle.py:194-218]. 파일 경로는 launch 인자 `waypoints_file:=` 로 바꿀 수 있다 [근거: src/north_goal_angle/launch/north_goal_angle_launch.py:36-39].
+웨이포인트는 코드가 아니라 `config/waypoints.yaml` 에 `{구역, lat, lon, mode, dwell}` 항목의 목록으로 둔다 [근거: src/north_goal_angle/config/waypoints.yaml:9] [근거: src/north_goal_angle/config/waypoints.yaml:19-30]. `waypoint_loader.parse_waypoints` 는 `waypoints` 키·빈 목록·누락 필드, 위도 33~39°·경도 124~132° 범위(빈칸 0.0, 위경도 뒤바뀜 탐지), mode ∈ {0, 1, 2, 3, 5, 7, 8}, dwell ≥ 0 을 검사한다 [근거: src/north_goal_angle/north_goal_angle/waypoint_loader.py:17-21] [근거: src/north_goal_angle/north_goal_angle/waypoint_loader.py:42-91]. 하나라도 틀리면 몇 번째 항목이 왜 틀렸는지 ERROR 로 남기고 예외로 노드를 세운다. 틀린 좌표로 출발하느니 출발 전에 멈춘다 [근거: src/north_goal_angle/north_goal_angle/north_goal_angle.py:205-229]. 파일 경로는 launch 인자 `waypoints_file:=` 로 바꿀 수 있다 [근거: src/north_goal_angle/launch/north_goal_angle_launch.py:36-39].
 
 대회장 좌표는 `waypoint_recorder` 로 녹화한다. RC 로 배를 지점에 대고 Enter 를 누르면 최근 2.0 s 안의 status ≥ 0 fix 를 평균해 한 점으로 잡고, 표본 중 최대 공분산이 2.0 을 넘으면 경고한다 [근거: src/north_goal_angle/north_goal_angle/waypoint_recorder.py:86-112] [근거: src/north_goal_angle/north_goal_angle/waypoint_recorder.py:250]. 저장 전에 같은 `parse_waypoints` 로 검증하고, 실전 파일이 아닌 `~/ssf_logs/waypoints_recorded.yaml` 에 새로 쓴다 [근거: src/north_goal_angle/north_goal_angle/waypoint_recorder.py:114-122] [근거: src/north_goal_angle/north_goal_angle/waypoint_recorder.py:246-249]. 녹화 전 RTK FIXED 확인과 측정 장소 기준 마운트포인트 선택(30 km 이내)이 절차서에 있다 [근거: docs/절차/웨이포인트_녹화절차.md:29-49].
 
@@ -76,20 +76,20 @@ LOS·필터는 팀원이 제출한 GPS 코드에서 LOS, 동적 전방주시, �
 - 경로선 이탈 거리: XTE = d(P, 배) · sin(ψ(P→배) − ψ(P→W)). 양수는 진행 방향 오른쪽으로 밀린 것이다 [근거: src/north_goal_angle/north_goal_angle/los_logic.py:45-56].
 - 전방주시 거리: L = clamp(v · `los_speed_gain`, `los_min_lookahead_m`, `los_max_lookahead_m`) = clamp(1.2 v, 2.0, 6.0) m. 빠를수록 멀리 봐 완만하게 복귀한다 [근거: src/north_goal_angle/north_goal_angle/los_logic.py:38-42] [근거: src/north_goal_angle/config/north_goal_angle.yaml:7-9].
 - 목표 방위: ψ_d = ψ(P→W) − atan2(XTE + k_i·I, max(0.1, L)) [근거: src/north_goal_angle/north_goal_angle/los_logic.py:67-71].
-- ILOS 적분: 매 주기 I ← I + XTE·Δt (Δt = 0.5 s), |I| ≤ 50 으로 자른다(anti-windup). k_i = 0.02 이므로 적분항은 최대 1.0 m 의 이탈만큼 방위를 더 꺾어 조류·바람처럼 계속 미는 외란을 상쇄한다 [근거: src/north_goal_angle/north_goal_angle/north_goal_angle.py:380-382] [근거: src/north_goal_angle/config/north_goal_angle.yaml:10-11].
+- ILOS 적분: 매 주기 I ← I + XTE·Δt (Δt = 0.5 s), |I| ≤ 50 으로 자른다(anti-windup). k_i = 0.02 이므로 적분항은 최대 1.0 m 의 이탈만큼 방위를 더 꺾어 조류·바람처럼 계속 미는 외란을 상쇄한다 [근거: src/north_goal_angle/north_goal_angle/north_goal_angle.py:413-415] [근거: src/north_goal_angle/config/north_goal_angle.yaml:10-11].
 
-첫 구간에는 이전 웨이포인트가 없으므로 fix 를 처음 얻은 위치(또는 AUTO 전환 시점 위치)를 P 로 쓴다. 웨이포인트를 넘길 때마다 P 를 방금 끝낸 웨이포인트로 바꾸고 I 를 0 으로 되돌린다 [근거: src/north_goal_angle/north_goal_angle/north_goal_angle.py:366-368] [근거: src/north_goal_angle/north_goal_angle/north_goal_angle.py:450-451]. 도착 반경은 도킹(mode 7)이면 2.0 m, 그 외에는 속도 2 m/s 미만 2.5 m, 5 m/s 미만 3.5 m, 그 이상 4.5 m 이다 [근거: src/north_goal_angle/north_goal_angle/los_logic.py:75-83]. 반경 안에 dwell 초 머무르면 다음 웨이포인트로 넘어간다 [근거: src/north_goal_angle/north_goal_angle/north_goal_angle.py:440-456].
+첫 구간에는 이전 웨이포인트가 없으므로 fix 를 처음 얻은 위치(또는 AUTO 전환 시점 위치)를 P 로 쓴다. 웨이포인트를 넘길 때마다 P 를 방금 끝낸 웨이포인트로 바꾸고 I 를 0 으로 되돌린다 [근거: src/north_goal_angle/north_goal_angle/north_goal_angle.py:399-401] [근거: src/north_goal_angle/north_goal_angle/north_goal_angle.py:481-482]. 도착 반경은 도킹(mode 7)이면 2.0 m, 그 외에는 속도 2 m/s 미만 2.5 m, 5 m/s 미만 3.5 m, 그 이상 4.5 m 이다 [근거: src/north_goal_angle/north_goal_angle/los_logic.py:75-83]. 반경 안에 dwell 초 머무르면 다음 웨이포인트로 넘어간다 [근거: src/north_goal_angle/north_goal_angle/north_goal_angle.py:471-487].
 
-`/wp_mode` 를 바꾸는 것은 이 노드 하나다. 현재 웨이포인트의 mode 를 매 주기 발행하고, 위 도착 판정이나 시간 초과로 다음 웨이포인트로 넘어갈 때 값이 바뀐다 [근거: src/north_goal_angle/north_goal_angle/north_goal_angle.py:357] [근거: src/north_goal_angle/north_goal_angle/north_goal_angle.py:390]. 시간 초과는 웨이포인트 순번 3~5 에 90 s, 그 밖의 0~6 에 120 s 이고 7 이후에는 없다 [근거: src/north_goal_angle/north_goal_angle/north_goal_angle.py:69-70] [근거: src/north_goal_angle/north_goal_angle/north_goal_angle.py:418-422]. `/wp_mode` 는 fix 가 없어도 계속 낸다. 멈추면 비전 검출기 3종이 모두 꺼지기 때문이다. 대신 fix 없이는 도착 판정을 하지 않는다 [근거: src/north_goal_angle/north_goal_angle/north_goal_angle.py:362-364]. `require_boat_mode_auto` 가 true 이면 RC 모드가 AUTO(`/boat_mode` = 2)일 때만 웨이포인트가 전진한다. 수동으로 시작점까지 몰고 가는 동안 도착·시간 초과로 웨이포인트가 넘어가는 것을 막고, 그동안 타이머·dwell·적분·경로 시작점을 계속 초기화해 AUTO 전환 순간 WP0 부터 시작한다 [근거: src/north_goal_angle/north_goal_angle/north_goal_angle.py:398-411] [근거: src/north_goal_angle/north_goal_angle/north_goal_angle.py:80-89].
+`/wp_mode` 를 바꾸는 것은 이 노드 하나다. 현재 웨이포인트의 mode 를 매 주기 발행하고, 위 도착 판정이나 시간 초과로 다음 웨이포인트로 넘어갈 때 값이 바뀐다 [근거: src/north_goal_angle/north_goal_angle/north_goal_angle.py:390] [근거: src/north_goal_angle/north_goal_angle/north_goal_angle.py:423]. 시간 초과는 웨이포인트의 mode 로 정한다. 게이트·위치유지·회피(mode 0·1·2·5)는 WP 하나당 120 s, 부표(3)는 90 s, 도킹(7)은 150 s, 토너먼트(8)는 마지막 WP 라 없다 [근거: src/north_goal_angle/config/north_goal_angle.yaml:29-30] [근거: src/north_goal_angle/north_goal_angle/wp_timeout.py:30-31]. 값이 비었거나 0 이하·NaN·길이 불일치면 출발 전에 노드를 세운다 [근거: src/north_goal_angle/north_goal_angle/wp_timeout.py:43-54]. 2026-10-29 이전에는 목록 순번(3~5 → 90 s, ≤6 → 120 s, 7 이후 없음)이라 회피 두 번째 WP 와 도킹에 시간 초과가 없었다 [근거: 커밋 b337ad8]. `/wp_mode` 는 fix 가 없어도 계속 낸다. 멈추면 비전 검출기 3종이 모두 꺼지기 때문이다. 대신 fix 없이는 도착 판정을 하지 않는다 [근거: src/north_goal_angle/north_goal_angle/north_goal_angle.py:395-397]. `require_boat_mode_auto` 가 true 이면 RC 모드가 AUTO(`/boat_mode` = 2)일 때만 웨이포인트가 전진한다. 수동으로 시작점까지 몰고 가는 동안 도착·시간 초과로 웨이포인트가 넘어가는 것을 막고, 그동안 타이머·dwell·적분·경로 시작점을 계속 초기화해 AUTO 전환 순간 WP0 부터 시작한다 [근거: src/north_goal_angle/north_goal_angle/north_goal_angle.py:431-444] [근거: src/north_goal_angle/north_goal_angle/north_goal_angle.py:83-92].
 
-`/candidate_angle` 에는 담당 임무 노드가 없는 mode 5·8 에서만 `20000.0`(미션 없음 → 전진 폴백)을 낸다 [근거: src/north_goal_angle/north_goal_angle/north_goal_angle.py:67] [근거: src/north_goal_angle/north_goal_angle/north_goal_angle.py:73]. 작년에는 mode 7 에도 냈는데, 이는 도킹 노드가 mode 9 로 잘못 잡혀 침묵하던 것을 덮은 흔적이었다. 도킹 노드를 7 로 고치면 같은 토픽에 발행자가 둘이 되어 접안 중 조향이 튀므로 두 수정을 한 커밋으로 묶었다 [근거: src/north_goal_angle/north_goal_angle/north_goal_angle.py:4-10] [근거: 커밋 0b854c1]. 전체 임무 상태기계는 Ⅲ-3 에서 다룬다.
+`/candidate_angle` 에는 담당 임무 노드가 없는 mode 5·8 에서만 `20000.0`(미션 없음 → 전진 폴백)을 낸다 [근거: src/north_goal_angle/north_goal_angle/north_goal_angle.py:71] [근거: src/north_goal_angle/north_goal_angle/north_goal_angle.py:76]. 작년에는 mode 7 에도 냈는데, 이는 도킹 노드가 mode 9 로 잘못 잡혀 침묵하던 것을 덮은 흔적이었다. 도킹 노드를 7 로 고치면 같은 토픽에 발행자가 둘이 되어 접안 중 조향이 튀므로 두 수정을 한 커밋으로 묶었다 [근거: src/north_goal_angle/north_goal_angle/north_goal_angle.py:4-10] [근거: 커밋 0b854c1]. 전체 임무 상태기계는 Ⅲ-3 에서 다룬다.
 
 #### ④ 지오펜스 광선 생성
 경계 방어는 원뿔이 아니라 광선 방식이다. 경계 최근접점 방향으로 ±각도 원뿔을 막으면, 40 × 40 경기장 모서리에서 대각선(45°)을 향한 배는 북벽 최근접점이 상대 −45°, 동벽이 +45° 로 잡혀 정면 0°(모서리 탈출구)가 두 원뿔 사이 틈으로 열린다. 광선으로 쏘면 정면 방향 경계 거리(2.12 m)가 그대로 벽이 되고 튜닝 파라미터도 없다 [근거: src/north_goal_angle/north_goal_angle/north_goal_angle.py:18-25] [근거: 커밋 b678154].
 
-계산 순서는 다음과 같다. 경계 폴리곤 `geofence_polygon`(위경도 평탄 배열, 최소 3점)의 꼭짓점을 배 기준 로컬 미터 (동, 북)로 바꾼다. 위도 1° = 110,540 m, 경도 1° = 111,320·cos(위도) m 근사를 쓴다 [근거: src/north_goal_angle/north_goal_angle/north_goal_angle.py:93-94] [근거: src/north_goal_angle/north_goal_angle/north_goal_angle.py:273-276]. 배가 폴리곤 안인지 레이 캐스팅으로 확인한다 [근거: src/north_goal_angle/north_goal_angle/north_goal_angle.py:489-501]. 상대방위 −80°~+80° 를 1° 간격(161개)으로, 각 광선의 절대 방위 θ = (`/imu/yaw` + 상대방위) mod 360 방향 단위벡터 (sin θ, cos θ) 를 만들고 모든 변과의 교점 중 가장 가까운 거리를 구한다. 30 m 보다 멀거나 교점이 없으면 inf 로 둔다 [근거: src/north_goal_angle/north_goal_angle/north_goal_angle.py:319-329] [근거: src/north_goal_angle/north_goal_angle/north_goal_angle.py:460-486]. 각도 격자는 스캔과 같은 상대방위(0 = 정면)다 [근거: src/north_goal_angle/north_goal_angle/north_goal_angle.py:132]. 발행 형식은 `[angle_min_deg, angle_inc_deg, r0, r1, …]` = `[-80, 1, r0 … r160]` 이다 [근거: src/north_goal_angle/north_goal_angle/north_goal_angle.py:14-16] [근거: src/north_goal_angle/north_goal_angle/north_goal_angle.py:337-338].
+계산 순서는 다음과 같다. 경계 폴리곤 `geofence_polygon`(위경도 평탄 배열, 최소 3점)의 꼭짓점을 배 기준 로컬 미터 (동, 북)로 바꾼다. 위도 1° = 110,540 m, 경도 1° = 111,320·cos(위도) m 근사를 쓴다 [근거: src/north_goal_angle/north_goal_angle/north_goal_angle.py:96-97] [근거: src/north_goal_angle/north_goal_angle/north_goal_angle.py:306-309]. 배가 폴리곤 안인지 레이 캐스팅으로 확인한다 [근거: src/north_goal_angle/north_goal_angle/north_goal_angle.py:520-532]. 상대방위 −80°~+80° 를 1° 간격(161개)으로, 각 광선의 절대 방위 θ = (`/imu/yaw` + 상대방위) mod 360 방향 단위벡터 (sin θ, cos θ) 를 만들고 모든 변과의 교점 중 가장 가까운 거리를 구한다. 30 m 보다 멀거나 교점이 없으면 inf 로 둔다 [근거: src/north_goal_angle/north_goal_angle/north_goal_angle.py:352-362] [근거: src/north_goal_angle/north_goal_angle/north_goal_angle.py:491-517]. 각도 격자는 스캔과 같은 상대방위(0 = 정면)다 [근거: src/north_goal_angle/north_goal_angle/north_goal_angle.py:135]. 발행 형식은 `[angle_min_deg, angle_inc_deg, r0, r1, …]` = `[-80, 1, r0 … r160]` 이다 [근거: src/north_goal_angle/north_goal_angle/north_goal_angle.py:14-16] [근거: src/north_goal_angle/north_goal_angle/north_goal_angle.py:370-371].
 
-다음 경우에는 빈 배열을 낸다. 폴리곤이 3점 미만이거나 fix 가 없을 때, `/imu/yaw` 를 받은 적이 없거나 `imu_stale_sec`(0.5 s)보다 묵었을 때, 배가 이미 경계 밖일 때다 [근거: src/north_goal_angle/north_goal_angle/north_goal_angle.py:290-314]. 광선 방향이 헤딩에 통째로 의존하므로 헤딩이 얼면 엉뚱한 곳에 "없는 벽"을 세워 배를 가둘 수 있고, 이미 밖이면 경계 벽이 복귀로를 막기 때문이다 [근거: src/north_goal_angle/north_goal_angle/north_goal_angle.py:145-149] [근거: src/north_goal_angle/north_goal_angle/north_goal_angle.py:310]. 지오펜스는 웨이포인트가 모두 끝난 뒤에도 매 주기 낸다 [근거: src/north_goal_angle/north_goal_angle/north_goal_angle.py:352]. 부팅 5.0 s 뒤부터 `/geofence_state` 구독자가 0 이면 ERROR 를 낸다. 경계 방어가 조용히 빠지는 것을 막기 위해서다 [근거: src/north_goal_angle/north_goal_angle/north_goal_angle.py:341-348]. 이 광선은 `ship_direction` 이 실제 스캔과 합친다(Ⅲ-2.3). 헤딩 오프셋·COG 는 IMU 담당 절(Ⅲ-2.1)을 참고한다. 현재 `geofence_polygon` 은 비어 있어 지오펜스는 꺼진 상태다 [근거: src/north_goal_angle/config/north_goal_angle.yaml:21-23].
+다음 경우에는 빈 배열을 낸다. 폴리곤이 3점 미만이거나 fix 가 없을 때, `/imu/yaw` 를 받은 적이 없거나 `imu_stale_sec`(0.5 s)보다 묵었을 때, 배가 이미 경계 밖일 때다 [근거: src/north_goal_angle/north_goal_angle/north_goal_angle.py:323-347]. 광선 방향이 헤딩에 통째로 의존하므로 헤딩이 얼면 엉뚱한 곳에 "없는 벽"을 세워 배를 가둘 수 있고, 이미 밖이면 경계 벽이 복귀로를 막기 때문이다 [근거: src/north_goal_angle/north_goal_angle/north_goal_angle.py:148-152] [근거: src/north_goal_angle/north_goal_angle/north_goal_angle.py:343]. 지오펜스는 웨이포인트가 모두 끝난 뒤에도 매 주기 낸다 [근거: src/north_goal_angle/north_goal_angle/north_goal_angle.py:385]. 부팅 5.0 s 뒤부터 `/geofence_state` 구독자가 0 이면 ERROR 를 낸다. 경계 방어가 조용히 빠지는 것을 막기 위해서다 [근거: src/north_goal_angle/north_goal_angle/north_goal_angle.py:374-381]. 이 광선은 `ship_direction` 이 실제 스캔과 합친다(Ⅲ-2.3). 헤딩 오프셋·COG 는 IMU 담당 절(Ⅲ-2.1)을 참고한다. 현재 `geofence_polygon` 은 비어 있어 지오펜스는 꺼진 상태다 [근거: src/north_goal_angle/config/north_goal_angle.yaml:33-35].
 
 그림: Ⅲ-2.2-2 지오펜스 원뿔 방식과 광선 방식 비교 — 40 × 40 m 경기장 모서리 근처에서 대각선(45°)을 향한 배. 왼쪽은 북벽·동벽 최근접점 방향(−45°, +45°)의 ±40° 원뿔 두 개와 그 사이로 열린 정면 0° 틈, 오른쪽은 −80°~+80° 광선이 두 벽에 닿고 정면 광선 길이 2.12 m 가 벽으로 잡히는 모습.
 
@@ -103,30 +103,30 @@ LOS·필터는 팀원이 제출한 GPS 코드에서 LOS, 동적 전방주시, �
 | `gps_cov_threshold` | 2.0 | src/north_goal_angle/config/north_goal_angle.yaml:13 | 공분산 큰 fix(RTK 품질 저하) 거부. 실측 검증 전 |
 | `gps_max_speed_mps` | 15.0 m/s | src/north_goal_angle/config/north_goal_angle.yaml:14 | 두 fix 간 물리적 속도 상한, 넘으면 멀티패스로 거부 |
 | `require_boat_mode_auto` | true | src/north_goal_angle/config/north_goal_angle.yaml:17 | 수동 이동 중 웨이포인트 소모 방지. 벤치(아두이노 없음)만 false |
-| `geofence_polygon` | `[]` (꺼짐) | src/north_goal_angle/config/north_goal_angle.yaml:23 | 대회장 경계 좌표 미측정 |
-| `geofence_ray_min_deg` / `max` / `inc` | −80 / 80 / 1.0° | src/north_goal_angle/config/north_goal_angle.yaml:28-30 | 스캔과 같은 상대방위 격자, 161방향 × 변 수 @ 2 Hz |
-| `geofence_max_range_m` | 30.0 m | src/north_goal_angle/config/north_goal_angle.yaml:31 | 이보다 먼 경계는 inf |
-| `imu_stale_sec` | 0.5 s | src/north_goal_angle/config/north_goal_angle.yaml:33 | 헤딩이 묵으면 광선 방향 전체가 틀어짐 |
+| `geofence_polygon` | `[]` (꺼짐) | src/north_goal_angle/config/north_goal_angle.yaml:35 | 대회장 경계 좌표 미측정 |
+| `geofence_ray_min_deg` / `max` / `inc` | −80 / 80 / 1.0° | src/north_goal_angle/config/north_goal_angle.yaml:40-42 | 스캔과 같은 상대방위 격자, 161방향 × 변 수 @ 2 Hz |
+| `geofence_max_range_m` | 30.0 m | src/north_goal_angle/config/north_goal_angle.yaml:43 | 이보다 먼 경계는 inf |
+| `imu_stale_sec` | 0.5 s | src/north_goal_angle/config/north_goal_angle.yaml:45 | 헤딩이 묵으면 광선 방향 전체가 틀어짐 |
 | 도착 반경 (코드 상수) | 2.0 / 2.5 / 3.5 / 4.5 m | src/north_goal_angle/north_goal_angle/los_logic.py:75-83 | 도킹은 좁게, 빠르면 넓게(오버슈트 방지) |
 | 스무딩 α (코드 상수) | 0.15 / 0.30 / 0.80 (경계 0.5 / 1.5 m) | src/north_goal_angle/north_goal_angle/gps_filter.py:65-70 | 오차가 작으면 강하게, 크면 따라감 |
-| 시간 초과 (코드 상수) | 120 s / 90 s(순번 3~5) | src/north_goal_angle/north_goal_angle/north_goal_angle.py:69-70 | 작년 값 유지 [근거: 커밋 9bff661 src/north_goal_angle/north_goal_angle/north_goal_angle.py:27-28] |
+| `wp_timeout_modes` / `wp_timeout_sec` | [0,1,2,3,5,7] / [120,120,120,90,120,150] s | src/north_goal_angle/config/north_goal_angle.yaml:29-30 | 0~5 는 작년 순번 값과 같게(회귀 테스트로 대조), 도킹 150 s 는 ship_dock 최악 ≈129 s·dwell 60 s 보다 크게(Davidson 10-29) [근거: src/north_goal_angle/test/test_wp_timeout.py:1] [근거: 커밋 b337ad8] |
 | 수신기 `rate` | 1.0 Hz (A·B) | src/ublox/ublox_gps/config/zed_f9p_rover.yaml:30 | 1.00 Hz 안정 발행 확인. 올릴지는 물 위에서 제어 주기와 함께 판단 [근거: src/ublox/ublox_gps/config/zed_f9p_rover.yaml:30-33] |
 
 ### 2.2.6) 이상 상황 대응
 | 상황 | 감지 방법 | 코드의 동작 | 근거 |
 |---|---|---|---|
-| fix 없음 (냉시작·실내·안테나) | status < 0, (0, 0), NaN, 범위 밖 | `have_fix` 해제, 방위·거리 미발행. `/wp_mode` 는 계속, 도착 판정 정지, 시간 초과 전진만 유지. `ship_goal_angle` 은 목표각 2.0 s 무수신 시 `/yaw_error` 중단 | src/north_goal_angle/north_goal_angle/north_goal_angle.py:230-234, 384-388, 437-444 · src/ship_goal_angle/ship_goal_angle/ship_goal_angle.py:104-106 |
-| fix 를 얻었다가 잃음 | 위와 같음 | WARN 1회 후 발행 중단, 다시 얻으면 INFO 후 재개 | src/north_goal_angle/north_goal_angle/north_goal_angle.py:231-232, 245-246 |
-| RTK 품질 저하 프레임 | `position_covariance[0]` > 2.0 | 그 프레임만 버림. 직전 위치·`have_fix` 유지 | src/north_goal_angle/north_goal_angle/gps_filter.py:44-45 · src/north_goal_angle/north_goal_angle/north_goal_angle.py:236-244 |
+| fix 없음 (냉시작·실내·안테나) | status < 0, (0, 0), NaN, 범위 밖 | `have_fix` 해제, 방위·거리 미발행. `/wp_mode` 는 계속, 도착 판정 정지, 시간 초과 전진만 유지. `ship_goal_angle` 은 목표각 2.0 s 무수신 시 `/yaw_error` 중단 | src/north_goal_angle/north_goal_angle/north_goal_angle.py:263-267, 417-421, 468-475 · src/ship_goal_angle/ship_goal_angle/ship_goal_angle.py:104-106 |
+| fix 를 얻었다가 잃음 | 위와 같음 | WARN 1회 후 발행 중단, 다시 얻으면 INFO 후 재개 | src/north_goal_angle/north_goal_angle/north_goal_angle.py:264-265, 278-279 |
+| RTK 품질 저하 프레임 | `position_covariance[0]` > 2.0 | 그 프레임만 버림. 직전 위치·`have_fix` 유지 | src/north_goal_angle/north_goal_angle/gps_filter.py:44-45 · src/north_goal_angle/north_goal_angle/north_goal_angle.py:269-277 |
 | 순간이동(멀티패스) | 직전 fix 대비 속도 > 15 m/s | 그 프레임 버림 | src/north_goal_angle/north_goal_angle/gps_filter.py:48-54 |
-| `/ublox_gps_node/fix` 무수신 또는 장시간 연속 기각 | **감지 안 함** | 마지막으로 받아들인 위치로 방위를 계속 낸다 (부록 B) | src/north_goal_angle/north_goal_angle/north_goal_angle.py:167-174, 365 |
+| `/ublox_gps_node/fix` 무수신 또는 장시간 연속 기각 | **감지 안 함** | 마지막으로 받아들인 위치로 방위를 계속 낸다 (부록 B) | src/north_goal_angle/north_goal_angle/north_goal_angle.py:178-185, 398 |
 | NTRIP 계정 파일 없음 | 파일·host·mountpoint 확인 | `ntrip_client` 만 안 띄우고 나머지는 정상 기동 (RTK 보정 없음) | src/ntrip_client/launch/ntrip_client_launch.py:63-76 |
 | NTRIP 세션 끊김 | 드라이버 (`rtcm_timeout_seconds` 4) | 5 s 간격 10회 재연결. 마운트포인트 오류(404)는 재시도 없이 종료 | src/ntrip_client/launch/ntrip_client_launch.py:101-105 |
-| `/imu/yaw` 없음·0.5 s 초과 | 마지막 수신 시각 | 지오펜스 빈 배열 | src/north_goal_angle/north_goal_angle/north_goal_angle.py:295-305 |
-| 이미 경계 밖 | 레이 캐스팅 | 지오펜스 빈 배열 + ERROR (웨이포인트로 복귀) | src/north_goal_angle/north_goal_angle/north_goal_angle.py:309-314 |
-| 지오펜스 구독자 0 | `get_subscription_count()` | 부팅 5 s 후 ERROR 반복 | src/north_goal_angle/north_goal_angle/north_goal_angle.py:343-348 |
-| 웨이포인트 파일 오류 | `parse_waypoints` | 위치·이유 ERROR 후 노드 기동 거부 | src/north_goal_angle/north_goal_angle/north_goal_angle.py:201-218 |
-| RC 가 AUTO 아님 | `/boat_mode` ≠ 2 | 웨이포인트 전진 정지, 타이머·적분 초기화 | src/north_goal_angle/north_goal_angle/north_goal_angle.py:402-411 |
+| `/imu/yaw` 없음·0.5 s 초과 | 마지막 수신 시각 | 지오펜스 빈 배열 | src/north_goal_angle/north_goal_angle/north_goal_angle.py:328-338 |
+| 이미 경계 밖 | 레이 캐스팅 | 지오펜스 빈 배열 + ERROR (웨이포인트로 복귀) | src/north_goal_angle/north_goal_angle/north_goal_angle.py:342-347 |
+| 지오펜스 구독자 0 | `get_subscription_count()` | 부팅 5 s 후 ERROR 반복 | src/north_goal_angle/north_goal_angle/north_goal_angle.py:376-381 |
+| 웨이포인트 파일 오류 | `parse_waypoints` | 위치·이유 ERROR 후 노드 기동 거부 | src/north_goal_angle/north_goal_angle/north_goal_angle.py:212-229 |
+| RC 가 AUTO 아님 | `/boat_mode` ≠ 2 | 웨이포인트 전진 정지, 타이머·적분 초기화 | src/north_goal_angle/north_goal_angle/north_goal_angle.py:435-444 |
 
 진단용으로 `healthcheck` 는 fix 메시지가 안 오는 DEAD 와 와도 쓸 수 없는 NOFIX 를 구분해 표시한다. 제어에는 물리지 않는다 [근거: src/ssf_tools/ssf_tools/healthcheck.py:189-194].
 
@@ -195,16 +195,16 @@ LOS·필터는 팀원이 제출한 GPS 코드에서 LOS, 동적 전방주시, �
 - RTK 끊김 빈도(blackbox) — LOS 보강·DR 필요 여부 판단용으로 측정하기로 했다 [근거: docs/전달용/회신_LOS강화_IMU추가_검토.md:29] [근거: docs/전달용/회신_LOS강화_IMU추가_검토.md:66].
 - `gps_cov_threshold` 2.0 의 물리적 의미(`position_covariance[0]` 단위)와 RTK FLOAT 프레임이 실제로 통과하는지.
 - LOS 파라미터(`los_speed_gain`, lookahead 2~6 m, `ilos_ki`)는 초기값이다 [근거: src/north_goal_angle/config/north_goal_angle.yaml:9].
-- **fix 신선도 감시 없음.** `/ublox_gps_node/fix` 가 끊기거나 모든 프레임이 필터에 기각되면 `have_fix` 가 true 로 남아 마지막 위치 기준 방위를 계속 낸다 [근거: src/north_goal_angle/north_goal_angle/north_goal_angle.py:236-249]. 코드 개선 대상인지 팀장 판단.
+- **fix 신선도 감시 없음.** `/ublox_gps_node/fix` 가 끊기거나 모든 프레임이 필터에 기각되면 `have_fix` 가 true 로 남아 마지막 위치 기준 방위를 계속 낸다 [근거: src/north_goal_angle/north_goal_angle/north_goal_angle.py:269-282]. 코드 개선 대상인지 팀장 판단.
 - 드라이버 launch 의 `OnProcessExit → Shutdown` [근거: src/ublox/ublox_gps/launch/ublox_gps_node-launch.py:73-78] 이 메인 launch 에 include 된 상태에서 드라이버 종료 시 전체 launch 를 내리는지 Ubuntu 에서 확인.
-- 시간 초과가 mode 가 아니라 웨이포인트 순번(3~5, ≤6)에 묶여 있다 [근거: src/north_goal_angle/north_goal_angle/north_goal_angle.py:418-422]. 웨이포인트 개수·순서가 바뀌면 어긋난다(파일 주석은 순서 변경 금지 [근거: src/north_goal_angle/config/waypoints.yaml:6-7]).
-- 마지막 웨이포인트를 끝내면 `/wp_mode` 발행도 멈춘다 [근거: src/north_goal_angle/north_goal_angle/north_goal_angle.py:354-355]. 의도인지 확인.
+- (해결 2026-10-29 b337ad8) 시간 초과가 웨이포인트 순번에 묶여 있던 문제는 mode 기준 파라미터로 바뀌었다 [근거: src/north_goal_angle/config/north_goal_angle.yaml:29-30]. 남은 것: Ubuntu 에서 파라미터 타입·잘못된 yaml 거부·짧은 타임아웃 벤치 확인.
+- 마지막 웨이포인트를 끝내면 `/wp_mode` 발행도 멈춘다 [근거: src/north_goal_angle/north_goal_angle/north_goal_angle.py:387-388]. 의도인지 확인.
 - 현 `waypoints.yaml` 좌표는 작년 하드코딩 좌표와 같다 [근거: src/north_goal_angle/config/waypoints.yaml:20-30] [근거: 커밋 9bff661 src/north_goal_angle/north_goal_angle/north_goal_angle.py:12-22]. 대회장 좌표·경계 폴리곤은 미측정, 마운트포인트도 대회장 기준으로 다시 고른다 [근거: docs/절차/웨이포인트_녹화절차.md:42-49].
 - 녹화 절차서의 "도착 반경 3m" [근거: docs/절차/웨이포인트_녹화절차.md:105] 는 현 코드(2.0~4.5 m 가변)와 다르다.
 
 ## 부록 C. 다른 담당과 겹치는 내용
-- 지오펜스 `min` 병합·정지 판정(`geofence_stop_margin_m`, ±60°)은 LiDAR 담당(Ⅲ-2.3). 이 절은 광선 생성만 쓴다. 광선 상대방위는 `θ = yaw + rel`(시계방향 양수)로 만들어지므로 [근거: src/north_goal_angle/north_goal_angle/north_goal_angle.py:323], `ship_direction` 의 LiDAR 각도 격자(정면 80) 변환 방향과 부호가 맞는지 LiDAR 담당과 함께 확인한다 [근거: src/ship_direction/ship_direction/ship_direction.py:620-621].
+- 지오펜스 `min` 병합·정지 판정(`geofence_stop_margin_m`, ±60°)은 LiDAR 담당(Ⅲ-2.3). 이 절은 광선 생성만 쓴다. 광선 상대방위는 `θ = yaw + rel`(시계방향 양수)로 만들어지므로 [근거: src/north_goal_angle/north_goal_angle/north_goal_angle.py:356], `ship_direction` 의 LiDAR 각도 격자(정면 80) 변환 방향과 부호가 맞는지 LiDAR 담당과 함께 확인한다 [근거: src/ship_direction/ship_direction/ship_direction.py:620-621].
 - `/ublox_gps_node/fix_velocity` 로 COG 를 구해 IMU 헤딩 오프셋을 잡는 것은 IMU 담당(Ⅲ-2.1). 지오펜스 방향 정확도는 `mount_offset_deg` 실측에 달려 있다 [근거: src/north_goal_angle/north_goal_angle/north_goal_angle.py:35-40].
 - 전체 임무 상태기계(Ⅲ-3)와 위치유지 `ship_back` 의 RTK 폴백은 팀장 담당. 이 절은 `/wp_mode` 를 누가 어떻게 바꾸는지만 썼다.
 - `/north_goal_angle_tp` → `ship_goal_angle` → `/yaw_error` 체인과 2.0 s stale 처리는 하류 노드 쪽 설명과 겹친다 [근거: src/ship_goal_angle/config/ship_goal_angle.yaml:8].
-- 현재 원고 Ⅲ-1.2 표의 GPS 토픽 `/fix` 는 실제 이름 `/ublox_gps_node/fix` 로 고쳐야 한다 [근거: src/north_goal_angle/north_goal_angle/north_goal_angle.py:161]. 현재 원고 Ⅲ-2.2 의 "FIXED 시 ±1.5 cm 급"은 F9P 휴대 시험 1회 값이다(2.2.8 참고).
+- 현재 원고 Ⅲ-1.2 표의 GPS 토픽 `/fix` 는 실제 이름 `/ublox_gps_node/fix` 로 고쳐야 한다 [근거: src/north_goal_angle/north_goal_angle/north_goal_angle.py:172]. 현재 원고 Ⅲ-2.2 의 "FIXED 시 ±1.5 cm 급"은 F9P 휴대 시험 1회 값이다(2.2.8 참고).
