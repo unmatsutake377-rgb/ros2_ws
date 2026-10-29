@@ -57,7 +57,7 @@ rclpy 는 소스 위치별로 심각도를 캐싱해 `ValueError: Logger severit
 |---|---|
 | LiDAR | RPLIDAR A3, `/dev/ttyLiDAR`, `Sensitivity`, 25m. **실측 개체마다 다름**: 1번배 `80BF` ≈11.1Hz/0.250°, 2번배 `918A` 11.00Hz/0.223°(셋 중 최정밀). 11.96Hz/0.275° 는 소재 미확인 `D5F1`(지금 없음) 값. (스펙 10Hz/0.225° 아님, 상세 §2·`docs/문제와작업/라이다_고장진단_20260818.md`). 회전수는 파라미터로 **못 바꾼다** — 드라이버가 `scan_frequency` 를 모터에 안 넘김(에러 없음) |
 | IMU | RB-SDA-v1 (IntelliThings iAHRS) 9축 AHRS, ASCII `"e\n"`, `/dev/IMU`. **WT901C 아님** |
-| GPS | A배 u-blox C94-M8P · B배 u-blox ZED-F9P, 둘 다 NTRIP RTK |
+| GPS | A배 u-blox C94-M8P · B배 u-blox ZED-F9P, 둘 다 NTRIP RTK. ⚠️ **10-29: 1번배(A) 실물은 ZED-F9P 로 확정**(10-28 동작 확인) → 1번배는 `gps_config` 기본값 그대로. 배별 실물 구성은 `docs/기준/1번배_구성.md` |
 | MCU | **Arduino Mega 2560 R3**. 통신 = `ssf_bridge` USB 시리얼 (**Due·micro-ROS 아님**, launch 가 micro-ROS 안 띄움). `Motor_run = pwm_r*10000 + pwm_l`, 1500=중립. 펌웨어는 passthrough(모터별 `invert`·`gain_num` 노브 있음 — 현재 좌·우 둘 다 `false`·`10` → 숨은 반전 없음. 방향 디버깅 땐 `ssf_boat.ino:327-328` 도 확인) |
 | ESC | 🔒 **좌/우 2채널뿐** — 핀 12(좌)·11(우). 선수·선미 구분 없음, 측별 팬아웃(2번배 측당 2개·1번배 측당 1개). 펌웨어 동일 → 배 ID 분기 불필요. **게걸음 불가** |
 | 카메라 | **RealSense D455 현역**(비전 3종이 지금 이걸로 돈다) / **OAK-1 PoE 보유**(표준 화각·고정초점 — **W 광각 아님**, 09-15 구매모델 확정. RGB 전용·뎁스 없음·PoE=이더넷). OAK 는 인젝터(알리 10-27 주문) 도착 뒤 D455 와 비교 선정, 바꾸는 날 `image_topic`·`hfov_deg` 실측 — 런북 `docs/절차/oak_arrival_runbook.md`. 코드는 **중립화**(상세 §3-3) |
