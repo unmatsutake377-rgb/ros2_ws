@@ -87,3 +87,10 @@
 4. cog_offset 일 때 "mount_offset_deg 미적용" **부팅 INFO 한 줄 추가**(yaw_mux.py, 토픽·파라미터 불변).
 5. dual_gps 잠복 문제는 **N3 로 미룸**.
 6. healthcheck `endswith(":OK")` 는 별도 계약(이번 범위 밖).
+
+## 진행 (2026-10-30)
+- 구현 94ed89f (팀장 지시로 리뷰 결과 전에 Ubuntu 검증용 커밋). run_tests 76 passed.
+- 리뷰: 🔴 차단 0. 🟡 INFO 문구 "invert_yaw 는 추정 앞에서만 적용" 이 "출력엔 invert 안 걸림" 으로 읽힐 수 있음 → 후속 커밋에서 문구만 정정. 🟡 yaw_mux 래퍼 변경 → Ubuntu 부팅 스모크(인계 문서).
+- 리뷰 검증: 수정 전 코드에서 새 테스트 1~6 실패, 후보 A 로 바꾸면 3·4·5 실패(선회 중 거울상), invert 를 update_imu 에 넣는 변이는 7 이 잡음.
+- 🟢 정정: §0 의 "거울상 2Δ" 는 **후보 A** 의 실패 모양이다. 수정 전 코드의 실제 실패는 상수 오차 `m − 2c − 2H₀`(선회는 같은 부호로 추종). 문서 갱신 때 반영.
+- 남은 것: Ubuntu build·colcon test·스모크 → 문서 갱신 목록 → 실기 북·동 2구간 → CLAUDE.md:152 해제(Ubuntu 측).

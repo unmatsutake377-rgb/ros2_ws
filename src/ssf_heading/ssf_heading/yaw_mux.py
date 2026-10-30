@@ -145,7 +145,7 @@ class YawMux(Node):
         if source == SRC_COG_OFFSET:
             self.get_logger().info(
                 "cog_offset: mount_offset_deg 미적용 — 추정 오프셋(off)이 mount + 게걸음을 "
-                "흡수한다. invert_yaw 는 추정 앞에서만 적용.")
+                "흡수한다. invert_yaw 는 s·yaw 로 한 번만 적용(오프셋 위에 다시 안 건다).")
 
     # ───────────────────────── 콜백 ─────────────────────────
     def raw_yaw_cb(self, msg):
