@@ -1,7 +1,7 @@
 # 변경 계약서 — cog_offset: invert 를 추정 앞으로, mount 이중 적용 제거 (F11 후속, 후보 B)
 
 > ssf-contract 작성 2026-10-30. `계약서_F11_cog_offset이중적용_20261029.md` 를 이어받는다(그 문서의 해법 (a) = 이 문서의 B).
-> 상태: **승인 대기**. F11 의 "GPS C2 다음" 순서 제약 아직 유효(C2 미반영 — `launch_files.launch.py:121-127` 이 아직 ublox launch include). 아래 "사람이 정해야 할 것" 1번.
+> 상태: **승인 10-30(C2 순서 해제) → 구현 94ed89f·3638fd5 → Ubuntu 검증 완료 10-30**(build·colcon test 76/0·전체 405/0·스모크 2종, `우분투_인계_cog_offset_20261030.md` §4). 남은 것: 문서 갱신(`헤딩_문서정정_모음_20261030.md`), 실기 북·동 2구간 → CLAUDE.md:152 해제.
 
 ## 0. 결함 확인과 A·B 판정
 - 결함 실재. 추정기 입력 `heading_logic.py:329` 는 원시 r(`update_imu` :309 에서 wrap360 만), 표본 :222 `COG − r`. 출력 :384 `_correct(wrap360(r+off))` → :397-404 → :92-93 이 invert·mount 를 추정 오프셋 위에 또 적용(편각은 :43 False 라 0).

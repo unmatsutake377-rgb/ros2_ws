@@ -2,8 +2,9 @@
 """check_params — config yaml 의 값이 **실제로 노드에 닿았는지** 대조한다.
 
     (전체 launch 를 띄운 상태에서 — launch 에 준 boat·gps_config 와 **같은 값**으로)
-    python3 tools/check_params.py --boat A --gps-config c94_m8p_rover.yaml
+    python3 tools/check_params.py --boat A                  # 1번배 실물 ZED-F9P → gps_config 기본값(10-29 확정)
     python3 tools/check_params.py --boat B                  # gps_config 기본 zed_f9p_rover.yaml
+    #   C94-M8P 를 단 배만 --gps-config c94_m8p_rover.yaml (launch 에 준 값과 같게)
     python3 tools/check_params.py some.yaml other.yaml      # 파일을 직접 고르면 --boat 불필요
 
 🚨 `--boat` 는 기본 파일 목록을 쓸 때 **필수**다 (2026-10-29, 계약서_배별IMU설정).
@@ -152,7 +153,7 @@ def main():
         files = default_files(args.boat, args.gps_config)
         print(f"boat={args.boat}, gps_config={args.gps_config}")
         print("  ⚠️ 둘 다 launch 에 준 boat·gps_config 와 같아야 한다 — "
-              "다르면 GPS·IMU 가 거짓 '불일치' 로 나온다 (A배면 보통 --gps-config c94_m8p_rover.yaml)")
+              "다르면 GPS·IMU 가 거짓 '불일치' 로 나온다 (C94-M8P 를 단 배만 --gps-config c94_m8p_rover.yaml)")
 
     nodes = [n for n in sh(["ros2", "node", "list"]).splitlines() if n.startswith("/")]
     if not nodes:
