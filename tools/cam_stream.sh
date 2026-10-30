@@ -19,6 +19,8 @@
 #   ./tools/cam_stream.sh 100.101.102.103 oak        # OAK 온보드 인코더 직접 (CPU 0, 시각 각인 없음)
 #   ./tools/cam_stream.sh 100.101.102.103 v4l2 640 480 30 1500   # 기본(424x240·1000)보다 크게
 #   CAM_TOPIC=/oak/rgb/image_raw ./tools/cam_stream.sh 100.101.102.103 ros   # OAK(depthai-ros) 토픽
+#   CAM_DEV=/dev/video6 ./tools/cam_stream.sh …   # 장치 고정(번호는 다시 꽂으면 바뀐다 — 평소엔 빼고 자동 탐색)
+#   CAM_ANY=1 ./tools/cam_stream.sh …             # RealSense 가 없을 때 내장 웹캠이라도 (시험용)
 #
 # 카메라별 (🚨 OAK-1 PoE(확정 09-15) 로 바뀌면 v4l2 모드는 못 쓴다 — PoE 는 이더넷 장치라 /dev/video 가 없다):
 #   | 카메라          | 수동(카메라 노드 없음)      | 자율(카메라 노드 있음)              |
@@ -49,7 +51,8 @@ H="${4:-$_H}"
 FPS="${5:-30}"
 KBPS="${6:-$_K}"
 PORT="${CAM_PORT:-5600}"
-DEV="${CAM_DEV:-}"     # 비우면 자동 탐색 (D455 컬러 = YUYV 포맷을 내는 노드)
+DEV_FIXED="${CAM_DEV:-}"   # 비우면 매 시도마다 자동 탐색 (D455 컬러 = 이름에 RealSense + YUYV)
+CAM_ANY="${CAM_ANY:-0}"    # 1 이면 RealSense 가 없을 때 아무 YUYV 카메라(내장 웹캠 등)로 대체 — 시험용
 TOPIC="${CAM_TOPIC:-/camera/camera/color/image_raw}"   # ros 모드 토픽. OAK 는 CAM_TOPIC 으로 덮어씀
 OAK_IP="${CAM_OAK_IP:-}"                                # oak 모드 카메라 고정 IP (비우면 자동 탐색)
 
@@ -84,11 +87,14 @@ fi
 # ── D455 컬러 노드 자동 탐색 ────────────────────────────────────────────────
 # D455 는 /dev/video 노드를 여러 개 낸다(뎁스·IR·컬러·메타데이터). 컬러만 YUYV 를 낸다.
 # 🚨 노트북 내장 웹캠도 YUYV 를 내고 번호가 앞이다(10-29 1번배: video0=내장, D455 컬러=video6).
-#    → 이름에 RealSense 가 든 노드를 먼저 찾고, 없을 때만 아무 YUYV 노드.
+#    → 이름에 RealSense 가 든 노드만 찾는다. 예전엔 없으면 조용히 내장 웹캠으로 넘어갔는데
+#      (10-30 1번배·2번배: D455 가 USB 에서 떨어진 사이 video0 을 잡아 검은 화면 — 원인을 한참 못 찾았다)
+#      이제는 경고하고 재시도한다. 웹캠으로라도 보내려면 CAM_ANY=1.
 find_color_dev() {
   command -v v4l2-ctl >/dev/null 2>&1 || { echo ""; return; }
-  local d name
-  for pass in realsense any; do
+  local d name passes=realsense
+  [ "$CAM_ANY" = 1 ] && passes="realsense any"
+  for pass in $passes; do
     for d in /dev/video*; do
       name="$(cat "/sys/class/video4linux/$(basename "$d")/name" 2>/dev/null)"
       [ "$pass" = realsense ] && [[ "$name" != *RealSense* ]] && continue
@@ -125,9 +131,16 @@ echo "  모드    : ${MODE}  ${W}x${H}@${FPS}  ${KBPS}kbps"
 while true; do
   case "$MODE" in
     v4l2)
-      [ -n "$DEV" ] || DEV="$(find_color_dev)"
+      # 매 시도마다 다시 찾는다 — D455 를 다시 꽂으면 번호가 바뀐다(10-30: video6 → video8).
+      #   예전엔 처음 찾은 번호를 붙들고 있어서, 번호가 바뀌면 'Cannot identify device' 만 무한 반복했다.
+      DEV="${DEV_FIXED:-$(find_color_dev)}"
       if [ -z "$DEV" ]; then
-        echo "⚠️ YUYV 를 내는 /dev/video 노드가 없다. 카메라 USB 확인. 3초 후 재시도." >&2
+        echo "⚠️ RealSense(D455) 컬러 장치가 없다 — D455 가 USB 에서 빠졌거나 카메라 노드가 쥐고 있다." >&2
+        echo "   확인: lsusb | grep -i realsense · sudo dmesg | tail · pgrep -af realsense (떠 있으면 ros 모드). 3초 후 재시도." >&2
+        sleep 3; continue
+      fi
+      if [ ! -e "$DEV" ]; then
+        echo "⚠️ ${DEV} 가 없다 — CAM_DEV 로 고정한 번호가 바뀌었거나 D455 가 빠졌다. CAM_DEV 를 빼고 다시 켜면 자동으로 찾는다. 3초 후 재시도." >&2
         sleep 3; continue
       fi
       echo "  장치    : ${DEV} ($(cat "/sys/class/video4linux/$(basename "$DEV")/name" 2>/dev/null))"
