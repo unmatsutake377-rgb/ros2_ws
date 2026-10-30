@@ -149,7 +149,7 @@ SPIN 중심 `spin_forward_pwm`(기본 1500 → 1400/1600 = 제자리 선회). �
 - `/health_ok` 는 진단 전용이라 거짓 정지 위험이 없다는 전제로 설계됐다. 제어에 물리려면 먼저 상세 §3-3·§5 를 보고 Davidson 과 검토.
 - 도크 인식: 목표 색·형상 유효값 밖이면 **부팅 ERROR + 검출 안 함, 담당 모드(7)에서만 `/image_angle`=10000 + 5 s 주기 ERROR, 그 외 모드는 발행 없음**(ff289f7. 이전엔 게이트 전 발행으로 모드 2·3 에 10000 누수 — 10-29 Ubuntu 확인). 임계는 혼동행렬 수치로 — 감으로 튜닝 금지. 건드리면 상세 §3-3b.
 - 헤딩 없으면 발행하지 않는다. 미구현 `heading_source` 는 0 대신 발행 정지.
-- 🚨 **`heading_source: cog_offset` 사용 금지 — 고칠 때까지.** 그 경로는 `mount_offset_deg` 를 추정 오프셋 위에 한 번 더 더하고 `invert_yaw` 를 추정 뒤에 뒤집는다(`heading_logic.py:384`, 과제 F11). 지금 기본 `imu_relative` 는 무관. 계약은 GPS C2 다음(팀장 10-29). `zero_yaw_on_boot`·`use_gps_heading_override` 기본 false.
+- 🚨 **`heading_source: cog_offset` 사용 금지 — 실기 북·동 2구간 확인 전까지.** 이중 적용 버그(과제 F11)는 코드 수정됨(94ed89f·3638fd5, Ubuntu 빌드·405 테스트·부팅 스모크 10-30). 남은 것은 물 위 확인 — `우분투_인계_cog_offset_20261030.md` §3 절차 통과 뒤에만 이 줄을 지운다(팀장 10-30). 지금 기본 `imu_relative` 는 무관. `zero_yaw_on_boot`·`use_gps_heading_override` 기본 false.
 - 자기편각은 **자기북 기준 소스에만**(`SOURCE_IS_MAGNETIC`). 듀얼 GPS·COG 에 더하면 이중 보정(약 8°).
 - 카메라는 **방위각만**, 거리는 LiDAR `/scan`. 도크는 매칭하지 말고 LiDAR 전방 섹터 최소거리. 상세 §3-3
 - 카메라 교체 시 고칠 곳 = `src/color_shape_detector/config/vision.yaml` 의 `hfov_deg`(현재 80.32 — 2026-08-12 `camera_info` 실측으로 71.5 에서 정정) + HSV 재캘리브(광각은 `hfov_deg` 만으론 부족 — 왜곡 보정·`min_area_px` 재튜닝, 상세 §3-3). 픽셀 폭은 매 프레임 `msg.width` 로 읽지만, 해상도·화각이 바뀌면 `hfov_deg` 도 같이 바꿔야 한다. 런북 `docs/절차/oak_arrival_runbook.md`
