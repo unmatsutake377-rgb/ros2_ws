@@ -31,7 +31,7 @@ from std_msgs.msg import Bool, Float64, String
 from geometry_msgs.msg import TwistWithCovarianceStamped
 
 from ssf_heading.heading_logic import (
-    ALL_SOURCES, SRC_IMU_RELATIVE, ST_OK,
+    ALL_SOURCES, SRC_COG_OFFSET, SRC_IMU_RELATIVE, ST_OK,
     COGOffsetEstimator, HeadingMux, cog_from_velocity,
 )
 
@@ -141,6 +141,11 @@ class YawMux(Node):
             f"(invert={invert_yaw}, mount={mount_offset_deg}°, decl={declination_deg}°)\n"
             f"   ⚠️ iahrs_driver 는 {raw_topic} 로 내야 한다. {out_topic} 로 두면 발행자 2개다."
         )
+        # 위 줄의 mount=… 가 cog_offset 에도 걸리는 것처럼 읽히는 오해를 막는다.
+        if source == SRC_COG_OFFSET:
+            self.get_logger().info(
+                "cog_offset: mount_offset_deg 미적용 — 추정 오프셋(off)이 mount + 게걸음을 "
+                "흡수한다. invert_yaw 는 추정 앞에서만 적용.")
 
     # ───────────────────────── 콜백 ─────────────────────────
     def raw_yaw_cb(self, msg):

@@ -587,6 +587,203 @@ def test_mux_estimator_runs_even_on_other_source():
     assert abs(ang_diff(yaw, mux._imu[0])) < 1e-6, "출력엔 offset 이 섞이면 안 된다"
 
 
+# ================================================================ cog_offset 보정 순서
+#  (계약서_cog_offset보정순서_20261030)
+#  물리 모델: 진짜 뱃머리 H = s·r + m (s=±1 invert, m mount), 게걸음 c, COG = H + c.
+#  🚨 _run_mux 는 COG 를 원시 영역(imu + off)에서 만들어 invert·mount 이중 적용을 못 본다.
+#     아래는 **진짜 H 에서** r = s·(H − m), COG = H + c 로 거꾸로 만든다.
+def _raw_from_true(heading, invert, mount):
+    """진짜 뱃머리 H → 센서 원시 r. s·r + m = H 를 r 에 대해 푼 것."""
+    s = -1.0 if invert else 1.0
+    return wrap360(s * (heading - mount))
+
+
+def _cog_mux(invert, mount, decl=0.0):
+    return HeadingMux(SRC_COG_OFFSET, invert_yaw=invert, mount_offset_deg=mount,
+                      declination_deg=decl, stale_sec=10.0,
+                      estimator=COGOffsetEstimator(min_samples=30, half_life_sec=0.0))
+
+
+def _drive(mux, headings, *, invert, mount, crab=0.0, t0=0.0, dt=0.1, speed=2.0,
+           on_step=None):
+    """진짜 H 열을 따라 IMU·COG·후진게이트(전진)를 넣는다. on_step(H, t) 로 중간 관찰."""
+    t = t0
+    for h in headings:
+        mux.update_reverse(False, t)
+        mux.update_imu(_raw_from_true(h, invert, mount), t)
+        mux.update_cog(wrap360(h + crab), speed, t)
+        if on_step is not None:
+            on_step(h, t)
+        t += dt
+    return t
+
+
+def _straight(h0, n, wobble=0.3):
+    """직진 중 자연스러운 흔들림 ±(3°/s 이하). 선회율 게이트(8°/s)에 안 걸린다."""
+    return [wrap360(h0 + (wobble if i % 2 else 0.0)) for i in range(n)]
+
+
+def _turn(h_from, h_to, step):
+    """
+    h_from → h_to 를 균등 간격(≤ step °/표본)으로 선회. 마지막 표본이 정확히 h_to.
+    dt=0.1 이면 step 1.5 = 15°/s → 전 표본이 선회율 게이트(8°/s)에 걸린다.
+    """
+    d = ang_diff(h_to, h_from)
+    k = max(1, math.ceil(abs(d) / step))
+    return [wrap360(h_from + d * i / k) for i in range(1, k + 1)]
+
+
+def test_cog_offset_mount_not_applied_twice():
+    """1) mount=37, invert=F, H=90 → 90 (수정 전 127: off 가 흡수한 mount 를 _correct 가 또 더함)."""
+    mux = _cog_mux(False, 37.0)
+    t = _drive(mux, _straight(90.0, 40, wobble=0.0), invert=False, mount=37.0)
+    yaw, st = mux.heading(t)
+    assert st == ST_OK, st
+    assert abs(ang_diff(yaw, 90.0)) < 0.5, f"mount 이중 적용? yaw={yaw}"
+    assert abs(ang_diff(mux.estimator.offset_deg, 37.0)) < 0.5, mux.estimator.offset_deg
+
+
+def test_cog_offset_invert_single_segment_east():
+    """2) invert=T, mount=0, 동쪽 단일 구간 → 90 (수정 전 270)."""
+    mux = _cog_mux(True, 0.0)
+    t = _drive(mux, _straight(90.0, 40), invert=True, mount=0.0)
+    yaw, st = mux.heading(t)
+    assert st == ST_OK, st
+    assert abs(ang_diff(yaw, 90.3)) < 0.5, f"invert 를 못 다뤘다: yaw={yaw}"
+
+
+def test_cog_offset_invert_mount_north_then_east():
+    """
+    3) invert=T, mount=37, 북 → 동 각 40 표본 이상. 두 구간 끝 모두 OK·출력 H, off≈37.
+       한 방향 직진은 invert 오설정도 통과하므로 두 구간이 필요하다(계약서 위험 3).
+    """
+    mux = _cog_mux(True, 37.0)
+    north = _straight(0.0, 40, wobble=0.0)
+    t = _drive(mux, north, invert=True, mount=37.0)
+    yaw, st = mux.heading(t)
+    assert st == ST_OK, f"북 구간 끝: {st}"
+    assert abs(ang_diff(yaw, 0.0)) < 0.5, f"북 구간 끝 yaw={yaw}"
+    assert abs(ang_diff(mux.estimator.offset_deg, 37.0)) < 0.5, mux.estimator.offset_deg
+
+    t = _drive(mux, _turn(0.0, 90.0, 1.5), invert=True, mount=37.0, t0=t)
+    t = _drive(mux, _straight(90.0, 40, wobble=0.0), invert=True, mount=37.0, t0=t)
+    yaw, st = mux.heading(t)
+    assert st == ST_OK, f"동 구간 끝: {st} R={mux.estimator.resultant:.3f}"
+    assert abs(ang_diff(yaw, 90.0)) < 0.5, f"동 구간 끝 yaw={yaw}"
+    assert abs(ang_diff(mux.estimator.offset_deg, 37.0)) < 0.5, mux.estimator.offset_deg
+    assert mux.estimator.resultant > 0.99, "두 구간 표본이 같은 off 여야 한다"
+
+
+def test_cog_offset_grid_output_is_heading_plus_crab():
+    """4) invert{F,T} × mount{0,37} × c{0,5} → 출력 = H + c. off = mount + c."""
+    for invert in (False, True):
+        for mount in (0.0, 37.0):
+            for crab in (0.0, 5.0):
+                tag = f"invert={invert} mount={mount} c={crab}"
+                mux = _cog_mux(invert, mount)
+                t = _drive(mux, _straight(0.0, 40, wobble=0.0), invert=invert,
+                           mount=mount, crab=crab)
+                t = _drive(mux, _turn(0.0, 123.0, 1.5), invert=invert, mount=mount,
+                           crab=crab, t0=t)
+                t = _drive(mux, _straight(123.0, 40), invert=invert, mount=mount,
+                           crab=crab, t0=t)
+                yaw, st = mux.heading(t)
+                assert st == ST_OK, f"{tag}: {st}"
+                # 마지막 표본은 _straight 의 홀수 번째(123.3)
+                assert abs(ang_diff(yaw, 123.3 + crab)) < 0.5, f"{tag}: yaw={yaw}"
+                assert abs(ang_diff(mux.estimator.offset_deg, mount + crab)) < 0.5, \
+                    f"{tag}: off={mux.estimator.offset_deg}"
+
+
+def test_cog_offset_invert_tracks_heading_during_fast_turn():
+    """
+    5) invert=T, 0° 수렴 뒤 >8°/s 로 90° 선회 — 선회 중 표본은 버려지므로 출력은
+       IMU 가 혼자 끌고 간다. 매 표본 출력이 H 를 따라가야 한다.
+       (수정 전 출력 = H − 2H₀ − c + m → H₀=0, c=0 이면 m 만큼 상수 오차. 그래서 mount=37)
+    """
+    mux = _cog_mux(True, 37.0)
+    t = _drive(mux, _straight(0.0, 40, wobble=0.0), invert=True, mount=37.0)
+    assert mux.heading(t)[1] == ST_OK
+    n_before = mux.estimator.samples
+    errs = []
+
+    def watch(h, now):
+        yaw, st = mux.heading(now)
+        assert st == ST_OK, f"선회 중 H={h}: {st}"
+        errs.append((h, ang_diff(yaw, h)))
+
+    _drive(mux, _turn(0.0, 90.0, 1.5), invert=True, mount=37.0, t0=t, on_step=watch)
+    bad = [(h, e) for h, e in errs if abs(e) >= 0.5]
+    assert not bad, f"선회 중 출력이 H 를 못 따라감 (H, 오차): {bad[:5]}"
+    assert abs(ang_diff(errs[-1][0], 90.0)) < 1e-9, "90° 까지 돌았어야 한다"
+    # 선회 중 표본은 전부 버려졌다 = 출력은 IMU 가 혼자 끌고 간 것
+    assert mux.estimator.samples == n_before, mux.estimator.samples
+    assert mux.estimator.last_reject == "turning", mux.estimator.last_reject
+
+
+def test_cog_offset_ignores_declination():
+    """6) declination −8 이 cog_offset 출력에 안 들어간다 (COG 는 진북 기준)."""
+    for invert, mount in ((False, 0.0), (True, 37.0)):
+        mux = _cog_mux(invert, mount, decl=-8.0)
+        t = _drive(mux, _straight(200.0, 40, wobble=0.0), invert=invert, mount=mount)
+        yaw, st = mux.heading(t)
+        assert st == ST_OK, st
+        assert abs(ang_diff(yaw, 200.0)) < 0.5, \
+            f"invert={invert} mount={mount}: 편각·보정이 새어들어감 yaw={yaw}"
+
+
+def test_imu_relative_bit_identical_with_cog_input():
+    """
+    7) imu_relative 는 이번 변경에 비트 단위로 불변. _imu 슬롯은 원시값,
+       출력은 apply_corrections(wrap360(r)) 와 == (슬롯이 수신 시 wrap360 하므로).
+       COG 가 들어와 추정이 수렴한 중에도 같아야 한다.
+    """
+    for invert in (False, True):
+        for mount in (0.0, 37.0, 359.9, -12.5):
+            for r in (0.0, 0.1, 89.9, 180.0, 359.999, -10.0):
+                want = apply_corrections(wrap360(r), invert_yaw=invert,
+                                         mount_offset_deg=mount)
+                tag = f"invert={invert} mount={mount} r={r}"
+
+                mux = HeadingMux(SRC_IMU_RELATIVE, invert_yaw=invert,
+                                 mount_offset_deg=mount, declination_deg=-8.0,
+                                 stale_sec=10.0,
+                                 estimator=COGOffsetEstimator(min_samples=30,
+                                                              half_life_sec=0.0))
+                mux.update_imu(r, 0.0)
+                assert mux._imu[0] == wrap360(r), f"{tag}: 슬롯이 원시값이 아니다"
+                yaw, st = mux.heading(0.0)
+                assert st == ST_OK and yaw == want, f"{tag}: {yaw} != {want}"
+
+                # COG 입력 중: 추정을 수렴시킨 뒤 같은 r 로 다시
+                t = _drive(mux, _straight(50.0, 40), invert=invert, mount=mount,
+                           crab=5.0, t0=1.0)
+                assert mux.estimator.converged, tag
+                mux.update_imu(r, t)
+                mux.update_cog(77.0, 2.0, t)
+                assert mux._imu[0] == wrap360(r), f"{tag}: 슬롯이 원시값이 아니다(COG 중)"
+                yaw, st = mux.heading(t)
+                assert st == ST_OK and yaw == want, f"{tag} (COG 중): {yaw} != {want}"
+
+
+def test_cog_offset_invert_turning_reject_uses_abs():
+    """8) invert=T 에서도 선회 배제는 abs(선회율) — 좌·우 선회 모두 'turning'."""
+    for direction in (+1.0, -1.0):
+        mux = _cog_mux(True, 37.0)
+        t = _drive(mux, _straight(0.0, 5, wobble=0.0), invert=True, mount=37.0)
+        n_before = mux.estimator.samples
+        _drive(mux, _turn(0.0, direction * 60.0, 2.0), invert=True, mount=37.0, t0=t)
+        assert mux.estimator.last_reject == "turning", \
+            f"방향 {direction}: last_reject={mux.estimator.last_reject}"
+        assert abs(mux._turn_rate_dps) > 8.0, mux._turn_rate_dps
+        assert mux.estimator.samples == n_before, \
+            f"방향 {direction}: 선회 표본이 새어들어감 n={mux.estimator.samples}"
+        # 같은 배에서 완만한 변화(3°/s)는 통과해야 한다 — 게이트가 다 막는 게 아니다
+        _drive(mux, _straight(direction * 60.0, 4), invert=True, mount=37.0, t0=t + 10.0)
+        assert mux.estimator.last_reject is None, mux.estimator.last_reject
+        assert mux.estimator.samples > n_before
+
+
 def main():
     print("=== heading_logic 테스트 ===")
     for name, fn in sorted(globals().items()):

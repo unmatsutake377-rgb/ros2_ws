@@ -88,6 +88,10 @@ def apply_corrections(yaw_deg, *, invert_yaw=False, mount_offset_deg=0.0,
       1) invert  : 센서 회전방향이 반대일 때만 (벤치에서 확정)
       2) mount   : IMU 를 선체에 삐뚤게 단 각도 + (상대모드에선) 기준축 오프셋
       3) 편각    : 자기북 → 진북. **자기북 기준 소스에만** 호출부에서 넘긴다.
+
+    🚨 cog_offset 소스는 이 함수를 거치지 않는다 (HeadingMux.heading 참고).
+       invert 는 추정기 '앞' 에서 걸고, mount 는 추정 오프셋이 이미 흡수하므로
+       여기서 또 걸면 이중 적용이다.
     """
     y = -yaw_deg if invert_yaw else yaw_deg
     return wrap360(y + mount_offset_deg + declination_deg)
@@ -146,6 +150,10 @@ class COGOffsetEstimator:
 
         offset  = COG - imu_yaw          (직진 중일 때만 표본)
         heading = imu_yaw + offset       (정지 중에도 IMU 가 유지한다)
+
+    imu_yaw 는 **invert 만 적용한 값** wrap360(s·r) 이다 (s=±1, HeadingMux 가 넘긴다).
+    mount·편각은 적용하지 않는다 — 그래서 offset = 장착 오프셋(mount) + 게걸음각 이 되고,
+    출력 heading 에 mount 를 또 더하지 않는다(이중 적용 금지).
 
     🚨 원리적 한계 — 숨기지 말 것.
       COG 는 '배가 실제로 간 방향' 이지 '뱃머리 방향' 이 아니다. 조류·바람에 게걸음하면
@@ -326,7 +334,9 @@ class HeadingMux:
         if imu_t is None or (t - imu_t) > self.stale_sec:
             self.estimator.last_reject = "imu_stale"
             return
-        self.estimator.update(imu_yaw, self._cog[0], self._speed,
+        # invert 는 추정 '앞' 에서 건다. 원시 r 로 표본을 만들면 invert=T 일 때
+        # 표본이 2H+c-m 이 되어 수렴 방위에서만 맞는다 (계약서_cog_offset보정순서_20261030).
+        self.estimator.update(self._cog_frame_yaw(imu_yaw), self._cog[0], self._speed,
                               self._turn_rate_dps, t,
                               reverse=self.reverse_state(t))
 
@@ -381,11 +391,23 @@ class HeadingMux:
             if off is None:
                 # 아직 못 믿는다. 0 을 대신 내지 않는다 — 0 은 '보정 없음' 처럼 보인다.
                 return None, ST_NOT_CONVERGED
-            return self._correct(wrap360(val + off)), ST_OK
+            # 🚨 _correct 를 거치지 않는다. off 가 이미 mount + 게걸음을 흡수했고
+            #    invert 는 추정 앞에서 걸었다. 여기서 또 걸면 invert·mount 이중 적용이다.
+            #    편각도 안 건다 (COG 는 진북 기준, SOURCE_IS_MAGNETIC[cog_offset]=False).
+            return wrap360(self._cog_frame_yaw(val) + off), ST_OK
 
         return None, ST_NOT_IMPLEMENTED
 
     # ------------------------------------------------ 내부
+    def _cog_frame_yaw(self, raw_yaw_deg):
+        """
+        cog_offset 의 추정·출력이 쓰는 yaw = wrap360(s·r). invert 만 적용, mount·편각 미적용.
+
+        🚨 _imu 슬롯 자체는 원시 r 로 둔다. 슬롯에 invert 를 넣으면 imu_relative 가
+           _from_slot → _correct 에서 invert 를 한 번 더 건다(거울상 방위).
+        """
+        return wrap360(-raw_yaw_deg) if self.invert_yaw else raw_yaw_deg
+
     def _from_slot(self, slot, t):
         val, ts = slot
         if ts is None:
