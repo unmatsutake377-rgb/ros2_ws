@@ -1,0 +1,574 @@
+<title>SSF 소프트파트 해설</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gothic+A1:wght@500;800&family=IBM+Plex+Sans+KR:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: 해도(chart) 느낌 — 왼쪽 고정 목차 + 본문 한 단, 절마다 "요약 띠 → 동작 → 왜 → 코드 → 심사 질문" */
+:root{
+  --bg:#f3f6f8; --paper:#ffffff; --ink:#14212b; --muted:#566673; --line:#d5dee5;
+  --sea:#0f4c6e; --sea-soft:#e3eef5; --port:#c8323b; --stbd:#1b8a4c; --amber:#b7791f;
+  --code-bg:#eef3f6;
+  --f-display:"Gothic A1","Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+  --f-body:"IBM Plex Sans KR","Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0c151c; --paper:#121e27; --ink:#e3ebf1; --muted:#93a5b3; --line:#24343f;
+  --sea:#6db7e0; --sea-soft:#16303f; --port:#ef6b72; --stbd:#4cc685; --amber:#e3a94a; --code-bg:#182833; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0c151c; --paper:#121e27; --ink:#e3ebf1; --muted:#93a5b3; --line:#24343f;
+  --sea:#6db7e0; --sea-soft:#16303f; --port:#ef6b72; --stbd:#4cc685; --amber:#e3a94a; --code-bg:#182833; color-scheme:dark}
+
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15.5px;line-height:1.7;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.wrap{max-width:1180px;margin:0 auto;display:grid;grid-template-columns:220px minmax(0,1fr);gap:40px;padding-block:32px 80px}
+nav.toc{position:sticky;top:calc(env(safe-area-inset-top,0px) + 20px);align-self:start;font-size:13.5px}
+nav.toc .k{font-family:var(--f-mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:8px}
+nav.toc a{display:flex;gap:10px;padding:5px 8px;border-radius:6px;color:var(--ink);text-decoration:none}
+nav.toc a:hover,nav.toc a:focus-visible{background:var(--sea-soft);outline:none}
+nav.toc a span{font-family:var(--f-mono);color:var(--sea);min-width:42px;font-size:12px;padding-top:2px}
+main{min-width:0}
+header.hero{padding-bottom:24px;border-bottom:2px solid var(--ink);margin-bottom:8px}
+.eyebrow{font-family:var(--f-mono);font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--sea)}
+h1{font-family:var(--f-display);font-weight:800;font-size:clamp(28px,4.4vw,44px);line-height:1.2;margin:8px 0 12px;text-wrap:balance}
+.lede{max-width:66ch;color:var(--muted);margin:0}
+h2{font-family:var(--f-display);font-weight:800;font-size:25px;line-height:1.3;margin:0;text-wrap:balance}
+h3{font-family:var(--f-display);font-weight:800;font-size:18px;margin:26px 0 8px}
+section{padding-block:44px 8px;border-bottom:1px solid var(--line)}
+.sec-head{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;margin-bottom:14px}
+.sec-no{font-family:var(--f-mono);font-size:14px;color:var(--paper);background:var(--sea);padding:2px 9px;border-radius:4px}
+p,li{max-width:70ch}
+ul,ol{padding-left:1.3em;margin:8px 0}
+li{margin:3px 0}
+code,.mono{font-family:var(--f-mono);font-size:.88em}
+code{background:var(--code-bg);padding:1px 5px;border-radius:4px;word-break:break-word}
+.summary{background:var(--sea-soft);border-left:4px solid var(--sea);padding:12px 16px;border-radius:0 8px 8px 0;font-weight:500;max-width:72ch;margin:6px 0 4px}
+.summary b{color:var(--sea)}
+.label{font-family:var(--f-mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin:22px 0 6px;display:block}
+.why{border:1px dashed var(--line);border-radius:8px;padding:10px 14px;max-width:72ch;background:var(--paper)}
+.files{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0}
+.files code{background:var(--paper);border:1px solid var(--line);padding:3px 8px}
+.qa{display:grid;gap:8px;margin:8px 0 20px;max-width:74ch}
+.qa div{background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:10px 14px}
+.qa .q{font-weight:600;display:block;color:var(--ink)}
+.qa .q::before{content:"Q ";font-family:var(--f-mono);color:var(--amber)}
+.qa .a{color:var(--muted)}
+.tbl{overflow-x:auto;margin:10px 0 6px;max-width:100%}
+table{border-collapse:collapse;font-size:14px;min-width:520px;width:100%;background:var(--paper)}
+th,td{border-bottom:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top}
+th{font-family:var(--f-mono);font-size:11.5px;letter-spacing:.06em;color:var(--muted);font-weight:500;background:var(--bg)}
+td.num{font-family:var(--f-mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+.figure{background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:16px;margin:14px 0;overflow-x:auto}
+.figure .cap{font-size:13px;color:var(--muted);margin-top:8px}
+.keys{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin:18px 0 6px}
+.keys div{background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:14px}
+.keys b{font-family:var(--f-display);font-weight:800;display:block;margin-bottom:4px}
+svg text{font-family:var(--f-body)}
+svg .m{font-family:var(--f-mono);font-size:11px;fill:var(--muted)}
+svg .bx{fill:var(--paper);stroke:var(--line);stroke-width:1.4}
+svg .bx.hot{stroke:var(--sea);stroke-width:2.2;fill:var(--sea-soft)}
+svg .t{font-size:13px;fill:var(--ink);font-weight:600}
+svg .ts{font-size:11px;fill:var(--muted)}
+svg .ln{stroke:var(--muted);stroke-width:1.4;fill:none}
+svg .ln.dash{stroke-dasharray:4 4}
+svg .ln.hot{stroke:var(--sea);stroke-width:2}
+svg .col{font-family:var(--f-mono);font-size:11px;letter-spacing:.14em;fill:var(--sea)}
+/* 계산기 */
+.calc{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:18px;align-items:start}
+.calc label{font-size:13px;color:var(--muted);display:block;margin-bottom:4px}
+.calc input[type=range]{width:100%;accent-color:var(--sea)}
+.calc select{font:inherit;padding:4px 8px;border-radius:6px;border:1px solid var(--line);background:var(--paper);color:var(--ink)}
+.btns{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.btns button{font-family:var(--f-mono);font-size:12px;padding:5px 10px;border-radius:6px;border:1px solid var(--line);background:var(--bg);color:var(--ink);cursor:pointer}
+.btns button:hover,.btns button:focus-visible{border-color:var(--sea);outline:none}
+.out{font-family:var(--f-mono);font-size:13.5px;line-height:1.75;background:var(--code-bg);border-radius:8px;padding:12px 14px;font-variant-numeric:tabular-nums;min-width:0;overflow-wrap:anywhere}
+.out b{color:var(--sea)}
+.bars{display:grid;grid-template-columns:auto 1fr auto;gap:6px 10px;align-items:center;margin-top:10px;font-family:var(--f-mono);font-size:12.5px}
+.bar{height:12px;background:var(--line);border-radius:6px;position:relative;overflow:hidden}
+.bar i{position:absolute;inset:0 auto 0 0;background:var(--stbd);border-radius:6px}
+.bar i.rev{background:var(--port)}
+/* 갭 스트립 */
+.strip{display:grid;grid-template-columns:110px minmax(0,1fr);gap:6px 12px;align-items:center;font-size:13px}
+.cells{display:grid;grid-template-columns:repeat(32,minmax(6px,1fr));gap:2px}
+.cells i{height:16px;border-radius:2px;background:var(--line)}
+.cells i.o{background:var(--port)}
+.cells i.n{background:var(--amber);opacity:.55}
+.cells i.f{background:var(--sea);opacity:.35}
+.cells i.g{background:var(--stbd)}
+.cells i.t{background:var(--stbd);outline:2px solid var(--ink);outline-offset:-2px}
+/* 페일세이프 타임라인 */
+.tl{position:relative;height:74px;margin:10px 4px 4px}
+.tl .axis{position:absolute;left:0;right:0;top:34px;height:8px;border-radius:4px;background:linear-gradient(90deg,var(--stbd) 0 8.75%,var(--amber) 8.75% 37.4%,var(--port) 37.4% 100%)}
+.tl .pin{position:absolute;top:0;transform:translateX(-50%);font-family:var(--f-mono);font-size:11.5px;text-align:center;white-space:nowrap}
+.tl .pin::after{content:"";display:block;width:2px;height:22px;background:var(--ink);margin:2px auto 0}
+.tl .tick{position:absolute;top:48px;transform:translateX(-50%);font-family:var(--f-mono);font-size:11px;color:var(--muted)}
+.chip{display:inline-block;font-family:var(--f-mono);font-size:12px;padding:1px 8px;border-radius:999px;border:1px solid var(--line);background:var(--paper)}
+.chip.p{border-color:var(--port);color:var(--port)} .chip.s{border-color:var(--stbd);color:var(--stbd)} .chip.a{border-color:var(--amber);color:var(--amber)}
+.note{font-size:13.5px;color:var(--muted)}
+footer{padding-top:28px;color:var(--muted);font-size:13px}
+@media (max-width:860px){
+  .wrap{grid-template-columns:minmax(0,1fr);gap:0;padding-top:16px}
+  nav.toc{position:static;display:flex;gap:6px;overflow-x:auto;padding-bottom:10px;border-bottom:1px solid var(--line);margin-bottom:10px}
+  nav.toc .k{display:none}
+  nav.toc a{white-space:nowrap;border:1px solid var(--line);background:var(--paper)}
+  .calc{grid-template-columns:minmax(0,1fr)}
+  .strip{grid-template-columns:minmax(0,1fr)}
+  .strip .sl{margin-top:6px}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<div class="wrap">
+<nav class="toc" aria-label="목차">
+  <div class="k">보고서 Ⅲ장 순서</div>
+  <a href="#big"><span>0</span>큰 그림</a>
+  <a href="#s1"><span>Ⅲ-1</span>시스템 구성</a>
+  <a href="#s21"><span>Ⅲ-2.1</span>헤딩</a>
+  <a href="#s22"><span>Ⅲ-2.2</span>GPS</a>
+  <a href="#s23"><span>Ⅲ-2.3</span>LiDAR</a>
+  <a href="#s24"><span>Ⅲ-2.4</span>영상</a>
+  <a href="#s3"><span>Ⅲ-3</span>임무 상태기계</a>
+  <a href="#s4"><span>Ⅲ-4</span>임무별 알고리즘</a>
+  <a href="#s5"><span>Ⅲ-5</span>페일세이프</a>
+  <a href="#s6"><span>Ⅲ-6</span>시뮬·시험</a>
+  <a href="#ax"><span>부록</span>숫자표·읽을 파일</a>
+</nav>
+
+<main>
+<header class="hero">
+  <div class="eyebrow">SSF 2026 KABOAT · 소프트파트</div>
+  <h1>코드가 실제로 어떻게 도는지, 보고서 Ⅲ장 순서대로</h1>
+  <p class="lede">전체 구성은 아는데 코드 안쪽이 안 잡히는 사람용. 절마다 <b>한 줄 요약 → 실제 동작(숫자로 따라가기) → 왜 이렇게 → 코드 위치 → 심사 질문</b> 순서다. 숫자 예시는 코드에서 직접 확인한 값이다. 원고는 <code>docs/전달용/보고서_분담/통합_Ⅲ소프트웨어.md</code>.</p>
+</header>
+
+<!-- 0 큰 그림 -->
+<section id="big">
+  <div class="sec-head"><span class="sec-no">0</span><h2>큰 그림 — 배 한 대 안에서 데이터가 도는 길</h2></div>
+  <p class="summary">센서 값을 정리하는 노드들이 <b>각도</b>를 하나씩 만들고, 그 각도들이 <b>ship_direction 한 곳</b>에 모여 최종 조향각 1개가 되고, motor_control 이 그걸 좌/우 모터 세기로 바꾼다.</p>
+  <div class="figure" role="img" aria-label="센서에서 모터까지 데이터 흐름도">
+    <svg viewBox="0 0 960 430" width="100%" style="min-width:780px" xmlns="http://www.w3.org/2000/svg">
+      <defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="var(--muted)"/></marker>
+      <marker id="arh" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="var(--sea)"/></marker></defs>
+      <text class="col" x="20" y="18">센서</text><text class="col" x="215" y="18">정리</text><text class="col" x="430" y="18">판단 재료</text><text class="col" x="650" y="18">최종 판단</text><text class="col" x="830" y="18">실행</text>
+      <!-- 센서 -->
+      <rect class="bx" x="20" y="40" width="130" height="46" rx="8"/><text class="t" x="34" y="62">IMU</text><text class="ts" x="34" y="78">뱃머리 각도</text>
+      <rect class="bx" x="20" y="130" width="130" height="46" rx="8"/><text class="t" x="34" y="152">GPS (RTK)</text><text class="ts" x="34" y="168">위치 1 Hz</text>
+      <rect class="bx" x="20" y="250" width="130" height="46" rx="8"/><text class="t" x="34" y="272">카메라</text><text class="ts" x="34" y="288">OAK / D455</text>
+      <rect class="bx" x="20" y="350" width="130" height="46" rx="8"/><text class="t" x="34" y="372">LiDAR</text><text class="ts" x="34" y="388">앞 160° 거리</text>
+      <!-- 정리 -->
+      <rect class="bx" x="210" y="40" width="160" height="46" rx="8"/><text class="t" x="224" y="62">yaw_mux</text><text class="ts" x="224" y="78">진북 기준으로 번역</text>
+      <rect class="bx" x="210" y="130" width="160" height="46" rx="8"/><text class="t" x="224" y="152">north_goal_angle</text><text class="ts" x="224" y="168">목표 방위 · 임무 번호</text>
+      <rect class="bx" x="210" y="250" width="160" height="46" rx="8"/><text class="t" x="224" y="272">검출기 3종</text><text class="ts" x="224" y="288">부표 방위각만</text>
+      <!-- 판단 재료 -->
+      <rect class="bx" x="425" y="40" width="170" height="46" rx="8"/><text class="t" x="439" y="62">ship_goal_angle</text><text class="ts" x="439" y="78">목표 − 헤딩 = 오차</text>
+      <rect class="bx" x="425" y="250" width="170" height="46" rx="8"/><text class="t" x="439" y="272">임무 노드 4종</text><text class="ts" x="439" y="288">gate · back · turn · dock</text>
+      <!-- 최종 -->
+      <rect class="bx hot" x="645" y="160" width="150" height="62" rx="8"/><text class="t" x="659" y="186">ship_direction</text><text class="ts" x="659" y="204">최종 각도 1개 + 안전</text>
+      <!-- 실행 -->
+      <rect class="bx" x="825" y="160" width="120" height="62" rx="8"/><text class="t" x="839" y="186">motor_control</text><text class="ts" x="839" y="204">각도 → 좌/우 PWM</text>
+      <rect class="bx" x="825" y="300" width="120" height="70" rx="8"/><text class="t" x="839" y="324">ssf_bridge</text><text class="ts" x="839" y="342">USB → 아두이노</text><text class="ts" x="839" y="358">→ ESC → 스러스터</text>
+      <!-- 선 -->
+      <path class="ln" d="M150 63H208" marker-end="url(#ar)"/><text class="m" x="154" y="56">/imu/yaw_raw</text>
+      <path class="ln" d="M370 63H423" marker-end="url(#ar)"/><text class="m" x="374" y="56">/imu/yaw</text>
+      <path class="ln" d="M150 153H208" marker-end="url(#ar)"/><text class="m" x="160" y="146">/fix</text>
+      <path class="ln" d="M370 145C400 145 400 80 423 76" marker-end="url(#ar)"/><text class="m" x="378" y="122">목표 방위</text>
+      <path class="ln" d="M595 63C640 63 640 165 660 170" marker-end="url(#ar)"/><text class="m" x="600" y="100">/yaw_error</text>
+      <path class="ln" d="M370 165C500 170 560 180 643 184" marker-end="url(#ar)"/><text class="m" x="440" y="165">/geofence_state (가짜 LiDAR)</text>
+      <path class="ln dash" d="M290 176V248" marker-end="url(#ar)"/><text class="m" x="296" y="216">/wp_mode</text>
+      <path class="ln dash" d="M340 176C380 210 470 215 500 248" marker-end="url(#ar)"/>
+      <path class="ln" d="M150 273H208" marker-end="url(#ar)"/><text class="m" x="160" y="266">영상</text>
+      <path class="ln" d="M370 273H423" marker-end="url(#ar)"/><text class="m" x="372" y="266">/red_angle 등</text>
+      <path class="ln" d="M595 273C630 273 640 230 660 223" marker-end="url(#ar)"/><text class="m" x="600" y="262">/candidate_angle</text>
+      <path class="ln" d="M150 373H720V224" marker-end="url(#ar)"/><text class="m" x="400" y="366">/scan</text>
+      <path class="ln hot" d="M795 191H823" marker-end="url(#arh)"/><text class="m" x="770" y="150">/desired_angle</text>
+      <path class="ln" d="M885 222V298" marker-end="url(#ar)"/><text class="m" x="892" y="264">Motor_run</text>
+    </svg>
+    <div class="cap">점선 <code>/wp_mode</code> = "지금 몇 번 임무인지". 이 숫자가 검출기와 임무 노드 중 누가 일할지 정한다(Ⅲ-3).</div>
+  </div>
+  <div class="keys">
+    <div><b>모든 게 각도로 흐른다</b>속도나 위치를 제어하지 않는다. "어느 방향으로 갈래"를 계속 넘긴다.</div>
+    <div><b>큰 숫자 = 명령어</b>각도 자리에 5000(우선회), 20000(미션 없음), 50000(정지), 10000(카메라 못 봄)이 오면 신호다.</div>
+    <div><b>모르면 입을 다문다</b>센서가 이상하면 0 같은 가짜 값을 내지 않고 발행을 멈춘다. 그 침묵을 아래에서 잡아 배를 세운다(Ⅲ-5).</div>
+  </div>
+</section>
+
+<!-- Ⅲ-1 -->
+<section id="s1">
+  <div class="sec-head"><span class="sec-no">Ⅲ-1</span><h2>시스템 구성</h2></div>
+  <p class="summary">노트북(ROS2)이 머리, 아두이노가 손. 노트북은 <b>"좌 몇, 우 몇"</b> 숫자만 보내고 아두이노가 그대로 ESC 에 전달한다.</p>
+  <span class="label">실제 동작</span>
+  <ul>
+    <li><code>motor_control</code> 이 좌/우 PWM 을 정하면 <code>Motor_run = 오른쪽×10000 + 왼쪽</code> 한 숫자로 합친다. 예: 우 1400, 좌 1600 → <code>14001600</code>.</li>
+    <li><code>ssf_bridge</code> 가 USB 시리얼로 아두이노에 쓰고, 펌웨어는 핀 12(좌)·11(우)로 그대로 내보낸다.</li>
+    <li><b>0.5 s 동안 명령이 안 오면 아두이노가 스스로 1500(중립).</b> 노트북이 멈춰도 배는 선다.</li>
+    <li>모드(WAIT 0 / MANUAL 1 / AUTO 2)는 <b>조종기 스위치로만</b> 바뀐다. 노트북은 <code>/boat_mode</code> 로 읽기만 한다.</li>
+    <li><b>추력 부호 함정</b>: ROS 안에서는 1500 보다 <b>작으면 전진</b>, 실제 ESC 는 <b>크면 전진</b>. 뒤집는 곳은 <code>ssf_bridge</code> 딱 한 곳(<code>invert_thrust_direction</code>). 다른 데서 또 뒤집으면 배가 후진한다.</li>
+    <li>두 배는 같은 코드. <code>boat:=A</code> / <code>boat:=B</code> 를 안 주면 launch 가 아예 안 뜬다(남의 배 설정으로 뜨는 실수 방지).</li>
+  </ul>
+  <span class="label">코드 위치</span>
+  <div class="files"><code>src/ssf_bridge/</code><code>arduino/ssf_boat/ssf_boat.ino</code><code>src/launch_files/launch/launch_files.launch.py</code></div>
+  <span class="label">심사 질문 대비</span>
+  <div class="qa">
+    <div><span class="q">노트북이 다운되면?</span><span class="a">아두이노 0.5 s 워치독으로 중립. motor_control 도 명령 0.5 s 무수신 시 중립.</span></div>
+    <div><span class="q">자율 중 사람이 개입하려면?</span><span class="a">조종기 스위치 하나. 소프트웨어 경로가 없어서 소프트 버그로 모드가 꼬일 수 없다.</span></div>
+  </div>
+</section>
+
+<!-- Ⅲ-2.1 -->
+<section id="s21">
+  <div class="sec-head"><span class="sec-no">Ⅲ-2.1</span><h2>헤딩(뱃머리 방향) — yaw_mux</h2></div>
+  <p class="summary">IMU 가 주는 "아무 기준 각도"를 <b>진북 기준 0~360°</b> 로 바꾸는 번역기. <code>/imu/yaw</code> 는 이 노드 하나만 낸다.</p>
+  <span class="label">왜 따로 노드를 만들었나</span>
+  <div class="why">작년엔 IMU 드라이버가 <b>켜진 순간 방향을 0°</b> 로 잡았다. 동쪽을 보고 켜지면 동쪽이 0° — GPS 목표 방위(진북 기준)와 빼면 의미가 없다. 올해는 드라이버가 원시값 <code>/imu/yaw_raw</code> 만 내고 yaw_mux 가 보정해 <code>/imu/yaw</code> 를 낸다. 같은 토픽에 발행자가 둘이면 ROS 는 에러 없이 값을 섞어 버리므로, launch 가 드라이버 출력 이름을 못 박는다.</div>
+  <span class="label">실제 동작 (기본 소스 imu_relative)</span>
+  <p>식: <code>ψ = wrap360( s·원시값 + mount_offset_deg )</code> — s 는 invert 면 −1, 아니면 +1. 예: 원시값 120°, 오프셋 232.0 → 352°. <code>wrap360</code> 은 0~360 으로 접는다(370 → 10, −10 → 350). 50 Hz 발행, 원시값이 0.5 s 넘게 안 오면 <b>발행을 멈춘다</b>.</p>
+  <h3>정북 정렬 — 배마다 한 번</h3>
+  <div class="figure" style="display:grid;grid-template-columns:minmax(0,260px) minmax(0,1fr);gap:20px;align-items:center">
+    <svg viewBox="0 0 240 240" width="100%" role="img" aria-label="정렬 후 시계방향 90도 회전 시 82 또는 262">
+      <circle cx="120" cy="120" r="92" fill="none" stroke="var(--line)" stroke-width="2"/>
+      <text x="120" y="20" text-anchor="middle" class="t">진북 0</text>
+      <text x="226" y="124" text-anchor="end" class="ts">90</text><text x="120" y="232" text-anchor="middle" class="ts">180</text><text x="14" y="124" class="ts">270</text>
+      <line x1="120" y1="120" x2="107" y2="29" stroke="var(--sea)" stroke-width="4" stroke-linecap="round"/>
+      <text x="76" y="44" class="m" style="fill:var(--sea)">352 정렬</text>
+      <line x1="120" y1="120" x2="211" y2="107" stroke="var(--stbd)" stroke-width="4" stroke-linecap="round"/>
+      <text x="150" y="98" class="m" style="fill:var(--stbd)">82 정상</text>
+      <line x1="120" y1="120" x2="29" y2="133" stroke="var(--port)" stroke-width="4" stroke-linecap="round" stroke-dasharray="6 4"/>
+      <text x="26" y="155" class="m" style="fill:var(--port)">262 invert</text>
+      <circle cx="120" cy="120" r="5" fill="var(--ink)"/>
+    </svg>
+    <ol style="margin:0">
+      <li>나침반으로 배를 북쪽에 맞춘다. 나침반은 <b>자북</b>을 가리키고, 한국 자북은 진북보다 약 8° 서쪽 → 이때 뱃머리의 진북 방위는 <b>약 352°</b>.</li>
+      <li><code>ros2 topic echo /imu/yaw</code> 가 352 근처가 될 때까지 <code>ssf_heading_A.yaml</code> 의 <code>mount_offset_deg</code> 를 바꾼다. <b>반드시 소수점</b>(37 ❌ 37.0 ✅ — 정수면 노드가 부팅하자마자 죽는다).</li>
+      <li>시계방향으로 90° 돌린다. 352 → <b>약 82</b>(한 바퀴 넘어감)면 정상. <b>약 262</b> 면 방향이 반대 → <code>invert_yaw: true</code> 로 바꾸고 1번부터.</li>
+    </ol>
+  </div>
+  <h3>대안 소스 cog_offset — 지금은 사용 금지</h3>
+  <ul>
+    <li>아이디어: 곧게 달리는 중이면 GPS 의 "실제 지나간 방향(COG)" ≈ 뱃머리. <code>COG − IMU</code> 를 여러 번 재면 오프셋을 자동으로 안다.</li>
+    <li>그냥 평균 내면 359° 와 1° 가 180° 가 된다. 그래서 각도를 <b>화살표(단위벡터)</b>로 바꿔 더하고, 화살표가 한 방향으로 잘 모일 때(R ≥ 0.9, 표본 30개 이상)만 쓴다.</li>
+    <li>버리는 표본: 느릴 때(0.8 m/s 미만), 급선회 중(8°/s 초과), <b>후진 중</b>(COG 가 뱃머리와 180° 반대 — <code>/motor_reverse</code> 로 안다).</li>
+    <li>10-30 고친 버그(F11): 이 경로가 mount·invert 를 한 번 더 적용했다 → 수정(94ed89f), Ubuntu 405 테스트 통과. 물 위 북·동 두 구간 확인 전까지 사용 금지 유지.</li>
+  </ul>
+  <span class="label">코드 위치</span>
+  <div class="files"><code>src/ssf_heading/ssf_heading/heading_logic.py</code><code>yaw_mux.py</code><code>config/ssf_heading_A.yaml · _B.yaml</code></div>
+  <span class="label">심사 질문 대비</span>
+  <div class="qa">
+    <div><span class="q">자기편각은 어떻게 처리?</span><span class="a">나침반 기준 소스에만 더한다. 지금 쓰는 imu_relative 는 정렬할 때 오프셋 안에 편각이 같이 들어간다. 그래서 목표값이 0 이 아니라 352.</span></div>
+    <div><span class="q">IMU 가 죽으면?</span><span class="a"><code>/imu/yaw</code> 멈춤 → <code>/yaw_error</code> 멈춤 → ship_direction 이 0.7 s 에 감속, 3 s 에 정지.</span></div>
+  </div>
+</section>
+
+<!-- Ⅲ-2.2 -->
+<section id="s22">
+  <div class="sec-head"><span class="sec-no">Ⅲ-2.2</span><h2>GPS — north_goal_angle</h2></div>
+  <p class="summary">GPS 위치로 <b>다음 웨이포인트 방위</b>, <b>지금 몇 번 임무인지(/wp_mode)</b>, <b>경계선 위치</b>를 0.5 s 마다 낸다.</p>
+  <h3>① 받기 — RTK</h3>
+  <p>그냥 GPS 는 ±3~5 m 틀려 부표 간격보다 크다. 기지국 보정(RTK)을 인터넷(NTRIP)으로 받아 <b>±1.5 cm</b>(08-07 실측 FIXED ±0.015 m). 계정 파일(<code>~/.ssf/</code>)이 없으면 그 노드만 빠지고 나머지는 뜬다.</p>
+  <h3>② 거르기 — 다섯 겹 필터 (작년 0겹)</h3>
+  <p class="note">작년 코드는 GPS 가 위치를 못 잡아 (위도 0, 경도 0) 을 줘도 그걸로 방위를 계산했다. 08-06 실제로 47.96° 라는 엉터리 방위가 나왔다.</p>
+  <div class="tbl"><table>
+    <tr><th>겹</th><th>하는 일</th><th>예시</th></tr>
+    <tr><td>1 fix 검증</td><td>상태 −1, (0,0), NaN, 범위 밖 → "위치 모름"</td><td>위성 못 잡음 → 방위 발행 안 함</td></tr>
+    <tr><td>2 공분산</td><td>수신기가 "자신 없음"(분산 &gt; 2.0) → 그 한 번만 버림</td><td></td></tr>
+    <tr><td>3 점프</td><td>15 m/s 넘는 순간이동 → 버림</td><td>건물 반사로 10 m 튐</td></tr>
+    <tr><td>4 스무딩</td><td>오차 작으면 천천히(α 0.15), 크면 빨리(α 0.80) 따라감</td><td>흔들림은 줄이고 진짜 이동은 따라감</td></tr>
+    <tr><td>5 신선도</td><td>받아들인 위치가 2.5 s 넘게 없으면 방위·경계 중단</td><td>1 Hz 라 한 번 빠짐(2 s)은 버팀</td></tr>
+  </table></div>
+  <h3>③ 길 찾기 — LOS·ILOS (줄 따라가기)</h3>
+  <ul>
+    <li>작년: "목표점을 똑바로 바라봐라" → 조류에 밀리면 휘어서 들어간다.</li>
+    <li>올해: <b>이전 WP P → 목표 W 를 잇는 가상의 줄</b>을 따라간다. XTE = 줄에서 옆으로 벗어난 거리.</li>
+    <li>줄 위 앞쪽 L m 지점(L = 속도×1.2, 2~6 m)을 바라본다. 벗어날수록 줄 쪽으로 더 꺾는다.</li>
+    <li><b>적분 I</b>: 계속 한쪽으로 밀리면(조류) 그만큼 미리 반대로 꺾는다. WP 를 넘기면 0 으로.</li>
+    <li>도착: 반경(도킹 2.0 m, 그 외 속도별 2.5~4.5 m) 안에 <b>dwell 초</b> 머무르면 다음 WP. 조종기가 AUTO 가 될 때까지 WP0 에서 대기.</li>
+  </ul>
+  <h3>④ 경계 — 지오펜스 = 가짜 LiDAR</h3>
+  <p>정면 −80°~+80° 를 1° 간격으로 광선을 쏴서 "이 방향 경계까지 몇 m" 를 <code>/geofence_state</code> 로 낸다. ship_direction 이 진짜 LiDAR 와 <b>가까운 쪽 값</b>으로 합친다 → 경계가 그냥 벽이 되어 회피가 알아서 피한다. 헤딩·GPS 가 이상하면 빈 배열(벽 없음). 대회장 경계 좌표가 아직 없어 지금은 꺼져 있다.</p>
+  <span class="label">코드 위치</span>
+  <div class="files"><code>src/north_goal_angle/north_goal_angle/gps_guard.py</code><code>north_goal_angle.py</code><code>config/waypoints.yaml</code><code>waypoint_recorder</code></div>
+  <span class="label">심사 질문 대비</span>
+  <div class="qa">
+    <div><span class="q">GPS 가 끊기면 임무가 멈추나?</span><span class="a">방위는 멈추지만 <code>/wp_mode</code> 는 계속 나가고, WP 마다 시간 초과가 있어 GPS 없이도 다음 임무로 넘어간다.</span></div>
+    <div><span class="q">웨이포인트는 어떻게 넣나?</span><span class="a">대회장에서 <code>waypoint_recorder</code> 로 2 s 평균 좌표 녹화 → yaml. 0.0·위경도 뒤바뀜 같은 오류는 부팅 때 거부.</span></div>
+  </div>
+</section>
+
+<!-- Ⅲ-2.3 -->
+<section id="s23">
+  <div class="sec-head"><span class="sec-no">Ⅲ-2.3</span><h2>LiDAR — ship_direction 의 입력부</h2></div>
+  <p class="summary">360° 스캔 중 <b>앞쪽 160°</b> 만 잘라 "각도별 거리 배열"로 쓴다.</p>
+  <ul>
+    <li><b>받기와 계산 분리</b>: <code>/scan</code> 이 오면 저장만, 계산·발행은 10 Hz 타이머가 따로. LiDAR 가 죽어도 타이머는 돌아서 "죽었다"를 알아챈다. 작년엔 LiDAR 가 끊기면 조향 명령이 0회 → 마지막 명령으로 계속 갔다.</li>
+    <li><b>최신만</b>: 큐 깊이 1. 밀린 옛 스캔은 버린다.</li>
+    <li><b>각도 격자</b>: LiDAR 80° = 정면. 0~160 = 오른쪽 80° ~ 왼쪽 80°(80 보다 크면 왼쪽). 이 격자가 <code>/desired_angle</code> 까지 그대로 이어진다.</li>
+    <li><b>물보라 거르기(감속용만)</b>: 주변 5칸 중 3칸 이상 값이 있어야 인정 → 시뮬에서 가짜 감속 36.8% → 8.9%. 회피 판단에는 안 건다(작은 부표를 놓칠까 봐).</li>
+  </ul>
+  <div class="files"><code>src/ship_direction/ship_direction/ship_direction.py</code></div>
+</section>
+
+<!-- Ⅲ-2.4 -->
+<section id="s24">
+  <div class="sec-head"><span class="sec-no">Ⅲ-2.4</span><h2>영상 — 검출기 3종</h2></div>
+  <p class="summary">카메라 한 장에서 <b>원하는 색 부표의 방위각 하나</b>만 뽑는다. 거리는 안 쓴다(거리는 LiDAR 담당).</p>
+  <div class="tbl"><table>
+    <tr><th>단계</th><th>하는 일</th></tr>
+    <tr><td>① 입력</td><td>최신 프레임 1장만(밀리면 버림)</td></tr>
+    <tr><td>② 색 분리</td><td>HSV 로 바꿔 "빨강 범위" 픽셀만 남김. 빨강은 색상환 0° 근처라 [0-5]+[165-180] 두 범위</td></tr>
+    <tr><td>③ 후보</td><td>덩어리 중 작은 것(40픽셀 미만) 버림 → 모양 검사 → 물 위 높이대만 → <b>가장 큰 것 하나</b></td></tr>
+    <tr><td>④ 모양(도킹)</td><td>꼭짓점 수 + 원형도로 삼각/사각/원</td></tr>
+    <tr><td>⑤ 확인</td><td>한 프레임 오탐에 안 튀게, 최근 프레임에서 N 번 같아야 확정(게이트·탐색 1, 도킹 연속 3)</td></tr>
+    <tr><td>⑥ 각도 변환</td><td><code>θ = −atan((x − cx) / fx)</code>, fx = (W/2)/tan(화각/2). 화면 왼쪽이 +</td></tr>
+    <tr><td>⑦ 발행</td><td>지금 <code>/wp_mode</code> 가 내 담당일 때만. 2 s 못 보면 무효값 <b>10000</b></td></tr>
+  </table></div>
+  <div class="figure">
+    <div class="calc">
+      <div>
+        <label for="px">부표 중심 x 픽셀 (640 폭)</label>
+        <input id="px" type="range" min="0" max="640" value="480">
+        <label for="hfov" style="margin-top:10px">카메라 화각</label>
+        <select id="hfov"><option value="80.32">D455 80.32° (camera_info 실측)</option><option value="69">OAK-1 PoE 69° (스펙)</option></select>
+      </div>
+      <div class="out" id="pxout" aria-live="polite"></div>
+    </div>
+    <div class="cap">⑥ 각도 변환을 직접 움직여 보는 계산기. 코드 <code>vision_geom.py</code> 와 같은 식이다.</div>
+  </div>
+  <span class="label">왜 이렇게</span>
+  <ul>
+    <li>작년엔 같은 초록 범위가 파일 3곳에 다르게 적혀 게이트 검출기는 보는데 도킹 검출기는 못 봤다 → <code>vision.yaml</code> 한 곳.</li>
+    <li>작년엔 모드가 바뀔 때마다 검출기를 껐다 켰다(켜지는 동안 눈이 멂) → 3개 다 상주, 자기 모드에서만 일한다.</li>
+    <li>화각을 71.5° 로 잘못 써 가장자리에서 최대 4.4° 틀렸다 → camera_info 로 80.32° 실측.</li>
+  </ul>
+  <div class="files"><code>src/color_shape_detector/…/vision_geom.py</code><code>dock_logic.py</code><code>config/vision.yaml</code><code>tools/dock_eval.py</code></div>
+  <div class="qa">
+    <div><span class="q">왜 카메라로 거리를 안 재나?</span><span class="a">핀홀 거리 추정은 부표 크기·흔들림에 민감. LiDAR 가 직접 잰다.</span></div>
+    <div><span class="q">역광이면?</span><span class="a">HSV 값은 실외에서 재조정(튜닝 노드 <code>basic_image_subscriberhsv</code>, 값은 <code>vision.yaml</code>). 확인 프레임으로 한두 프레임 튀는 건 무시.</span></div>
+  </div>
+</section>
+
+<!-- Ⅲ-3 -->
+<section id="s3">
+  <div class="sec-head"><span class="sec-no">Ⅲ-3</span><h2>전체 임무 상태기계 — /wp_mode</h2></div>
+  <p class="summary"><b>/wp_mode 숫자 하나</b>가 지금 누가 일할지 정한다. 이 숫자를 바꾸는 건 north_goal_angle 하나뿐.</p>
+  <div class="tbl"><table>
+    <tr><th>wp_mode</th><th>임무</th><th>일하는 노드</th><th>카메라</th><th>dwell / 시간 초과</th></tr>
+    <tr><td class="num">0, 1</td><td>게이트 통과</td><td>ship_gate</td><td>gate (빨강·초록)</td><td class="num">3 s / 120 s</td></tr>
+    <tr><td class="num">2</td><td>위치유지</td><td>ship_back</td><td>turn (흰색)</td><td class="num">3 s / 120 s</td></tr>
+    <tr><td class="num">3</td><td>부표 선회</td><td>ship_turn</td><td>turn (빨강)</td><td class="num">3 s / 90 s</td></tr>
+    <tr><td class="num">5</td><td>장애물 회피</td><td>ship_direction 혼자</td><td>—</td><td class="num">50 s / 120 s</td></tr>
+    <tr><td class="num">7</td><td>도킹</td><td>ship_dock</td><td>dock</td><td class="num">60 s / 150 s</td></tr>
+    <tr><td class="num">8</td><td>토너먼트 회피</td><td>ship_direction 혼자</td><td>—</td><td class="num">60 s / 없음</td></tr>
+  </table></div>
+  <ul>
+    <li>WP 마다 mode 가 적혀 있고, 도착하거나 <b>시간 초과</b>되면 다음 WP → mode 가 바뀐다.</li>
+    <li>시간 초과는 GPS 가 죽어도 진행되는 <b>유일한 안전장치</b>.</li>
+    <li>fix 가 없어도 <code>/wp_mode</code> 는 계속 낸다. 멈추면 검출기 3종이 다 꺼지기 때문.</li>
+  </ul>
+</section>
+
+<!-- Ⅲ-4 -->
+<section id="s4">
+  <div class="sec-head"><span class="sec-no">Ⅲ-4</span><h2>임무별 알고리즘</h2></div>
+  <h3>4.1 게이트 — ship_gate</h3>
+  <ul>
+    <li>빨강·초록 <b>둘 다 보이면 가운데</b>로.</li>
+    <li><b>하나만</b> 보이면 그 부표에서 게이트 안쪽으로 40° 틀어서(빨강은 왼쪽 규칙 <code>red_on_port</code>).</li>
+    <li><b>둘 다 안 보이면 20000</b>(미션 없음) → ship_direction 이 GPS 웨이포인트 방향으로 간다. <span class="chip a">보고서 문구와 다름 — 정정 대기</span></li>
+    <li>부표가 옆으로 75° 넘게 지나가면 통과 1회 → <code>/gates_passed</code>. 먼 게이트를 미리 세지 않게 6 m 안에서만.</li>
+  </ul>
+  <h3>4.2 위치유지 — ship_back</h3>
+  <p>흰 부표 방위(카메라) + 거리(LiDAR)로 부표 근처를 유지. RTK 는 보조.</p>
+  <h3>4.3 탐색 — ship_turn</h3>
+  <p>빨강/초록이면 시계방향, 흰색이면 반시계로 부표 둘레를 돈다. 색을 잃으면 SEARCH 상태로 다시 찾는다. 토픽 이름 <code>/image_color</code> 를 바꿨다가 노드가 영원히 멈춘 적 있음 — 이름 고정.</p>
+
+  <h3>4.4 장애물 회피 — ship_direction (가장 중요)</h3>
+  <p class="summary">LiDAR 160° 배열에서 <b>배가 지나갈 만큼 넓은 빈 틈</b>을 찾고, 그중 <b>목표 방향에 가장 가까운 각도</b>를 고른다.</p>
+  <div class="figure">
+    <div class="strip" id="strip"></div>
+    <div class="cap"><span class="chip p">장애물</span> <span class="chip a">잡티(물보라)</span> <span class="chip">부풀린 칸</span> <span class="chip s">통과 가능한 틈</span> — 진한 테두리 칸 = 목표 방향에 가장 가까운 통과 각도. 예시 장면이다(탐지거리 3.0 m, half_width 0.29, clearance 0.25).</div>
+  </div>
+  <ol>
+    <li><b>흑백 칠하기</b>: 3.0 m 안에 뭐가 있으면 막힘.</li>
+    <li><b>잡티 지우기</b>: 1~3칸짜리 막힘은 물보라로 보고 지운다(진짜 부표는 수십 칸).</li>
+    <li><b>부풀리기</b>: 배 폭만큼 장애물을 양옆으로 넓힌다. 가까울수록 각도로 많이. 배를 점으로 취급할 수 있게 된다.</li>
+    <li><b>폭 재기</b>: 빈 구간의 실제 폭 ≥ <b>0.83 m</b>(0.29×2 + 0.25) 인 틈만 후보.</li>
+    <li><b>고르기</b>: 목표 방향이 틈 안이면 그대로, 밖이면 틈 가장자리 중 목표에 가까운 쪽.</li>
+    <li><b>틈이 없으면</b>: 0.5 s 후진 → 3 s 멈춰 재탐색(뒤는 못 보니 계속 후진 안 함).</li>
+    <li><b>급변 금지</b>: 0.1 s 에 15° 이상 안 바꾼다.</li>
+  </ol>
+  <p class="note">왜 0.25: 시뮬 2,400 판에서 1번배 폭(0.58 m) 기준 접촉이 가장 적고 막혀서 멈추는 일 0%.</p>
+
+  <h3>4.5 도킹 — ship_dock</h3>
+  <ul>
+    <li>당일 공지 표식(예: 파랑 삼각형)을 yaml 한 줄로 지정 → dock 검출기가 그 색·모양만 찾는다. 연속 3 프레임 같아야 확정.</li>
+    <li>목표 오타면 부팅 때 ERROR + 도킹 모드에서 10000 + 5 s 마다 ERROR.</li>
+    <li>위험: 파랑이 흐린 하늘과 비슷, 빨강·주황이 색상 3~5 에서 겹침 → 실외 조정 대상.</li>
+  </ul>
+
+  <h3>4.6 모터 — motor_control</h3>
+  <p class="summary">각도를 <b>좌/우 PWM 차이</b>로 바꾼다. PID 아님. 20 Hz.</p>
+  <div class="figure">
+    <div class="calc">
+      <div>
+        <label for="ang">/desired_angle (80 = 정면, 크면 왼쪽)</label>
+        <input id="ang" type="range" min="0" max="160" value="100">
+        <div class="btns" role="group" aria-label="특수 명령">
+          <button type="button" data-v="80">정면 80</button>
+          <button type="button" data-v="5000">5000 우선회</button>
+          <button type="button" data-v="20000">20000 미션 없음</button>
+          <button type="button" data-v="50000">50000 정지</button>
+        </div>
+        <label for="dist" style="margin-top:12px">전방 최근접 장애물 거리 (m)</label>
+        <input id="dist" type="range" min="0" max="2" step="0.05" value="2">
+      </div>
+      <div>
+        <div class="out" id="mout" aria-live="polite"></div>
+        <div class="bars" id="mbars"></div>
+      </div>
+    </div>
+    <div class="cap">코드 <code>motor_control.py</code> 와 같은 계산(base 1360, max_diff 100, max_angle 81, 감속 시작 1.2 m, 최소 0.7배). ROS 안에서는 <b>작을수록 전진</b> — 막대가 길수록 세게 앞으로.</div>
+  </div>
+  <ul>
+    <li>좌우 평균이 1500 보다 크면(후진) <code>/motor_reverse</code> = true → 헤딩 추정이 그 표본을 버린다.</li>
+    <li><code>steer_invert</code>: 배선이 반대면 이것 하나로 조향·선회가 같이 뒤집힌다. 물 위 첫 시험에서 확정.</li>
+    <li>5000 제자리 선회에는 감속을 안 건다 — 걸면 뒤로 밀리며 돈다.</li>
+  </ul>
+</section>
+
+<!-- Ⅲ-5 -->
+<section id="s5">
+  <div class="sec-head"><span class="sec-no">Ⅲ-5</span><h2>페일세이프 — 침묵을 감지해서 세운다</h2></div>
+  <p class="summary">ship_direction 안의 <b>SensorWatch</b> 가 LiDAR(<code>/scan</code>)와 헤딩(<code>/yaw_error</code>)이 마지막으로 온 시각을 10 Hz 로 본다. 더 나쁜 쪽이 레벨을 정한다.</p>
+  <div class="figure">
+    <div class="tl" aria-label="08-06 LiDAR 끄기 실측 타임라인">
+      <div class="axis"></div>
+      <div class="pin" style="left:0%">끔</div>
+      <div class="pin" style="left:8.75%">0.70 s 레벨 1</div>
+      <div class="pin" style="left:37.4%">2.99 s 레벨 2</div>
+      <div class="tick" style="left:0%">0</div><div class="tick" style="left:25%">2 s</div><div class="tick" style="left:50%">4 s</div><div class="tick" style="left:75%">6 s</div><div class="tick" style="left:99%">8 s</div>
+    </div>
+    <div class="cap">08-06 실측: LiDAR 드라이버를 끄자 0.70 s 에 감속, 2.99 s 에 정지, 재기동 즉시 정상. IMU 를 끄면 4.78 s / 7.08 s(헤딩 체인 지연이 더해짐).</div>
+  </div>
+  <div class="tbl"><table>
+    <tr><th>끊긴 시간</th><th>레벨</th><th>배</th></tr>
+    <tr><td>0.7 s 넘음 (3번 연속 확인)</td><td><span class="chip a">1 경고</span></td><td>하던 조향 그대로, 속도 0.7배 — 피하던 중 직진은 충돌이라 각도는 유지</td></tr>
+    <tr><td>3.0 s 넘음 (3번 연속)</td><td><span class="chip p">2 정지</span></td><td>50000 정지</td></tr>
+    <tr><td>다시 들어옴</td><td><span class="chip s">0 정상</span></td><td>자동 복구</td></tr>
+  </table></div>
+  <ul>
+    <li>시계는 <code>time.monotonic()</code>(벽시계가 바뀌어도 안 튐). 센서가 <b>한 번이라도 온 뒤에만</b> 감시 시작(부팅 직후 오경보 방지).</li>
+    <li>겹겹이: motor_control 0.5 s 워치독, 아두이노 0.5 s 워치독, 비상정지 접촉기 → 아두이노 핀 38 로 상태 보고.</li>
+    <li><code>/health_ok</code> 같은 진단은 <b>로그만</b>. 진단 버그로 배가 서는 거짓 정지를 막으려고 제어에 연결 안 한다.</li>
+  </ul>
+</section>
+
+<!-- Ⅲ-6 -->
+<section id="s6">
+  <div class="sec-head"><span class="sec-no">Ⅲ-6</span><h2>시뮬레이션과 시험</h2></div>
+  <ul>
+    <li><code>tools/sim</code>: ship_direction·motor_control 로직을 옮긴 가짜 세계에서 2,400 판(시드 20 × 선폭 5 × clearance 6 × 탐지거리 2 × 게이트폭 2). clearance 0.25, 탐지거리 3.0/2.0 을 여기서 정했다.</li>
+    <li>한계: 측면 접촉 못 잡음, 배 동역학은 가정값 → 1 m 안팎 좁은 틈은 수조에서 확인.</li>
+    <li>로직 테스트(ROS 없이 <code>tools/run_tests.sh</code>): ssf_heading 76, north_goal_angle 91 + gps_guard 18, ship_direction 35, color_shape_detector 95. Ubuntu 전체 405 통과(10-30).</li>
+    <li>벤치 기록: 08-06 헤딩·LiDAR 페일세이프, 08-07 RTK, 08-12 비전, 10-28 허브 스러스터 부하·배터리 분리, 10-29 수동 조종 영상.</li>
+  </ul>
+</section>
+
+<!-- 부록 -->
+<section id="ax">
+  <div class="sec-head"><span class="sec-no">부록</span><h2>숫자 신호 한 장 · 먼저 읽을 파일</h2></div>
+  <div class="tbl"><table>
+    <tr><th>숫자</th><th>어디서</th><th>뜻</th></tr>
+    <tr><td class="num">0~160</td><td>/desired_angle, /candidate_angle</td><td>각도 (80 = 정면, 크면 왼쪽)</td></tr>
+    <tr><td class="num">5000 / 6000</td><td>같은 자리</td><td>제자리 우선회 / 좌선회</td></tr>
+    <tr><td class="num">10000</td><td>카메라 각도 토픽</td><td>못 봄 (유실 2 s 지남)</td></tr>
+    <tr><td class="num">20000</td><td>/candidate_angle</td><td>미션 없음 → GPS 방향 전진</td></tr>
+    <tr><td class="num">50000</td><td>/desired_angle</td><td>정지</td></tr>
+    <tr><td class="num">1500</td><td>PWM</td><td>중립 (ROS 안: 작으면 전진)</td></tr>
+  </table></div>
+  <h3>파일 5개면 70%</h3>
+  <ol>
+    <li><code>src/launch_files/launch/launch_files.launch.py</code> — 누가 뜨는지 전부.</li>
+    <li><code>src/motor_control/motor_control/motor_control.py</code> — 짧아서 처음 읽기 좋다.</li>
+    <li><code>src/ship_direction/ship_direction/ship_direction.py</code> — 최종 판단 + 페일세이프.</li>
+    <li><code>src/north_goal_angle/north_goal_angle/north_goal_angle.py</code> — GPS·wp_mode·지오펜스.</li>
+    <li><code>src/ssf_heading/ssf_heading/heading_logic.py</code> — ROS 없는 순수 계산이라 읽기 쉽다.</li>
+  </ol>
+  <h3>보고서와 코드가 다른 곳 (정정 대기)</h3>
+  <ul>
+    <li>Ⅲ-4.1 "둘 다 없으면 탐색 모드" → 코드는 20000(미션 없음) → GPS 방향 전진.</li>
+    <li>Ⅲ-2.1 보정식·invert 판정 문구 → <code>docs/문제와작업/헤딩_문서정정_모음_20261030.md</code>.</li>
+  </ul>
+  <footer>2026-10-30 · 원본 <code>docs/전달용/소프트파트_코드동작_쉬운해설.md</code></footer>
+</section>
+</main>
+</div>
+
+<script>
+(function(){
+  // ⑥ 픽셀 → 각도 (vision_geom.py 와 같은 식)
+  var px=document.getElementById('px'), hf=document.getElementById('hfov'), po=document.getElementById('pxout');
+  function pxCalc(){
+    var x=+px.value, h=+hf.value, W=640, cx=W/2;
+    var fx=cx/Math.tan(h/2*Math.PI/180);
+    var th=-Math.atan((x-cx)/fx)*180/Math.PI;
+    var side=Math.abs(th)<0.05?'정면':(th>0?'왼쪽':'오른쪽');
+    po.innerHTML='x = '+x+' px<br>cx = 320, fx = 320 / tan('+(h/2).toFixed(2)+'°) = '+fx.toFixed(1)+
+      '<br>θ = −atan(('+x+' − 320) / '+fx.toFixed(1)+')<br>= <b>'+th.toFixed(1)+'°</b> → '+side+' '+Math.abs(th).toFixed(1)+'°';
+  }
+  px.addEventListener('input',pxCalc); hf.addEventListener('change',pxCalc); pxCalc();
+
+  // 4.6 모터 (motor_control.py 와 같은 계산)
+  var ang=document.getElementById('ang'), dist=document.getElementById('dist'), mo=document.getElementById('mout'), mb=document.getElementById('mbars');
+  var special=null;
+  function ratio(d){ if(d>=1.2) return 1; return Math.max(0.7, 0.7+0.3*Math.max(0,d)/1.2); }
+  function apply(p,r){ return Math.round(1500+(p-1500)*r); }
+  function bar(name,p){
+    var f=(1500-p)/200; var rev=f<0; var w=Math.min(100,Math.abs(f)*100);
+    return '<span>'+name+'</span><div class="bar"><i class="'+(rev?'rev':'')+'" style="width:'+w+'%"></i></div><span>'+p+(rev?' 후진':(p===1500?' 중립':' 전진'))+'</span>';
+  }
+  function mCalc(){
+    var v=special!==null?special:+ang.value, d=+dist.value, r=ratio(d), L, R, txt;
+    if(v>=50000){L=R=1500; txt='≥ 50000 → <b>정지</b> 1500 / 1500';}
+    else if(v>=20000){L=R=apply(1360,r); txt='20000 → <b>미션 없음, 전진</b> base 1360<br>감속비 '+r.toFixed(2)+' → '+L;}
+    else if(v===5000){R=1600; L=1400; txt='5000 → <b>제자리 우선회</b> 중심 1500 ± 100<br>감속 안 걸음';}
+    else {
+      var off=v-80, c=Math.max(-81,Math.min(81,off)), diff=Math.floor(Math.abs(c)/81*100);
+      var s=off>0?diff:-diff; R=1360-s; L=1360+s;
+      txt='offset = '+v+' − 80 = <b>'+(off>0?'+':'')+off+'</b> ('+(off===0?'정면':off>0?'왼쪽':'오른쪽')+')<br>diff = |'+off+'| / 81 × 100 = '+diff+
+        '<br>우 1360 − ('+s+') = '+R+', 좌 1360 + ('+s+') = '+L;
+      if(r<1){ R=apply(R,r); L=apply(L,r); txt+='<br>장애물 '+d.toFixed(2)+' m → 감속비 '+r.toFixed(2)+' → 우 '+R+', 좌 '+L; }
+      txt+='<br>→ '+(off===0?'직진':(off>0?'오른쪽이 더 세게 → <b>왼쪽으로 돎</b>':'왼쪽이 더 세게 → <b>오른쪽으로 돎</b>'));
+    }
+    mo.innerHTML=txt+'<br>Motor_run = '+R+'×10000 + '+L+' = '+(R*10000+L);
+    mb.innerHTML=bar('좌',L)+bar('우',R);
+  }
+  ang.addEventListener('input',function(){special=null;mCalc();});
+  dist.addEventListener('input',mCalc);
+  document.querySelectorAll('.btns button').forEach(function(b){b.addEventListener('click',function(){
+    var v=+b.dataset.v; if(v<=160){special=null; ang.value=v;} else special=v; mCalc();
+  });});
+  mCalc();
+
+  // 4.4 갭 선택 스트립 (예시 장면, 32칸)
+  var N=32;
+  var raw  ='..ooooo.......o.....oooo........'; // 1 칠하기 (o 장애물)
+  var clean='..ooooo.............oooo........'; // 2 잡티 제거
+  var infl ='.fooooof...........foooof.......'; // 3 부풀리기 (f)
+  var gap  ='.fooooofggggggggggggfoooofgggggg'; // 4 폭 판정 (g 통과 가능)
+  var rows=[['1 칠하기',raw,{o:'o'}],['2 잡티 지우기',clean,{o:'o'}],['3 부풀리기',infl,{o:'o',f:'f'}],['4 폭 재기',gap,{o:'o',f:'f',g:'g'}],['5 고르기',gap,{o:'o',f:'f',g:'g'}]];
+  var html='';
+  rows.forEach(function(r,ri){
+    html+='<span class="sl">'+r[0]+'</span><div class="cells">';
+    for(var i=0;i<N;i++){
+      var ch=r[1][i], cls='';
+      if(ri===0&&i===14) cls='n';
+      else if(r[2][ch]) cls=r[2][ch];
+      if(ri===4&&i===12) cls='t';
+      html+='<i class="'+cls+'"></i>';
+    }
+    html+='</div>';
+  });
+  document.getElementById('strip').innerHTML=html;
+})();
+</script>
