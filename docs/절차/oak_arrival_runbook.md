@@ -8,6 +8,35 @@
 
 ---
 
+## ★ 10-31 1번배 첫 연결 결과 (Ubuntu, 벤치)
+
+> 인젝터는 **임시 벤치용 AC 어댑터 RISUNIC RP028-4800320Z**(220 V 입력 → 48 V, 802.3af, 전원 4·5/7·8 핀 = **10/100 전용**).
+> 배터리 입력이 아니라 **배에는 못 싣는다.** 주문한 PSE5502G 계열(DC 12~48 V, 기가비트)이 오면 다시 잰다.
+
+| 항목 | 결과 |
+|---|---|
+| 어댑터 AX88179 | `enxc8a362944948`, 링크 **100 Mb 반이중**(어댑터 한계. rx/tx 오류·충돌 0) |
+| 노트북 IP | nmcli `oak-poe` 169.254.1.10/16, `autoconnect-priority 10` (사람이 실행) |
+| 카메라 IP | **169.254.1.222 ✅** ping 0 % 손실(1400 B × 100 도 0 %), TCP 11490 열림 |
+| 드라이버 | `ros-humble-depthai-ros` 이미 설치(depthai 2.31.1, bridge 2.12.2). `Device type: OAK-1-POE`. 자동탐색은 실패하고 **i_ip 직접 연결로 붙는다**(13~17 s) |
+| 토픽 | `/oak/rgb/image_raw`, `/oak/rgb/camera_info` (bgr8), 발행 QoS **RELIABLE** |
+
+해상도별 (ROS_DOMAIN_ID 78, `ros2 topic hz` = 별도 파이썬 프로세스):
+
+| 설정 | 카메라 발행(camera_info) | 다른 프로세스 수신(image_raw) | 랜 사용 |
+|---|---|---|---|
+| 1280×720 압축 없음 (`i_low_bandwidth: false`) | 8 fps | 7 fps | **95 Mbit/s — 100 Mb 포화** |
+| 1280×720 MJPEG (`true`) | 30 fps | **9 fps** — 프레임 2.7 MB 라 노트북 쪽 전달이 병목 | 22 Mbit/s |
+| **640×360 MJPEG** | 30 fps | **26 fps** (최대 간격 0.93 s 한 번) | 6 Mbit/s |
+
+→ **지금 쓸 설정은 640×360 + `i_low_bandwidth: true`.** D455 도 640×480 이라 비전 쪽 부담이 같다.
+해상도를 바꿨으니 §5 `hfov_deg` 실측은 **640×360 으로** 할 것. 기가비트 인젝터가 와도 1280×720 은 노트북 전달(9 fps)이 막는다.
+
+🚨 **드라이버를 끄면 카메라가 재부팅한다** — 끈 뒤 2 s 에 링크 끊김, 14 s 에 복귀. 그 사이(끈 뒤 ~10 s 안)에 다시 띄우면
+**연결 실패**(10-31 두 번: 23 회·59 회 재시도 후 실패/34 s). **다시 띄울 땐 20 s 기다린다.** 대회 launch 의 respawn_delay 도 20 s 이상으로.
+- `IMU enabled but not available!` 경고는 OAK-1 에 IMU 가 없어서 — 무해.
+- 남은 것: hfov 실측(§5) · HSV(§6) · `vision.yaml`·`ssf_tools.yaml` `image_topic` 교체(§4) · 배 위 PoE 인젝터 계통 · D455 와 비교.
+
 ## 0. 지금 상태 (도착 전)
 
 | 항목 | 상태 |
