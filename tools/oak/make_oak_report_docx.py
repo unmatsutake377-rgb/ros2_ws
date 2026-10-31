@@ -218,7 +218,7 @@ B.append(table(["장비", "모델", "전원 · 인터페이스", "비고"], [
 B.append(para(P_EMPTY, ""))
 
 B.append(para(P_H1, "결과 체크리스트"))
-for s in ["☑ OAK LED · ping 169.254.1.222", "☑ /oak/rgb/image_raw 30 fps", "☑ 센서 전부 + OAK 10분 연속, USB 끊김 0",
+for s in ["☑ PoE 어댑터 전원 LED · 랜 어댑터 링크 LED · ping 169.254.1.222", "☑ /oak/rgb/image_raw 30 fps", "☑ 센서 전부 + OAK 10분 연속, USB 끊김 0",
           "☑ 화각 실측 63.9°", "☑ 각도 부호·크기 1° 안", "☐ 도킹 도형 본시험", "☐ DC 인젝터 배 결선 (미도착)",
           "☐ vision.yaml image_topic OAK 전환 (D455 비교 후)"]:
     B.append(para(P_BULLET, s))
