@@ -13,12 +13,17 @@ const BOAT_TOKENS = {
     LIDAR: 'RPLIDAR A3 개체 80BF (약 11.1 Hz / 0.250°)',
     GPS: 'u-blox ZED-F9P (1번배 실물 확정 10-29, 안테나 ⚠️ 확인)', GPS_CFG: 'zed_f9p_rover.yaml(기본값)',
     HALF_WIDTH_REASON: '1번배 폭 0.55 m → 0.275, 공용값 0.29',
+    LAPTOP: 'Lenovo IdeaPad Slim 3 15IAH8', BENCH_BOAT: '1번배', BENCH_INTRO: '1번배 조립 상태(물 밖)',
+    ALIGN_DIMS: '1번배 치수(W 0.55, L 1.66)로 10° 에서 0.83 m, 15° 에서 0.96 m',
   },
   B: {
     BOAT: 'B', BOAT_NO: '2번배', ESC_FANOUT: '측당 ESC 2개 팬아웃',
     LIDAR: 'RPLIDAR A3 개체 918A (11.0 Hz / 0.223°)',
     GPS: 'u-blox C94-M8P 또는 ZED-F9P — ⚠️ 2번배 수신기 미정', GPS_CFG: '⚠️ 수신기 확정 후(M8P 면 c94_m8p_rover.yaml)',
     HALF_WIDTH_REASON: '2번배 폭 0.522 m → 0.261, 공용값 0.29',
+    // 1번배에서 잰 허브·OAK 시험 — 부품 동일(팀장 10-31). 2번배 실측처럼 쓰지 않고 배 표기만 뺀다
+    LAPTOP: 'Lenovo IdeaPad Slim 3 15ABR8', BENCH_BOAT: '동일 사양 부품', BENCH_INTRO: '동일 사양 부품(허브·OAK)으로 조립한 상태(물 밖)',
+    ALIGN_DIMS: '2번배 치수(W 0.522, L 1.77)로 10° 에서 0.82 m, 15° 에서 0.96 m',
   },
 };
 

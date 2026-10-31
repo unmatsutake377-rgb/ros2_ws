@@ -4,7 +4,7 @@
 근거·결론: docs/전달용/스러스터_배치_해석.md
 CFD 아님. 강체 조종모델 + 횡류항력 요댐핑 + 작동원판 제트확산 + 정수압 트림.
 단위는 전부 mm/N (과거 m/mm 혼용으로 제트반경이 1000배 틀린 적 있음 — 섞지 말 것).
-출력: docs/전달용/배치도/thruster_layout.png"""
+출력: docs/전달용/배치도/thruster_layout.png (해석 권장안), thruster_asbuilt_A/B.png (실제 장착, 보고서 그림 Ⅱ-2)"""
 import math, os
 import matplotlib; matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -91,4 +91,32 @@ figA.savefig(os.path.join(OUTD,"thruster_layout_A.png"),dpi=110,bbox_inches="tig
 figB=plt.figure(figsize=(14,9)); gsB=figB.add_gridspec(3,1,hspace=.5); draw_B([figB.add_subplot(gsB[i]) for i in range(3)])
 figB.text(.5,.004,FOOT_B,ha="center",fontsize=9.5,color="#555")
 figB.savefig(os.path.join(OUTD,"thruster_layout_B.png"),dpi=110,bbox_inches="tight")
+
+# ── 실제 장착 (2026-10-31 선체 담당 원고·팀장 확인) — 보고서 그림 Ⅱ-2
+#   1번배: 폭 550, 전비 30 kg, 선미 좌우 ±120 (간격 240). x 실측 미기재 — 그림 위치만 220, 숫자는 표시 안 함(요권한과 무관).
+#   2번배: 폭 522, 전비 35 kg 추정, 선미 x 220 ±140 (간격 280), 선수 x 585 (전후 365) ±62.5 (간격 125).
+def draw_asbuilt(ax, L, B, mass, units, title, show_x=True):
+    d = mass / (RHO * (L / 1e3) * (B / 1e3) * CB) * 1e3; k = K(L / 1e3, d / 1e3)
+    hull(ax, L, B, title)
+    ys = units[0][1]; yb = units[1][1] if len(units) > 1 else 0.
+    for (x, y), c in zip(units, ("#2a7", "#36c")):
+        thr(ax, x, y, c)
+        ax.annotate("", xy=(x, y), xytext=(x, -y), arrowprops=dict(arrowstyle="<->", color=c, lw=1.4))
+        ax.text(x + 70, -B / 2 - 55 if c == "#2a7" else B / 2 + 40, (f"x={x:.0f}  " if show_x else "") + f"y=±{y:g}  (간격 {2*y:g})", fontsize=9.5, color=c, ha="center")
+    N = Nm(ys, yb)
+    msg = f"요 모멘트 {N:.1f} Nm → 요레이트 약 {rate(N, k):.0f}°/s\n(전비 {mass:.0f} kg 기준)"
+    if len(units) > 1:
+        need = jet(units[1][0] - units[0][0])
+        msg += f"\n후류 필요 {need:.0f} / 실제 {abs(ys - yb):.0f} mm → {'후류 회피' if abs(ys - yb) >= need else '후류 간섭'}"
+        for s_ in (1, -1): ax.add_patch(Wedge((units[1][0], s_ * yb), units[1][0] - units[0][0], 175, 185, fc="#36c", alpha=.13))
+    ax.text(L + 20, 0, msg, fontsize=9.5, va="center")
+
+figA2 = plt.figure(figsize=(14, 3.6))
+draw_asbuilt(figA2.add_subplot(111), 1660., 550., 30., [(220., 120.)], "1번배 T200×2 — 실제 장착: 선미 좌우 ±120 mm", show_x=False)
+figA2.text(.5, .01, "요 모멘트 = 좌우 간격 × 추력 (CFD 아님: 강체 조종모델 + 횡류항력 요댐핑)", ha="center", fontsize=9.5, color="#555")
+figA2.savefig(os.path.join(OUTD, "thruster_asbuilt_A.png"), dpi=110, bbox_inches="tight")
+figB2 = plt.figure(figsize=(14, 3.6))
+draw_asbuilt(figB2.add_subplot(111), 1770., 522., 35., [(220., 140.), (585., 62.5)], "2번배 T200×4 — 실제 장착: 선미 ±140 · 선수 ±62.5 mm, 전후 365 mm (V자형)")
+figB2.text(.5, .01, "요 모멘트 = 좌우 간격 × 추력 (CFD 아님: 강체 조종모델 + 횡류항력 요댐핑 + 작동원판 제트확산)", ha="center", fontsize=9.5, color="#555")
+figB2.savefig(os.path.join(OUTD, "thruster_asbuilt_B.png"), dpi=110, bbox_inches="tight")
 print("\n",OUTD)
