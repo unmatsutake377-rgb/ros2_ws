@@ -6,6 +6,7 @@ CFD 아님. 강체 조종모델 + 횡류항력 요댐핑 + 작동원판 제트�
 단위는 전부 mm/N (과거 m/mm 혼용으로 제트반경이 1000배 틀린 적 있음 — 섞지 말 것).
 출력: docs/전달용/배치도/thruster_layout.png (해석 권장안), thruster_asbuilt_A/B.png (실제 장착, 보고서 그림 Ⅱ-2)"""
 import math, os
+import numpy as np
 import matplotlib; matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.patches import Circle, Polygon, Wedge
@@ -43,8 +44,8 @@ best=[f for f in feas if f[2]>f[3]][0]
 print(f"\n선미바깥 조건 최선: {best[0]:.1f}Nm {rate(best[0],k2):.0f}°/s "
       f"선수 x={best[1]:.0f} y=±{best[3]:.0f}, 선미 y=±{best[2]:.0f}")
 
-def hull(ax,L,B,t):
-    ax.add_patch(Polygon([[0,-B/2],[L*.72,-B/2],[L*.92,-B/2+B*.22],[L,0],[L*.92,B/2-B*.22],[L*.72,B/2],[0,B/2]],
+def hull(ax,L,B,t,poly=None):
+    ax.add_patch(Polygon(poly if poly is not None else [[0,-B/2],[L*.72,-B/2],[L*.92,-B/2+B*.22],[L,0],[L*.92,B/2-B*.22],[L*.72,B/2],[0,B/2]],
                 closed=True,fc="#dbe6f1",ec="k",lw=1.4))
     ax.set_title(t,fontsize=12,loc="left"); ax.set_aspect("equal"); ax.grid(alpha=.18)
     ax.set_xlim(-70,L+360); ax.set_ylim(-B/2-95,B/2+95); ax.set_xticks([]); ax.set_yticks([])
@@ -92,12 +93,27 @@ figB=plt.figure(figsize=(14,9)); gsB=figB.add_gridspec(3,1,hspace=.5); draw_B([f
 figB.text(.5,.004,FOOT_B,ha="center",fontsize=9.5,color="#555")
 figB.savefig(os.path.join(OUTD,"thruster_layout_B.png"),dpi=110,bbox_inches="tight")
 
+DOCS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "docs", "전달용")
+# 선체 외곽은 선도와 같은 STL 에서 (1번배 킬 제거 ×1.66, 2번배 Fusion 모델을 실측 1770×522 에 맞춤)
 # ── 실제 장착 (2026-10-31 선체 담당 원고·팀장 확인) — 보고서 그림 Ⅱ-2
 #   1번배: 폭 550, 전비 30 kg, 선미 좌우 ±120 (간격 240). x 실측 미기재 — 그림 위치만 220, 숫자는 표시 안 함(요권한과 무관).
 #   2번배: 폭 522, 전비 35 kg 추정, 선미 x 220 ±140 (간격 280), 선수 x 585 (전후 365) ±62.5 (간격 125).
-def draw_asbuilt(ax, L, B, mass, units, title, show_x=True):
+def plan_outline(stl, **kw):
+    """실제 선형의 위에서 본 외곽 (현측 상단선 반폭) — 선도와 같은 STL·같은 좌표(x 0 = 트랜섬)."""
+    import sys; sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import hull_lines_plan as hl
+    by, _ = hl.load_stl(stl, **kw)
+    a, b = sorted(by["HULL_SHEER"], key=lambda p: -p[:, 1].mean())     # 좌(+y), 우(−y)
+    a = a[np.argsort(a[:, 0])]; b = b[np.argsort(b[:, 0])]
+    for q in (a, b):   # 성긴 선수 메시(2번배)의 톱니·찢김: 이웃 ±5 구간 |y| 최댓값 → 11점 이동평균
+        y = np.abs(q[:, 1]); y = np.array([y[max(0, i - 5):i + 6].max() for i in range(len(y))])
+        y = np.convolve(np.pad(y, 5, mode="edge"), np.ones(11) / 11, mode="valid")
+        q[:, 1] = np.sign(q[:, 1].mean()) * y
+    return np.vstack([[0, a[0, 1]], a[:, :2], b[::-1, :2], [0, b[0, 1]]])
+
+def draw_asbuilt(ax, L, B, mass, units, title, show_x=True, poly=None):
     d = mass / (RHO * (L / 1e3) * (B / 1e3) * CB) * 1e3; k = K(L / 1e3, d / 1e3)
-    hull(ax, L, B, title)
+    hull(ax, L, B, title, poly)
     ys = units[0][1]; yb = units[1][1] if len(units) > 1 else 0.
     for (x, y), c in zip(units, ("#2a7", "#36c")):
         thr(ax, x, y, c)
@@ -112,11 +128,13 @@ def draw_asbuilt(ax, L, B, mass, units, title, show_x=True):
     ax.text(L + 20, 0, msg, fontsize=9.5, va="center")
 
 figA2 = plt.figure(figsize=(14, 3.6))
-draw_asbuilt(figA2.add_subplot(111), 1660., 550., 30., [(220., 120.)], "1번배 T200×2 — 실제 장착: 선미 좌우 ±120 mm", show_x=False)
+draw_asbuilt(figA2.add_subplot(111), 1660., 550., 30., [(220., 120.)], "1번배 T200×2 — 실제 장착: 선미 좌우 ±120 mm", show_x=False,
+             poly=plan_outline(os.path.join(DOCS, "선도_1번배", "1번배_킬제거_Fusion360.stl"), scale=1.66, flip_z=True))
 figA2.text(.5, .01, "요 모멘트 = 좌우 간격 × 추력 (CFD 아님: 강체 조종모델 + 횡류항력 요댐핑)", ha="center", fontsize=9.5, color="#555")
 figA2.savefig(os.path.join(OUTD, "thruster_asbuilt_A.png"), dpi=110, bbox_inches="tight")
 figB2 = plt.figure(figsize=(14, 3.6))
-draw_asbuilt(figB2.add_subplot(111), 1770., 522., 35., [(220., 140.), (585., 62.5)], "2번배 T200×4 — 실제 장착: 선미 ±140 · 선수 ±62.5 mm, 전후 365 mm (V자형)")
+draw_asbuilt(figB2.add_subplot(111), 1770., 522., 35., [(220., 140.), (585., 62.5)], "2번배 T200×4 — 실제 장착: 선미 ±140 · 선수 ±62.5 mm, 전후 365 mm (V자형)",
+             poly=plan_outline(os.path.join(DOCS, "선도_2번배", "2번배_Fusion360.stl"), fit=(1770., 522.)))
 figB2.text(.5, .01, "요 모멘트 = 좌우 간격 × 추력 (CFD 아님: 강체 조종모델 + 횡류항력 요댐핑 + 작동원판 제트확산)", ha="center", fontsize=9.5, color="#555")
 figB2.savefig(os.path.join(OUTD, "thruster_asbuilt_B.png"), dpi=110, bbox_inches="tight")
 print("\n",OUTD)
