@@ -1,0 +1,4 @@
+/**:
+  ros__parameters:
+    image_topic: "/oak/rgb/image_raw"
+    hfov_deg: 63.9

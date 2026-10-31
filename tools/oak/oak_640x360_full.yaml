@@ -1,0 +1,14 @@
+/oak:
+  ros__parameters:
+    camera:
+      i_ip: "169.254.1.222"
+      i_pipeline_type: RGB
+      i_nn_type: none
+    rgb:
+      i_resolution: "1080P"
+      i_fps: 30.0
+      i_width: 640
+      i_height: 360
+      i_low_bandwidth: true
+      i_isp_num: 1
+      i_isp_den: 3
