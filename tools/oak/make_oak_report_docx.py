@@ -3,7 +3,7 @@
 
 양식·표 XML 은 tools/make_setup_report_docx.py 와 같은 원본(SSF_주간보고서_양식_원본.docx)을 쓴다.
 사진은 docs/전달용/OAK시험_20261031/사진/ 에서 번호 접두어(00_, 05_ …)로 찾는다.
-없는 사진 칸에는 "📷 사진 대기 — 파일명" 이 들어가니, 그 이름으로 사진을 넣고 다시 돌리면 채워진다.
+없는 사진 칸은 비워 두고 실행 끝에 기대 파일명을 출력한다. 그 이름으로 사진을 넣고 다시 돌리면 채워진다.
 수치는 같은 폴더 보고서_인계.md · 허브_카메라_전원_설명서.md §8 실측 그대로 — 새로 지어내지 않는다.
 
 재현: python3 tools/oak/make_oak_report_docx.py
@@ -93,7 +93,7 @@ def pic_cell(p0, pic):
     path = find_photo(pic.prefix)
     if not path:
         MISSING.append(f"{pic.prefix}_{pic.want}.jpg")
-        return set_text(p0, f"📷 사진 대기\n{pic.prefix}_{pic.want}.jpg")
+        return set_text(p0, "")
     img = re.sub(r"</w:p>$", drawing(path) + "</w:p>", re.sub(r"<w:r(?: [^>]*)?>.*?</w:r>", "", p0, flags=re.S))
     return img + (set_text(p0, pic.caption) if pic.caption else "")
 
