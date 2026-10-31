@@ -12,13 +12,13 @@ const BOAT_TOKENS = {
     BOAT: 'A', BOAT_NO: '1번배', ESC_FANOUT: '측당 ESC 1개',
     LIDAR: 'RPLIDAR A3 개체 80BF (약 11.1 Hz / 0.250°)',
     GPS: 'u-blox ZED-F9P (1번배 실물 확정 10-29, 안테나 ⚠️ 확인)', GPS_CFG: 'zed_f9p_rover.yaml(기본값)',
-    HALF_WIDTH_REASON: '1번배 폭 0.57 m → 0.285, 공용값 0.29',
+    HALF_WIDTH_REASON: '1번배 폭 0.55 m → 0.275, 공용값 0.29',
   },
   B: {
     BOAT: 'B', BOAT_NO: '2번배', ESC_FANOUT: '측당 ESC 2개 팬아웃',
     LIDAR: 'RPLIDAR A3 개체 918A (11.0 Hz / 0.223°)',
     GPS: 'u-blox C94-M8P 또는 ZED-F9P — ⚠️ 2번배 수신기 미정', GPS_CFG: '⚠️ 수신기 확정 후(M8P 면 c94_m8p_rover.yaml)',
-    HALF_WIDTH_REASON: '2번배 폭 0.535 m → 0.2675, 공용값 0.29(시뮬 접촉 0.95·정체 0)',
+    HALF_WIDTH_REASON: '2번배 폭 0.522 m → 0.261, 공용값 0.29',
   },
 };
 
