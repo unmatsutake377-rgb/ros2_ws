@@ -7,8 +7,8 @@
 재현:
   python3 tools/hull_render.py docs/전달용/선도_1번배/1번배_킬제거_Fusion360.stl --scale 1.66 --flip-z \
       --out docs/전달용/선도_1번배/1번배_선형_3D.png --title "1번배 선형 (킬 제거 STL ×1.66)"
-  python3 tools/hull_render.py docs/전달용/선도_2번배/2번배_Fusion360.stl \
-      --out docs/전달용/선도_2번배/2번배_선형_3D.png --title "2번배 선형 (Fusion360 STL)"
+  python3 tools/hull_render.py docs/전달용/선도_2번배/2번배_Fusion360.stl --fit 1770,522 \
+      --out docs/전달용/선도_2번배/2번배_선형_3D.png --title "2번배 선형 (Fusion360 모델 형상, 실측 길이·폭)"
 """
 import argparse
 import io
@@ -27,12 +27,14 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import hull_lines_plan as hl   # 글꼴 설정·DXF 읽기 공용
 
 
-def stl_tris(path, scale, flip_z):
+def stl_tris(path, scale, flip_z, fit=None):
     """바깥 면 삼각형만 (N,3,3). 좌표: x 선미 0→선수, y CL=0, z 바닥 0→위."""
     raw = open(path, "rb").read()
     n = struct.unpack("<I", raw[80:84])[0]
     dt = np.dtype([("n", "<f4", 3), ("v", "<f4", (3, 3)), ("a", "<u2")])
     T = np.frombuffer(raw, dt, count=n, offset=84)["v"].astype(float) * scale
+    if fit:   # 형상은 모델, 치수는 실측 (2번배: Fusion 1691×404 → 실측 1770×522, 팀장 10-31)
+        T[:, :, 0] *= fit[0] / np.ptp(T[:, :, 0]); T[:, :, 1] *= fit[1] / np.ptp(T[:, :, 1])
     N = np.cross(T[:, 1] - T[:, 0], T[:, 2] - T[:, 0])
     if flip_z:
         T[:, :, 2] = T[:, :, 2].max() - T[:, :, 2]
@@ -93,8 +95,9 @@ def main():
     ap.add_argument("--title", default="선형")
     ap.add_argument("--scale", type=float, default=1.0)
     ap.add_argument("--flip-z", action="store_true")
+    ap.add_argument("--fit", help="길이,폭 [mm] 실측에 맞춰 x·y 만 늘림")
     a = ap.parse_args()
-    T = stl_tris(a.src, a.scale, a.flip_z) if a.src.lower().endswith(".stl") else dxf_tris(a.src)
+    T = stl_tris(a.src, a.scale, a.flip_z, [float(v) for v in a.fit.split(',')] if a.fit else None) if a.src.lower().endswith(".stl") else dxf_tris(a.src)
     lo, hi = T.reshape(-1, 3).min(0), T.reshape(-1, 3).max(0)
     # 3D 축은 여백이 커서 시점마다 따로 그린 뒤 흰 여백을 잘라 붙인다
     imgs = []

@@ -14,7 +14,7 @@ STL 모드 (두께 있는 선체 껍데기 메시, 예: 1번배 Fusion360 출력
   --flip-z : 갑판이 z=0, 바닥이 +z 로 뒤집혀 나온 메시.  --scale : 실제 크기 배율.
 
 재현:
-  python3 tools/hull_lines_plan.py docs/전달용/선도_2번배/2번배_Fusion360.stl --out docs/전달용/선도_2번배 --name 2번배
+  python3 tools/hull_lines_plan.py docs/전달용/선도_2번배/2번배_Fusion360.stl --fit 1770,522 --out docs/전달용/선도_2번배 --name 2번배
     (10-31: 정상선형 DXF 는 선수가 실물과 달라 Fusion360 STL 로 교체 — 팀장 확인)
   python3 tools/hull_lines_plan.py docs/전달용/선도_1번배/1번배_킬제거_Fusion360.stl --scale 1.66 --flip-z \
       --out docs/전달용/선도_1번배 --name 1번배
@@ -112,7 +112,7 @@ def _chain(segs, tol=1e-4):
     return sorted(lines, key=len, reverse=True)
 
 
-def load_stl(path, scale=1.0, flip_z=False, n_st=11, wl_step=40.0, buttocks=(0.25, 0.5, 0.75)):
+def load_stl(path, scale=1.0, flip_z=False, fit=None, n_st=11, wl_step=40.0, buttocks=(0.25, 0.5, 0.75)):
     """두께 있는 선체 메시 → load() 와 같은 레이어 구조. 좌표: x 선미 0→선수, y CL=0, z 바닥 0→위."""
     import struct
     raw = open(path, "rb").read()
@@ -120,6 +120,8 @@ def load_stl(path, scale=1.0, flip_z=False, n_st=11, wl_step=40.0, buttocks=(0.2
     dt = np.dtype([("n", "<f4", 3), ("v", "<f4", (3, 3)), ("a", "<u2")])
     rec = np.frombuffer(raw, dt, count=n, offset=84)
     T = rec["v"].astype(float) * scale
+    if fit:   # 형상은 모델, 치수는 실측 (2번배: Fusion 1691×404 → 실측 1770×522, 팀장 10-31)
+        T[:, :, 0] *= fit[0] / np.ptp(T[:, :, 0]); T[:, :, 1] *= fit[1] / np.ptp(T[:, :, 1])
     N = np.cross(T[:, 1] - T[:, 0], T[:, 2] - T[:, 0])
     if flip_z:
         T[:, :, 2] = T[:, :, 2].max() - T[:, :, 2]
@@ -351,11 +353,12 @@ def main():
     ap.add_argument("--name", default="hull")
     ap.add_argument("--scale", type=float, default=1.0, help="STL: 실제 크기 배율")
     ap.add_argument("--flip-z", action="store_true", help="STL: 갑판이 z=0·바닥이 +z 인 메시")
+    ap.add_argument("--fit", help="STL: 길이,폭 [mm] 실측에 맞춰 x·y 만 늘림 (예: 1770,522)")
     ap.add_argument("--wl-step", type=float, default=40.0, help="STL: 수선 간격 [실제 mm]")
     a = ap.parse_args()
     stl = a.dxf.lower().endswith(".stl")
     if stl:
-        by, cl = load_stl(a.dxf, a.scale, a.flip_z, wl_step=a.wl_step)
+        by, cl = load_stl(a.dxf, a.scale, a.flip_z, fit=[float(v) for v in a.fit.split(',')] if a.fit else None, wl_step=a.wl_step)
     else:
         by, cl = load(a.dxf)
     allp = np.vstack([p for k, v in by.items() if k != "HULL_WATERLINES" for p in v])
@@ -368,6 +371,8 @@ def main():
     sub = f"{a.name}  LOA {dims['L']:.0f} · B {dims['B']:.0f} · D {dims['D']:.0f} mm"
     if stl and a.scale != 1.0:
         sub += f"  (STL ×{a.scale:g})"
+    if stl and a.fit:
+        sub += "  (모델 형상을 실측 길이·폭에 맞춤)"
     outs = []
 
     for key, fn, size in (("정면도", draw_body, (6.4, 4.4)), ("측면도", draw_profile, (13, 3.0)),
