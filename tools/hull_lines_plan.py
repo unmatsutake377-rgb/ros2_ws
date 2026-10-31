@@ -14,7 +14,8 @@ STL 모드 (두께 있는 선체 껍데기 메시, 예: 1번배 Fusion360 출력
   --flip-z : 갑판이 z=0, 바닥이 +z 로 뒤집혀 나온 메시.  --scale : 실제 크기 배율.
 
 재현:
-  python3 tools/hull_lines_plan.py docs/전달용/선도_2번배/2번배_정상선형_3D.dxf --out docs/전달용/선도_2번배 --name 2번배
+  python3 tools/hull_lines_plan.py docs/전달용/선도_2번배/2번배_Fusion360.stl --out docs/전달용/선도_2번배 --name 2번배
+    (10-31: 정상선형 DXF 는 선수가 실물과 달라 Fusion360 STL 로 교체 — 팀장 확인)
   python3 tools/hull_lines_plan.py docs/전달용/선도_1번배/1번배_킬제거_Fusion360.stl --scale 1.66 --flip-z \
       --out docs/전달용/선도_1번배 --name 1번배
 """
@@ -125,6 +126,7 @@ def load_stl(path, scale=1.0, flip_z=False, n_st=11, wl_step=40.0, buttocks=(0.2
         N[:, 2] *= -1; N *= -1            # 한 축을 뒤집으면 감김 방향도 뒤집힌다
     T[:, :, 2] -= T[:, :, 2].min()
     T[:, :, 0] -= T[:, :, 0].min()
+    T[:, :, 1] -= (T[:, :, 1].min() + T[:, :, 1].max()) / 2   # 중심선 y=0 (2번배 Fusion STL 은 CL 이 y≈125)
     L, H = T[:, :, 0].max(), T[:, :, 2].max()
     # 바깥 면 = 법선이 선체 안쪽 기준점(가운데, 갑판보다 위)에서 멀어지는 면
     C = np.array([L / 2, 0.0, H + 0.2 * H])
@@ -143,7 +145,7 @@ def load_stl(path, scale=1.0, flip_z=False, n_st=11, wl_step=40.0, buttocks=(0.2
         for l in _chain(_slice(To, 2, z)):
             if len(l) > 5:
                 for side in (+1, -1):
-                    q = l[l[:, 1] * side >= 0]
+                    q = l[(l[:, 1] * side >= 0) & (l[:, 0] > 0.01 * L)]   # 트랜섬 판 두께에 걸린 조각 제외
                     if len(q) > 2:
                         by["HULL_WATERLINES"].append(q[np.argsort(q[:, 0])])
     hb = np.abs(To[:, :, 1]).max()
@@ -165,7 +167,11 @@ def load_stl(path, scale=1.0, flip_z=False, n_st=11, wl_step=40.0, buttocks=(0.2
             sel = sel[sel[:, 1] * side > 0]
             if len(sel):
                 j = np.argmax(np.abs(sel[:, 1])); pts.append([sel[j, 0], sel[j, 1], sel[:, 2].max()])
-        by["HULL_SHEER"].append(np.array(pts))
+        pts = np.array(pts)
+        # 성긴 메시(2번배 Fusion STL 선수부)는 구간에 높은 꼭짓점이 없어 현측선이 톱니처럼 꺼진다 → 이웃 ±3 구간 최댓값
+        z = pts[:, 2].copy()
+        pts[:, 2] = [z[max(0, i - 3):i + 4].max() for i in range(len(z))]
+        by["HULL_SHEER"].append(pts)
     return by, 0.0
 
 

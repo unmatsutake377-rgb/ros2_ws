@@ -185,8 +185,8 @@ const children = [
     P('추가적으로 기존 유리섬유 적층 방식에서 카본섬유 적층 방식으로 변경하여 선체의 경량화와 구조적 강성 향상을 도모하였다.'),
     P('최종적으로 본 선박은 단동선의 구조적 단순성, 제작 효율성, 추진기 배치의 용이성 및 실해역 운항 조건을 종합적으로 고려하여 선형을 선정하였다.'),
   ]),
-  ...(() => {   // 그림 Ⅱ-1 (a) 선형 입체 (tools/hull_render.py) + (b)~(d) 선도 (tools/hull_lines_plan.py) — 1번배 킬 제거 STL / 2번배 설계 3D DXF
-    const n = isA ? 1 : 2, d = `docs/전달용/선도_${n}번배/${n}번배_`, src = isA ? '킬 제거 STL ×1.66' : '설계 3D DXF — 실측 폭 522 mm 와 차이';
+  ...(() => {   // 그림 Ⅱ-1 (a) 선형 입체 (tools/hull_render.py) + (b)~(d) 선도 (tools/hull_lines_plan.py) — 1번배 킬 제거 STL / 2번배 Fusion360 STL
+    const n = isA ? 1 : 2, d = `docs/전달용/선도_${n}번배/${n}번배_`, src = isA ? '킬 제거 STL ×1.66' : 'Fusion360 STL 1691×404 — 실측 1770×522 와 차이';
     return [
       IMGF(d + '선형_3D.png', isA ? 1888 : 1935, isA ? 507 : 500), CAP(`그림 Ⅱ-1(a) ${BT.no} 선형 (${src})`),
       IMGF(d + '측면도.png', 2600, 600), CAP('그림 Ⅱ-1(b) 측면도 (Profile)'),

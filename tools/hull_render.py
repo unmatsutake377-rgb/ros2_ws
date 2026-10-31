@@ -3,12 +3,12 @@
 
 입력은 선도(tools/hull_lines_plan.py)와 같은 원본:
   1번배: 킬 제거 Fusion360 STL (×1.66, 갑판이 z=0 으로 뒤집혀 나온 메시)
-  2번배: 정상선형 3D DXF — 스테이션 단면(점 개수 같음)을 이어 면을 만든다
+  2번배: Fusion360 STL (10-31). DXF 입력(스테이션 단면을 이어 면 생성)도 지원
 재현:
   python3 tools/hull_render.py docs/전달용/선도_1번배/1번배_킬제거_Fusion360.stl --scale 1.66 --flip-z \
       --out docs/전달용/선도_1번배/1번배_선형_3D.png --title "1번배 선형 (킬 제거 STL ×1.66)"
-  python3 tools/hull_render.py docs/전달용/선도_2번배/2번배_정상선형_3D.dxf \
-      --out docs/전달용/선도_2번배/2번배_선형_3D.png --title "2번배 선형 (3D DXF)"
+  python3 tools/hull_render.py docs/전달용/선도_2번배/2번배_Fusion360.stl \
+      --out docs/전달용/선도_2번배/2번배_선형_3D.png --title "2번배 선형 (Fusion360 STL)"
 """
 import argparse
 import io
@@ -39,6 +39,7 @@ def stl_tris(path, scale, flip_z):
         N[:, 2] *= -1; N *= -1
     T[:, :, 2] -= T[:, :, 2].min()
     T[:, :, 0] -= T[:, :, 0].min()
+    T[:, :, 1] -= (T[:, :, 1].min() + T[:, :, 1].max()) / 2   # 중심선 y=0 (2번배 Fusion STL 은 CL 이 y≈125)
     L, H = T[:, :, 0].max(), T[:, :, 2].max()
     C = np.array([L / 2, 0.0, 1.2 * H])          # 선체 안쪽 기준점 (hull_lines_plan.load_stl 과 같음)
     out = (N * (C - T.mean(1))).sum(1) < 0
