@@ -245,6 +245,18 @@ sudo udevadm control --reload-rules && sudo udevadm trigger
 - 펌웨어 업로드는 그대로 된다(avrdude 가 DTR 을 직접 흔든다 — 10-28 확인).
 - 막지 못하는 것: **USB 케이블이 빠졌다 다시 꽂히는 것**(보드 전원 자체가 끊김) — 케이블 고정. 완전 차단은 Mega 의 RESET-EN 패드를 끊는 하드웨어 조치(펌웨어 확정 후, 업로드 땐 리셋 버튼 수동).
 
+### 8-2. 덮개를 닫아도 안 꺼지게 (2026-11-01) — 대회 노트북 필수
+
+기본값은 `HandleLidSwitch=suspend` — 배 위에서 덮개를 닫으면 **절전으로 들어가 ROS 가 멈춘다**.
+`boat_boot.sh` 도 덮개 절전을 막지만 그건 재부팅하면 풀린다. 이 설정은 영구다.
+
+```bash
+sudo mkdir -p /etc/systemd/logind.conf.d && sudo cp ~/ros2_ws/tools/logind/90-ssf-lid-ignore.conf /etc/systemd/logind.conf.d/
+```
+→ **재부팅**으로 적용(`systemd-logind` 재시작은 데스크톱 세션이 끊길 수 있어 쓰지 않는다).
+확인: `busctl get-property org.freedesktop.login1 /org/freedesktop/login1 org.freedesktop.login1.Manager HandleLidSwitch` → `"ignore"`.
+- 덮개를 닫으면 키보드 쪽 통풍이 줄어 CPU 가 더 뜨거워진다(08-06 가벼운 부하에 77 °C). 박스 안 통풍 확인.
+
 ## 9. NTRIP (RTK GPS 보정) — 새 계정
 
 > ✅ **10-29 계정 확인**: 서버 `gnssdata.or.kr:2101` 에 우리 계정으로 접속 → `ICY 200 OK`, RTCM 3.2 정상 수신
