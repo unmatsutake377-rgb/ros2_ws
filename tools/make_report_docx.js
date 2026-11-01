@@ -99,7 +99,7 @@ const children = [
   new Paragraph({ children: [t(`TEAM _ ${BT.team}  (${BT.no})`, { size: 30, bold: true })], alignment: AlignmentType.CENTER, spacing: { after: 1200 } }),
   new Paragraph({ children: [t(`조장 : ${BT.lead}`, { size: 22 })], alignment: AlignmentType.CENTER }),
   new Paragraph({ children: [t(`조원 : ${BT.members.join(', ')}`, { size: 22 })], alignment: AlignmentType.CENTER }),
-  new Paragraph({ children: [t('지도교수 : 김승남', { size: 22 })], alignment: AlignmentType.CENTER }),
+  new Paragraph({ children: [t('지도교수 : 권순범', { size: 22 })], alignment: AlignmentType.CENTER }),
 
   // ── 목차
   H1('목차'),
