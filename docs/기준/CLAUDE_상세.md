@@ -70,8 +70,7 @@ git commit -m "작년 대회 최종본 (수정 전 기준선)"
 |---|---|---|
 | LiDAR | **RPLIDAR A3** | 25m, **11.96Hz**, **0.275°**, `Sensitivity` 모드, `/dev/ttyLiDAR` — 🚨 회전·분해능은 2026-08-18 실측값. 스펙시트의 10Hz/0.225° 가 아니다 (§2-1) |
 | IMU | **RB-SDA-v1** (IntelliThings iAHRS) | 9축 AHRS, ASCII `"e\n"` 프로토콜, `/dev/IMU`. **WT901C 아님** |
-| GPS (A배) | u-blox **C94-M8P** | NTRIP RTK |
-| GPS (B배) | u-blox **ZED-F9P** | NTRIP RTK |
+| GPS (A·B배) | u-blox **ZED-F9P** | NTRIP RTK, `zed_f9p_rover.yaml`. 🚨 종전 표기 "A배 C94-M8P" 는 틀렸다 — 두 배 모두 F9P (11-01 팀장 확인) |
 | MCU | **Arduino Mega 2560 R3** (07-28 확정) | 🚨 종전 표기 "Due + micro-ROS" 는 **둘 다 틀렸다**(09-28 정정). 통신은 **`ssf_bridge` 의 USB 시리얼**이다 — launch 가 micro-ROS 를 띄우지 않는다. `Motor_run = pwm_r*10000 + pwm_l`, **1500 = 중립** |
 | ESC 채널 | **좌/우 2채널뿐** — 핀 12(좌) · 핀 11(우) | 🔒 **선수·선미를 구분하지 않는다.** 한 신호를 그 측 ESC 가 나눠 받는다(팬아웃): 2번배 측당 2개 · 1번배 측당 1개. **배가 달라도 펌웨어가 같아** 배 ID 분기가 필요 없다 (§2-2) |
 | 카메라 | **RealSense D455 (현역)** / OAK-1 W POE (미구매) | 현재 D455 사용. OAK 는 RGB 전용(**뎁스 없음**)·광각 120~150° DFOV·PoE=이더넷. **코드는 중립화** 🚨 3-3 |

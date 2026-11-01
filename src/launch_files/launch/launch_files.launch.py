@@ -76,7 +76,7 @@ def generate_launch_description():
             description='배 (필수): A 또는 B — yaw_mux 배별 IMU 값 파일 선택'),
         DeclareLaunchArgument(
             'gps_config', default_value='zed_f9p_rover.yaml',
-            description='배별 GPS 설정 (B배: zed_f9p_rover.yaml / A배: c94_m8p_rover.yaml)'),
+            description='GPS 설정 — 두 배 모두 ZED-F9P 라 기본값 zed_f9p_rover.yaml'),
 
         # ============================================================
         # 0) yaw_mux — /imu/yaw 의 단독 발행자 (params: 공통 → boat 별, _yaw_mux 참고)
@@ -120,8 +120,8 @@ def generate_launch_description():
         # ============================================================
         # 🚨 배별 설정을 넘긴다. 예전엔 인자 없이 include 해서 ublox launch 의 기본값(B배 F9P)이
         #    A배(M8P)에서도 그대로 쓰였다 — 에러 없이 조용히 어긋나는 류. (2026-09-16)
-        #    A배:  ros2 launch launch_files launch_files.launch.py gps_config:=c94_m8p_rover.yaml
-        #    B배:  인자 없이 (기본 zed_f9p_rover.yaml)
+        #    2026-11-01: 두 배 모두 ZED-F9P 로 확인 — 인자 없이 기본 zed_f9p_rover.yaml.
+        #    M8P 를 달 일이 생기면 gps_config:=c94_m8p_rover.yaml.
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(
                 os.path.join(dir_gps, 'launch', 'ublox_gps_node-launch.py')
