@@ -76,9 +76,19 @@ function renderMd(mdRaw, opt) {
     // 최소 열 너비 1000 dxa(≈1.8 cm) — 짧은 열의 머리글이 글자 단위로 줄바꿈되지 않게
     const MIN = Math.min(1000, Math.floor(TW / n)); const deficit = w.reduce((a, x) => a + Math.max(0, MIN - x), 0);
     if (deficit > 0) { const big = w.reduce((a, x) => a + (x > MIN ? x - MIN : 0), 0); w = w.map(x => x < MIN ? MIN : Math.round(x - (x - MIN) * deficit / big)); }
+    // 사진 칸 ![](파일.png) 이 있는 열은 PHOTO_W 로 고정하고 나머지 열에서 비례로 뺀다
+    const pc = head.map((_, j) => rows.slice(1).some(r => IMG_CELL.test(r[j] || '')));
+    if (pc.some(Boolean)) { const rest = w.reduce((a, x, j) => a + (pc[j] ? 0 : x), 0); const free = TW - PHOTO_W * pc.filter(Boolean).length; w = w.map((x, j) => pc[j] ? PHOTO_W : Math.round(x * free / rest)); }
     const hr = new TableRow({ tableHeader: true, children: head.map((h, i) => cell(new Paragraph({ children: runs(clean(h), { bold: true }), alignment: AlignmentType.CENTER }), w[i], 'E7E6E6')) });
-    const rs = rows.slice(1).map(r => new TableRow({ children: head.map((_, j) => cell(new Paragraph({ children: runs(clean(r[j] || '')) }), w[j])) }));
+    const rs = rows.slice(1).map(r => new TableRow({ children: head.map((_, j) => cell(cellImg(r[j] || '') || new Paragraph({ children: runs(clean(r[j] || '')) }), w[j])) }));
     return new Table({ width: { size: TW, type: WidthType.DXA }, columnWidths: w, rows: [hr, ...rs] });
+  }
+  const IMG_CELL = /^!\[[^\]]*\]\(([^)]+)\)$/; const PHOTO_W = 1900;   // 1900 dxa ≈ 3.4 cm
+  function cellImg(c) {   // 표 칸 하나가 ![](파일.png) 이면 칸에 맞춘 사진 (가로 110 · 세로 85 px 이내)
+    const m = c.trim().match(IMG_CELL); if (!m) return null;
+    const p = path.join(opt.figDir, m[1].trim()); if (!fs.existsSync(p)) return new Paragraph({ children: [t('(사진 없음: ' + m[1] + ')', { color: '888888' })] });
+    const buf = fs.readFileSync(p); const W = buf.readUInt32BE(16); const Hh = buf.readUInt32BE(20); const sc = Math.min(110 / W, 85 / Hh);
+    return new Paragraph({ children: [new ImageRun({ type: 'png', data: buf, transformation: { width: Math.round(W * sc), height: Math.round(Hh * sc) } })], alignment: AlignmentType.CENTER });
   }
   function img(file, cap) {
     const p = path.join(opt.figDir, file);
