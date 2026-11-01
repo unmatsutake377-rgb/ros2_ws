@@ -48,7 +48,7 @@ function renderMd(mdRaw, opt) {
       if (m.index > last) out.push(t(text.slice(last, m.index), base));
       const tok = m[0];
       if (tok.startsWith('**')) out.push(...runs(tok.slice(2, -2), { ...base, bold: true }));
-      else if (tok.startsWith('`')) out.push(new TextRun({ text: tok.slice(1, -1), font: 'Consolas', size: (base.size || 20) - 2, bold: base.bold }));
+      else if (tok.startsWith('`')) out.push(new TextRun({ text: tok.slice(1, -1), font: { ascii: 'Consolas', hAnsi: 'Consolas', eastAsia: FONT, cs: FONT }, size: (base.size || 20) - 2, bold: base.bold }));   // 코드 안 한글은 본문 글꼴로
       else if (!STRIP) out.push(t(tok, { ...base, size: 16, color: '7F7F7F' }));
       last = m.index + tok.length;
     }
