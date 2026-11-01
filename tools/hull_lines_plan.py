@@ -14,7 +14,7 @@ STL 모드 (두께 있는 선체 껍데기 메시, 예: 1번배 Fusion360 출력
   --flip-z : 갑판이 z=0, 바닥이 +z 로 뒤집혀 나온 메시.  --scale : 실제 크기 배율.
 
 재현:
-  python3 tools/hull_lines_plan.py docs/전달용/선도_2번배/2번배_Fusion360.stl --fit 1770,522 --out docs/전달용/선도_2번배 --name 2번배
+  python3 tools/hull_lines_plan.py docs/전달용/선도_2번배/2번배_Fusion360.stl --fit 1770,522 --st0 0.02 --group-aft --out docs/전달용/선도_2번배 --name 2번배
     (10-31: 정상선형 DXF 는 선수가 실물과 달라 Fusion360 STL 로 교체 — 팀장 확인)
   python3 tools/hull_lines_plan.py docs/전달용/선도_1번배/1번배_킬제거_Fusion360.stl --scale 1.66 --flip-z \
       --out docs/전달용/선도_1번배 --name 1번배
@@ -112,7 +112,7 @@ def _chain(segs, tol=1e-4):
     return sorted(lines, key=len, reverse=True)
 
 
-def load_stl(path, scale=1.0, flip_z=False, fit=None, n_st=11, wl_step=40.0, buttocks=(0.25, 0.5, 0.75)):
+def load_stl(path, scale=1.0, flip_z=False, fit=None, n_st=11, wl_step=40.0, buttocks=(0.25, 0.5, 0.75), st0=0.005):
     """두께 있는 선체 메시 → load() 와 같은 레이어 구조. 좌표: x 선미 0→선수, y CL=0, z 바닥 0→위."""
     import struct
     raw = open(path, "rb").read()
@@ -138,7 +138,7 @@ def load_stl(path, scale=1.0, flip_z=False, fit=None, n_st=11, wl_step=40.0, but
     To = T[out & ~up]
     by = defaultdict(list)
     xs = np.linspace(0, L, n_st)
-    xs[0], xs[-1] = 0.005 * L, 0.995 * L
+    xs[0], xs[-1] = st0 * L, 0.995 * L   # st0: 2번배 Fusion STL 은 트랜섬 앞 15 mm 안에 가운데 홈(폭 140·높이 60)이 있어 0.02
     for x in xs:
         ls = _chain(_slice(To, 0, x))
         if ls:
@@ -315,7 +315,7 @@ def draw_body(ax, by, cl, dims):
     ax.plot(q[:, 1] - cl, q[:, 2], color=C_ST, lw=1.6)
     if dims.get("group_aft", False):
         # 선미 쪽 라벨: 겹치는 평행 중앙부라 묶어서
-        a1, a2 = aft[1], aft[-1]
+        a1, a2 = (aft[1] if transom else aft[0]), aft[-1]   # 트랜섬을 점선으로 따로 그릴 때만 0 을 뺀다
         ax.annotate(f"{a1}~{a2} (안→밖)\n{i_max} 최대 단면(굵은 선)", xy=(-dims["B"] / 2 + 12, 120), xytext=(-dims["B"] / 2 + 40, 140),
                     fontsize=7, color=C_ST, arrowprops=dict(arrowstyle="-", color=C_ST, lw=0.6))
     else:
@@ -355,16 +355,20 @@ def main():
     ap.add_argument("--flip-z", action="store_true", help="STL: 갑판이 z=0·바닥이 +z 인 메시")
     ap.add_argument("--fit", help="STL: 길이,폭 [mm] 실측에 맞춰 x·y 만 늘림 (예: 1770,522)")
     ap.add_argument("--wl-step", type=float, default=40.0, help="STL: 수선 간격 [실제 mm]")
+    ap.add_argument("--st0", type=float, default=0.005, help="STL: 0번 단면 위치 (LOA 비율)")
+    ap.add_argument("--group-aft", action="store_true", help="선미 쪽 단면 번호를 묶어 표시 (평행 중앙부라 겹칠 때)")
     a = ap.parse_args()
     stl = a.dxf.lower().endswith(".stl")
     if stl:
-        by, cl = load_stl(a.dxf, a.scale, a.flip_z, fit=[float(v) for v in a.fit.split(',')] if a.fit else None, wl_step=a.wl_step)
+        by, cl = load_stl(a.dxf, a.scale, a.flip_z, fit=[float(v) for v in a.fit.split(',')] if a.fit else None, wl_step=a.wl_step, st0=a.st0)
     else:
         by, cl = load(a.dxf)
     allp = np.vstack([p for k, v in by.items() if k != "HULL_WATERLINES" for p in v])
     dims = {"L": allp[:, 0].max() - allp[:, 0].min(), "B": np.ptp(allp[:, 1]), "D": allp[:, 2].max() - allp[:, 2].min()}
     if stl:
         dims["lg_label"] = "버톡(Buttock, 반폭 25·50·75 %)"
+        if a.group_aft:
+            dims["group_aft"] = True
     else:
         dims.update(transom_station0=True, group_aft=True)
     os.makedirs(a.out, exist_ok=True)

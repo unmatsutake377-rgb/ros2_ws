@@ -10,9 +10,9 @@ const ROOT = path.resolve(__dirname, '..');
 const { renderMd } = require('./report_md');   // Ⅲ장 원고 렌더러
 const BOAT = (process.argv[3] || 'A').toUpperCase(); const isA = BOAT === 'A';
 const BT = isA ? {
-  team: 'S.S.F A', no: '1번배', L: '1.66', B: '0.55', D: '0.255', dim: '1.66 × 0.55 × 0.255', n: 2, nT: 'T200 ×2',
+  team: 'S.S.F A', no: '1번배', lead: '도건윤', members: ['김은우', '김정한', '김하은', '박주현', '황준연', '석현', '정우성'], L: '1.66', B: '0.55', D: '0.255', dim: '1.66 × 0.55 × 0.255', n: 2, nT: 'T200 ×2',
 } : {
-  team: 'S.S.F B', no: '2번배', L: '1.77', B: '0.522', D: '0.19', dim: '1.77 × 0.522 × 0.19', n: 4, nT: 'T200 ×4',
+  team: 'S.S.F B', no: '2번배', lead: '박유진', members: ['박윤서', '차준혁', '이송언', '이태훈', '김현지', '전홍윤', '황예진'], L: '1.77', B: '0.522', D: '0.19', dim: '1.77 × 0.522 × 0.19', n: 4, nT: 'T200 ×4',
 };
 const FIG = (f) => path.join(ROOT, 'docs/전달용/배치도', f);
 const FONT = 'Malgun Gothic'; const TW = 9360;
@@ -20,7 +20,8 @@ const b = { style: BorderStyle.SINGLE, size: 6, color: '000000' }; const borders
 const t = (text, o = {}) => new TextRun({ text, font: FONT, size: 20, ...o });
 const P = (text, o = {}) => new Paragraph({ children: [t(text, o.run || {})], spacing: { after: 100, line: 300 }, ...(o.p || {}) });
 const B = (text) => new Paragraph({ children: [t('•  ' + text)], spacing: { after: 60, line: 290 }, indent: { left: 360, hanging: 240 } });
-const NOTE = (text) => new Paragraph({ children: [t('▶ ' + text, { color: '1F7A3A', size: 18, italics: true })], spacing: { after: 100 } });
+const DRAFT = process.env.DRAFT === '1';   // 1 이면 내부 메모(▶)까지 넣은 작업본, 기본은 제출본
+const NOTE = (text) => DRAFT ? new Paragraph({ children: [t('▶ ' + text, { color: '1F7A3A', size: 18, italics: true })], spacing: { after: 100 } }) : null;
 const BLANK = (text) => new Paragraph({ children: [t(text, { color: '888888' })], spacing: { after: 100 } });
 const H1 = (s) => new Paragraph({ heading: HeadingLevel.HEADING_1, children: [new PageBreak(), t(s, { bold: true, size: 32 })], spacing: { before: 0, after: 200 } });
 const H2 = (s) => new Paragraph({ heading: HeadingLevel.HEADING_2, children: [t(s, { bold: true, size: 26 })], spacing: { before: 240, after: 120 } });
@@ -88,9 +89,6 @@ const TOC = [
   '   5) 친환경 시스템 및 에너지 효율',
   '   6) 회로 장비 및 구성',
   'Ⅴ. 최종 소모 금액',
-  'Ⅵ. 결론',
-  'Ⅶ. 최종 결과',
-  '부록(내부용 — 제출본에서 삭제). 발표자료(12장) 구성표',
 ];
 
 const children = [
@@ -99,8 +97,8 @@ const children = [
   new Paragraph({ children: [t('KABOAT 2026', { size: 48, bold: true })], alignment: AlignmentType.CENTER, spacing: { after: 600 } }),
   new Paragraph({ children: [t('홍익대학교 조선해양공학과', { size: 26 })], alignment: AlignmentType.CENTER, spacing: { after: 200 } }),
   new Paragraph({ children: [t(`TEAM _ ${BT.team}  (${BT.no})`, { size: 30, bold: true })], alignment: AlignmentType.CENTER, spacing: { after: 1200 } }),
-  new Paragraph({ children: [t('조장 : ____', { size: 22 })], alignment: AlignmentType.CENTER }),
-  new Paragraph({ children: [t('조원 : ____', { size: 22 })], alignment: AlignmentType.CENTER }),
+  new Paragraph({ children: [t(`조장 : ${BT.lead}`, { size: 22 })], alignment: AlignmentType.CENTER }),
+  new Paragraph({ children: [t(`조원 : ${BT.members.join(', ')}`, { size: 22 })], alignment: AlignmentType.CENTER }),
   new Paragraph({ children: [t('지도교수 : 김승남', { size: 22 })], alignment: AlignmentType.CENTER }),
 
   // ── 목차
@@ -250,7 +248,7 @@ const children = [
   ]),
 
   H2('4) 침몰방지 및 수밀'),
-  B('전장품(노트북·배터리·허브·IMU·Mega)은 전부 400×300×200 방수박스 안에 수납한다. 뚜껑 = 해치, 개스킷·물끊기 적용.'),
+  B('전장품(노트북·배터리·허브·Mega·RC 수신기·LTE 핫스팟 폰)은 400×300×200 방수박스 안에 수납한다. 뚜껑 = 해치, 개스킷·물끊기 적용. IMU 는 마스트 베이스 포켓에 넣고 뚜껑 가장자리를 실리콘으로 마감한다.'),
   B('갑판 관통은 마스트 구멍으로 모아 실란트로 마감한다.'),
   B('수밀 시험: 선체 및 스러스터 관통부, 갑판 부착부, 컨트롤박스 관통부에 방수 마감 처리 후 실험 수조에서 수밀을 확인하였다.'),
 
@@ -373,28 +371,6 @@ const children = [
   NOTE('출처: docs/전달용/구매_목록.md (10-26) + 기보유 장비 목록. 두 척 공용 구매 총액 — OAK·인젝터·어댑터·승압은 1척당 1개 배당. 합계는 표의 행 합(기보유분 원 표기 합계 4,141,294 는 행 합보다 1,000 적음, 배터리 77,600×2 ≠ 154,800 — 원 자료 확인 필요). 지원금 1,414,100.'),
   NOTE('노트북 2대·D455·접촉기·릴레이·2번배 무선 릴레이(GIE-WT3R)는 표에 없음 — ⚠️ 기재 여부 결정. "학과 보유" 열을 두는 방법도 있다.'),
 
-  // ── Ⅵ
-  H1('Ⅵ. 결론'),
-  BLANK('(작년에 비어 있던 번호. i-Tricat251 §6 형식)'),
-  B('달성: ____ (예: 수조 게이트 2 m 통과 __/__, 야외 항로추종 → 위치유지 전환 __회 성공)'),
-  B('미달·원인: ____'),
-  B('대회 전 남은 실측: 조향 부호, IMU 오프셋·자기편각, 새 배 추력 PWM, 도크 규격, 흘수·건현, 카메라 왜곡계수.'),
-  B('내년 과제: ____'),
-
-  // ── Ⅶ
-  H1('Ⅶ. 최종 결과'),
-  BLANK('(전체 설계 모습 측면도·정면도·평면도 사진 + 수조·야외 시험 결과 요약 + 대회 결과)'),
-
-  // ── 부록
-  H1('부록 (내부용 — 제출본에서 삭제). 발표자료(12장) 구성표'),
-  NOTE('경기규정 3.1(3)~(5): 일반문서 제출 시 발표자료(PPT 4:3, 12장 이내) 동반 필수, 보고서 내용 전부 포함, 대회 1주 전 제출. 현장 평가 15분 발표 + 질의.'),
-  table(['장', '내용', '보고서 절'], [
-    ['1', '표지·팀 소개', '표지'], ['2', '설계철학·임무 우선순위', 'Ⅱ-1'], ['3', '선종·주요 제원·복원성', 'Ⅱ-2, 3'], ['4', '추진기 배치·침몰방지', 'Ⅱ-3.3, 4'],
-    ['5', '제작·조립 과정 사진', 'Ⅱ-6, Ⅳ-4'], ['6', '시스템 구성·센서', 'Ⅲ-1'], ['7', '임무 상태기계 플로우', 'Ⅲ-3'], ['8', '영상 파이프라인·회피·제어기', 'Ⅲ-2.4, 4'],
-    ['9', '페일세이프·시뮬 스윕', 'Ⅲ-5, 6.1'], ['10', '회로도·비상정지', 'Ⅳ-1, 2'], ['11', '시험 결과 수치', 'Ⅱ-5'], ['12', '비용·결론', 'Ⅴ, Ⅵ'],
-  ], [800, 5560, 3000], { center: [0] }),
-  SP(),
-  NOTE('채우는 순서 — 세팅 당일: Ⅱ-6 사진, Ⅱ-7, Ⅲ-7, Ⅳ-1·4·5·7, Ⅴ. 수조 후: Ⅱ-2 질량·흘수, Ⅱ-5, Ⅳ-3 PWM. 야외 후: Ⅲ-2.2 RTK 산포, Ⅲ-2.3 오탐 통계, Ⅵ, Ⅶ.'),
 ];
 
 const doc = new Document({
@@ -403,6 +379,6 @@ const doc = new Document({
       { id: 'Heading1', name: 'Heading 1', basedOn: 'Normal', next: 'Normal', quickFormat: true, run: { size: 32, bold: true, font: FONT }, paragraph: { spacing: { after: 200 }, outlineLevel: 0 } },
       { id: 'Heading2', name: 'Heading 2', basedOn: 'Normal', next: 'Normal', quickFormat: true, run: { size: 26, bold: true, font: FONT }, paragraph: { outlineLevel: 1 } },
       { id: 'Heading3', name: 'Heading 3', basedOn: 'Normal', next: 'Normal', quickFormat: true, run: { size: 22, bold: true, font: FONT }, paragraph: { outlineLevel: 2 } } ] },
-  sections: [{ properties: { page: { size: { width: 11906, height: 16838 }, margin: { top: 1440, bottom: 1440, left: 1273, right: 1273 } } }, children }],
+  sections: [{ properties: { page: { size: { width: 11906, height: 16838 }, margin: { top: 1440, bottom: 1440, left: 1273, right: 1273 } } }, children: children.filter(Boolean) }],
 });
 Packer.toBuffer(doc).then(buf => { fs.writeFileSync(process.argv[2], buf); console.log('wrote', process.argv[2], buf.length); });
