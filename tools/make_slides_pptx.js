@@ -171,23 +171,68 @@ function card(s, x, y, w, h, head, body, opt = {}) {
   else s.addText(body, { x, y: y + 0.38, w, h: h - 0.4, fontSize: opt.fontSize || 11.5, color: C.text1, valign: 'top', isTextBox: true, margin: 0, objectName: `카드 본문 ${head}` });
 }
 
-// ── 1. 표지 (작년 구도: 왼쪽 사진 2장 + 남색 삼각형, 오른쪽 제목) ─────────────
+// ── 1. 표지 ─────────────────────────────────────────────────────────────────────
+// pptxgenjs 로는 작년 표지의 사선으로 자른 사진(custGeom)·그라데이션 삼각형을 못 만든다.
+// 그래서 여기선 자리만 만들고, 파일을 쓴 뒤 coverFromLastYear() 가 작년 slide1.xml 로 통째로 바꾼다.
 pres.addSection({ title: '소개' });
-{
-  const s = pres.addSlide({ masterName: 'TITLE', sectionTitle: '소개' });
-  s.addShape(pres.ShapeType.triangle, { x: -0.6, y: 1.68, w: 2.37, h: 1.45, rotate: 90, fill: { color: C.accent1 }, line: { color: C.accent1 }, objectName: '왼쪽 삼각형' });
-  s.addShape(pres.ShapeType.triangle, { x: 0.93, y: 4.55, w: 3.65, h: 2.49, fill: { color: C.accent1 }, line: { color: C.accent1 }, objectName: '아래 삼각형' });
-  // 표지 사진 2장 = 작년 PPT 표지 그대로 (작년 파일에서 잘라낸 이미지, 팀장 11-02 요청)
-  img(s, TEAMFIG('표지_작년_1.jpg'), 1.0, 0.6, 4.3, 2.9);
-  img(s, TEAMFIG('표지_작년_2.jpg'), 0.0, 2.9, 3.33, 4.0);
-  s.addText('2026 자율운항보트경진대회', { x: 4.6, y: 3.6, w: 5.1, h: 0.6, fontSize: 26, bold: true, color: C.text2, isTextBox: true, margin: 0, objectName: '대회명' });
-  s.addText('S.S.F (Symbio Ship to Future)', { x: 4.6, y: 4.25, w: 5.1, h: 0.45, fontSize: 16, color: C.text1, isTextBox: true, margin: 0, objectName: '팀명' });
-  s.addText(`홍익대학교 조선해양공학과 · TEAM ${B.team} (${B.no})`, { x: 4.6, y: 4.8, w: 5.1, h: 0.4, fontSize: 13, bold: true, color: C.text1, isTextBox: true, margin: 0 });
-  s.addText([
-    { text: `조장 ${B.leader}`, options: { breakLine: true } },
-    { text: `조원 ${B.members}`, options: { breakLine: true } },
-    { text: '지도교수 권순범', options: {} },
-  ], { x: 4.6, y: 5.3, w: 5.1, h: 1.2, fontSize: 11.5, color: C.accent6, valign: 'top', isTextBox: true, margin: 0, paraSpaceAfter: 3, objectName: '팀 명단' });
+pres.addSlide({ masterName: 'TITLE', sectionTitle: '소개' });
+
+const COVER_DIR = path.join(ROOT, 'docs/전달용/보고서_분담/작년PPT_표지');   // slide1.xml + image1/2.jpeg (작년 파일에서 추출)
+const EMU = 914400;
+const xmlEsc = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+let coverId = 200;
+function coverText(name, x, y, w, h, paras) {
+  // paras: [{text, pt, bold, color}] 한 단락씩
+  const ps = paras.map((q) => `<a:p><a:r><a:rPr lang="ko-KR" altLang="en-US" sz="${Math.round(q.pt * 100)}"${q.bold ? ' b="1"' : ''} dirty="0"><a:solidFill><a:srgbClr val="${q.color}"/></a:solidFill><a:latin typeface="맑은 고딕"/><a:ea typeface="맑은 고딕"/></a:rPr><a:t>${xmlEsc(q.text)}</a:t></a:r></a:p>`).join('');
+  coverId += 1;
+  return `<p:sp><p:nvSpPr><p:cNvPr id="${coverId}" name="${xmlEsc(name)}"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr>`
+    + `<p:spPr><a:xfrm><a:off x="${Math.round(x * EMU)}" y="${Math.round(y * EMU)}"/><a:ext cx="${Math.round(w * EMU)}" cy="${Math.round(h * EMU)}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:noFill/></p:spPr>`
+    + `<p:txBody><a:bodyPr wrap="square" lIns="0" tIns="0" rIns="0" bIns="0" anchor="t"><a:noAutofit/></a:bodyPr><a:lstStyle/>${ps}</p:txBody></p:sp>`;
+}
+async function coverFromLastYear(file) {
+  const JSZip = require('jszip');
+  const zip = await JSZip.loadAsync(fs.readFileSync(file));
+  let xml = fs.readFileSync(path.join(COVER_DIR, 'slide1.xml'), 'utf8');
+  // 16:9 → 4:3: 가로 띠·선만 줄이고 사진·삼각형은 원위치 (모두 x < 6.7")
+  xml = xml.replace('<a:off x="-1" y="6438011"/><a:ext cx="12192000"', '<a:off x="-1" y="6438011"/><a:ext cx="9144001"');
+  xml = xml.replace('<a:off x="236559" y="451689"/><a:ext cx="11737728"', '<a:off x="236559" y="451689"/><a:ext cx="8670882"');
+  // 작년 제목·부제 글상자 제거 (내용·위치가 16:9 용)
+  for (const nm of ['직사각형 2', '가로 글상자 66']) {
+    const re = new RegExp(`<p:sp>(?:(?!<p:sp>).)*?name="${nm}"(?:(?!<p:sp>).)*?</p:sp>`, 's');
+    if (!re.test(xml)) throw new Error(`작년 표지에서 ${nm} 못 찾음`);
+    xml = xml.replace(re, '');
+  }
+  // 우리 글 (삼각형 오른쪽 빗변을 피해 x 6.0" 부터)
+  const tx = 6.0, tw = 3.75;
+  const add = [
+    coverText('대회', tx, 4.6, tw, 0.3, [{ text: 'KABOAT 2026', pt: 13, bold: false, color: '666666' }]),
+    coverText('대회명', tx, 4.9, tw, 0.5, [{ text: '자율운항보트경진대회', pt: 26, bold: true, color: '052E65' }]),
+    coverText('팀명', tx, 5.45, tw, 0.35, [{ text: 'S.S.F (Symbio Ship to Future)', pt: 14, bold: false, color: '000000' }]),
+    coverText('소속', tx, 5.85, tw, 0.5, [{ text: '홍익대학교 조선해양공학과', pt: 12, bold: true, color: '000000' }, { text: `TEAM ${B.team} (${B.no})`, pt: 12, bold: true, color: '000000' }]),
+    coverText('팀 명단', tx, 6.38, tw, 0.6, [{ text: `조장 ${B.leader} · 지도교수 권순범`, pt: 9.5, bold: false, color: '666666' }, { text: `조원 ${B.members}`, pt: 9.5, bold: false, color: '666666' }]),
+  ].join('');
+  xml = xml.replace('</p:spTree>', add + '</p:spTree>');
+  zip.file('ppt/slides/slide1.xml', xml);
+  // 그림 2장 + 관계 파일
+  zip.file('ppt/media/cover-1.jpeg', fs.readFileSync(path.join(COVER_DIR, 'image1.jpeg')));
+  zip.file('ppt/media/cover-2.jpeg', fs.readFileSync(path.join(COVER_DIR, 'image2.jpeg')));
+  const relsPath = 'ppt/slides/_rels/slide1.xml.rels';
+  const oldRels = await zip.file(relsPath).async('string');
+  const layout = (oldRels.match(/Target="(\.\.\/slideLayouts\/slideLayout\d+\.xml)"/) || [])[1];
+  const notes = (oldRels.match(/Target="(\.\.\/notesSlides\/notesSlide\d+\.xml)"/) || [])[1];
+  if (!layout) throw new Error('slide1 레이아웃 관계 못 찾음');
+  const R = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/';
+  let rels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+    + `<Relationship Id="rId1" Type="${R}slideLayout" Target="${layout}"/>`
+    + `<Relationship Id="rId3" Type="${R}image" Target="../media/cover-1.jpeg"/>`
+    + `<Relationship Id="rId4" Type="${R}image" Target="../media/cover-2.jpeg"/>`;
+  if (notes) rels += `<Relationship Id="rId5" Type="${R}notesSlide" Target="${notes}"/>`;
+  rels += '</Relationships>';
+  zip.file(relsPath, rels);
+  let ct = await zip.file('[Content_Types].xml').async('string');
+  if (!ct.includes('Extension="jpeg"')) ct = ct.replace('<Default Extension="png"', '<Default Extension="jpeg" ContentType="image/jpeg"/><Default Extension="png"');
+  zip.file('[Content_Types].xml', ct);
+  fs.writeFileSync(file, await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' }));
 }
 
 // ── 2. 설계철학·임무 우선순위 (Ⅱ-1) ────────────────────────────────────────────
@@ -421,15 +466,11 @@ pres.addSection({ title: '시험·비용' });
   table(s, [
     ['항목', '값'],
     ['GM (경사 시험)', { ph: '값 [m]' }],
-    ['횡요 고유주기', { ph: '값 [s]' }],
+    ['횡요 고유주기 (롤 감쇠)', { ph: '값 [s]' }],
     ['조향 부호 · 후진 방향', { ph: '정상 / 반대' }],
     ['직진 속도 PWM 1400 / 1360 / 1300', { ph: 'm/s ×3' }],
-    ['정지 거리 (타력)', { ph: '값 [m]' }],
-    ['제자리 선회 1바퀴 시간', { ph: '우 / 좌 [s]' }],
-    ['최소 선회 지름 (조향 160 / 0)', { ph: '값 [m]' }],
-    ['직진 쏠림 (8.5 m 끝)', { ph: '값 [m]' }],
   ], 5.4, 1.6, 4.1, [2.3, 1.8], { fontSize: 9.5, rowH: 0.38 });
-  card(s, M, 5.6, 9, 1.25, '대회 전 물 위에서 확인할 것', '조향 부호·추력 PWM 확정 · IMU 오프셋·자기편각 · LTE 핫스팟 켠 상태 RTK FIXED · 도크 접안 거리(contact_dist_m) · 무선 비상정지 도달 거리', { fontSize: 11 });
+  card(s, M, 5.6, 9, 1.25, '대회 전 물 위에서 확인할 것', '선회 지름·정지 거리 · 조향 부호·추력 PWM 확정 · IMU 오프셋·자기편각 · LTE 핫스팟 켠 상태 RTK FIXED · 도크 접안 거리(contact_dist_m) · 무선 비상정지 도달 거리', { fontSize: 11 });
 }
 
 // ── 12. 비용 (Ⅴ) ────────────────────────────────────────────────────────────
@@ -450,5 +491,6 @@ pres.addSection({ title: '시험·비용' });
   await pres.writeFile({ fileName: OUT });
   const { applyTheme } = require(process.env.PPTX_SKILL_APPLY_THEME || path.join(__dirname, 'apply_theme.js'));
   await applyTheme(OUT, THEME);
+  await coverFromLastYear(OUT);
   console.log(`${OUT} — ${sn + 1} slides`);
 })().catch((e) => { console.error(e); process.exit(1); });
