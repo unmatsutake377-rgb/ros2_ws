@@ -196,6 +196,8 @@ async function coverFromLastYear(file) {
   // 16:9 → 4:3: 가로 띠·선만 줄이고 사진·삼각형은 원위치 (모두 x < 6.7")
   xml = xml.replace('<a:off x="-1" y="6438011"/><a:ext cx="12192000"', '<a:off x="-1" y="6438011"/><a:ext cx="9144001"');
   xml = xml.replace('<a:off x="236559" y="451689"/><a:ext cx="11737728"', '<a:off x="236559" y="451689"/><a:ext cx="8670882"');
+  // 쪽번호 자리: 작년 x 10.16" 는 4:3 밖 → 우하단 안쪽으로
+  xml = xml.replace(/(name="슬라이드 번호 개체 틀 5"[\s\S]*?<a:off x=")\d+(" y=")\d+(")/, '$17681000$25989320$3');
   // 작년 제목·부제 글상자 제거 (내용·위치가 16:9 용)
   for (const nm of ['직사각형 2', '가로 글상자 66']) {
     const re = new RegExp(`<p:sp>(?:(?!<p:sp>).)*?name="${nm}"(?:(?!<p:sp>).)*?</p:sp>`, 's');
