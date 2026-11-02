@@ -11,6 +11,7 @@ body{margin:0;padding:28px 20px 60px;font-family:-apple-system,"Pretendard","App
 h1{font-size:25px;font-weight:500;margin:0 0 4px}
 .sub{color:var(--sec);font-size:14px;margin:0 0 24px}
 h2{font-size:18px;font-weight:500;margin:30px 0 10px;padding-bottom:7px;border-bottom:1px solid var(--bd)}
+h3{font-size:15px;font-weight:500;margin:22px 0 6px}
 table{width:100%;border-collapse:collapse;font-size:13px;margin:8px 0;background:var(--card);
       border:1px solid var(--bd);border-radius:10px;overflow:hidden}
 th,td{text-align:left;padding:8px 11px;border-bottom:1px solid var(--bd);vertical-align:top}
@@ -195,10 +196,10 @@ gps_vel(RTK) 로 기록. ★ RTK fix 품질 확인 필수(아래).</pre>
 <td><b>폰 phyphox 앱 "Inclination"</b>을 갑판 중앙에 테이프로 고정하고 기록 시작(기준 10초) → 한쪽 현을 손으로 <b>천천히 눌러</b> 10° 안팎 기울였다 <b>딱 놓는다</b>. 멈출 때까지 손 대지 않는다(15~20초). 20초 간격 3회 → CSV 내보내기. 백업으로 선수 쪽에서 영상 1개(뒤에 수조 벽 수평선). <span class="c-chk">⚠️ <code>ros2 bag record /imu</code> 는 쓸 수 없다 — iahrs_driver 가 <code>/imu/data</code> 퍼블리셔만 만들고 publish 를 안 해서 롤이 ROS 로 안 나온다</span></td>
 <td>phyphox CSV 파일(배 이름) / 놓은 순서·시각 3개 / 백업 영상</td><td>Ⅱ-3.2 (롤 주기·감쇠, 그림 1장)</td></tr>
 <tr><td>4</td><td><b>속도</b> (수조만, 정속 아님)</td>
-<td>수조 벽에 1 m 간격 표시 → 자율 모드 <code>hold.py</code> 로 PWM 1300 / 1360 / 1400 각 2회 직진, 폰으로 옆에서 촬영 → 영상에서 마지막 2 m 구간 통과 시간. 대각선 8.5 m 면 마지막 2 m 는 거의 정속 — 그래도 "수조 대각선 8.5 m 기준"을 붙인다</td>
+<td>도착 쪽 마지막 2 m 구간에 표시 2개(출발점에서 5.5 m·7.5 m) → <code>motor_control</code> 을 <code>-p base_pwm:=1400 / 1360 / 1300</code> 으로 재시작하며 <code>/desired_angle 80.0</code> 직진 각 2회, 폰으로 옆에서 촬영 → 영상에서 2 m 구간 통과 시간. 대각선 8.5 m 면 마지막 2 m 는 거의 정속 — 그래도 "수조 대각선 8.5 m 기준"을 붙인다</td>
 <td>PWM / 구간 통과 시간 [s] / 배터리 전압</td><td>Ⅱ-3.4 저항 추정 검증, Ⅳ-5 운항 시간 (추정 표기 유지, 실측 한 줄 추가)</td></tr>
 <tr><td>5</td><td><b>선회 반경</b> (수조만)</td>
-<td>수조 가운데서 <code>/candidate_angle 5000</code>(제자리 우선회) 1바퀴 + 낮은 PWM(1400) 최대 조향으로 반 바퀴. 위에서 촬영(바닥 1 m 표시 기준) + <code>ros2 bag record /imu/yaw /imu/yaw_raw</code> 로 요레이트(블랙박스 CSV <code>imu_yaw</code> 열 미분. <code>gyro_z</code> 열은 지금 빈칸 — <code>/imu/data</code> 미발행)</td>
+<td>수조 가운데서 <code>/desired_angle 5000</code>(제자리 우선회) 1바퀴 + base_pwm 1400 에 최대 조향 <code>160.0</code>(좌)·<code>0.0</code>(우)으로 반~1바퀴. 위에서 촬영(배 길이 1.66/1.77 m 가 축척) + <code>ros2 bag record /imu/yaw /imu/yaw_raw</code> 로 요레이트(블랙박스 CSV <code>imu_yaw</code> 열 미분. <code>gyro_z</code> 열은 지금 빈칸 — <code>/imu/data</code> 미발행)</td>
 <td>1바퀴 시간 [s] / 영상에서 잰 선회 지름 [m]</td><td>Ⅱ-3.3 (그림 Ⅱ-2 요 모멘트·요레이트 계산과 비교)</td></tr>
 </table>
 
@@ -217,7 +218,7 @@ gps_vel(RTK) 로 기록. ★ RTK fix 품질 확인 필수(아래).</pre>
 <tr><td>0:00</td><td>1번배</td><td>장비 탑재 → 흘수 사진 1장 → <b>경사 시험</b>(좌·우·선수·선미) → <b>롤 감쇠</b> 3회 (폰 phyphox 기록)</td><td>30</td><td>GM, 트림, 롤 주기</td></tr>
 <tr><td>0:30</td><td>1번배</td><td><b>조향 부호</b> <code>/desired_angle 5000</code> → 오른쪽 회전 확인</td><td>5</td><td>steer_invert</td></tr>
 <tr><td>0:35</td><td>1번배</td><td><b>대각선 직진</b>(8.5 m) PWM 1300·1360·1400 각 2회, 옆에서 촬영(벽 1 m 표시). 마지막 2 m 구간 시간 = 거의 정속</td><td>15</td><td>속도(Ⅱ-3.4 검증), 전진 관성, base_pwm</td></tr>
-<tr><td>0:50</td><td>1번배</td><td><b>제자리 선회</b> 1바퀴 + 조향 110 으로 6 s, 좌우 각 2회, 위에서 촬영</td><td>10</td><td>선회 반경·요레이트(Ⅱ-3.3), 회전 관성, max_diff</td></tr>
+<tr><td>0:50</td><td>1번배</td><td><b>제자리 선회</b>(5000/6000) 1바퀴 + <b>전진 최소 선회</b>(160/0, base_pwm 1400) 반~1바퀴, 좌우 각 2회, 위에서 촬영. 여유 있으면 110/50 각 1회(max_diff 용)</td><td>10</td><td>선회 반경·요레이트(Ⅱ-3.3), 회전 관성, max_diff</td></tr>
 <tr><td>1:00</td><td>1번배</td><td><b>게이트 2.0 m 통과</b> — 부표 2개 정중앙, 대각선 방향으로 진입(진입 거리 4 m 확보). 3회</td><td>15</td><td>half_width 0.29·clearance 0.25 실증(그림 Ⅲ-9 검증)</td></tr>
 <tr><td>1:15</td><td>1번배</td><td><b>위치유지</b> <code>/wp_mode 2</code>, 부표 앞 2.5 m 에서 60 s</td><td>10</td><td>hold_dist, 임무 동작 증거</td></tr>
 <tr><td>1:25</td><td>1번배</td><td>(도킹은 안 함.) <b>OAK 는 인젝터가 없어 배에 못 단다(팀장 11-01)</b> → 내일 비전 입력은 <b>D455</b>(vision.yaml 기본값 그대로, hfov 80.32). OAK 원본 화면은 물가에 콘센트가 있으면 벤치 AC PoE 어댑터로 부표 한 장만 <code>ros2 bag record /oak/rgb/image_raw</code> 20 s — 없으면 생략</td><td>3</td><td>(선택) OAK 원본</td></tr>
@@ -225,6 +226,68 @@ gps_vel(RTK) 로 기록. ★ RTK fix 품질 확인 필수(아래).</pre>
 <tr><td>1:50</td><td>2번배</td><td><b>1번배와 같은 순서 전부</b>: 흘수 사진 → 경사 → 롤 감쇠 → 조향 부호 → 대각선 직진 → 선회 → 게이트 2 m → 위치유지. 파일명에 "2번배" 메모</td><td>90</td><td>2번배 GM·흘수·속도·선회·관성 (지금 전부 가정값) + 소프트웨어 동작 2번배 확인</td></tr>
 <tr><td>3:20</td><td>끝</td><td>총 3시간 20분. 배터리 각 배 만충 2세트 준비</td><td></td><td></td></tr>
 </table>
+
+<h2>11-02 현장 절차 — 시험별 상세 (팀장 질문 11-02 정리)</h2>
+
+<p>아래 8개를 배마다 이 순서로. 모터 안 쓰는 1~3 먼저. 모든 영상·CSV 파일명에 배 이름. 숫자는 시험 하나 끝날 때마다 바로 올린다.</p>
+
+<h3>1. 흘수·건현 (2분)</h3>
+<p>장비 전부 실은 상태로 띄우고 선수·중앙·선미에서 수면까지 높이 mm. 같은 자리 사진 1장. 1번배는 완료, 2번배는 갑판 붙인 뒤.</p>
+
+<h3>2. 경사 시험 — GM (10분)</h3>
+<p>준비물: 무게 아는 추(2 kg 권장, 없으면 배터리 1개를 저울로 재서), 줄자, 폰 수평계 앱(갑판에 테이프 고정) 또는 IMU 롤.</p>
+<pre>① 배 띄우고 손 떼고 30 s. 롤 기준값 θ₀ 기록
+② 추를 중심선 위에 놓고 가만히. 롤 θ₁ 기록
+③ 추를 좌현 가장자리로. 중심선에서 추 중심까지 d 를 줄자로(≈0.20~0.25 m). 멈추면 θ_L
+④ 같은 d 로 우현. θ_R
+⑤ ③~④ 한 번 더 (좌 2, 우 2). 0.5° 넘게 다르면 물결 — 다시
+⑥ (선택) 추를 선수 끝 / 선미 끝 → 선수·선미 건현 변화 mm (트림)</pre>
+<p>계산: θ = (θ_L − θ_R) ÷ 2, GM = w·d ÷ (W·tan θ). 기대: 2 kg·0.2 m 에 1번배 약 5.4°, 2번배 약 4.7°. 2° 밑이면 d 늘리고, 10° 넘으면 d 줄인다.
+<br><b>사진 1장 필수</b>: 추가 좌현에 올라가 기울어진 상태를 선수 쪽에서 수면 높이로, 뒤에 수조 벽 수직선 보이게(보고서 그림). 사람이 배를 잡고 있으면 안 된다.
+<br><b>보낼 것:</b> w, d, θ_L×2, θ_R×2, W(배 총무게), 사진. 트림 했으면 선수·선미 mm.</p>
+
+<h3>3. 롤 감쇠 (5분) — ROS 안 씀</h3>
+<p><code>/imu/data</code> 가 안 나오므로 폰 <b>phyphox</b> 앱 "Inclination". 폰을 갑판 중앙 평평한 곳에 테이프로 단단히 고정(긴 쪽 선수 방향).</p>
+<pre>① 기록 시작. 배 가만히 10 s (기준)
+② 한쪽 뱃전을 손으로 천천히 눌러 10° 안팎. 밀치지 말고 누르기만
+③ 손을 딱 떼고 안 건드림. 멈출 때까지 15~20 s
+④ 20 s 쉬고 ②~③ 반복. 총 3회
+⑤ 정지 → CSV 내보내기(공유). 파일명에 배 이름
+⑥ 백업: 선수 쪽에서 영상 1개 (뒤에 수조 벽 수평선)</pre>
+<p>기대: 주기 약 1.2 s, 3~4번 흔들리고 멈춤. 벽 반사파 오기 전 첫 3~4주기만 쓴다. <b>보낼 것:</b> CSV + 영상. 사진 불필요.</p>
+
+<h3>4. 조향 부호 (5분) — 모터 시험의 출발점</h3>
+<p>메인 launch 내림. <code>ros2 launch ssf_bridge ssf_bridge.launch.py</code> + <code>ros2 run motor_control motor_control --ros-args --params-file ~/ros2_ws/src/motor_control/config/motor_control.yaml</code>. ESC 시동 15~25 s 기다린 뒤
+<code>ros2 topic pub -r10 /desired_angle std_msgs/msg/Float32 "{data: 5000.0}"</code> → <b>오른쪽</b>으로 돌면 정상. 왼쪽이면 <code>steer_invert: true</code> 로 바꾸고 재확인. 정지는 <code>50000.0</code>.</p>
+
+<h3>5. 속도 (15분)</h3>
+<p>코스: 출발 코너 → 반대 코너 대각선 8.5 m. 도착 쪽 <b>마지막 2 m</b>(출발점에서 5.5 m·7.5 m)에 표시 2개. 폰은 그 구간 옆, 구간 중앙에서 직각 방향으로 멀리. 반대 코너에 받는 사람 1명(막대). 벽에 1 m 마다 테이프 붙이면 가속 시간도 덤.</p>
+<pre>① motor_control 을 -p base_pwm:=1400 으로 (재)시작. 시동 대기
+② 배를 출발 코너에 선수 대각선 방향으로 놓음. 폰 녹화. /desired_angle 80.0
+③ 벽 1 m 전에 50000.0. 받는 사람이 잡음 (관성으로 1~2 m 더 밀림)
+④ 같은 PWM 1회 더
+⑤ 1360 으로 재시작 2회, 1300 으로 재시작 2회. 총 6런
+⑥ 런마다 메모: PWM, 시작 전 배터리 전압, 영상 번호</pre>
+<p>1500 중립, <b>작을수록 빠름</b>. 1360 에서 이미 세면 1300 은 정지를 2 m 전에. 파라미터는 재시작으로만 바뀐다(param set 은 반영 안 됨).
+<br><b>보낼 것:</b> 영상, PWM·전압 메모. 블랙박스 CSV 파일명에 "속도". 실외에서 RTK FIXED 면 CSV gps_vel 도 같이 씀.</p>
+
+<h3>6. 선회 (10분)</h3>
+<p>조향 값: 80 직진, 0~160. 110 은 최대 차동의 37% 뿐(max_angle 81). 최소 선회 반경은 <b>160(좌)·0(우)</b>. base_pwm 1400 그대로. 위에서 촬영(사다리·난간 등), 수조 전체 들어오게. 바닥 표시 없어도 됨 — <b>배 길이가 축척</b>(1번배 1.66 m, 2번배 1.77 m). 요레이트는 블랙박스 CSV imu_yaw 미분이니 파일명에 "선회".</p>
+<pre>① 수조 중앙. 제자리 우선회 5000.0 → 1바퀴 → 50000.0. 시간 메모. 좌 6000.0 도. 각 2회
+   (자리에서 도는지, 한쪽으로 밀리는지 본다)
+② 전진 최소 선회 좌: 중앙에서 160.0 → 반~1바퀴 → 50000.0. 벽 2 m 전이면 즉시 정지. 2회
+③ 전진 최소 선회 우: 0.0 같은 식 2회
+④ (여유) 110.0 / 50.0 각 1회 6 s — max_diff 튜닝용
+⑤ 런마다 메모: 명령값, 몇 바퀴, 시간, 영상 번호</pre>
+<p>원이 수조에 안 들어올 수 있다 — 첫 런은 막대 들고 벽 쪽 대기, 지름 4 m 넘으면 반 바퀴만. <b>보낼 것:</b> 위에서 찍은 영상, 런 메모, CSV.</p>
+
+<h3>7. 게이트 2.0 m (15분)</h3>
+<p>motor_control 내리고 <b>메인 launch 복귀</b>(ESC 20 s). 부표 2개 수조 정중앙에 2.0 m 간격, 대각선 방향으로 진입(진입 거리 4 m). <code>ros2 topic pub -1 /wp_mode std_msgs/msg/Int32 "{data: 1}"</code> → 자율. 3회. 통과 영상(위 또는 옆) + 블랙박스 CSV(궤적 그림용). 통과 못 하고 후진 반복이면 clearance 0.25→0.20, 부딪히면 0.30 메모.</p>
+
+<h3>8. 위치유지 (10분)</h3>
+<p><code>/wp_mode 2</code>. 부표 앞 2.5 m 에서 60 s. 2.5 m 에 서는지, 밀려서 벗어나는지. 영상 1개 + CSV.</p>
+
+<div class="box ok"><b>한 줄 요약 — 보낼 것 목록:</b> ① 흘수 mm 3개+사진 ② 경사 w·d·θ×4·W+사진 ③ phyphox CSV+영상 ④ 조향 부호 결과(정상/반대) ⑤ 속도 영상 6개+PWM·전압 ⑥ 선회 영상+메모 ⑦ 게이트 영상+CSV ⑧ 위치유지 영상+CSV. 배마다 한 세트.</div>
 
 <div class="box warn"><b>내일 카메라:</b> OAK 미장착(인젝터 미도착). 게이트·위치유지의 비전은 D455 로 돈다 — 보고서 Ⅲ 에는 "수조 검증 시 비전 입력은 D455(동일 검출기)" 로 적고, OAK 장착 후 화각만 63.9 로 바뀐다는 점을 덧붙인다. 벤치 OAK 결과(Ⅲ-6.2)는 그대로 유효.</div>
 
