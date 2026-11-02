@@ -64,9 +64,9 @@ const THEME = {
   name: 'SSF 2026',
   headFontFace: 'Malgun Gothic', bodyFontFace: 'Malgun Gothic',
   colors: {
-    dk1: '1B1F23', lt1: 'FFFFFF', dk2: '0E3B43', lt2: 'EEF3F2',
-    accent1: '0E3B43', accent2: 'E4572E', accent3: '2A9D8F', accent4: '7A4B00', accent5: 'FFF1B8', accent6: '5B6770',
-    hlink: '0E3B43', folHlink: '5B6770',
+    dk1: '222222', lt1: 'FFFFFF', dk2: '1F3A5F', lt2: 'F2F2F2',
+    accent1: '1F3A5F', accent2: 'C0392B', accent3: '2E7D32', accent4: '7A4B00', accent5: 'FFF5C2', accent6: '666666',
+    hlink: '1F3A5F', folHlink: '666666',
   },
 };
 const pres = new pptxgen();
@@ -78,34 +78,35 @@ const C = pres.SchemeColor;
 const W = 10, H = 7.5, M = 0.5;
 
 pres.defineSlideMaster({
-  title: 'TITLE', background: { color: THEME.colors.dk2 },
+  title: 'TITLE', background: { color: THEME.colors.lt1 },
   objects: [
-    { placeholder: { options: { name: 'title', type: 'title', x: M, y: 2.35, w: W - 2 * M, h: 1.1, fontSize: 40, bold: true, color: C.background1, margin: 0 }, text: '' } },
+    { placeholder: { options: { name: 'title', type: 'title', x: M, y: 2.2, w: W - 2 * M, h: 1.0, fontSize: 36, bold: true, color: C.text2, align: 'center', margin: 0 }, text: '' } },
   ],
 });
 pres.defineSlideMaster({
   title: 'CONTENT', background: { color: THEME.colors.lt1 },
   objects: [
-    { placeholder: { options: { name: 'title', type: 'title', x: M, y: 0.4, w: W - 2 * M, h: 0.8, fontSize: 24, bold: true, color: C.text2, margin: 0, valign: 'middle' }, text: '' } },
-    { text: { text: `KABOAT 2026 · ${B.team} (${B.no}) · 홍익대학교 조선해양공학과`, options: { x: M, y: 7.05, w: 7, h: 0.3, fontSize: 9, color: C.accent6, margin: 0 } } },
+    { placeholder: { options: { name: 'title', type: 'title', x: M, y: 0.4, w: 7.4, h: 0.7, fontSize: 24, bold: true, color: C.text2, margin: 0, valign: 'middle' }, text: '' } },
+    { placeholder: { options: { name: 'chap', type: 'body', x: 7.9, y: 0.45, w: 1.6, h: 0.6, fontSize: 10, color: C.accent6, align: 'right', valign: 'middle', margin: 0 }, text: '' } },
+    { text: { text: `${B.team} (${B.no}) · 홍익대학교 조선해양공학과`, options: { x: M, y: 7.05, w: 7, h: 0.3, fontSize: 9, color: C.accent6, margin: 0 } } },
   ],
   slideNumber: { x: 9.0, y: 7.05, w: 0.5, h: 0.3, fontSize: 9, color: C.accent6, align: 'right' },
 });
 
 // ── 도우미 ─────────────────────────────────────────────────────────────────────
 let sn = 0;
-function slide(title, section) {
+function slide(title, section, chap) {
   const s = pres.addSlide({ masterName: 'CONTENT', sectionTitle: section });
   sn += 1;
   s.addText(title, { placeholder: 'title' });
+  s.addText(chap || '', { placeholder: 'chap' });
   return s;
 }
-// 빈 칸: 수조 시험 뒤 채운다
+// 빈 칸: 수조 시험 뒤 채운다 (연노랑 상자)
 function PH(s, x, y, w, h, label, opt = {}) {
-  s.addText(`[ ${label} ]`, {
-    x, y, w, h, fill: { color: C.accent5 }, color: C.accent4, fontSize: opt.fontSize || 12, bold: true,
+  s.addText(`( ${label} )`, {
+    x, y, w, h, fill: { color: C.accent5 }, color: C.accent4, fontSize: opt.fontSize || 11,
     align: 'center', valign: 'middle', isTextBox: true, margin: 0.04, objectName: `빈칸 ${label}`,
-    line: { color: THEME.colors.accent4, width: 0.75, dashType: 'dash' },
   });
 }
 function bullets(s, items, x, y, w, h, opt = {}) {
@@ -114,9 +115,11 @@ function bullets(s, items, x, y, w, h, opt = {}) {
   }));
   s.addText(arr, { x, y, w, h, fontSize: opt.fontSize || 13, color: C.text1, valign: 'top', isTextBox: true, margin: 0, objectName: opt.name || '본문' });
 }
+function sub(s, text, x, y, w) {
+  s.addText(text, { x, y, w, h: 0.32, fontSize: 13, bold: true, color: C.text2, isTextBox: true, margin: 0, objectName: `소제목 ${text}` });
+}
 function img(s, file, x, y, w, h, caption) {
   if (!exists(file)) { PH(s, x, y, w, h, `그림 없음: ${path.basename(file)}`); return; }
-  // 비율 유지해 상자 안에 맞춘다
   const sz = pngSize(file);
   let iw = w, ih = h;
   if (sz) { const r = sz.w / sz.h; if (w / h > r) { iw = h * r; } else { ih = w / r; } }
@@ -128,7 +131,6 @@ function pngSize(file) {
   try {
     const b = fs.readFileSync(file);
     if (b.toString('ascii', 1, 4) === 'PNG') return { w: b.readUInt32BE(16), h: b.readUInt32BE(20) };
-    // JPEG: SOF 마커 탐색
     let i = 2;
     while (i < b.length) {
       if (b[i] !== 0xff) { i++; continue; }
@@ -143,50 +145,44 @@ function table(s, rows, x, y, w, colW, opt = {}) {
   const fs_ = opt.fontSize || 11.5;
   const data = rows.map((r, ri) => r.map((c) => {
     const ph = typeof c === 'object' && c && c.ph;
-    const txt = ph ? `[ ${c.ph} ]` : String(c);
+    const txt = ph ? `( ${c.ph} )` : String(c);
     const o = { fontSize: fs_, color: C.text1, valign: 'middle', margin: [3, 5, 3, 5] };
-    if (ri === 0 && opt.header !== false) { o.bold = true; o.color = C.background1; o.fill = { color: C.accent1 }; }
-    else if (ph) { o.bold = true; o.color = C.accent4; o.fill = { color: C.accent5 }; o.align = 'center'; }
-    else if (ri % 2 === 0) o.fill = { color: C.background2 };
+    if (ri === 0 && opt.header !== false) { o.bold = true; o.fill = { color: C.background2 }; }
+    else if (ph) { o.color = C.accent4; o.fill = { color: C.accent5 }; o.align = 'center'; }
     return { text: txt, options: o };
   }));
-  s.addTable(data, { x, y, w, colW, border: { type: 'solid', pt: 0.5, color: 'D5DBDA' }, rowH: opt.rowH || 0.32, objectName: opt.name || '표' });
+  s.addTable(data, { x, y, w, colW, border: { type: 'solid', pt: 0.5, color: 'BFBFBF' }, rowH: opt.rowH || 0.32, objectName: opt.name || '표' });
 }
+// 소제목 + 불릿 묶음 (카드 대신)
 function card(s, x, y, w, h, head, body, opt = {}) {
-  s.addShape(pres.ShapeType.roundRect, { x, y, w, h, fill: { color: C.background2 }, line: { color: C.background2 }, rectRadius: 0.08, objectName: `카드 ${head}` });
-  s.addText(head, { x: x + 0.15, y: y + 0.08, w: w - 0.3, h: 0.35, fontSize: 13, bold: true, color: C.text2, isTextBox: true, margin: 0 });
-  if (Array.isArray(body)) bullets(s, body, x + 0.15, y + 0.45, w - 0.3, opt.bodyH || (h - 0.5), { fontSize: opt.fontSize || 11.5, gap: 3, name: `카드 본문 ${head}` });
-  else s.addText(body, { x: x + 0.15, y: y + 0.45, w: w - 0.3, h: h - 0.5, fontSize: opt.fontSize || 11.5, color: C.text1, valign: 'top', isTextBox: true, margin: 0 });
-}
-function num(s, x, y, w, big, label) {
-  s.addText(big, { x, y, w, h: 0.7, fontSize: 30, bold: true, color: C.accent2, align: 'center', isTextBox: true, margin: 0, objectName: `수치 ${label}` });
-  s.addText(label, { x, y: y + 0.7, w, h: 0.5, fontSize: 10, color: C.accent6, align: 'center', isTextBox: true, margin: 0 });
+  sub(s, head, x, y, w);
+  if (Array.isArray(body)) bullets(s, body, x, y + 0.38, w, opt.bodyH || (h - 0.4), { fontSize: opt.fontSize || 11.5, gap: 3, name: `카드 본문 ${head}` });
+  else s.addText(body, { x, y: y + 0.38, w, h: h - 0.4, fontSize: opt.fontSize || 11.5, color: C.text1, valign: 'top', isTextBox: true, margin: 0, objectName: `카드 본문 ${head}` });
 }
 
 // ── 1. 표지 ─────────────────────────────────────────────────────────────────────
 pres.addSection({ title: '소개' });
 {
   const s = pres.addSlide({ masterName: 'TITLE', sectionTitle: '소개' });
-  s.addText('자율운항보트경진대회 KABOAT 2026', { x: M, y: 0.7, w: 9, h: 0.5, fontSize: 16, color: 'B9D4D0', isTextBox: true, margin: 0 });
-  s.addText(`TEAM ${B.team}`, { placeholder: 'title' });
-  s.addText(`${B.no} · 홍익대학교 조선해양공학과`, { x: M, y: 3.55, w: 9, h: 0.5, fontSize: 18, color: 'B9D4D0', isTextBox: true, margin: 0 });
+  s.addText('2026 자율운항보트경진대회 (KABOAT 2026)', { x: M, y: 1.3, w: 9, h: 0.5, fontSize: 16, color: C.accent6, align: 'center', isTextBox: true, margin: 0 });
+  s.addText(`TEAM ${B.team} (${B.no})`, { placeholder: 'title' });
+  s.addText('설계 및 제작 보고', { x: M, y: 3.2, w: 9, h: 0.5, fontSize: 18, color: C.text1, align: 'center', isTextBox: true, margin: 0 });
+  img(s, B.hullImg, 2.0, 3.9, 6.0, 1.7);
+  s.addText('홍익대학교 조선해양공학과', { x: M, y: 5.75, w: 9, h: 0.4, fontSize: 14, bold: true, color: C.text1, align: 'center', isTextBox: true, margin: 0 });
   s.addText([
-    { text: '조장  ', options: { bold: true, color: 'B9D4D0' } }, { text: B.leader, options: { color: C.background1, breakLine: true } },
-    { text: '조원  ', options: { bold: true, color: 'B9D4D0' } }, { text: B.members, options: { color: C.background1, breakLine: true } },
-    { text: '지도교수  ', options: { bold: true, color: 'B9D4D0' } }, { text: '권순범', options: { color: C.background1 } },
-  ], { x: M, y: 4.35, w: 5.2, h: 1.4, fontSize: 13, valign: 'top', isTextBox: true, margin: 0, paraSpaceAfter: 4, objectName: '팀 명단' });
-  PH(s, M, 5.85, 3.6, 0.42, '인원·역할 추가 (팀장)', { fontSize: 11 });
-  if (exists(B.hullImg)) img(s, B.hullImg, 5.9, 3.8, 3.6, 2.6);
+    { text: `조장 ${B.leader}   ·   조원 ${B.members}`, options: { breakLine: true } },
+    { text: '지도교수 권순범', options: {} },
+  ], { x: M, y: 6.15, w: 9, h: 0.8, fontSize: 12, color: C.text1, align: 'center', valign: 'top', isTextBox: true, margin: 0, paraSpaceAfter: 3, objectName: '팀 명단' });
 }
 
 // ── 2. 설계철학·임무 우선순위 (Ⅱ-1) ────────────────────────────────────────────
 pres.addSection({ title: '선형 설계 및 제작' });
 {
-  const s = slide('설계 철학 — 규정과 경기장을 치수로', '선형 설계 및 제작');
+  const s = slide('설계 요구조건과 설계 반영', '선형 설계 및 제작', 'Ⅱ. 선형 설계 및 제작');
   bullets(s, [
     '두 척 모두 단동선 — 지난 대회 쌍동선·V형 단동선 비교 끝에 선종 통일, 설계·제작 경험 공유',
-    isA ? '추진기 4기 → 2기: 단순화·경량화, 선미 차동추력으로 선회' : '추진기 4기 V자형: 선수 측 안쪽·선미 측 바깥, 좌·우 2기씩 같은 신호',
-    '임무 우선순위 = 코스 순서: 게이트 → 위치유지 → 탐색 → 장애물 회피 → 도킹 → 토너먼트',
+    isA ? '추진기 4기에서 2기로: 단순화·경량화, 선미 차동추력으로 선회' : '추진기 4기 V자형: 선수 측 안쪽·선미 측 바깥, 좌·우 2기씩 같은 신호',
+    '임무 우선순위는 코스 순서대로: 게이트, 위치유지, 탐색, 장애물 회피, 도킹, 토너먼트',
   ], M, 1.3, 9, 1.3, { fontSize: 13 });
   table(s, [
     ['규정 (경기규정 4.2 보트 검사)', '본 설계'],
@@ -206,7 +202,7 @@ pres.addSection({ title: '선형 설계 및 제작' });
 
 // ── 3. 선종·주요 제원·복원성 (Ⅱ-2, 3) ────────────────────────────────────────
 {
-  const s = slide(`주요 제원과 초기 복원성 — ${B.no}`, '선형 설계 및 제작');
+  const s = slide('주요 제원 및 초기 복원성', '선형 설계 및 제작', 'Ⅱ. 선형 설계 및 제작');
   table(s, [
     ['항목', '값'],
     ['LOA / BOA [m]', `${B.loa} / ${B.boa}`],
@@ -237,12 +233,13 @@ pres.addSection({ title: '선형 설계 및 제작' });
 
 // ── 4. 추진기 배치·저항·침몰방지 (Ⅱ-3.3, 3.4, 4) ────────────────────────────
 {
-  const s = slide('추진기 배치와 저항 추정', '선형 설계 및 제작');
+  const s = slide('추진기 배치 · 저항 추정 · 침몰방지', '선형 설계 및 제작', 'Ⅱ. 선형 설계 및 제작');
   img(s, B.thrImg, M, 1.3, 4.4, 1.9, `그림 Ⅱ-2 ${B.no} 추진기 배치 (실제 장착)`);
   img(s, B.resImg, 5.1, 1.3, 4.4, 2.2, '그림 Ⅱ-3 속도별 점성 저항과 가용 추력');
-  num(s, M, 3.75, 1.5, '47 N', 'T200 1기 @14.8 V');
-  num(s, 2.0, 3.75, 1.5, B.thrustTotal.split(' (')[0], `가용 추력 (${B.thrustTotal.split(' (')[1]}`);
-  num(s, 3.5, 3.75, 1.5, 'Fn 0.4', '≈ 1.5 m/s 조파 저항 경계');
+  bullets(s, [
+    `T200 최대 추력 1기 약 47 N (14.8 V 보간) → 가용 추력 ${B.thrustTotal}`,
+    'Fn 0.4 (약 1.5 m/s) 부터 조파 저항 급증 — 순항 속도는 그 아래',
+  ], M, 3.85, 4.4, 1.25, { fontSize: 10.5, gap: 3, name: '추력 불릿' });
   bullets(s, [
     `침수 표면적 ${B.S}, 수선 길이 ${B.lwl}. ITTC-1957 × 형상계수 1.2 — 2.0 m/s 에서도 점성 저항은 추력의 몇 %`,
     isA ? '차동추력 선회: 좌·우 출력 차로 선회 모멘트, 선미 간격 240 mm' : '선미 2기는 중심선에서 멀리(선회 모멘트), 선수 2기는 선형 따라 안쪽',
@@ -258,7 +255,7 @@ pres.addSection({ title: '선형 설계 및 제작' });
 
 // ── 5. 제작·조립 과정 (Ⅱ-5) ─────────────────────────────────────────────────
 {
-  const s = slide(`제작 과정 — 몰드에서 부착물까지 (${B.no})`, '선형 설계 및 제작');
+  const s = slide('제작 과정', '선형 설계 및 제작', 'Ⅱ. 선형 설계 및 제작');
   const steps = [['① 몰드 제작', `공정_${BOAT}_몰드.jpg`, 'PLA+ 3D 프린팅 몰드, Six10 에폭시 접합'],
     [`② ${B.layer}`, `공정_${BOAT}_적층.jpg`, isA ? 'FRP 춉매트 / 얀크로스 적층·보강' : '카본섬유 적층 — 경량화·강성'],
     ['③ 수밀', `공정_${BOAT}_수밀.jpg`, '방수제 도포, 관통부 실리콘 씰링'],
@@ -277,7 +274,7 @@ pres.addSection({ title: '선형 설계 및 제작' });
 // ── 6. 시스템 구성·센서 (Ⅲ-1, 7) ────────────────────────────────────────────
 pres.addSection({ title: '소프트웨어' });
 {
-  const s = slide('시스템 구성 — 노트북 1대, ROS2', '소프트웨어');
+  const s = slide('시스템 구성 및 센서', '소프트웨어', 'Ⅲ. 소프트웨어');
   img(s, FIG('node_graph.png'), M, 1.3, 5.2, 3.5, '그림 Ⅲ-1 ROS2 노드·토픽 구조');
   table(s, [
     ['센서 / 장치', '역할', '주기'],
@@ -291,14 +288,14 @@ pres.addSection({ title: '소프트웨어' });
   bullets(s, [
     'Lenovo IdeaPad (Ubuntu 22.04, ROS2 Humble) 한 대가 스택 전체. ssf_bridge 가 USB 시리얼로 좌·우 PWM 을 Mega 로',
     '모드 전환은 조종기 스위치뿐 (WAIT / MANUAL / AUTO). 노트북엔 모드를 바꾸는 경로를 두지 않음',
-    '명령 500 ms 무수신 → 펌웨어 자동 중립. 추력 부호 반전은 ssf_bridge 한 곳',
+    '명령 500 ms 무수신이면 펌웨어가 자동 중립. 추력 부호 반전은 ssf_bridge 한 곳',
     `실행: ros2 launch launch_files launch_files.launch.py boat:=${BOAT}`,
   ], M, 5.15, 9, 1.7, { fontSize: 11.5 });
 }
 
 // ── 7. 임무 상태기계 (Ⅲ-3) ──────────────────────────────────────────────────
 {
-  const s = slide('임무 상태기계 — /wp_mode 가 담당 노드를 고른다', '소프트웨어');
+  const s = slide('임무 상태기계', '소프트웨어', 'Ⅲ. 소프트웨어');
   img(s, FIG('mission_flowchart.png'), M, 1.3, 4.6, 3.1, '그림 Ⅲ-5 종합임무 상태기계');
   table(s, [
     ['wp_mode', '임무', '노드 · 검출기', 'dwell / 시간초과'],
@@ -319,13 +316,13 @@ pres.addSection({ title: '소프트웨어' });
 
 // ── 8. 영상 파이프라인·회피·제어기 (Ⅲ-2.4, 4) ──────────────────────────────
 {
-  const s = slide('비전 · 회피 · 제어기', '소프트웨어');
+  const s = slide('영상 처리 · 장애물 회피 · 제어기', '소프트웨어', 'Ⅲ. 소프트웨어');
   img(s, FIG('vision_pipeline.png'), M, 1.3, 4.4, 2.65, '그림 Ⅲ-2 영상 처리 단계 (실제 OAK 화면)');
   img(s, FIG('sim_avoid.png'), 5.1, 1.3, 4.4, 2.65, '그림 Ⅲ-7 장애물 회피 — 갭 선택');
   card(s, M, 4.3, 2.9, 2.5, '비전 (규칙 기반)', [
-    'HSV 색 마스크 → 중앙값 필터',
+    'HSV 색 마스크 후 중앙값 필터',
     '윤곽 다각형 근사: 꼭짓점 수·원형도',
-    '화면 x → 방위각, 실측 화각 63.9°',
+    '화면 위치를 방위각으로, 실측 화각 63.9°',
     '640×360 MJPEG, 검출기 26~29.5 fps',
   ], { fontSize: 10.5 });
   card(s, 3.55, 4.3, 2.9, 2.5, '회피 (ship_direction)', [
@@ -335,17 +332,17 @@ pres.addSection({ title: '소프트웨어' });
     '틈 없으면 후진 후 재탐색',
   ], { fontSize: 10.5 });
   card(s, 6.6, 4.3, 2.9, 2.5, '제어기 (각도 기반 차동)', [
-    '/desired_angle 오차 → 좌·우 PWM 차동',
+    '/desired_angle 오차를 좌·우 PWM 차동으로',
     '전방 거리로 감속, 한 주기 조향 변화 상한',
     'ROS <1500 = 전진, 반전은 bridge 한 곳',
-    '명령 워치독 0.5 s → 중립',
+    '명령 워치독 0.5 s, 끊기면 중립',
   ], { fontSize: 10.5 });
   s.addNotes('비전: 실제 OAK 640×360 화면에 검출기 코드를 그대로 적용. 빨강 범위로 마스크, 중앙값 필터로 잡티 제거, 윤곽을 다각형 근사해 꼭짓점 수와 원형도로 형상 판정, 채택한 표식의 화면 위치를 실측 화각 63.9° 로 방위각으로 변환. 거리는 LiDAR. 회피: 탐지거리 안의 장애물을 배 폭만큼 넓혀 막고, 폭 판정(0.83 m)을 통과한 틈 중 목표 방위에 가장 가까운 쪽을 고른다. 목표 방위가 이미 틈 안이면 그대로 간다. 예상 질문: 왜 YOLO 안 쓰나 → 표식이 색·단순 도형이라 규칙 기반으로 충분, 학습 데이터 불필요, 판정 근거 설명 가능. 햇빛 변화 → HSV 범위는 설정 파일 한 곳, 현장에서 수정.');
 }
 
 // ── 9. 페일세이프·시뮬 스윕 (Ⅲ-5, 6.1) ─────────────────────────────────────
 {
-  const s = slide('페일세이프와 시뮬레이션 스윕', '소프트웨어');
+  const s = slide('페일세이프 및 시뮬레이션', '소프트웨어', 'Ⅲ. 소프트웨어');
   img(s, FIG('failsafe_timeline.png'), M, 1.3, 4.4, 1.6, '그림 Ⅲ-8 페일세이프 단계 전환 (벤치 실측)');
   img(s, FIG('sim_sweep.png'), 5.1, 1.3, 4.4, 1.6, '그림 Ⅲ-9 회피 파라미터 스윕');
   table(s, [
@@ -357,25 +354,23 @@ pres.addSection({ title: '소프트웨어' });
   bullets(s, [
     'LiDAR 끊김: 0.70 s 경고, 2.99 s 정지, 복귀 즉시 정상. 14.3분 기록 오탐 0',
     'IMU 끊김: /yaw_error 0.8 s 뒤 멈춤 → 1.8 s 경고, 4.1 s 정지',
-    'GPS fix 2.5 s 없으면 방위·지오펜스·도착 판정 정지. 비전 유실 2 s → 무효값',
+    'GPS fix 2.5 s 없으면 방위·지오펜스·도착 판정 정지. 비전 유실 2 s 뒤 무효값',
     '진단(/health_ok)은 로그만 — 거짓 정지 금지',
   ], M, 4.85, 4.4, 2.0, { fontSize: 10.5 });
-  num(s, 5.1, 3.3, 1.45, '2,400', '시뮬 런 (20 시드)');
-  num(s, 6.55, 3.3, 1.45, '0.29 m', 'half_width (선폭)');
-  num(s, 8.0, 3.3, 1.45, '0.25 m', 'clearance');
+  sub(s, '회피 파라미터 스윕 (2,400 런)', 5.1, 3.3, 4.4);
   bullets(s, [
-    '선폭 5 × clearance 6 × 탐지거리 2 × 게이트폭 2, 칸마다 80 런',
+    '선폭 5 × clearance 6 × 탐지거리 2 × 게이트폭 2, 칸마다 80 런. 채택 half_width 0.29 m · clearance 0.25 m',
     'clearance 0.20 → 접촉 1.95, 0.25 → 1.32, 0.30 → 1.46 (정체 2 %), 0.35 → 정체 28 %',
     '정체 0 % 범위에서 접촉 최소인 0.25 채택. 통과 최소 폭 0.83 m',
     '전 코스(70×20 m) 궤적 시뮬로 출발~도착 확인 (그림 Ⅲ-10)',
-  ], 5.1, 4.55, 4.4, 2.3, { fontSize: 10.5 });
+  ], 5.1, 3.75, 4.4, 2.6, { fontSize: 10.5 });
   s.addNotes('페일세이프: 센서가 끊기면 바로 멈추지 않고 경고(0.7 s, 속도 0.7배·조향 유지) → 정지(3.0 s) 두 단계. 오판 방지로 연속 3회 확인. 벤치 실측 LiDAR 0.70/2.99 s, IMU 1.8/4.1 s. 왜 경고 때 직진 안 시키나 → 회피 중 직진 강제는 피하던 부표에 부딪힌다. 비상정지와 다름: 이건 소프트웨어 판단, 비상정지는 접촉기가 물리적으로 추진 전원을 끊는다. 스윕: half_width·clearance 조합마다 80번 주행, 정체 0 % 범위에서 접촉 최소 조합(0.29·0.25) 채택.');
 }
 
 // ── 10. 회로도·비상정지 (Ⅳ-1, 2) ────────────────────────────────────────────
 pres.addSection({ title: '회로' });
 {
-  const s = slide('회로와 비상정지 — 추진만 끊는다', '회로');
+  const s = slide('회로 구성 및 비상정지', '회로', 'Ⅳ. 회로');
   img(s, B.circImg, M, 1.3, 4.4, 2.4, `그림 Ⅳ-1 ${B.no} 전체 회로 구성도`);
   img(s, B.estopImg, 5.1, 1.3, 4.4, 2.4, '그림 Ⅳ-2 비상정지 장치 구성도');
   table(s, [
@@ -394,7 +389,7 @@ pres.addSection({ title: '회로' });
 // ── 11. 시험 결과 수치 (Ⅱ-3.2, Ⅲ-6, Ⅳ-2) ───────────────────────────────────
 pres.addSection({ title: '시험·비용' });
 {
-  const s = slide('시험 결과 — 벤치 완료, 수조 예정', '시험·비용');
+  const s = slide('시험 결과', '시험·비용', 'Ⅱ-3 · Ⅲ-6 · Ⅳ-2');
   s.addText('벤치·야외 (완료)', { x: M, y: 1.25, w: 4.6, h: 0.3, fontSize: 12, bold: true, color: C.text2, isTextBox: true, margin: 0 });
   table(s, [
     ['시험', '결과'],
@@ -424,18 +419,16 @@ pres.addSection({ title: '시험·비용' });
 
 // ── 12. 비용 (Ⅴ) ────────────────────────────────────────────────────────────
 {
-  const s = slide(`소요 비용 — ${B.no}`, '시험·비용');
+  const s = slide('최종 소모 금액', '시험·비용', 'Ⅴ. 최종 소모 금액');
   table(s, [['품목', '수량', '합계 [원]'], ...B.cost], M, 1.3, 5.6, [3.4, 0.8, 1.4], { fontSize: 11, rowH: 0.38 });
-  s.addShape(pres.ShapeType.roundRect, { x: 6.5, y: 1.3, w: 3.0, h: 2.0, fill: { color: C.accent1 }, line: { color: C.accent1 }, rectRadius: 0.08, objectName: '총액 카드' });
-  s.addText('총 구매 금액', { x: 6.65, y: 1.4, w: 2.7, h: 0.35, fontSize: 12, color: 'B9D4D0', isTextBox: true, margin: 0 });
-  s.addText(B.costTotal.split(' 원')[0], { x: 6.65, y: 1.8, w: 2.7, h: 0.8, fontSize: 17, bold: true, color: C.background1, isTextBox: true, margin: 0, valign: 'middle' });
-  s.addText('원 + 선체 재료', { x: 6.65, y: 2.65, w: 2.7, h: 0.4, fontSize: 12, color: 'B9D4D0', isTextBox: true, margin: 0 });
-  PH(s, 6.5, 3.45, 3.0, 0.6, '선체 재료비 (선체 담당)', { fontSize: 11 });
+  sub(s, '총 구매 금액', 6.5, 1.3, 3.0);
+  s.addText(B.costTotal, { x: 6.5, y: 1.7, w: 3.0, h: 0.9, fontSize: 15, bold: true, color: C.text1, isTextBox: true, margin: 0, valign: 'top', objectName: '총액' });
+  PH(s, 6.5, 2.7, 3.0, 0.5, '선체 재료비 — 선체 담당 기입', { fontSize: 11 });
   bullets(s, [
     isA ? '센서 4종(LiDAR·GPS·IMU·OAK) 이 전체의 약 63 %' : '추진기 4기 + ESC 가 전체의 약 54 %, 노트북·GPS·IMU 는 학과 보유',
     '카메라 계통(OAK + 인젝터 + 어댑터) 약 74 만원',
     '출처: 구매 목록 + 기보유 장비 목록, 이 배에 단 장비만',
-  ], 6.5, 4.25, 3.0, 2.5, { fontSize: 10.5 });
+  ], 6.5, 3.5, 3.0, 2.5, { fontSize: 10.5 });
 }
 
 (async () => {
