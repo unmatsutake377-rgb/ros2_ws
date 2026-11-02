@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>PoE 인젝터 세팅</title>
+<style>
+/* 레이아웃: 한 열 설명서. 단계 번호는 실제 작업 순서. 색은 상태(정상/확인/금지)에만 쓴다. */
+:root{--bg:#f7f6f2;--card:#ffffff;--fg:#1c1c1a;--sec:#5a5a54;--mut:#8a8a82;--bd:#dcdad2;--code:#edebe4;
+      --accent:#1f5f99;--ok:#0f6e56;--okbg:#e1f5ee;--okbd:#9fe1cb;--warn:#854f0b;--warnbg:#faeeda;--warnbd:#f1c67a;
+      --bad:#a32d2d;--badbg:#fcebeb;--badbd:#f0a0a0;
+      --f-body:-apple-system,"Pretendard","Apple SD Gothic Neo","Noto Sans KR",system-ui,sans-serif;
+      --f-mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--bg:#15161a;--card:#1e2026;--fg:#e8e6df;--sec:#b4b2aa;--mut:#86847c;--bd:#33363e;--code:#272a32;
+      --accent:#7db3e8;--ok:#7fd6b8;--okbg:#163a30;--okbd:#2a5c4c;--warn:#f0c27a;--warnbg:#3c2d12;--warnbd:#6b4d1c;--bad:#f09a9a;--badbg:#3f1c1c;--badbd:#6e2e2e;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#15161a;--card:#1e2026;--fg:#e8e6df;--sec:#b4b2aa;--mut:#86847c;--bd:#33363e;--code:#272a32;
+      --accent:#7db3e8;--ok:#7fd6b8;--okbg:#163a30;--okbd:#2a5c4c;--warn:#f0c27a;--warnbg:#3c2d12;--warnbd:#6b4d1c;--bad:#f09a9a;--badbg:#3f1c1c;--badbd:#6e2e2e;color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--f-body);line-height:1.65;font-size:15px;
+     padding-block:28px 64px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.w{max-width:820px;margin:0 auto}
+h1{font-size:26px;font-weight:600;margin:0 0 4px;text-wrap:balance}
+.sub{color:var(--sec);font-size:14px;margin:0 0 22px}
+h2{font-size:18px;font-weight:600;margin:34px 0 10px;padding-bottom:6px;border-bottom:1px solid var(--bd);text-wrap:balance}
+h2 .n{display:inline-block;min-width:26px;height:26px;line-height:26px;text-align:center;border-radius:13px;background:var(--accent);color:#fff;font-size:13px;margin-right:8px;font-variant-numeric:tabular-nums}
+h2 .t{color:var(--mut);font-size:13px;font-weight:400;margin-left:8px}
+h3{font-size:15px;font-weight:600;margin:18px 0 6px}
+p{margin:8px 0}
+ol,ul{margin:6px 0 6px 0;padding-left:22px}
+li{margin:5px 0}
+li::marker{color:var(--mut);font-variant-numeric:tabular-nums}
+.tbl{overflow-x:auto;margin:8px 0}
+table{width:100%;border-collapse:collapse;font-size:13.5px;background:var(--card);border:1px solid var(--bd);border-radius:10px;overflow:hidden}
+th,td{text-align:left;padding:8px 11px;border-bottom:1px solid var(--bd);vertical-align:top}
+tr:last-child td{border-bottom:none}
+th{color:var(--mut);font-size:11.5px;letter-spacing:.04em;font-weight:500;background:var(--code)}
+code{font-family:var(--f-mono);font-size:12.5px;background:var(--code);padding:1px 5px;border-radius:4px}
+pre{background:var(--code);border:1px solid var(--bd);border-radius:8px;padding:11px 13px;font-size:12.5px;overflow-x:auto;font-family:var(--f-mono);margin:8px 0;line-height:1.5}
+pre code{background:none;padding:0}
+.box{border-radius:10px;padding:12px 15px;margin:14px 0;font-size:14px;border:1px solid}
+.box.ok{background:var(--okbg);border-color:var(--okbd)}
+.box.warn{background:var(--warnbg);border-color:var(--warnbd)}
+.box.bad{background:var(--badbg);border-color:var(--badbd)}
+.k-ok{color:var(--ok);font-weight:600}.k-chk{color:var(--warn);font-weight:600}.k-bad{color:var(--bad);font-weight:600}
+.diag{font-family:var(--f-mono);font-size:12.5px;white-space:pre;overflow-x:auto;background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:12px 14px;line-height:1.5}
+.chk li{list-style:none;position:relative;padding-left:4px}
+.chk li::before{content:"☐";position:absolute;left:-20px;color:var(--mut)}
+.src{color:var(--mut);font-size:12.5px;margin-top:30px;border-top:1px solid var(--bd);padding-top:10px}
+</style></head><body>
+<div class="w">
+<h1>PoE 인젝터 세팅 — PSE5502G</h1>
+<p class="sub">배터리 4S → 인젝터 → 이더넷 한 가닥 → OAK-1 PoE. 노트북 쪽(IP·드라이버·토픽)은 10-31 벤치에서 끝났으므로 여기선 <b>전원 계통과 점화 확인</b>만 다룬다. 1번배 기준, 2번배도 같다.</p>
+
+<div class="box ok"><b>한 줄 요약.</b> EC5 암 피그테일(접촉기 <b>앞</b>) → 2 A 퓨즈 → 인젝터 DC IN(배럴, 중심 +). 인젝터 <b>POE OUT</b> → 동봉 Cat5e → OAK. 인젝터 <b>Ethernet IN</b> → NM-UCL02 → 노트북 USB-C. 켜고 <code>ping 169.254.1.222</code> 되면 끝.</div>
+
+<h2><span class="n">0</span>실물 확인<span class="t">도착 당일 · 5분</span></h2>
+<div class="tbl"><table>
+<tr><th>항목</th><th>사진으로 확인됨</th><th>아직 봐야 함</th></tr>
+<tr><td>모델</td><td>PSE5502G, Mid-Span, 10/100/1000</td><td>—</td></tr>
+<tr><td>고정</td><td>벽면 플랜지(위아래 열쇠구멍). 딘레일 클립 없음</td><td>박스 벽면 나사 자리</td></tr>
+<tr><td>포트</td><td>왼쪽 <b>Ethernet IN</b>(노트북 쪽) · 오른쪽 <b>POE OUT</b>(카메라 쪽)</td><td>—</td></tr>
+<tr><td>LED</td><td><b>DC RUN</b>(입력 전원) · <b>POE RUN</b>(카메라와 802.3af 협상 성공)</td><td>—</td></tr>
+<tr><td>DC IN</td><td>배럴 5.5×2.1, 케이블 하나 꽂혀 있음</td><td><span class="k-chk">극성 라벨</span>(보통 중심 +). 역극성 보호 없음</td></tr>
+<tr><td>스펙 라벨</td><td>—</td><td><span class="k-chk">뒷면·옆면</span>에 "IEEE802.3af/at" 와 입력 "DC 12~48V". 이게 있어야 4S 직결 확정</td></tr>
+</table></div>
+<p>뒷면 라벨 사진 한 장 찍어 두면 보고서·회로도에 쓴다.</p>
+
+<h2><span class="n">1</span>준비물</h2>
+<div class="tbl"><table>
+<tr><th>부품</th><th>수량/배</th><th>상태</th></tr>
+<tr><td>PSE5502G 인젝터</td><td>1</td><td><span class="k-ok">도착 1개</span>(2번배분은 시험 후 추가 주문)</td></tr>
+<tr><td>OAK-1 PoE FF + 동봉 Cat5e 2 m</td><td>1</td><td><span class="k-ok">있음</span></td></tr>
+<tr><td>NM-UCL02 USB-C 기가비트 어댑터</td><td>1</td><td><span class="k-ok">있음</span></td></tr>
+<tr><td>EC5 암 피그테일 10AWG</td><td>1</td><td><span class="k-ok">3개</span></td></tr>
+<tr><td>BF303 인라인 퓨즈홀더 + 5×20 퓨즈 <b>2 A</b></td><td>1</td><td><span class="k-ok">있음</span>(허브용 3 A 와 겉이 같다. 라벨 필수)</td></tr>
+<tr><td>DC 5.5×2.1 <b>수</b> 플러그 케이블</td><td>1</td><td><span class="k-ok">티놀지 세트</span>. 인젝터에 동봉 케이블이 있으면 그걸 우선</td></tr>
+<tr><td>공구</td><td colspan="2">멀티미터, 인두+수축튜브(또는 압착 분기단자), 유성펜, 케이블타이, 벤치 파워 12~14 V 전류제한 1 A</td></tr>
+</table></div>
+
+<h2><span class="n">2</span>퓨즈홀더<span class="t">5분</span></h2>
+<ol>
+<li>BF303 통을 돌려 열고 5×20 유리관 <b>2 A</b> 를 끼운다. 딸깍 들어가는지 확인.</li>
+<li>통에 유성펜으로 <b>"2A 인젝터"</b>. 허브용 3 A 통과 겉이 똑같다.</li>
+<li>퓨즈는 극성 없음. ⊕ 선에만 들어간다. ⊖ 엔 퓨즈 없음.</li>
+</ol>
+
+<h2><span class="n">3</span>분기 피그테일<span class="t">15분 · 배터리 분리 상태</span></h2>
+<div class="diag">배터리 A (4S)  ── EC5 ──  EC5 암 피그테일          ← 접촉기 5번보다 배터리 쪽. 비상정지가 걸려도 살아 있다
+                              │
+                              ├─ ⊕(빨강) ── BF303 2A ── 수 플러그 중심 핀 ─┐
+                              │                                          ├─▶ 인젝터 DC IN
+                              └─ ⊖(검정) ─────────────── 수 플러그 바깥 ──┘
+
+                              (허브 5 V 모듈 갈래도 같은 피그테일에서 딴다. 그쪽은 3 A)</div>
+<ol>
+<li>피그테일 ⊕ 에서 BF303(2A) 을 거쳐 수 플러그 <b>중심 핀</b>으로. ⊖ 는 플러그 <b>바깥</b>으로.</li>
+<li>갈래 합류는 <b>납땜 + 수축튜브</b> 또는 압착 분기단자. 트위스트에 테이프는 금지(진동에 풀린다).</li>
+<li>잇고 나서 플러그 끝을 멀티미터로: 중심 +, 바깥 −. 인젝터 라벨 극성과 같은지 한 번 더.</li>
+</ol>
+<div class="box bad"><b>접촉기 뒤에서 따지 않는다.</b> 비상정지는 추진만 끊어야 한다. 뒤에서 따면 비상정지와 함께 영상이 끊겨 회수·진단이 안 된다. 승압 컨버터(접촉기 코일)·LTE 라우터와 같은 원칙.</div>
+
+<h2><span class="n">4</span>벤치 점화<span class="t">10분 · 배에 싣기 전</span></h2>
+<ol>
+<li>인젝터에 <b>DC IN 만</b> 연결. 벤치 파워 12~14 V, 전류제한 1 A(또는 배터리). <b>DC RUN</b> 켜짐. 안 켜지면 → §7.</li>
+<li>전원 끄고 <b>POE OUT</b> ─ 동봉 Cat5e 2 m ─ OAK. <b>Ethernet IN</b> ─ Cat5e ─ NM-UCL02 ─ 노트북 USB-C. 두 포트 바꿔 꽂으면 안 켜진다.</li>
+<li>전원 켬. 10~20 s 안에 <b>POE RUN</b> + OAK 뒷면 LED. OAK 부팅은 느리다.</li>
+<li>노트북(10-31 에 만든 연결 그대로):
+<pre><code>ip link | grep enx                       # 어댑터 UP 인가
+nmcli con up oak-poe                     # 169.254.1.10/16
+ping -c 3 169.254.1.222                  # 카메라 폴백 IP
+sudo ethtool &lt;enx…&gt; | grep -E "Speed|Duplex"   # 기가비트 인젝터 확인 (10-31 은 100 Mb 반이중이었다)</code></pre>
+ping 0 % 손실이면 물리 계통 끝.</li>
+<li>입력 전류 메모(벤치 파워 표시). 기대 0.4~0.6 A. 1 A 제한에 걸리면 어딘가 단락.</li>
+</ol>
+<div class="box warn"><b>드라이버는 ping 뒤에.</b> 드라이버를 끄면 카메라가 재부팅한다(2 s 뒤 끊김, 14 s 뒤 복귀). 다시 띄울 땐 <b>20 s</b> 기다린다. 토픽 확인은 <code>ros2 topic hz /oak/rgb/image_raw</code>, 640×360 MJPEG 에서 26 fps 가 10-31 기준값. 나머지(hfov 실측·HSV·<code>vision.yaml</code> 토픽 전환)는 <code>oak_arrival_runbook.md</code> §4~7.</div>
+
+<h2><span class="n">5</span>배에 싣기</h2>
+<div class="tbl"><table>
+<tr><th>부품</th><th>자리</th><th>이유</th></tr>
+<tr><td>인젝터 (81×77×26)</td><td>박스 안 벽면, 플랜지 나사 2개. 접촉기·ESC·굵은 배선과 떨어진 쪽</td><td><b>비방수</b>. 스위칭 노이즈원이라 IMU 선에서도 멀리</td></tr>
+<tr><td>퓨즈홀더</td><td>박스 안 배터리 쪽, <b>손 닿는 자리</b>, 라벨 위로</td><td>물 위에서 갈아 끼운다</td></tr>
+<tr><td>Cat5e → OAK</td><td>갑판 관통 1가닥, 실란트 + 드립 루프, 마스트 따라 꼭대기</td><td>배 밖으로 나가는 유일한 선</td></tr>
+<tr><td>Cat5e → 노트북</td><td>박스 안에서 NM-UCL02 → 노트북 USB-C</td><td>USB-A 허브에 꽂지 않는다</td></tr>
+</table></div>
+<p>케이블은 전부 타이로. 플러그 쪽은 커넥터에 하중 안 가게 5 cm 앞에서 한 번 묶는다. RJ45 는 양 끝 딸깍 소리.</p>
+
+<h2><span class="n">6</span>배 위에서 켜는 순서</h2>
+<ol>
+<li>배터리 EC5 연결. 인젝터 <b>DC RUN</b> 바로 켜짐(접촉기 상태와 무관해야 정상).</li>
+<li>10~20 s 뒤 <b>POE RUN</b>. 노트북 <code>ping 169.254.1.222</code>.</li>
+<li>비상정지 버튼을 눌러 본다. <b>추진은 죽고 DC RUN·POE RUN·ping 은 살아 있어야</b> 분기점이 맞는 것.</li>
+<li>대회 launch 올리고 <code>ros2 topic hz /oak/rgb/image_raw</code>.</li>
+</ol>
+
+<h2><span class="n">7</span>안 될 때</h2>
+<div class="tbl"><table>
+<tr><th>증상</th><th>먼저 볼 것</th></tr>
+<tr><td>DC RUN 안 켜짐</td><td>2 A 퓨즈(통 열어 확인) · 플러그 극성 · 입력 12 V 이상인가 · 피그테일 납땜</td></tr>
+<tr><td>DC RUN 켜졌는데 POE RUN 없음</td><td>POE OUT / Ethernet IN 바뀜 · Cat5e 양 끝 딸깍 · 20 s 더 기다림 · 다른 Cat5e 로 교체</td></tr>
+<tr><td>POE RUN 켜졌다 꺼졌다</td><td>입력 전압 처짐(배터리 12.5 V 아래) · 벤치 파워 전류제한 너무 낮음</td></tr>
+<tr><td>OAK LED 켜졌는데 ping 실패</td><td><code>ip addr</code> 에 169.254.1.10 있나 · VPN 끔 · <code>sudo ufw allow 11490/tcp &amp;&amp; sudo ufw allow 11491/udp</code></td></tr>
+<tr><td>ping 되는데 토픽 없음</td><td>드라이버 로그에 <code>i_ip</code> 지정됐나 · 끈 지 20 s 안에 다시 띄웠나</td></tr>
+<tr><td>프레임 뚝뚝 끊김</td><td><code>ethtool</code> Speed 100 이면 어댑터·케이블 · 640×360 + <code>i_low_bandwidth: true</code> 인가</td></tr>
+<tr><td>비상정지 누르니 영상도 죽음</td><td>피그테일이 접촉기 <b>뒤</b>에 물렸다. §3 로</td></tr>
+</table></div>
+
+<h2><span class="n">8</span>끝났다는 기준</h2>
+<ul class="chk">
+<li>뒷면 라벨에 802.3af/at · DC 12~48 V 확인, 사진 보관</li>
+<li>퓨즈홀더 "2A 인젝터" 라벨, 손 닿는 자리</li>
+<li>플러그 끝 멀티미터 중심 + / 인젝터 라벨과 일치</li>
+<li>벤치: DC RUN → POE RUN → ping 0 % · 입력 전류 메모</li>
+<li>배: 비상정지 눌러도 DC RUN·POE RUN·ping 유지</li>
+<li><code>ros2 topic hz /oak/rgb/image_raw</code> 20 fps 이상</li>
+</ul>
+
+<div class="box warn"><b>같이 온 승압 컨버터(24 V 3 A)는 이 문서 범위 밖.</b> 접촉기 코일용이다. 결선은 <code>회로_신규설계.md</code> §3 — 입력도 접촉기 앞 EC5, 출력 24 V 먼저 재고 코일 A1·A2.</div>
+
+<p class="src">원본: <code>docs/절차/OAK_허브_세팅_설명서.md</code> §1·§2·§4~§7 · <code>docs/절차/oak_arrival_runbook.md</code> ★10-31·§2·§3 · <code>docs/전달용/회로_신규설계.md</code> §4-2. 인젝터 실물 11-02 확인분 반영.</p>
+</div>
+</body></html>
