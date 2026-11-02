@@ -1,9 +1,10 @@
 """ship_turn 의 orbit 제어 로직 — **ROS 비의존 순수 파이썬** (rclpy 임포트 없음).
 
-    from ship_turn.orbit_logic import orbit_steer, OrbitProgress, orbit_direction_cw
+    from ship_turn.orbit_logic import orbit_steer, OrbitProgress, orbit_direction_cw, is_active
 
 부표를 중심으로 원을 그리며 도는 orbit 기동. 제어법·진행각 누적은 틀리기 쉬워서
-노드에서 떼어내 단위 테스트한다.
+노드에서 떼어내 단위 테스트한다. 활성 판정(is_active)도 여기 — 부팅 센티널 -1 과
+enabled 스위치가 얽히는 자리라 노드 밖에서 표로 검증한다.
 
 각도 규약: 상대각(0 = 정면, + = 우현/오른쪽). 시계방향(CW) = 위에서 볼 때 시계.
 """
@@ -19,6 +20,18 @@ def clamp_pm180(a):
 
 def wrap360(a):
     return (a % 360.0 + 360.0) % 360.0
+
+
+def is_active(enabled, wp_mode, active_wp_mode):
+    """이 노드가 /candidate_angle 을 낼 차례인가.
+
+    enabled        : 파라미터 `enabled`. False 면 어떤 모드에서도 침묵
+                     (launch search_behavior:=hold — 탐색은 ship_back 담당).
+    wp_mode        : 마지막으로 받은 /wp_mode. 부팅 초기값 -1 은 어떤 모드와도 안 맞는다.
+    active_wp_mode : 파라미터(기본 3). -1 같은 센티널로 끄지 마라 — 부팅값과 일치해
+                     첫 /wp_mode 수신 전에 SPIN 을 내보낸다. 끄려면 enabled=False.
+    """
+    return bool(enabled) and int(wp_mode) == int(active_wp_mode)
 
 
 def orbit_direction_cw(color):

@@ -9,7 +9,7 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from ship_turn.orbit_logic import (  # noqa: E402
-    orbit_steer, OrbitProgress, orbit_direction_cw)
+    orbit_steer, OrbitProgress, orbit_direction_cw, is_active)
 
 fails = 0
 
@@ -19,6 +19,27 @@ def check(name, cond, extra=""):
     print(f"  {'✅' if cond else '❌'} {name} {extra}")
     if not cond:
         fails += 1
+    assert cond, name
+
+
+# ─────────────── 활성 게이트 (enabled × wp_mode) ───────────────
+def test_is_active_default_mode3():
+    check("enabled=True, mode 3 → 활성", is_active(True, 3, 3) is True)
+
+
+def test_is_active_other_mode():
+    check("enabled=True, mode 2 → 비활성", is_active(True, 2, 3) is False)
+
+
+def test_is_active_disabled():
+    """search_behavior:=hold — enabled=False 면 활성 모드여도 침묵."""
+    check("enabled=False, mode 3 → 비활성", is_active(False, 3, 3) is False)
+
+
+def test_is_active_boot_sentinel():
+    """부팅 초기값 wp_mode=-1 은 /wp_mode 첫 수신 전 → 비활성(위험 1)."""
+    check("부팅 -1 → 비활성", is_active(True, -1, 3) is False)
+    check("active_wp_mode=-1 센티널은 부팅값과 겹친다(금지 이유)", is_active(True, -1, -1) is True)
 
 
 # ─────────────── 방향 매핑 ───────────────

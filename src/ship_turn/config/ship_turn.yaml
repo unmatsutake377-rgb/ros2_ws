@@ -1,7 +1,8 @@
 # ship_turn 파라미터 (하드코딩 금지, CLAUDE.md 1-4)
 /ship_turn:
   ros__parameters:
-    active_wp_mode: 3        # WP3,4,5(부표 3개)는 모두 /wp_mode==3 으로 온다
+    enabled: true            # launch 가 search_behavior:=hold 면 false (어떤 모드에서도 발행 안 함)
+    active_wp_mode: 3        # WP3,4,5(부표 3개)는 모두 /wp_mode==3 으로 온다. 끄려고 -1 로 두지 말 것
     period_sec: 0.1
 
     # ---- orbit 기하 (6c-[4]) ----

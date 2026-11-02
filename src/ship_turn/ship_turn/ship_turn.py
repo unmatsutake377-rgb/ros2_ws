@@ -11,6 +11,10 @@
 
 파라미터(6c-[4]): orbit_radius_m(⚠️실측), radius_tol_m, approach_dist_m, k_radial_deg_per_m,
                   orbit_target_deg(360). SPIN 규약(6c-[5]): 5000=우선회, 6000=좌선회.
+  enabled(bool, 기본 true): false 면 이 노드는 **어떤 모드에서도** /candidate_angle 을 안 낸다.
+    launch 가 search_behavior:=hold 면 false 로 띄운다(탐색 = 부표 앞 위치유지, ship_back 담당).
+    🚨 끄려고 active_wp_mode 를 -1 로 두지 마라 — 부팅 초기값(self.wp_mode=-1)과 일치해
+    /wp_mode 첫 수신 전에 게이트를 통과, SPIN 5000 을 낸다.
 
 FSM: WAIT → SEARCH → APPROACH → ORBIT → COOLDOWN → (다음 부표 위해 SEARCH)
   WP3,4,5(부표 3개)는 모두 /wp_mode==3 으로 온다. 한 부표를 돌고 COOLDOWN 동안 손 떼면
@@ -37,7 +41,7 @@ from std_msgs.msg import Float32, Int32, String, Float64
 from sensor_msgs.msg import LaserScan
 
 from ship_turn.orbit_logic import (
-    orbit_steer, OrbitProgress, orbit_direction_cw, clamp_pm180, wrap360)
+    orbit_steer, OrbitProgress, orbit_direction_cw, clamp_pm180, wrap360, is_active)
 
 IMAGE_ANGLE_INVALID = 10000.0
 CANDIDATE_INVALID = 20000.0
@@ -69,6 +73,9 @@ class ShipTurn(Node):
         qos = QoSProfile(depth=5, reliability=ReliabilityPolicy.RELIABLE)
 
         # ---- 파라미터 (config/ship_turn.yaml, CLAUDE.md 1-4) ----
+        # enabled=False: 어떤 모드에서도 발행 안 함 (launch search_behavior:=hold).
+        #   active_wp_mode 는 그대로 3 — -1 센티널은 부팅 초기값과 겹쳐 금지(상단 docstring).
+        self.enabled = bool(self.declare_parameter('enabled', True).value)
         self.active_wp_mode = int(self.declare_parameter('active_wp_mode', 3).value)
         self.period_sec = float(self.declare_parameter('period_sec', 0.1).value)
 
@@ -120,16 +127,21 @@ class ShipTurn(Node):
 
         self.create_timer(self.period_sec, self.timer_cb)
         self.get_logger().info(
-            f"ship_turn 시작: orbit r={self.orbit_radius_m}m(⚠️실측), 목표 {self.orbit_target_deg}°.\n"
+            f"ship_turn 시작: enabled={self.enabled}, active_wp_mode={self.active_wp_mode}, "
+            f"orbit r={self.orbit_radius_m}m(⚠️실측), 목표 {self.orbit_target_deg}°.\n"
             f"   빨강·초록=시계 / 흰색=반시계. 거리는 LiDAR. /image_color 없으면 SEARCH 유지."
         )
+        if not self.enabled:
+            self.get_logger().warn(
+                "search_behavior=hold: ship_turn 침묵, 탐색은 ship_back 담당")
 
     # ---------------------- 콜백 ----------------------
     def wp_cb(self, msg):
         with self.lock:
             prev = self.wp_mode
             self.wp_mode = int(msg.data)
-            if prev != self.active_wp_mode and self.wp_mode == self.active_wp_mode:
+            if prev != self.active_wp_mode and \
+                    is_active(self.enabled, self.wp_mode, self.active_wp_mode):
                 self._reset("INIT")
 
     def angle_cb(self, msg):
@@ -211,8 +223,8 @@ class ShipTurn(Node):
     # ---------------------- FSM ----------------------
     def timer_cb(self):
         with self.lock:
-            if self.wp_mode != self.active_wp_mode:
-                return
+            if not is_active(self.enabled, self.wp_mode, self.active_wp_mode):
+                return                      # enabled=False 면 어떤 모드에서도 침묵
             now = time.monotonic()
             if self.state_t is None:
                 self.state_t = now
