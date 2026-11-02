@@ -53,7 +53,7 @@ pre{background:#f7f6f1;border:1px solid var(--bd);border-radius:8px;padding:12px
 <thead><tr><th>테스트</th><th>수조(3~6m)</th><th>비고</th></tr></thead>
 <tbody>
 <tr><td>조향 부호 (좌/우)</td><td class="c-ok">✅ 됨</td><td>제자리 선회 30초, 공간 거의 안 씀</td></tr>
-<tr><td>회전 관성 (tau_w, k_w)</td><td class="c-ok">✅ 됨</td><td>자이로(gyro_z)로 측정, 공간 무관</td></tr>
+<tr><td>회전 관성 (tau_w, k_w)</td><td class="c-ok">✅ 됨</td><td><code>imu_yaw</code> 미분으로 측정(gyro_z 는 <code>/imu/data</code> 미발행이라 빈칸), 공간 무관</td></tr>
 <tr><td>위치유지 미션</td><td class="c-ok">✅ 딱 맞음</td><td>한자리 버티기 → 작은 공간이 오히려 좋음</td></tr>
 <tr><td>센서 생존 (라이다·IMU·카메라)</td><td class="c-ok">✅ 됨</td><td>헬스체크로 확인</td></tr>
 <tr><td>게이트·도킹·선회 미션</td><td class="c-chk">⚠️ 조건부</td><td>부표/도크를 벽에서 떨어뜨려 배치 (아래)</td></tr>
@@ -198,7 +198,7 @@ gps_vel(RTK) 로 기록. ★ RTK fix 품질 확인 필수(아래).</pre>
 <td>수조 벽에 1 m 간격 표시 → 자율 모드 <code>hold.py</code> 로 PWM 1300 / 1360 / 1400 각 2회 직진, 폰으로 옆에서 촬영 → 영상에서 마지막 2 m 구간 통과 시간. 대각선 8.5 m 면 마지막 2 m 는 거의 정속 — 그래도 "수조 대각선 8.5 m 기준"을 붙인다</td>
 <td>PWM / 구간 통과 시간 [s] / 배터리 전압</td><td>Ⅱ-3.4 저항 추정 검증, Ⅳ-5 운항 시간 (추정 표기 유지, 실측 한 줄 추가)</td></tr>
 <tr><td>5</td><td><b>선회 반경</b> (수조만)</td>
-<td>수조 가운데서 <code>/candidate_angle 5000</code>(제자리 우선회) 1바퀴 + 낮은 PWM(1400) 최대 조향으로 반 바퀴. 위에서 촬영(바닥 1 m 표시 기준) + <code>ros2 bag record /imu/yaw /imu/yaw_raw</code> 로 요레이트</td>
+<td>수조 가운데서 <code>/candidate_angle 5000</code>(제자리 우선회) 1바퀴 + 낮은 PWM(1400) 최대 조향으로 반 바퀴. 위에서 촬영(바닥 1 m 표시 기준) + <code>ros2 bag record /imu/yaw /imu/yaw_raw</code> 로 요레이트(블랙박스 CSV <code>imu_yaw</code> 열 미분. <code>gyro_z</code> 열은 지금 빈칸 — <code>/imu/data</code> 미발행)</td>
 <td>1바퀴 시간 [s] / 영상에서 잰 선회 지름 [m]</td><td>Ⅱ-3.3 (그림 Ⅱ-2 요 모멘트·요레이트 계산과 비교)</td></tr>
 </table>
 
