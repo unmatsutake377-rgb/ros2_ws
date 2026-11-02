@@ -526,6 +526,9 @@ heading = imu_yaw_raw + offset   (정지 중에도 IMU 가 유지 — 작년 ove
 
 실제 `/wp_mode` 로 나오는 값은 **`{0,1,2,3,5,7,8}`** 뿐이다.
 
+> 2026-11-02 `search_behavior` launch 인자(계약서_탐색hold스위치): 기본 `orbit` = 위 표(3→`ship_turn`).
+> `hold` 면 3→`ship_back`(`active_wp_modes [2,3]`)·`ship_turn enabled false`. 현행 표는 CLAUDE.md §3.
+
 #### ⚠️ `mode 5`, `mode 8` 은 담당 노드가 없는 것이 **정상**이다
 
 순수 장애물 회피 구간이라 `ship_direction` 이 GPS 방위로만 간다.

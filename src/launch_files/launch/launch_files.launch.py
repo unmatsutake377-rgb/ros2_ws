@@ -42,6 +42,39 @@ def _yaw_mux(context):
     ]
 
 
+def search_behavior_params(behavior):
+    """launch 인자 search_behavior → ship_back·ship_turn 에 넘길 파라미터 (순수 함수, ROS 없이 테스트).
+
+    orbit(기본) = 현 동작: 2→ship_back, 3→ship_turn.  hold = 2,3→ship_back, ship_turn 침묵.
+    🚨 enabled 는 Python bool 로 — 문자열 'false' 는 rclpy 타입 불일치고 bool('false') 는 True 다.
+    🚨 ship_turn 을 끄려고 active_wp_mode -1 을 넘기지 않는다(부팅 초기값과 겹쳐 SPIN 발행).
+    test_search_behavior.py 가 두 행동 모두에서 모드별 /candidate_angle 담당이 하나인지 검사한다.
+    """
+    if behavior == 'orbit':
+        return {'ship_back': {'active_wp_modes': [2]}, 'ship_turn': {'enabled': True}}
+    if behavior == 'hold':
+        return {'ship_back': {'active_wp_modes': [2, 3]}, 'ship_turn': {'enabled': False}}
+    raise ValueError(f"search_behavior={behavior!r} — 'orbit' 또는 'hold'")
+
+
+def _search_nodes(context):
+    # 탐색(mode 3) 행동 스위치. 노드는 둘 다 항상 뜬다 — 바뀌는 건 파라미터뿐.
+    behavior = LaunchConfiguration('search_behavior').perform(context)
+    params = search_behavior_params(behavior)
+    actions = []
+    if behavior == 'hold':
+        actions.append(LogInfo(msg='search_behavior=hold: 탐색(3) = ship_back 위치유지, ship_turn 침묵'))
+    actions += [
+        Node(package='ship_turn', executable='ship_turn', name='ship_turn', output='screen',
+             parameters=[params['ship_turn']]),
+        # ship_last 제거됨(6b): mode 0 을 ship_gate 가 인수. 하던 일은 /candidate_angle 에 20000
+        #   폴백을 내는 것뿐이라 중복이었다. (mode 5,8 폴백은 north_goal_angle 이 담당)
+        Node(package='ship_back', executable='ship_back', name='ship_back', output='screen',
+             parameters=[params['ship_back']]),
+    ]
+    return actions
+
+
 def generate_launch_description():
 
     # 패키지 경로
@@ -77,6 +110,12 @@ def generate_launch_description():
         DeclareLaunchArgument(
             'gps_config', default_value='zed_f9p_rover.yaml',
             description='GPS 설정 — 두 배 모두 ZED-F9P 라 기본값 zed_f9p_rover.yaml'),
+        # 탐색(mode 3) 행동. KABOAT 2026 코스도가 "탐지 후 위치유지" 라 대회장에서 확인되면 hold.
+        #   ros2 launch launch_files launch_files.launch.py boat:=A search_behavior:=hold
+        DeclareLaunchArgument(
+            'search_behavior', default_value='orbit', choices=['orbit', 'hold'],
+            description='탐색(wp_mode 3) 행동: orbit=ship_turn 선회(기본) / '
+                        'hold=ship_back 위치유지(ship_turn 침묵)'),
 
         # ============================================================
         # 0) yaw_mux — /imu/yaw 의 단독 발행자 (params: 공통 → boat 별, _yaw_mux 참고)
@@ -242,10 +281,11 @@ def generate_launch_description():
         #    지금은 상주 + 모드 게이팅이다. 매니저는 폐기했다(entry point 도 제거).
         #
         #    담당 모드는 **각 노드가 소유**한다 (미션 노드와 같은 패턴).
-        #    권위 출처 = 미션 노드의 active_wp_mode. 바꿀 땐 양쪽을 함께 바꿔라:
+        #    권위 출처 = 미션 노드의 active_wp_mode(s). 바꿀 땐 양쪽을 함께 바꿔라:
         #      mode 0,1 → ship_gate  ← gate 검출기 (/red_angle, /green_angle)
         #      mode 2   → ship_back  ← turn 검출기 (white 부표, /image_angle)
-        #      mode 3   → ship_turn  ← turn 검출기 (red 부표)
+        #      mode 3   → ship_turn(orbit 기본) / ship_back(search_behavior:=hold)
+        #                            ← turn 검출기 (red 부표) — 검출기 쪽은 스위치와 무관
         #      mode 7   → ship_dock  ← dock 검출기 (/image_angle)
         #      mode 5,8 → 순수 회피(담당 없음) → 검출기 전부 비활성
         #
@@ -265,10 +305,8 @@ def generate_launch_description():
         # ============================================================
         Node(package='ship_gate', executable='ship_gate', name='ship_gate', output='screen'),
         Node(package='ship_dock', executable='ship_dock', name='ship_dock', output='screen'),
-        Node(package='ship_turn', executable='ship_turn', name='ship_turn', output='screen'),
-        # ship_last 제거됨(6b): mode 0 을 ship_gate 가 인수. 하던 일은 /candidate_angle 에 20000
-        #   폴백을 내는 것뿐이라 중복이었다. (mode 5,8 폴백은 north_goal_angle 이 담당)
-        Node(package='ship_back', executable='ship_back', name='ship_back', output='screen'),
+        # ship_turn·ship_back 은 search_behavior 인자에 따라 파라미터가 달라 _search_nodes 가 띄운다.
+        OpaqueFunction(function=_search_nodes),
 
         # ============================================================
         # 10) Fusion: 라이다 기반 항로 유지

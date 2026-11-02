@@ -136,7 +136,7 @@ def test_layout_matches_mission_nodes():
     """
     mission = {                      # 각 노드가 스스로 선언한 값
         "ship_gate": {0, 1},         # active_wp_modes=[0,1]
-        "ship_back": {2},            # active_wp_mode=2   (/image_angle 소비)
+        "ship_back": {2},            # active_wp_modes=[2] (/image_angle 소비)
         "ship_turn": {3},            # active_wp_mode=3   (/image_angle 소비)
         "ship_dock": {7},            # active_wp_mode=7   (/image_angle 소비)
     }
