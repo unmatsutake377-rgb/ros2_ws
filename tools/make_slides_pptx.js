@@ -60,46 +60,57 @@ const B = isA ? {
 };
 
 // ── 테마 ────────────────────────────────────────────────────────────────────────
+// 틀은 작년(SSF KABOAT 2025) PPT 그대로: 흰 배경, 상단 가는 남색 선, 좌상단 남색 제목 20pt + 짧은 남색 바,
+// 우상단 홍익대 로고, 하단 남색 띠, 우하단 쪽번호. 크기만 경기규정 3.1(5) "표준크기 4:3" 으로.
+const NAVY = '052E65', NAVY2 = '213A62';
 const THEME = {
   name: 'SSF 2026',
-  headFontFace: 'Malgun Gothic', bodyFontFace: 'Malgun Gothic',
+  headFontFace: '맑은 고딕', bodyFontFace: '맑은 고딕',
   colors: {
-    dk1: '222222', lt1: 'FFFFFF', dk2: '1F3A5F', lt2: 'F2F2F2',
-    accent1: '1F3A5F', accent2: 'C0392B', accent3: '2E7D32', accent4: '7A4B00', accent5: 'FFF5C2', accent6: '666666',
-    hlink: '1F3A5F', folHlink: '666666',
+    dk1: '000000', lt1: 'FFFFFF', dk2: NAVY, lt2: 'F2F2F2',
+    accent1: NAVY2, accent2: 'C0392B', accent3: '2E7D32', accent4: '7A4B00', accent5: 'FFF5C2', accent6: '666666',
+    hlink: NAVY, folHlink: '666666',
   },
 };
 const pres = new pptxgen();
-pres.layout = 'LAYOUT_4x3';            // 10 × 7.5 in (경기규정 4:3)
+pres.layout = 'LAYOUT_4x3';            // 10 × 7.5 in
 pres.theme = { headFontFace: THEME.headFontFace, bodyFontFace: THEME.bodyFontFace };
 pres.title = `KABOAT 2026 ${B.team} 발표자료`;
 pres.author = `홍익대학교 ${B.team}`;
 const C = pres.SchemeColor;
 const W = 10, H = 7.5, M = 0.5;
+const LOGO = TEAMFIG('로고_홍익대.png');   // 작년 PPT 에서 가져온 홍익대 로고 (418×150)
 
-pres.defineSlideMaster({
-  title: 'TITLE', background: { color: THEME.colors.lt1 },
-  objects: [
-    { placeholder: { options: { name: 'title', type: 'title', x: M, y: 2.2, w: W - 2 * M, h: 1.0, fontSize: 36, bold: true, color: C.text2, align: 'center', margin: 0 }, text: '' } },
-  ],
-});
+// 작년 틀 요소 (위치는 16:9 → 4:3 로 가로만 맞춤)
+const FRAME = [
+  { rect: { x: 0.26, y: 0.25, w: 9.48, h: 0.03, fill: { color: C.accent1 }, line: { color: C.accent1 } } },        // 상단 선
+  { rect: { x: 0.18, y: 0.56, w: 0.35, h: 0.08, fill: { color: C.text2 }, line: { color: C.text2 } } },           // 제목 밑 짧은 바
+  { rect: { x: 0, y: 7.32, w: W, h: 0.18, fill: { color: C.accent1 }, line: { color: C.accent1 } } },             // 하단 띠
+  { image: { x: 7.6, y: 0.29, w: 2.11, h: 0.76, path: LOGO } },
+];
 pres.defineSlideMaster({
   title: 'CONTENT', background: { color: THEME.colors.lt1 },
   objects: [
-    { placeholder: { options: { name: 'title', type: 'title', x: M, y: 0.4, w: 7.4, h: 0.7, fontSize: 24, bold: true, color: C.text2, margin: 0, valign: 'middle' }, text: '' } },
-    { placeholder: { options: { name: 'chap', type: 'body', x: 7.9, y: 0.45, w: 1.6, h: 0.6, fontSize: 10, color: C.accent6, align: 'right', valign: 'middle', margin: 0 }, text: '' } },
-    { text: { text: `${B.team} (${B.no}) · 홍익대학교 조선해양공학과`, options: { x: M, y: 7.05, w: 7, h: 0.3, fontSize: 9, color: C.accent6, margin: 0 } } },
+    ...FRAME,
+    { placeholder: { options: { name: 'title', type: 'title', x: 0.4, y: 0.39, w: 7.0, h: 0.44, fontSize: 20, bold: true, color: C.text2, margin: 0, valign: 'middle' }, text: '' } },
   ],
-  slideNumber: { x: 9.0, y: 7.05, w: 0.5, h: 0.3, fontSize: 9, color: C.accent6, align: 'right' },
+  slideNumber: { x: 9.0, y: 6.9, w: 0.6, h: 0.35, fontSize: 12, color: C.text1, align: 'right' },
+});
+pres.defineSlideMaster({
+  title: 'TITLE', background: { color: THEME.colors.lt1 },
+  objects: [
+    { rect: { x: 0.26, y: 0.49, w: 9.48, h: 0.03, fill: { color: C.accent1 }, line: { color: C.accent1 } } },
+    { rect: { x: 0, y: 7.04, w: W, h: 0.46, fill: { color: C.accent1 }, line: { color: C.accent1 } } },
+  ],
+  slideNumber: { x: 9.0, y: 6.6, w: 0.6, h: 0.35, fontSize: 12, color: C.text1, align: 'right' },
 });
 
 // ── 도우미 ─────────────────────────────────────────────────────────────────────
 let sn = 0;
-function slide(title, section, chap) {
+function slide(title, section) {
   const s = pres.addSlide({ masterName: 'CONTENT', sectionTitle: section });
   sn += 1;
   s.addText(title, { placeholder: 'title' });
-  s.addText(chap || '', { placeholder: 'chap' });
   return s;
 }
 // 빈 칸: 수조 시험 뒤 채운다 (연노랑 상자)
@@ -160,25 +171,29 @@ function card(s, x, y, w, h, head, body, opt = {}) {
   else s.addText(body, { x, y: y + 0.38, w, h: h - 0.4, fontSize: opt.fontSize || 11.5, color: C.text1, valign: 'top', isTextBox: true, margin: 0, objectName: `카드 본문 ${head}` });
 }
 
-// ── 1. 표지 ─────────────────────────────────────────────────────────────────────
+// ── 1. 표지 (작년 구도: 왼쪽 사진 2장 + 남색 삼각형, 오른쪽 제목) ─────────────
 pres.addSection({ title: '소개' });
 {
   const s = pres.addSlide({ masterName: 'TITLE', sectionTitle: '소개' });
-  s.addText('2026 자율운항보트경진대회 (KABOAT 2026)', { x: M, y: 1.3, w: 9, h: 0.5, fontSize: 16, color: C.accent6, align: 'center', isTextBox: true, margin: 0 });
-  s.addText(`TEAM ${B.team} (${B.no})`, { placeholder: 'title' });
-  s.addText('설계 및 제작 보고', { x: M, y: 3.2, w: 9, h: 0.5, fontSize: 18, color: C.text1, align: 'center', isTextBox: true, margin: 0 });
-  img(s, B.hullImg, 2.0, 3.9, 6.0, 1.7);
-  s.addText('홍익대학교 조선해양공학과', { x: M, y: 5.75, w: 9, h: 0.4, fontSize: 14, bold: true, color: C.text1, align: 'center', isTextBox: true, margin: 0 });
+  s.addShape(pres.ShapeType.triangle, { x: -0.6, y: 1.68, w: 2.37, h: 1.45, rotate: 90, fill: { color: C.accent1 }, line: { color: C.accent1 }, objectName: '왼쪽 삼각형' });
+  s.addShape(pres.ShapeType.triangle, { x: 0.93, y: 4.55, w: 3.65, h: 2.49, fill: { color: C.accent1 }, line: { color: C.accent1 }, objectName: '아래 삼각형' });
+  // 표지 사진: 수조 시험 전체 사진이 생기면 아래 두 파일을 바꾼다
+  img(s, TEAMFIG(`공정_${BOAT}_적층.jpg`), 1.1, 0.6, 2.7, 3.6);
+  img(s, TEAMFIG(`공정_${BOAT}_부착물.jpg`), 0.0, 2.9, 2.1, 2.8);
+  s.addText('2026 자율운항보트경진대회', { x: 4.3, y: 2.55, w: 5.4, h: 0.6, fontSize: 28, bold: true, color: C.text2, isTextBox: true, margin: 0, objectName: '대회명' });
+  s.addText('S.S.F (Symbio Ship to Future)', { x: 4.3, y: 3.2, w: 5.4, h: 0.45, fontSize: 16, color: C.text1, isTextBox: true, margin: 0, objectName: '팀명' });
+  s.addText(`홍익대학교 조선해양공학과 · TEAM ${B.team} (${B.no})`, { x: 4.3, y: 3.75, w: 5.4, h: 0.4, fontSize: 13, bold: true, color: C.text1, isTextBox: true, margin: 0 });
   s.addText([
-    { text: `조장 ${B.leader}   ·   조원 ${B.members}`, options: { breakLine: true } },
+    { text: `조장 ${B.leader}`, options: { breakLine: true } },
+    { text: `조원 ${B.members}`, options: { breakLine: true } },
     { text: '지도교수 권순범', options: {} },
-  ], { x: M, y: 6.15, w: 9, h: 0.8, fontSize: 12, color: C.text1, align: 'center', valign: 'top', isTextBox: true, margin: 0, paraSpaceAfter: 3, objectName: '팀 명단' });
+  ], { x: 4.3, y: 4.25, w: 5.4, h: 1.3, fontSize: 11.5, color: C.accent6, valign: 'top', isTextBox: true, margin: 0, paraSpaceAfter: 3, objectName: '팀 명단' });
 }
 
 // ── 2. 설계철학·임무 우선순위 (Ⅱ-1) ────────────────────────────────────────────
 pres.addSection({ title: '선형 설계 및 제작' });
 {
-  const s = slide('설계 요구조건과 설계 반영', '선형 설계 및 제작', 'Ⅱ. 선형 설계 및 제작');
+  const s = slide('설계 요구조건과 설계 반영', '선형 설계 및 제작');
   bullets(s, [
     '두 척 모두 단동선 — 지난 대회 쌍동선·V형 단동선 비교 끝에 선종 통일, 설계·제작 경험 공유',
     isA ? '추진기 4기에서 2기로: 단순화·경량화, 선미 차동추력으로 선회' : '추진기 4기 V자형: 선수 측 안쪽·선미 측 바깥, 좌·우 2기씩 같은 신호',
@@ -202,7 +217,7 @@ pres.addSection({ title: '선형 설계 및 제작' });
 
 // ── 3. 선종·주요 제원·복원성 (Ⅱ-2, 3) ────────────────────────────────────────
 {
-  const s = slide('주요 제원 및 초기 복원성', '선형 설계 및 제작', 'Ⅱ. 선형 설계 및 제작');
+  const s = slide('주요 제원 및 초기 복원성', '선형 설계 및 제작');
   table(s, [
     ['항목', '값'],
     ['LOA / BOA [m]', `${B.loa} / ${B.boa}`],
@@ -233,7 +248,7 @@ pres.addSection({ title: '선형 설계 및 제작' });
 
 // ── 4. 추진기 배치·저항·침몰방지 (Ⅱ-3.3, 3.4, 4) ────────────────────────────
 {
-  const s = slide('추진기 배치 · 저항 추정 · 침몰방지', '선형 설계 및 제작', 'Ⅱ. 선형 설계 및 제작');
+  const s = slide('추진기 배치 · 저항 추정 · 침몰방지', '선형 설계 및 제작');
   img(s, B.thrImg, M, 1.3, 4.4, 1.9, `그림 Ⅱ-2 ${B.no} 추진기 배치 (실제 장착)`);
   img(s, B.resImg, 5.1, 1.3, 4.4, 2.2, '그림 Ⅱ-3 속도별 점성 저항과 가용 추력');
   bullets(s, [
@@ -255,7 +270,7 @@ pres.addSection({ title: '선형 설계 및 제작' });
 
 // ── 5. 제작·조립 과정 (Ⅱ-5) ─────────────────────────────────────────────────
 {
-  const s = slide('제작 과정', '선형 설계 및 제작', 'Ⅱ. 선형 설계 및 제작');
+  const s = slide('제작 과정', '선형 설계 및 제작');
   const steps = [['① 몰드 제작', `공정_${BOAT}_몰드.jpg`, 'PLA+ 3D 프린팅 몰드, Six10 에폭시 접합'],
     [`② ${B.layer}`, `공정_${BOAT}_적층.jpg`, isA ? 'FRP 춉매트 / 얀크로스 적층·보강' : '카본섬유 적층 — 경량화·강성'],
     ['③ 수밀', `공정_${BOAT}_수밀.jpg`, '방수제 도포, 관통부 실리콘 씰링'],
@@ -274,7 +289,7 @@ pres.addSection({ title: '선형 설계 및 제작' });
 // ── 6. 시스템 구성·센서 (Ⅲ-1, 7) ────────────────────────────────────────────
 pres.addSection({ title: '소프트웨어' });
 {
-  const s = slide('시스템 구성 및 센서', '소프트웨어', 'Ⅲ. 소프트웨어');
+  const s = slide('시스템 구성 및 센서', '소프트웨어');
   img(s, FIG('node_graph.png'), M, 1.3, 5.2, 3.5, '그림 Ⅲ-1 ROS2 노드·토픽 구조');
   table(s, [
     ['센서 / 장치', '역할', '주기'],
@@ -295,7 +310,7 @@ pres.addSection({ title: '소프트웨어' });
 
 // ── 7. 임무 상태기계 (Ⅲ-3) ──────────────────────────────────────────────────
 {
-  const s = slide('임무 상태기계', '소프트웨어', 'Ⅲ. 소프트웨어');
+  const s = slide('임무 상태기계', '소프트웨어');
   img(s, FIG('mission_flowchart.png'), M, 1.3, 4.6, 3.1, '그림 Ⅲ-5 종합임무 상태기계');
   table(s, [
     ['wp_mode', '임무', '노드 · 검출기', 'dwell / 시간초과'],
@@ -316,7 +331,7 @@ pres.addSection({ title: '소프트웨어' });
 
 // ── 8. 영상 파이프라인·회피·제어기 (Ⅲ-2.4, 4) ──────────────────────────────
 {
-  const s = slide('영상 처리 · 장애물 회피 · 제어기', '소프트웨어', 'Ⅲ. 소프트웨어');
+  const s = slide('영상 처리 · 장애물 회피 · 제어기', '소프트웨어');
   img(s, FIG('vision_pipeline.png'), M, 1.3, 4.4, 2.65, '그림 Ⅲ-2 영상 처리 단계 (실제 OAK 화면)');
   img(s, FIG('sim_avoid.png'), 5.1, 1.3, 4.4, 2.65, '그림 Ⅲ-7 장애물 회피 — 갭 선택');
   card(s, M, 4.3, 2.9, 2.5, '비전 (규칙 기반)', [
@@ -342,7 +357,7 @@ pres.addSection({ title: '소프트웨어' });
 
 // ── 9. 페일세이프·시뮬 스윕 (Ⅲ-5, 6.1) ─────────────────────────────────────
 {
-  const s = slide('페일세이프 및 시뮬레이션', '소프트웨어', 'Ⅲ. 소프트웨어');
+  const s = slide('페일세이프 및 시뮬레이션', '소프트웨어');
   img(s, FIG('failsafe_timeline.png'), M, 1.3, 4.4, 1.6, '그림 Ⅲ-8 페일세이프 단계 전환 (벤치 실측)');
   img(s, FIG('sim_sweep.png'), 5.1, 1.3, 4.4, 1.6, '그림 Ⅲ-9 회피 파라미터 스윕');
   table(s, [
@@ -370,7 +385,7 @@ pres.addSection({ title: '소프트웨어' });
 // ── 10. 회로도·비상정지 (Ⅳ-1, 2) ────────────────────────────────────────────
 pres.addSection({ title: '회로' });
 {
-  const s = slide('회로 구성 및 비상정지', '회로', 'Ⅳ. 회로');
+  const s = slide('회로 구성 및 비상정지', '회로');
   img(s, B.circImg, M, 1.3, 4.4, 2.4, `그림 Ⅳ-1 ${B.no} 전체 회로 구성도`);
   img(s, B.estopImg, 5.1, 1.3, 4.4, 2.4, '그림 Ⅳ-2 비상정지 장치 구성도');
   table(s, [
@@ -389,7 +404,7 @@ pres.addSection({ title: '회로' });
 // ── 11. 시험 결과 수치 (Ⅱ-3.2, Ⅲ-6, Ⅳ-2) ───────────────────────────────────
 pres.addSection({ title: '시험·비용' });
 {
-  const s = slide('시험 결과', '시험·비용', 'Ⅱ-3 · Ⅲ-6 · Ⅳ-2');
+  const s = slide('시험 결과', '시험·비용');
   s.addText('벤치·야외 (완료)', { x: M, y: 1.25, w: 4.6, h: 0.3, fontSize: 12, bold: true, color: C.text2, isTextBox: true, margin: 0 });
   table(s, [
     ['시험', '결과'],
@@ -419,7 +434,7 @@ pres.addSection({ title: '시험·비용' });
 
 // ── 12. 비용 (Ⅴ) ────────────────────────────────────────────────────────────
 {
-  const s = slide('최종 소모 금액', '시험·비용', 'Ⅴ. 최종 소모 금액');
+  const s = slide('최종 소모 금액', '시험·비용');
   table(s, [['품목', '수량', '합계 [원]'], ...B.cost], M, 1.3, 5.6, [3.4, 0.8, 1.4], { fontSize: 11, rowH: 0.38 });
   sub(s, '총 구매 금액', 6.5, 1.3, 3.0);
   s.addText(B.costTotal, { x: 6.5, y: 1.7, w: 3.0, h: 0.9, fontSize: 15, bold: true, color: C.text1, isTextBox: true, margin: 0, valign: 'top', objectName: '총액' });
