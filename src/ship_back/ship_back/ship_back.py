@@ -11,8 +11,8 @@
   [3] 거리는 LiDAR 에서. /image_distance(카메라 뎁스, OAK-1 에서 죽음) 폐기, /scan 사용.
       부표는 점 물체라 방위 매칭이 통한다. 부표 방위는 /image_angle, 없으면 LiDAR 전방 최근접.
 
-파라미터(6d-[4]): active_wp_mode(2), keep_radius_m(5.0 규정), hold_time_sec(5.0 규정),
-                  hold_dist_m(2.5 ⚠️실측), dist_tol_m.
+파라미터(6d-[4]): active_wp_modes([2]; launch 가 search_behavior:=hold 면 [2, 3]),
+                  keep_radius_m(5.0 규정), hold_time_sec(5.0 규정), hold_dist_m(2.5 ⚠️실측), dist_tol_m.
 
 FSM: INIT → SEARCH → HOLD → DONE.
   keep_radius(5m) 이내에 hold_time(5s) '연속' 머물면 완료(규정 만족) → autonomous 로 다음 WP.
@@ -34,7 +34,7 @@ from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 from std_msgs.msg import Float32, Int32
 from sensor_msgs.msg import LaserScan
 
-from ship_back.hold_logic import station_keep_action, HoldTimer
+from ship_back.hold_logic import station_keep_action, HoldTimer, should_reset_on_mode
 
 IMAGE_ANGLE_INVALID = 10000.0
 CANDIDATE_INVALID = 20000.0
@@ -66,7 +66,10 @@ class ShipBack(Node):     # 🚨 작년엔 ShipTurn 이었다(복붙). 이름을
         qos = QoSProfile(depth=5, reliability=ReliabilityPolicy.RELIABLE)
 
         # ---- 파라미터 (config/ship_back.yaml, CLAUDE.md 1-4) ----
-        self.active_wp_mode = int(self.declare_parameter('active_wp_mode', 2).value)
+        # 담당 모드 목록. 기본 [2](위치유지). launch 가 search_behavior:=hold 면 [2, 3] 을 넘겨
+        # 탐색(3)도 이 노드가 맡는다(그때 ship_turn 은 enabled:=false 로 침묵). 🚨 빈 리스트 금지.
+        self.active_wp_modes = [
+            int(m) for m in self.declare_parameter('active_wp_modes', [2]).value]
         self.period_sec = float(self.declare_parameter('period_sec', 0.1).value)
 
         self.keep_radius_m = float(self.declare_parameter('keep_radius_m', 5.0).value)   # 규정
@@ -103,7 +106,7 @@ class ShipBack(Node):     # 🚨 작년엔 ShipTurn 이었다(복붙). 이름을
 
         self.create_timer(self.period_sec, self.timer_cb)
         self.get_logger().info(
-            f"ship_back 시작(이름 수정: 작년 'ship_turn' → 'ship_back'). "
+            f"ship_back 시작(이름 수정: 작년 'ship_turn' → 'ship_back'). 담당 모드 {self.active_wp_modes}. "
             f"위치유지: hold_dist={self.hold_dist_m}m(⚠️실측)/tol {self.dist_tol_m}, "
             f"규정 {self.keep_radius_m}m 이내 {self.hold_time_sec}s."
         )
@@ -113,7 +116,8 @@ class ShipBack(Node):     # 🚨 작년엔 ShipTurn 이었다(복붙). 이름을
         with self.lock:
             prev = self.wp_mode
             self.wp_mode = int(msg.data)
-            if prev != self.active_wp_mode and self.wp_mode == self.active_wp_mode:
+            # 🚨 `prev not in modes` 로 쓰면 [2,3] 에서 2→3 전이에 리셋이 안 된다 (hold_logic 참조)
+            if should_reset_on_mode(prev, self.wp_mode, self.active_wp_modes):
                 self.state = "INIT"
                 self.state_t = time.monotonic()
                 self.last_seen_t = None
@@ -196,7 +200,7 @@ class ShipBack(Node):     # 🚨 작년엔 ShipTurn 이었다(복붙). 이름을
     # ---------------------- FSM ----------------------
     def timer_cb(self):
         with self.lock:
-            if self.wp_mode != self.active_wp_mode:
+            if self.wp_mode not in self.active_wp_modes:
                 return
             now = time.monotonic()
             if self.state_t is None:

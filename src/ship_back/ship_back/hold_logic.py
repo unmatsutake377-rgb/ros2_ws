@@ -1,10 +1,25 @@
 """ship_back 의 위치유지 로직 — **ROS 비의존 순수 파이썬** (rclpy 임포트 없음).
 
-    from ship_back.hold_logic import station_keep_action, HoldTimer
+    from ship_back.hold_logic import station_keep_action, HoldTimer, should_reset_on_mode
 
 규정: '부표 5m 이내 5초 유지'. 작년 코드는 그냥 5초간 PWM 중립이라 조류에 밀려 실패했다.
 → LiDAR 로 잰 거리로 전진/후진을 결정해 능동적으로 위치를 유지한다(bang-bang + 데드밴드).
 """
+
+
+def should_reset_on_mode(prev_mode, cur_mode, active_modes):
+    """/wp_mode 전이 때 FSM(INIT·DONE 래치·HoldTimer)을 리셋할지. 순수 함수.
+
+    prev_mode    : 직전 /wp_mode (부팅 초기값 -1 포함).
+    cur_mode     : 방금 받은 /wp_mode.
+    active_modes : 이 노드가 담당하는 모드 목록 (파라미터 active_wp_modes).
+
+    규칙: `prev != cur and cur in active_modes`.
+      ★ `prev not in active_modes` 로 쓰면 안 된다 — launch 가 hold 로 [2, 3] 을 넘길 때
+        2→3 전이에서 prev(2)가 목록 안이라 리셋이 안 되고, mode 2 에서 DONE 으로 래치된 채
+        mode 3 부표를 건너뛴다. 같은 모드가 연속으로 오면(3→3) 리셋하지 않는다(래치 유지).
+    """
+    return prev_mode != cur_mode and cur_mode in active_modes
 
 
 def station_keep_action(dist, hold_dist, tol):

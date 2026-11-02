@@ -8,7 +8,7 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
-from ship_back.hold_logic import station_keep_action, HoldTimer  # noqa: E402
+from ship_back.hold_logic import station_keep_action, HoldTimer, should_reset_on_mode  # noqa: E402
 
 fails = 0
 
@@ -18,6 +18,7 @@ def check(name, cond, extra=""):
     print(f"  {'✅' if cond else '❌'} {name} {extra}")
     if not cond:
         fails += 1
+    assert cond, name
 
 
 # ─────────────── station_keep_action ───────────────
@@ -71,6 +72,29 @@ def test_hold_unknown_resets():
 def test_hold_boundary_radius():
     t = HoldTimer(5.0, 5.0)
     check("정확히 5.0m 는 반경 안(포함)", t.update(5.0, 100.0) == 0.0 and t._enter is not None)
+
+
+# ─────────────── should_reset_on_mode (/wp_mode 전이 리셋 판정) ───────────────
+def test_mode_reset_hold_2_to_3():
+    # hold([2,3]): 2→3 은 반드시 리셋 — `prev not in modes` 로 쓰면 여기서 깨진다(계약서 위험 2)
+    check("[2,3] 2→3 리셋", should_reset_on_mode(2, 3, [2, 3]))
+
+
+def test_mode_reset_same_mode_no_reset():
+    check("[2,3] 3→3 비리셋(래치 유지)", not should_reset_on_mode(3, 3, [2, 3]))
+    check("[2,3] 2→2 비리셋", not should_reset_on_mode(2, 2, [2, 3]))
+    check("[2] 2→2 비리셋", not should_reset_on_mode(2, 2, [2]))
+
+
+def test_mode_reset_enter_from_other():
+    check("[2,3] 5→2 리셋", should_reset_on_mode(5, 2, [2, 3]))
+    check("[2] 5→2 리셋", should_reset_on_mode(5, 2, [2]))
+    check("[2] -1(부팅)→2 리셋", should_reset_on_mode(-1, 2, [2]))
+
+
+def test_mode_reset_leaving_inactive():
+    check("[2,3] 3→5 비활성(리셋 없음)", not should_reset_on_mode(3, 5, [2, 3]))
+    check("[2] 2→3 비활성(orbit 기본: 3 은 ship_turn)", not should_reset_on_mode(2, 3, [2]))
 
 
 if __name__ == '__main__':
