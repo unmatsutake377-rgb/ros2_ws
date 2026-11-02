@@ -13,7 +13,7 @@ if (!DECK || !TEMPLATE || !OUT || !['A', 'B'].includes(BOAT)) {
 }
 const TEAM = BOAT === 'A'
   ? { name: 'S.S.F A', members: '도건윤, 김은우, 김정한, 김하은, 박주현, 황준연, 석현, 정우성' }
-  : { name: 'S.S.F B', members: '박유진, 박윤서, 차준혁, 이송언, 이태훈, 김현지, 전홍윤, 황예진' };
+  : { name: 'S.S.F B', members: '박유진, 박윤서, 차준혁, 이송언, 이태훈, 김세연, 김현지, 전홍윤, 황예진' };
 const SCHOOL = '홍익대학교 조선해양공학과';
 
 // 발표자료 테마 색 (tools/make_slides_pptx.js THEME 와 같아야 한다) — 포스터 테마가 다르므로 복사하면서 고정색으로 바꾼다
