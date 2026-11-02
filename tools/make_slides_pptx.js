@@ -177,17 +177,17 @@ pres.addSection({ title: '소개' });
   const s = pres.addSlide({ masterName: 'TITLE', sectionTitle: '소개' });
   s.addShape(pres.ShapeType.triangle, { x: -0.6, y: 1.68, w: 2.37, h: 1.45, rotate: 90, fill: { color: C.accent1 }, line: { color: C.accent1 }, objectName: '왼쪽 삼각형' });
   s.addShape(pres.ShapeType.triangle, { x: 0.93, y: 4.55, w: 3.65, h: 2.49, fill: { color: C.accent1 }, line: { color: C.accent1 }, objectName: '아래 삼각형' });
-  // 표지 사진: 수조 시험 전체 사진이 생기면 아래 두 파일을 바꾼다
-  img(s, TEAMFIG(`공정_${BOAT}_적층.jpg`), 1.1, 0.6, 2.7, 3.6);
-  img(s, TEAMFIG(`공정_${BOAT}_부착물.jpg`), 0.0, 2.9, 2.1, 2.8);
-  s.addText('2026 자율운항보트경진대회', { x: 4.3, y: 2.55, w: 5.4, h: 0.6, fontSize: 28, bold: true, color: C.text2, isTextBox: true, margin: 0, objectName: '대회명' });
-  s.addText('S.S.F (Symbio Ship to Future)', { x: 4.3, y: 3.2, w: 5.4, h: 0.45, fontSize: 16, color: C.text1, isTextBox: true, margin: 0, objectName: '팀명' });
-  s.addText(`홍익대학교 조선해양공학과 · TEAM ${B.team} (${B.no})`, { x: 4.3, y: 3.75, w: 5.4, h: 0.4, fontSize: 13, bold: true, color: C.text1, isTextBox: true, margin: 0 });
+  // 표지 사진 2장 = 작년 PPT 표지 그대로 (작년 파일에서 잘라낸 이미지, 팀장 11-02 요청)
+  img(s, TEAMFIG('표지_작년_1.jpg'), 1.0, 0.6, 4.3, 2.9);
+  img(s, TEAMFIG('표지_작년_2.jpg'), 0.0, 2.9, 3.33, 4.0);
+  s.addText('2026 자율운항보트경진대회', { x: 4.6, y: 3.6, w: 5.1, h: 0.6, fontSize: 26, bold: true, color: C.text2, isTextBox: true, margin: 0, objectName: '대회명' });
+  s.addText('S.S.F (Symbio Ship to Future)', { x: 4.6, y: 4.25, w: 5.1, h: 0.45, fontSize: 16, color: C.text1, isTextBox: true, margin: 0, objectName: '팀명' });
+  s.addText(`홍익대학교 조선해양공학과 · TEAM ${B.team} (${B.no})`, { x: 4.6, y: 4.8, w: 5.1, h: 0.4, fontSize: 13, bold: true, color: C.text1, isTextBox: true, margin: 0 });
   s.addText([
     { text: `조장 ${B.leader}`, options: { breakLine: true } },
     { text: `조원 ${B.members}`, options: { breakLine: true } },
     { text: '지도교수 권순범', options: {} },
-  ], { x: 4.3, y: 4.25, w: 5.4, h: 1.3, fontSize: 11.5, color: C.accent6, valign: 'top', isTextBox: true, margin: 0, paraSpaceAfter: 3, objectName: '팀 명단' });
+  ], { x: 4.6, y: 5.3, w: 5.1, h: 1.2, fontSize: 11.5, color: C.accent6, valign: 'top', isTextBox: true, margin: 0, paraSpaceAfter: 3, objectName: '팀 명단' });
 }
 
 // ── 2. 설계철학·임무 우선순위 (Ⅱ-1) ────────────────────────────────────────────
