@@ -105,10 +105,16 @@ def plan_outline(stl, **kw):
     by, _ = hl.load_stl(stl, **kw)
     a, b = sorted(by["HULL_SHEER"], key=lambda p: -p[:, 1].mean())     # 좌(+y), 우(−y)
     a = a[np.argsort(a[:, 0])]; b = b[np.argsort(b[:, 0])]
+    out = []
     for q in (a, b):   # 성긴 선수 메시(2번배)의 톱니·찢김: 이웃 ±5 구간 |y| 최댓값 → 11점 이동평균
         y = np.abs(q[:, 1]); y = np.array([y[max(0, i - 5):i + 6].max() for i in range(len(y))])
         y = np.convolve(np.pad(y, 5, mode="edge"), np.ones(11) / 11, mode="valid")
         q[:, 1] = np.sign(q[:, 1].mean()) * y
+        if kw.get("fit"):   # 성긴 Fusion 메시(2번배): 선도 반폭도와 같은 45 mm 매듭 pchip 평활
+            xs_, ys_ = hl._knot_smooth(q[:, 0], np.abs(q[:, 1]))
+            q = np.column_stack([xs_, np.sign(q[:, 1].mean()) * ys_, np.full_like(xs_, q[:, 2].mean())])
+        out.append(q)
+    a, b = out
     return np.vstack([[0, a[0, 1]], a[:, :2], b[::-1, :2], [0, b[0, 1]]])
 
 def draw_asbuilt(ax, L, B, mass, units, title, show_x=True, poly=None):
@@ -128,12 +134,12 @@ def draw_asbuilt(ax, L, B, mass, units, title, show_x=True, poly=None):
     ax.text(L + 20, 0, msg, fontsize=9.5, va="center")
 
 figA2 = plt.figure(figsize=(14, 3.6))
-draw_asbuilt(figA2.add_subplot(111), 1660., 550., 30., [(220., 120.)], "1번배 T200×2 — 실제 장착: 선미 좌우 ±120 mm", show_x=False,
+draw_asbuilt(figA2.add_subplot(111), 1660., 550., 34., [(220., 120.)], "1번배 T200×2 — 실제 장착: 선미 좌우 ±120 mm", show_x=False,
              poly=plan_outline(os.path.join(DOCS, "선도_1번배", "1번배_킬제거_Fusion360.stl"), scale=1.66, flip_z=True))
 figA2.text(.5, .01, "요 모멘트 = 좌우 간격 × 추력 (CFD 아님: 강체 조종모델 + 횡류항력 요댐핑)", ha="center", fontsize=9.5, color="#555")
 figA2.savefig(os.path.join(OUTD, "thruster_asbuilt_A.png"), dpi=110, bbox_inches="tight")
 figB2 = plt.figure(figsize=(14, 3.6))
-draw_asbuilt(figB2.add_subplot(111), 1770., 522., 35., [(220., 140.), (585., 62.5)], "2번배 T200×4 — 실제 장착: 선미 ±140 · 선수 ±62.5 mm, 전후 365 mm (V자형)",
+draw_asbuilt(figB2.add_subplot(111), 1770., 522., 30., [(220., 140.), (585., 62.5)], "2번배 T200×4 — 실제 장착: 선미 ±140 · 선수 ±62.5 mm, 전후 365 mm (V자형)",
              poly=plan_outline(os.path.join(DOCS, "선도_2번배", "2번배_Fusion360.stl"), fit=(1770., 522.)))
 figB2.text(.5, .01, "요 모멘트 = 좌우 간격 × 추력 (CFD 아님: 강체 조종모델 + 횡류항력 요댐핑 + 작동원판 제트확산)", ha="center", fontsize=9.5, color="#555")
 figB2.savefig(os.path.join(OUTD, "thruster_asbuilt_B.png"), dpi=110, bbox_inches="tight")

@@ -34,10 +34,16 @@ def plan_outline(stl, **kw):   # tools/thruster_layout.py plan_outline 과 같�
     by, _ = hl.load_stl(stl, **kw)
     a, b = sorted(by["HULL_SHEER"], key=lambda p: -p[:, 1].mean())
     a = a[np.argsort(a[:, 0])]; b = b[np.argsort(b[:, 0])]
+    out = []
     for q in (a, b):
         y = np.abs(q[:, 1]); y = np.array([y[max(0, i - 5):i + 6].max() for i in range(len(y))])
         y = np.convolve(np.pad(y, 5, mode="edge"), np.ones(11) / 11, mode="valid")
         q[:, 1] = np.sign(q[:, 1].mean()) * y
+        if kw.get("fit"):   # 성긴 Fusion 메시(2번배): 선도 반폭도와 같은 45 mm 매듭 pchip 평활
+            xs_, ys_ = hl._knot_smooth(q[:, 0], np.abs(q[:, 1]))
+            q = np.column_stack([xs_, np.sign(q[:, 1].mean()) * ys_, np.full_like(xs_, q[:, 2].mean())])
+        out.append(q)
+    a, b = out
     return np.vstack([[0, a[0, 1]], a[:, :2], b[::-1, :2], [0, b[0, 1]]])
 
 
