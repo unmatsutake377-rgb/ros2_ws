@@ -43,6 +43,7 @@ const B = isA ? {
   team: 'S.S.F B', no: '2번배', leader: '박유진',
   members: '박윤서, 차준혁, 이송언, 이태훈, 김세연, 김현지, 전홍윤, 황예진',
   boxExt: '135 → 535×300', roll: '약 1 s · 10°→1° 약 7~17 s (0.5 s 샘플링 한계)', figThr: 3, figRes: 4,
+  gm: '0.24 (경사시험, KG 역산 0.27)', incl: 'w 2.1 kg · d 0.26 m · θ 5.28° (좌 5.30 / 우 5.25) · W 25 kg → GM 0.24 m. 종경사 GM_L ≈ 3.4 m',
   loa: '1.77', boa: '0.522', depth: '0.19 m (선체)',
   thr: 'T200 ×4 · V자형 (선미 간격 280, 선수 측 125, 전후 365 mm)',
   mass: '25 (실측)', draft: '선미 80 · 중앙 65 · 선수 75 (부상 시험)', freeboard: '선미 110 · 중앙 125 · 선수 115',
@@ -283,7 +284,7 @@ pres.addSection({ title: '선형 설계 및 제작' });
     ['KB / BM [m]', `${B.kb} / ${B.bm}`],
     ['KM = KB + BM [m]', B.km],
     ['수선 높이', B.wl],
-    ['GM = KM − KG [m]', { ph: '경사 시험' }],
+    ['GM = KM − KG [m]', B.gm || { ph: '경사 시험' }],
     ['횡요 고유주기 [s]', B.roll || { ph: '롤 감쇠 시험' }],
   ], x2, 1.7, w2, [1.7, 2.1], { fontSize: 10.5, header: false, rowH: 0.36 });
   card(s, x2, 3.75, w2, 2.7, '경사 시험 (수조, 담수)', [
@@ -291,7 +292,8 @@ pres.addSection({ title: '선형 설계 및 제작' });
     'GM = w·d / (W·tan θ)',
     '마스트 조립체 무게·높이로 KG 보정',
   ], { fontSize: 11, bodyH: 1.3 });
-  PH(s, x2 + 0.15, 5.7, w2 - 0.3, 0.6, 'w · d · θ · GM 값 + 경사 사진', { fontSize: 11 });
+  if (B.incl) s.addText(B.incl, { x: x2 + 0.15, y: 5.7, w: w2 - 0.3, h: 0.6, fontSize: 10.5, color: C.text1, isTextBox: true, margin: 0, valign: 'top' });
+  else PH(s, x2 + 0.15, 5.7, w2 - 0.3, 0.6, 'w · d · θ · GM 값 + 경사 사진', { fontSize: 11 });
 }
 
 // ── 4. 추진기 배치·저항·침몰방지 (Ⅱ-3.3, 3.4, 4) ────────────────────────────
@@ -468,7 +470,7 @@ pres.addSection({ title: '시험·비용' });
   s.addText('수조 시험 (6 × 6 m, 담수)', { x: 5.4, y: 1.25, w: 4.1, h: 0.3, fontSize: 12, bold: true, color: C.text2, isTextBox: true, margin: 0 });
   table(s, [
     ['항목', '값'],
-    ['GM (경사 시험)', { ph: '값 [m]' }],
+    ['GM (경사 시험)', B.gm || { ph: '값 [m]' }],
     ['횡요 고유주기 (롤 감쇠)', B.roll || { ph: '값 [s]' }],
   ], 5.4, 1.6, 4.1, [2.3, 1.8], { fontSize: 9.5, rowH: 0.38 });
   card(s, M, 5.6, 9, 1.25, '대회 전 물 위에서 확인할 것', '직진 속도(수조는 정속 구간 부족) · 선회 지름·정지 거리 · 조향 부호·추력 PWM 확정 · IMU 오프셋·자기편각 · LTE 핫스팟 켠 상태 RTK FIXED · 도크 접안 거리(contact_dist_m) · 무선 비상정지 도달 거리', { fontSize: 11 });
