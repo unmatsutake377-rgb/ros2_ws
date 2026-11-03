@@ -16,6 +16,9 @@
       ALIGN 은 **제자리 선회**로 표식을 정면에 놓는다 (2단계에서 spin_forward_pwm=1500 로
       진짜 제자리 선회가 됐기 때문에 가능해졌다. 작년 SPIN 은 순항속도 원이라 도크에 부딪혔다).
   [5] SPIN 규약: 5000=우선회, 6000=좌선회 (CLAUDE.md 3-9 상수표)
+  [6] APPROACH 재정렬(→ALIGN) 전이에 거리 하한 realign_min_dist_m. 그 안에서는 제자리 선회 없이
+      표식 방위로 조향하며 접근한다 (dock_sim 실패 3/500 이 전부 접안 직전 선회→관성→표식 유실).
+      판단은 dock_fsm_logic.approach_decision (순수 함수, ROS 없이 테스트).
 
 ⚠️ 이 노드는 mode 7 에서 /candidate_angle 의 **유일한 발행자**다.
    (6a 에서 north_goal_angle 의 mode-7 폴백을 제거했다 — 안 그러면 발행자가 둘이라 조향이 튄다.)
@@ -37,6 +40,9 @@ from rclpy.executors import MultiThreadedExecutor
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 from std_msgs.msg import Float32, Int32
 from sensor_msgs.msg import LaserScan
+
+from ship_dock.dock_fsm_logic import (
+    approach_decision, check_realign_min, CONTACT, ALIGN_STANDOFF, ALIGN)
 
 # 특수 신호 상수 (CLAUDE.md 3-9 상수표)
 SPIN_RIGHT = 5000.0          # 우선회
@@ -87,6 +93,23 @@ class ShipDock(Node):
         # 정렬
         self.align_tol_deg = float(self.declare_parameter("align_tol_deg", 8.0).value)
         self.realign_tol_deg = float(self.declare_parameter("realign_tol_deg", 25.0).value)
+        # 재정렬 하한 [6]: 이 거리 안(dist < 하한)에서는 위 두 재정렬(standoff 1회·realign_tol)을 안 한다.
+        #   🚨 대회 launch_files.launch.py 는 ship_dock 에 yaml 을 안 넘긴다 → **이 코드 기본값이 대회값**.
+        #      config/ship_dock.yaml 과 같은 값으로 유지할 것. contact_dist_m 바꾸면 같이(contact + 0.5 권장).
+        self.realign_min_dist_m = float(
+            self.declare_parameter("realign_min_dist_m", 1.5).value)  # ⚠️ 실측 필요 — contact + 관성 여유(v·τ)
+        floor_check = check_realign_min(
+            self.realign_min_dist_m, self.contact_dist_m, self.standoff_dist_m)
+        if floor_check == "below_contact":
+            # 조용히 종전 동작(접안 직전 선회)으로 돌아간다 — 침묵 금지(CLAUDE.md 1-6). 부팅은 계속.
+            self.get_logger().error(
+                f"realign_min_dist_m={self.realign_min_dist_m} <= contact_dist_m={self.contact_dist_m}: "
+                "재정렬 하한이 영구 무효다 (contact 판정이 먼저라 하한 안 구간이 없다) → "
+                "접안 직전 제자리 선회→표식 유실 경로가 그대로 남는다. contact 보다 크게 잡아라.")
+        elif floor_check == "above_standoff":
+            self.get_logger().warn(
+                f"realign_min_dist_m={self.realign_min_dist_m} >= standoff_dist_m={self.standoff_dist_m}: "
+                "standoff 안이 전부 하한 안이라 standoff 1회 재정렬이 영영 안 걸린다.")
         # /image_angle 의 부호 규약: 양수가 좌현인가? ⚠️ 벤치 검증 필요 (카메라 좌표계)
         self.image_positive_is_left = bool(
             self.declare_parameter("image_positive_is_left", True).value)
@@ -129,7 +152,8 @@ class ShipDock(Node):
         self.get_logger().info(
             f"ship_dock 시작: active_wp_mode={self.active_wp_mode} (작년엔 9 라 1년간 침묵했다).\n"
             f"   거리는 LiDAR 전방 ±{self.front_sector_half_deg}° 최소거리만 사용 (카메라 뎁스 안 씀).\n"
-            f"   standoff={self.standoff_dist_m}m contact={self.contact_dist_m}m"
+            f"   standoff={self.standoff_dist_m}m contact={self.contact_dist_m}m "
+            f"realign_min={self.realign_min_dist_m}m (이 안에서는 재정렬 선회 없음)"
         )
 
     # ───────────────────────── 콜백 ─────────────────────────
@@ -277,23 +301,20 @@ class ShipDock(Node):
                     self.set_state("BACKOFF")
                     return
 
-                if dist <= self.contact_dist_m:
+                # 접안 / standoff 1회 정밀 재정렬 / 크게 틀어짐 재정렬 / 조향 접근 — 판단은 순수 함수 [6]
+                #   contact 가 맨 앞. realign_min 안에서는 두 재정렬 다 건너뛰고 조향 접근(STEER).
+                decision, self.standoff_aligned = approach_decision(
+                    dist, angle, self.standoff_aligned,
+                    self.contact_dist_m, self.standoff_dist_m, self.realign_min_dist_m,
+                    self.align_tol_deg, self.realign_tol_deg)
+                if decision == CONTACT:
                     self.set_state("CONTACT")
                     return
-
-                # standoff 지점에서 한 번 정밀 재정렬 (비스듬한 접안 방지)
-                if (not self.standoff_aligned) and dist <= self.standoff_dist_m \
-                        and abs(angle) > self.align_tol_deg:
-                    self.standoff_aligned = True
-                    self.set_state("ALIGN")
+                if decision in (ALIGN_STANDOFF, ALIGN):
+                    self.set_state("ALIGN")     # 제자리 선회로 다시 정면에 놓는다 (비스듬히 밀고 들어가지 않는다)
                     return
 
-                # 크게 틀어졌으면 다시 제자리 정렬 (비스듬히 밀고 들어가지 않는다)
-                if abs(angle) > self.realign_tol_deg:
-                    self.set_state("ALIGN")
-                    return
-
-                self.publish(angle)          # 표식 방위로 조향하며 전진
+                self.publish(angle)          # 표식 방위로 조향하며 전진 (하한 안 경로도 여기 — 매 틱 발행 유지)
                 return
 
             # ---- CONTACT: 접안 완료. 유지. ----

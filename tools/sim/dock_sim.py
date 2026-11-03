@@ -83,6 +83,7 @@ def _load_params():
 
 _PARAMS = _load_params()
 _stub_modules()
+sys.path.insert(0, os.path.join(ROOT, "src", "ship_dock"))   # ship_dock.py 의 `from ship_dock.dock_fsm_logic import …` 용
 _spec = importlib.util.spec_from_file_location("ship_dock_real", os.path.join(ROOT, "src", "ship_dock", "ship_dock", "ship_dock.py"))
 SD = importlib.util.module_from_spec(_spec); _spec.loader.exec_module(SD)
 

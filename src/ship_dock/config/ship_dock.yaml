@@ -16,6 +16,8 @@
     # ---- 정렬 (정면 접근) ----
     align_tol_deg: 8.0            # 이 안에 들면 '정면'으로 본다
     realign_tol_deg: 25.0         # 접근 중 이만큼 틀어지면 제자리 재정렬 (비스듬한 접안 방지)
+    realign_min_dist_m: 1.5       # ⚠️ 실측 필요 — 이 거리 안에서는 재정렬(제자리 선회) 안 함. contact_dist_m 바꾸면 같이 조정(contact + 0.5 권장)
+                                  #   코드 기본값(ship_dock.py)과 같게 유지 — 대회 launch 는 이 yaml 을 안 넘긴다
     image_positive_is_left: true  # ⚠️ 벤치 검증 필요 — /image_angle 양수가 좌현인가 (카메라 좌표계)
     sweep_right: true             # SEARCH 스윕 방향 (true=우선회 5000)
 

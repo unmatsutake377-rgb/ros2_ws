@@ -161,7 +161,9 @@ gps_vel(RTK) 로 기록. ★ RTK fix 품질 확인 필수(아래).</pre>
 
 <p><span class="step">5</span><b>수조: 미션 하나씩 (각 10분)</b></p>
 <pre>위치유지 → 선회 → 근접 게이트 → 근접 도킹 순.
-각각 /wp_mode 로 켜고, 부표/도크는 벽에서 떨어뜨려.</pre>
+각각 /wp_mode 로 켜고, 부표/도크는 벽에서 떨어뜨려.
+근접 도킹: 표식 1.5 m(realign_min_dist_m) 안에서는 제자리 선회 없이 그대로 밀고 들어가는지 확인.
+  (1.5 m 안에서 돌면 하한이 안 먹은 것 → ros2 param get /ship_dock realign_min_dist_m 이 1.5 인지)</pre>
 
 <p><span class="step">6</span><b>CSV 를 채팅에 올리기</b></p>
 <pre>~/ssf_logs/blackbox_날짜.csv 를 이 채팅에 드래그.
