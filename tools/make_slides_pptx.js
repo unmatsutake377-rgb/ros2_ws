@@ -32,7 +32,7 @@ const B = isA ? {
   layer: 'FRP 적층', hullImg: HULL('1번배_선형_3D.png'), planImg: FIG('hull_plan_A.png'),
   thrImg: FIG('thruster_asbuilt_A.png'), resImg: FIG('resistance_A.png'),
   circImg: TEAMFIG('회로_구성도_A.png'), estopImg: TEAMFIG('비상정지_구성도_A.png'),
-  draftMeasured: true, boxExt: '80 → 480×300',
+  draftMeasured: true, boxExt: '80 → 480×300', roll: '약 1 s · 10°→1° 약 10 s (0.5 s 샘플링 한계)', figThr: 3, figRes: 4,
   cost: [
     ['RPLIDAR A3', '1', '800,000'], ['T200 스러스터 + ESC', '2+2', '776,882'], ['OAK-1 PoE FF', '1', '661,000'],
     ['GPS ZED-F9P + 안테나', '1+1', '610,900'], ['선체 재료 (FRP 등 8종)', '1식', '571,740'], ['IMU iAHRS', '1', '198,000'],
@@ -42,7 +42,7 @@ const B = isA ? {
 } : {
   team: 'S.S.F B', no: '2번배', leader: '박유진',
   members: '박윤서, 차준혁, 이송언, 이태훈, 김세연, 김현지, 전홍윤, 황예진',
-  boxExt: '135 → 535×300',
+  boxExt: '135 → 535×300', roll: null, figThr: 2, figRes: 3,
   loa: '1.77', boa: '0.522', depth: '0.19 m (선체)',
   thr: 'T200 ×4 · V자형 (선미 간격 280, 선수 측 125, 전후 365 mm)',
   mass: '25 (실측)', draft: '선미 80 · 중앙 65 · 선수 75 (부상 시험)', freeboard: '선미 110 · 중앙 125 · 선수 115',
@@ -284,7 +284,7 @@ pres.addSection({ title: '선형 설계 및 제작' });
     ['KM = KB + BM [m]', B.km],
     ['수선 높이', B.wl],
     ['GM = KM − KG [m]', { ph: '경사 시험' }],
-    ['횡요 고유주기 [s]', { ph: '롤 감쇠 시험' }],
+    ['횡요 고유주기 [s]', B.roll || { ph: '롤 감쇠 시험' }],
   ], x2, 1.7, w2, [1.7, 2.1], { fontSize: 10.5, header: false, rowH: 0.36 });
   card(s, x2, 3.75, w2, 2.7, '경사 시험 (수조, 담수)', [
     '추 w 를 중심선에서 d 만큼 좌·우로 옮겨 기울기 θ 측정',
@@ -297,8 +297,8 @@ pres.addSection({ title: '선형 설계 및 제작' });
 // ── 4. 추진기 배치·저항·침몰방지 (Ⅱ-3.3, 3.4, 4) ────────────────────────────
 {
   const s = slide('추진기 배치 · 저항 추정 · 침몰방지', '선형 설계 및 제작');
-  img(s, B.thrImg, M, 1.3, 4.4, 1.9, `그림 Ⅱ-2 ${B.no} 추진기 배치 (실제 장착)`);
-  img(s, B.resImg, 5.1, 1.3, 4.4, 2.2, '그림 Ⅱ-3 속도별 점성 저항과 가용 추력');
+  img(s, B.thrImg, M, 1.3, 4.4, 1.9, `그림 Ⅱ-${B.figThr} ${B.no} 추진기 배치 (실제 장착)`);
+  img(s, B.resImg, 5.1, 1.3, 4.4, 2.2, `그림 Ⅱ-${B.figRes} 속도별 점성 저항과 가용 추력`);
   bullets(s, [
     `T200 최대 추력 1기 약 47 N (14.8 V 보간) → 가용 추력 ${B.thrustTotal}`,
     'Fn 0.4 (약 1.5 m/s) 부터 조파 저항 급증 — 순항 속도는 그 아래',
@@ -469,7 +469,7 @@ pres.addSection({ title: '시험·비용' });
   table(s, [
     ['항목', '값'],
     ['GM (경사 시험)', { ph: '값 [m]' }],
-    ['횡요 고유주기 (롤 감쇠)', { ph: '값 [s]' }],
+    ['횡요 고유주기 (롤 감쇠)', B.roll || { ph: '값 [s]' }],
     ['조향 부호 · 후진 방향', { ph: '정상 / 반대' }],
     ['직진 속도 PWM 1400 / 1360 / 1300', { ph: 'm/s ×3' }],
   ], 5.4, 1.6, 4.1, [2.3, 1.8], { fontSize: 9.5, rowH: 0.38 });
