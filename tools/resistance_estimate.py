@@ -4,7 +4,7 @@ ITTC-1957 마찰 저항에 형상계수를 곱한 점성 저항을 낸다. 조�
 
   R_V = (1+k) · ½ρV²S · C_F,  C_F = 0.075 / (log10 Re − 2)²,  Re = V·L_WL/ν
   가정: 담수 ρ 1000 kg/m³, ν 1.0e-6 m²/s(20 °C 근처), 1+k = 1.2(소형 단동선 통상 범위 1.1~1.3 의 가운데)
-  배수량: 1번배 30 kg(부상 시험 상태), 2번배 35 kg(보고서 Ⅱ-3.2 가정값)
+  배수량: 1번배 30 kg(부상 시험 상태), 2번배 25 kg(실측 확정, 팀장 11-03 — 종전 가정 35 kg)
   추력: T200 제조사 사양 12 V 3.71 kgf · 16 V 5.25 kgf 를 14.8 V 로 선형 보간 ≈ 4.79 kgf
 
 재현: python3 tools/resistance_estimate.py  → 표 값 출력 + docs/전달용/배치도/resistance_A.png, resistance_B.png
@@ -128,4 +128,4 @@ def run(name, stl, mass, n_thr, key=None, **kw):
 
 if __name__ == "__main__":
     run("1번배", os.path.join(D, "선도_1번배", "1번배_킬제거_Fusion360.stl"), 30.0, 2, key="A", scale=1.66, flip_z=True)
-    run("2번배", os.path.join(D, "선도_2번배", "2번배_Fusion360.stl"), 35.0, 4, key="B", fit=(1770.0, 522.0))
+    run("2번배", os.path.join(D, "선도_2번배", "2번배_Fusion360.stl"), 25.0, 4, key="B", fit=(1770.0, 522.0))

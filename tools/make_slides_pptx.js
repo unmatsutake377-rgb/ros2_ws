@@ -45,9 +45,9 @@ const B = isA ? {
   boxExt: '135 → 535×300',
   loa: '1.77', boa: '0.522', depth: '0.19 m (선체)',
   thr: 'T200 ×4 · V자형 (선미 간격 280, 선수 측 125, 전후 365 mm)',
-  mass: '35 (추정)', draft: null, freeboard: null,
-  kb: '0.037', bm: '0.20', km: '0.24', wl: '68.2 mm (STL 계산)', cb: null,
-  thrustTotal: '188 N (4기)', S: '0.724 m²', lwl: '1.552 m',
+  mass: '25 (실측)', draft: '선미 80 · 중앙 65 · 선수 75 (부상 시험)', freeboard: '선미 110 · 중앙 125 · 선수 115',
+  kb: '0.0367', bm: '0.568', km: '0.605', wl: '53.2 mm (STL 계산)', cb: '0.369',
+  thrustTotal: '188 N (4기)', S: '0.678 m²', lwl: '1.523 m',
   layer: '카본섬유 적층', hullImg: FIG('hull_plan_B.png'), planImg: FIG('hull_plan_B.png'),
   thrImg: FIG('thruster_asbuilt_B.png'), resImg: FIG('resistance_B.png'),
   circImg: TEAMFIG('회로_구성도_B.png'), estopImg: TEAMFIG('비상정지_구성도_B.png'),
@@ -463,7 +463,7 @@ pres.addSection({ title: '시험·비용' });
     ['10분 연속', '센서 5종 유지, 끊김 0, CPU 여유 83 %'],
     ['수동 영상 송출', '424×240 · 30 fps · 1 Mbps, LTE 지연 113 ms'],
     ['배터리 A 분리', '센서 4종 유지, 접촉기만 열려 추진 정지'],
-    isA ? ['부상 시험 흘수', '선미 45 · 중앙 95 · 선수 105 mm'] : ['부상 시험 흘수', { ph: '수조 실측' }],
+    ['부상 시험 흘수', isA ? '선미 45 · 중앙 95 · 선수 105 mm' : '선미 80 · 중앙 65 · 선수 75 mm'],
   ], M, 1.6, 4.6, [1.4, 3.2], { fontSize: 9.5, rowH: 0.38 });
   s.addText('수조 시험 (6 × 6 m, 담수)', { x: 5.4, y: 1.25, w: 4.1, h: 0.3, fontSize: 12, bold: true, color: C.text2, isTextBox: true, margin: 0 });
   table(s, [
