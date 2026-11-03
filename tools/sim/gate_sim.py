@@ -9,7 +9,8 @@
   · 코스: 게이트 4개(x 15·24·33·42 m, 스윕 코스와 같은 자리), 시드마다 폭 3~6 m·중심 ±1 m 흔들림,
     빨강은 진행 방향(동쪽) 기준 **좌현**(north), 초록 우현. 출발 (5, 3±1), 헤딩 90°±30°.
     GPS 웨이포인트(= /yaw_error 의 목표)는 다음 게이트 중점, 마지막은 (48, 3).
-  · 변형: 현행(red_on_port true) / red_on_port false / 비전 없이 GPS 웨이포인트만(ship_gate 미사용, candidate 20000).
+  · 변형: 수정 후(red_on_port true) / red_on_port false(= 수정 전 단일 부표 부호와 동일한 동작) / 비전 없이 GPS 웨이포인트만.
+  · 간격 스트레스: 게이트 사이 4·6·8 m × 폭 4~8 m 로 /gates_passed 일치율만 추가 집계(카메라만으로는 ≤ 6 m 에서 누락 가능).
   · 운동 모델은 스윕과 같다(순항 1.2 m/s, k_w 0.22, 지연 없음). 접촉 = 배 반경 half_width 원 vs 부표 반경 0.2 m.
 
 재현: python3 tools/sim/gate_sim.py → docs/전달용/배치도/gate_sim.png, tools/sim/out/gate_sim.csv
@@ -149,14 +150,34 @@ def run(seed, variant, tau=0.0):
                 lat=lat, node_count=node_count, n_cand=n_cand, n_fallback=n_fallback, gates=gates)
 
 
-VARIANTS = [("vision", "비전 게이트 (현행 red_on_port=true)"), ("flip", "비전 게이트 (red_on_port=false)"), ("gps", "GPS 웨이포인트만 (비전 없음)")]
+VARIANTS = [("vision", "비전 게이트 — 부호·카운트 수정 후 (red_on_port=true)"), ("flip", "비전 게이트 — 수정 전 부호와 동일 (red_on_port=false)"), ("gps", "GPS 웨이포인트만 (비전 없음, 중점 좌표를 안다고 가정)")]
+
+
+def stress(spacing, wmin=4.0, wmax=8.0, N=40):
+    """게이트 사이 거리 spacing 으로 코스를 바꿔 /gates_passed 일치율만 센다 (전역 코스 함수 임시 교체)."""
+    global GATE_X, X_END, make_course
+    keep = (GATE_X, X_END, make_course)
+    GATE_X = [15.0 + spacing * i for i in range(4)]; X_END = GATE_X[-1] + 4.0
+    def mc(seed):
+        rng = random.Random(seed); gates = []
+        for gx in GATE_X:
+            w = rng.uniform(wmin, wmax); yc = 3.0 + rng.uniform(-1.0, 1.0)
+            gates.append(dict(x=gx, yc=yc, w=w, red=(gx, yc + w / 2), green=(gx, yc - w / 2)))
+        return gates, (5.0, 3.0 + rng.uniform(-1.0, 1.0)), 90.0 + rng.uniform(-30.0, 30.0)
+    make_course = mc
+    try:
+        R = [run(s, "vision") for s in range(1, N + 1)]
+    finally:
+        GATE_X, X_END, make_course = keep
+    return dict(spacing=spacing, ok=sum(1 for r in R if r["node_count"] == r["passed"]), over=sum(1 for r in R if r["node_count"] > r["passed"]),
+                under=sum(1 for r in R if r["node_count"] < r["passed"]), passed=sum(r["passed"] for r in R), hits=sum(r["hits"] for r in R), N=N)
 
 
 def main():
     os.makedirs(os.path.dirname(OUT_CSV), exist_ok=True)
     N = 40; res = {k: [run(s, k) for s in range(1, N + 1)] for k, _ in VARIANTS}
     res["vision_tau"] = [run(s, "vision", tau=0.5) for s in range(1, N + 1)]
-    names = dict(VARIANTS); names["vision_tau"] = "비전 게이트 (현행), 지연 τ 0.5 s"
+    names = dict(VARIANTS); names["vision_tau"] = "수정 후, 추력 응답 지연 τ 0.5 s"
     with open(OUT_CSV, "w", newline="", encoding="utf-8") as f:
         wr = csv.writer(f); wr.writerow(["variant", "seed", "passed_of_4", "node_count", "hits", "reached", "t", "lat_norm_mean", "cand_ticks", "fallback_ticks"])
         for k in res:
@@ -175,6 +196,13 @@ def main():
         s = summ[k]
         print(f"  [{names[k]}] 게이트 통과 {tot}/{4 * N} (4개 전부 {full}/{N}), 접촉 {s['hits']}, 종점 도달 {s['reach']}/{N}, 통과 시 중심 벗어남 중앙값 {s['lat_med']:.2f}·최대 {s['lat_max']:.2f} (반폭=1), "
               f"비전 조향 틱 비율 {s['cand']:.0%}, /gates_passed = 기하 통과 수 일치 {s['node_ok']}/{N}, 시간 중앙값 {s['t_med']:.0f} s")
+
+    st = [stress(sp) for sp in (4.0, 6.0, 8.0)]
+    with open(OUT_CSV, "a", newline="", encoding="utf-8") as f:
+        wr = csv.writer(f)
+        for x in st:
+            wr.writerow([f"stress_spacing_{x['spacing']:.0f}m_w4-8", "all", x["passed"], x["ok"], x["hits"], x["N"], "", "", "", f"over={x['over']} under={x['under']}"])
+    print("  간격 스트레스(폭 4~8 m, 수정 후 코드): " + ", ".join(f"사이 {x['spacing']:.0f} m → /gates_passed 일치 {x['ok']}/{x['N']} (이중 {x['over']}, 누락 {x['under']}, 기하 통과 {x['passed']}/{4 * x['N']}, 접촉 {x['hits']})" for x in st))
 
     # ── 그림 ──
     fig = plt.figure(figsize=(13.4, 8.6))

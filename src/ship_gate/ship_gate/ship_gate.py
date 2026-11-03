@@ -10,20 +10,28 @@
   [3] 🚨 게이트 쌍 제약. '다음 게이트 빨강' + '이번 게이트 초록'이 같이 보이면 둘의 중간으로
       가버린다(엉뚱). 각도차가 [pair_min_sep, pair_max_sep] 일 때만 쌍으로 인정. 벗어나면
       가까운 쪽 하나만. (판정은 gate_logic.gate_candidate — 순수 함수, 테스트됨)
-  [4] 순차 통과 카운트 → /gates_passed (Int32) 발행. 부표가 ±pass_behind_deg 를 넘어 뒤로 가면
+  [4] 순차 통과 카운트 → /gates_passed (Int32) 발행. 부표 |상대각| 이 pass_behind_deg 를 넘으면
       1 증가. ★ 이름 주의: /gate_pass_count 아니라 /gates_passed (0단계 blackbox 가 구독 중).
+      🚨 pass_behind_deg 는 카메라 반화각(hfov 80.32/2 = 40.16°) 안이어야 한다 — 밖이면 검출기가
+      10000 을 내서 각이 아예 안 오고, 옛 기본값 75 는 영원히 0 이었다(11-04). 게이트 선 ~2~6 m 앞에서 센다.
+      arming 은 유효 쌍이 전방(두 |각| ≤ pass_behind_deg)이면 거리 조건 없이(⑥). 재-arming 은 카운트 뒤
+      (i) 두 부표 모두 안 보임 또는 (ii) 전방 쌍의 LiDAR 거리가 카운트 시점 거리 + rearm_far_margin_m 보다
+      멀 때(새 게이트; 거리 미상이면 막지 않음) 한 번 지난 뒤에만(gate_logic.GateCounter 가 판정).
+      ⚠️ 한계: 게이트 간격 ≤ 6 m 에선 카메라만으로 누락 가능(11-04 시뮬 6 m 35/40·4 m 21/40, 이중 0).
   [5] 거리는 LiDAR 에서. /red_distance·/green_distance 는 카메라 뎁스라 OAK-1 에서 죽는다.
       → 그 두 토픽 구독을 버리고 /scan 을 구독. 부표는 '점 물체'라 표식-LiDAR 매칭이 통한다
-        (도크와 다르다). 거리는 '먼 게이트를 미리 카운트하지 않게' arming 을 거르는 데만 쓴다
+        (도크와 다르다). 거리는 카운트 뒤 재-arming 의 '새 게이트' 판정에만 쓴다(⑥, [4])
         (LiDAR 가 부표를 못 봐 거리 미상이면 막지 않는다 — 카운트를 죽이면 안 되니까).
-  [6] red_on_port 파라미터 (빨강이 좌현인가). ⚠️ 벤치 검증 필요.
+  [6] red_on_port 파라미터 (빨강이 좌현인가, 대회 규정 기본 true). 부호 규약은 vision_geom 좌 양수로
+      확정(11-04 계약서_ship_gate부호_카운트) — 벤치 검증 항목 아님.
 
   기타: time.monotonic() (CLAUDE.md 1-5). /candidate_angle, /red_angle, /green_angle 이름 불변.
         작년 구독 배선이 뒤엉켜 있었다(/green_angle→red 변수 등) → 바로잡았다.
 
-프레임 규약: /red_angle·/green_angle = 상대각(0=정면). 게이트 중점을 상대각으로 구해
-  rel_to_raw_0_360 으로 /candidate_angle(0~360) 규약에 맞춰 발행 → ship_direction 이 (B)에서 매핑.
-  LiDAR 프레임은 80°=정면.
+프레임 규약: /red_angle·/green_angle = 상대각(0=정면), **왼쪽 양수**(vision_geom.angle_from_pixel).
+  /candidate_angle·LiDAR `a−80` 과 같은 부호. 빨강이 좌현이면 /red_angle > 0.
+  게이트 중점을 상대각으로 구해 rel_to_raw_0_360 으로 /candidate_angle(0~360, ≤180 = 좌) 규약에 맞춰
+  발행 → ship_direction 이 (B)에서 매핑. LiDAR 프레임은 80°=정면.
 """
 
 import math
@@ -76,13 +84,20 @@ class ShipGate(Node):
         self.pair_max_sep_deg = float(self.declare_parameter("pair_max_sep_deg", 80.0).value)
         # 한쪽만 보일 때 게이트 중심 쪽으로 트는 각 (작년 DELTA_FIX 대체)
         self.single_offset_deg = float(self.declare_parameter("single_offset_deg", 40.0).value)
-        # 🚨 빨강이 좌현인가 — 한쪽만 보일 때 트는 방향을 정한다. ⚠️ 벤치 검증 필요 [6]
+        # 🚨 빨강이 좌현인가 — 한쪽만 보일 때 트는 방향을 정한다 [6]. 좌현 = /red_angle > 0 (좌 양수)
         self.red_on_port = bool(self.declare_parameter("red_on_port", True).value)
 
         # 통과 카운트 [4]
-        self.pass_behind_deg = float(self.declare_parameter("pass_behind_deg", 75.0).value)
-        # 먼 게이트를 미리 카운트하지 않게 arming 을 이 거리 안으로 제한(거리 미상이면 막지 않음)
-        self.gate_arm_dist_m = float(self.declare_parameter("gate_arm_dist_m", 6.0).value)
+        # 🚨 카메라 HFOV 80.32° 의 반값 40.16° 안이어야 한다. 75 는 물리적으로 도달 불가해 /gates_passed 가
+        #    영원히 0 이었다(2026-11-04 시뮬). 대회 launch 는 yaml 을 안 넘기므로 이 코드 기본값이 대회값 —
+        #    gate_logic.GateCounter 기본 인자·ship_gate.yaml 과 세 곳 동시에 바꾼다(test_gate_logic 이 검사).
+        self.pass_behind_deg = float(self.declare_parameter("pass_behind_deg", 35.0).value)
+        # 카메라 수평 화각 — 부팅 시 pass_behind_deg 가 반화각 안인지 검사하는 데만 쓴다.
+        # ⚠️ vision.yaml hfov_deg(80.32) 와 같아야 한다(카메라를 바꾸면 둘 다). test_gate_logic 이 일치를 검사.
+        self.cam_hfov_deg = float(self.declare_parameter("cam_hfov_deg", 80.32).value)
+        # 카운트 뒤 재-arming: 전방 쌍의 LiDAR 거리가 '카운트 시점 거리 + 이 여유' 보다 멀어야 새 게이트로 본다.
+        # ⚠️ 실측 필요 — 요잉 복귀 때 같은 부표의 거리 흔들림 폭보다 커야 한다(시뮬 1.0 으로 이중 0).
+        self.rearm_far_margin_m = float(self.declare_parameter("rearm_far_margin_m", 1.0).value)
         self.lidar_match_half_deg = float(self.declare_parameter("lidar_match_half_deg", 3.0).value)
 
         # 신선도
@@ -108,14 +123,22 @@ class ShipGate(Node):
         self.latest_scan = None
         self.t_scan = None
 
-        self.counter = GateCounter(self.pass_behind_deg)
+        self.counter = GateCounter(self.pass_behind_deg, self.rearm_far_margin_m)
 
         self.create_timer(self.period_sec, self.timer_cb)
 
+        if self.pass_behind_deg >= self.cam_hfov_deg / 2.0:
+            # 부팅은 계속한다(조향은 멀쩡). 카운트만 죽는다는 걸 크게 알린다.
+            self.get_logger().error(
+                f"카운트 불가: pass_behind_deg={self.pass_behind_deg} 가 카메라 반화각 "
+                f"{self.cam_hfov_deg / 2.0:.2f}° 이상 — 부표는 그 밖에서 10000(안 보임)이 되어 "
+                f"/gates_passed 가 영원히 0 이다."
+            )
+
         self.get_logger().info(
-            f"ship_gate 시작: active_wp_modes={self.active_wp_modes}, red_on_port={self.red_on_port}"
-            f"(⚠️벤치검증). 쌍 제약 {self.pair_min_sep_deg}~{self.pair_max_sep_deg}°, "
-            f"통과 ±{self.pass_behind_deg}° → /gates_passed."
+            f"ship_gate 시작: active_wp_modes={self.active_wp_modes}, red_on_port={self.red_on_port} "
+            f"(좌 양수 규약). 쌍 제약 {self.pair_min_sep_deg}~{self.pair_max_sep_deg}°, "
+            f"통과 ±{self.pass_behind_deg}° (반화각 {self.cam_hfov_deg / 2.0:.2f}° 안) → /gates_passed."
         )
 
     # ---------------------- 콜백 ----------------------
@@ -190,16 +213,17 @@ class ShipGate(Node):
         abs_angles = [abs(a) for a in (red, green) if a is not None]
         both_ahead = valid_pair and all(x <= self.pass_behind_deg for x in abs_angles)
 
-        # 먼 게이트를 미리 카운트하지 않게 — LiDAR 거리로 arming 을 거른다(미상이면 막지 않음).
-        close_enough = True
+        # arming 에 거리 조건은 없다(⑥). LiDAR 최소거리는 GateCounter 가 '카운트 뒤 재-arming' 의 새 게이트
+        # 판정(카운트 시점 거리 + rearm_far_margin_m 보다 먼가)에만 쓴다. 미상(None)이면 막지 않는다.
+        pair_dist = None
         if both_ahead:
             dists = [d for d in (self._lidar_dist_at(a, now) for a in (red, green) if a is not None)
                      if d is not None]
             if dists:
-                close_enough = min(dists) <= self.gate_arm_dist_m
+                pair_dist = min(dists)
 
-        gate_ahead = both_ahead and close_enough
-        passed = self.counter.update(gate_ahead, abs_angles)
+        gate_ahead = both_ahead
+        passed = self.counter.update(gate_ahead, abs_angles, pair_dist)
         self.pub_gates.publish(Int32(data=int(self.counter.count)))
         if passed:
             self.get_logger().info(f"🚩 게이트 통과 #{self.counter.count}")
