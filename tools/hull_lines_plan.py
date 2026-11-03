@@ -153,7 +153,7 @@ def load_stl(path, scale=1.0, flip_z=False, fit=None, n_st=11, wl_step=40.0, but
     hb = np.abs(To[:, :, 1]).max()
     for f in buttocks:
         for side in (+1, -1):
-            for l in _chain(_slice(To, 1, side * f * hb))[:1]:
+            for l in _chain(_slice(To, 1, side * f * hb))[:1]:   # 가장 긴 조각만 — 나머지는 두께면 세로 스파이크
                 by["HULL_LONGITUDINAL_LINES"].append(l[np.argsort(l[:, 0])])
     for k in _chain(_slice(To, 1, 0.0)):     # 바닥·트랜섬·선수가 따로 끊겨 나올 수 있다 → 전부
         if len(k) > 2:
@@ -173,6 +173,12 @@ def load_stl(path, scale=1.0, flip_z=False, fit=None, n_st=11, wl_step=40.0, but
         # 성긴 메시(2번배 Fusion STL 선수부)는 구간에 높은 꼭짓점이 없어 현측선이 톱니처럼 꺼진다 → 이웃 ±3 구간 최댓값
         z = pts[:, 2].copy()
         pts[:, 2] = [z[max(0, i - 3):i + 4].max() for i in range(len(z))]
+        # 반폭도 현측선도 같은 이유로 톱니가 생긴다(선수부 성긴 메시, 로프트 이음매) → 이웃 ±3 구간 최댓값 뒤 이동평균 5
+        if fit:   # 성긴 메시(2번배 Fusion STL)만. 1번배는 메시가 촘촘해 톱니가 없고, 창을 쓰면 급경사 선수 폭이 과대(25→63 mm)
+            yy = np.abs(pts[:, 1]).copy()
+            yy = np.array([yy[max(0, i - 1):i + 2].max() for i in range(len(yy))])
+            yy = np.convolve(np.pad(yy, 2, mode="edge"), np.ones(5) / 5, mode="valid")
+            pts[:, 1] = side * yy
         by["HULL_SHEER"].append(pts)
     return by, 0.0
 
@@ -256,16 +262,37 @@ def draw_profile(ax, by, cl, dims):
 
 def draw_halfbreadth(ax, by, cl, dims):
     st = sorted(by["HULL_STATION_LINES"], key=lambda p: p[0, 0])
-    for p in by["HULL_LONGITUDINAL_LINES"]:
-        if np.mean(p[:, 1]) > cl:
-            ax.plot(p[:, 0], p[:, 1] - cl, color=C_LG, lw=0.8, label=dims.get("lg_label") if dims.get("lg_label") else None)
-    for p in by["HULL_SHEER"]:
-        if np.mean(p[:, 1]) > cl:
-            ax.plot(p[:, 0], p[:, 1] - cl, color=C_SH, lw=1.8, label="현측 상단선(Sheer)")
+    sheer = [p for p in by["HULL_SHEER"] if np.mean(p[:, 1]) > cl]
+    if dims.get("lg_label") and sheer:
+        # 평면도의 버톡 = 선체 반폭이 그 y 보다 넓은 x 구간에 그은 수평선 (3D 버톡 곡선의 투영과 같다)
+        sh = sheer[0]; hb = (sh[:, 1] - cl).max()
+        for f in (0.25, 0.5, 0.75):
+            y = f * hb; m = (sh[:, 1] - cl) >= y
+            if m.any():
+                ax.plot([sh[m, 0].min(), sh[m, 0].max()], [y, y], color=C_LG, lw=0.8, label=dims.get("lg_label"))
+    else:
+        for p in by["HULL_LONGITUDINAL_LINES"]:
+            if np.mean(p[:, 1]) > cl:
+                ax.plot(p[:, 0], p[:, 1] - cl, color=C_LG, lw=0.8, label=dims.get("lg_label") if dims.get("lg_label") else None)
+    for p in sheer:
+        ax.plot(p[:, 0], p[:, 1] - cl, color=C_SH, lw=1.8, label="현측 상단선(Sheer)")
     for p in by["HULL_WATERLINES"]:
         if np.mean(p[:, 1]) > cl:
             q = half(p, cl, +1)
             z = p[0, 2]
+            if dims.get("lg_label"):
+                # STL 수선: 메시 이음매에서 생긴 스파이크는 중앙값 필터로, 선수 끝에서 x 정렬 때문에 생기는 고리는
+                # 최대 반폭 이후 누적 최솟값(+2 mm) 으로 눌러 없앤다. CL 8 mm 안쪽은 선수 끝으로 보고 자른다.
+                raw = p[(p[:, 1] - cl) >= -0.5]; xv, yv = raw[:, 0], raw[:, 1] - cl   # 원시 점(촘촘히 채우기 전)에서 처리
+                if len(yv) > 7:
+                    # 같은 x 에 안쪽 점(로프트 이음매 리브·두께면)이 끼면 아래로 톱니가 생긴다 → 3 mm x 구간마다 최대 반폭만
+                    b = np.floor(xv / 3.0).astype(int); ub = np.unique(b)
+                    xv = np.array([xv[b == u].mean() for u in ub]); yv = np.array([yv[b == u].max() for u in ub])
+                    k = int(np.argmax(yv)); tail = np.minimum.accumulate(yv[k:]); yv[k:] = np.minimum(yv[k:], tail + 2.0)
+                    cut = np.where(yv[k:] < 15.0)[0]
+                    if len(cut): xv, yv = xv[:k + cut[0] + 1], yv[:k + cut[0] + 1]
+                    ax.plot(xv, yv, color=C_WL, lw=1.3, ls="--", label=f"수선 WL {z:.1f}")
+                    continue
             ax.plot(q[:, 0], q[:, 1] - cl, color=C_WL, lw=1.3, ls="--", label=f"수선 WL {z:.1f}")
     for i, p in enumerate(st):
         x = p[0, 0]
