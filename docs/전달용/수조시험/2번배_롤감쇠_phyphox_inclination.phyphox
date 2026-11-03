@@ -1,0 +1,703 @@
+<phyphox version="1.14" locale="en">
+  <title>Inclination</title>
+  <category>Tools</category>
+  <icon format="base64">
+iVBORw0KGgoAAAANSUhEUgAAAMgAAADICAYAAACtWK6eAAAABHNCSVQICAgIfAhkiAAAAAlwSFlzAAAN1wAADdcBQiibeAAAABl0RVh0U29mdHdhcmUAd3d3Lmlua3NjYXBlLm9yZ5vuPBoAAAmsSURBVHic7d1brB1VGcDxbxUpV8UiitwELYooyDVcFeWiCYKXiLyo4QG1qDFgxASNMfpgIiT6gCFRjBpiJBpMTIgaHygSMFyriGnLJYDcL4IgUNrSQvv3Yc7hlOPaPefsWTNr793/73H22TPfOnu+PbPXrG+tCEmSJEmSJEmSJEmSJEmSJEmSJEmSJEmSJEmSJEmSJEmSJEmSJEmSJEmSJEmSJEmSJEmSJEmSJEmSJEkTAtgZ2BNItWORRgZwGnATsInG08CPgLfUjk2qCli2RWLM9jzwbWDn2nFKvQPeCWwckBxbehT4PLBd7Zil3gCXzCM5trQS+GjtuKVeAH9eYIJMuxY4qnb8mnyLKh9/45DvOyUiVgBXAgcUjEd6jdoJcmOL96aI+ExE3A38ENi9UEzSaACWAE8NeZs127PAhcAOtdslFQOcCDxTKEkAHgA+C9S+OkplAPsAVzD4ecgw/gacUrttUjHAe4CrCiYJwDXAYbXbJhVDM/Tk9oJJsokm8Q6o3TapCCABZwP/Kpgoa4GLgd1qt68tmt9u+9eOQ5UBi4ELgP8WTJT/ABcxpj1ewJnAOmA1sKR2PBoBwO5T3/7rCybKg8A5jNHweuBzvHb82vXjmujqAPA24HLK9njdCpxUu21zobmSbs7Ef+U4Jbl6ABwN/KVgkkDT43VI7bblAOcPSA6AW4DX145RI4imx+ufBZPkZZor1Ftrt20a8MWtJMe1Joe2ClhE81vi8YKJ8iLNb56qJx9NQdmg5PgNsLhmfBojNDXtF9FUIpby2NRJ+roK7fk48MqAuK7A4TQaBrAHzbf/hoKJchdwdo9tOInBPXa/xepKtQUcRPMEfdAtyjBuAk7sOO5DGfzc59cmh4oCjgNuKJgkm2kSb2kHsb4JuH/Acf9AhVs9bSOAjwH3FkyUjTQ9XkWmJwK2B64bcKxbgV1KHEcaaOokXAY8WTBRnqXpHNipZWw/GbD/1VgxqT4Bu06d1GsKJsojNMm34N8INNMa5TyFo5BVC02x1uUM7k4dxirgjAXE8F6akcazbQRO7rL90rwAB9NNsdbhcxx3RwaPBPhyX+2X5gU4Ffh7wSTZarEW8PMB7/tFz02X5oeZYq1B3a3DWMesYi2aXrWcVTgfsUYdTbHWMspNTQQzxVp7AU9kXl8PvK9226V5o5tirRcHbD+3dnuloQD7Ub5Ya0tX126j1BrdFGu9DJxau21SMWwDxVpSK8wUaz1WMFGmi7XeULt9UhHMFGs9VzBRnqaZqMERvJoMNMPVx7pYS+oc8C7GsFhL6hVwLHBnwSTprFhL6h3Nj/hVBRNkWtFiLakK4KwOkmNLa4Dv0bJYS6oCWJE5qW+g6fF6oWCiDF2sJVUBfGTAyXzy1OtdFGutBs6s3XZpTjTTgs52S+bvuirWOqJGu6U50Swnl+vi/cRW3nMK3RRrvb3PtktzAi7LnLCrmWOZArop1toAXAq8sa/2SwPRzJiSmx943jXmdFOs9QxjvLKWJgTwpczJ+QJDzBQPLKF8sdZDjNnKWpogNAvazHZZy312Uax1G/ChQs2W5gYcSP7H+aGF9n8U+d6xNq4pFZ+0VTRPtWe7vYPjnAbcUTBJNgG/AvYqHav0KuCezMl3YUfHWkTT4/VgwUSxWEvdAI4Y8M28T8fHtVhLow/4TuZEu7bH408Xa71UMFHuxmItlUB+YOJXK8TRRbHWzcD7+26LJgTNTIm5E7LaMA/gGOD6gkkCzSpXB9Zqk8YU+fU9VtaOK+LVHq+VBZPEYi0tDM3imrP9oHZc05hZWSs3H/CwLNbS/AAPZ06gkZspEdgFi7XUJ5qn57NtYISXMAD2prlNerlgoqzGHi/NBnwhc7LcUDuu+QDejcVa6hL5VaK+XzuuhQBOAG4smCTT0xNZrLWtI18FeHrtuBaKmWKt+womisVa2zKawqbcNKNjO0M7Mz1eXRRr7Vi7feoRcGTmZHi0dlwl0F2x1jJgUe32qQfAuZmT4I+14yqJmWKtktMTrWAMirXM4vYOymy7o/coOpRSeiSldF5EHBYRfyq026Mj4jqaHi8XLZ1UwO8z347n1I6rSzRDV/5R8GpisdakIj/G6fjacXWNmWKtBwomylos1pocNN2i6zIf9Jtrx9YXLNbSIDRD3Gd7rnZcNdBhsRZOTzSeyHfxjsQQ91qA/Wl+T5Qu1vpA7bZpgYDTMx/m8tpxjQImpFjLbt529sxs+3fvUYyglNJtKaUPRsSHI2JVod2eGRF30jyTyf3vizNB2sl9SE/2HsUISyktj4gjIuK8KPO/2T4ilkXEffRQrGWCtLMks+2Z3qMYcSmlV1JKP4uIAyPimxGxpsBud42I70bEvXRYrGWCtLNLZluJD38ipZTWppQuiYilEfHjiHilwG73iYjLI2IlHRRrmSDt5BJkbe9RjJmU0tMppQsi4tCI+F2h3R4cEVcBy4EjC+0zij2IoRmduV9EbBcRO0bEOBXy526V5iNXDLQUOK1NMHPYKZr/7zhIETFXHcjyiHg4Ij4dEfsXOOapEbEC+GVEXJBSWtdmZ60fwEzd+30jIi6MiG3mCbLGws0RcVJKaehbuRK3WD+NiIvD5NDoOT4ivtJmB62uIDRTUf61zT6kjj2QUnrHsG9uewU5q+X7pa61GkLfNkG8rdKo29TmzW0T5L6W75e6dk+bN7f9DbI0IlZHhMsKaxQRESeklG4ZdgetriAppfuj6SVodRmTOrA5Ir7WJjkiCjwHiYgAjouIr0fE4RGxx5YvRcQ4FRCti4gNC/j7vSJi71nbnoiIx4tFNNjmiHi+h+OUsjYiNna078XRPKTeLZov69sj4lsppQc7Op7mAzg/U7PQaj10jRbHYrWTG7k7tjMq6v+ZIO08ktm2X+9RqDMmSDu5KUb37T0KdcbZIloAFkfE+njtF83miNgppdTVD1L1yCtIC1NJ8NSszdPD/jUBTJD2cqMJDu49CnXCBGnvrsw2E2RCmCDtmSATzARp787MtkN6j0IaRcC+mafpLwEO4JQiIoDHMklyTO241J63WGXcltl2bO9RqDgTpIxbM9tMECkiAjg5c4s1ESvdSq3RrLKUWzjG7t4x5y1WAVOz992UeanLGRbVAxOknNzCOSaIFBEBHJu5xVoL7Fw7Nqk6YDua1Vln+2Tt2DQ8b7EKSSltioirMy99qu9YpJEEnJG5gjwLbF87Nqk6YAfg+anEeAi4lGaCb0kREcA5gE/RJUmSJEmSJEmSJEmSJEmSJEmSJEmSJEmSJEmSJEmSJEmSJEmSJEmSJEmSRsj/ADZQEBRWqWuUAAAAAElFTkSuQmCC
+    </icon>
+  <description>
+        Measure the angle of the phone's inclination.
+
+        This tool uses the accelerometer to determine the inclination of the phone. When the phone is resting on a table, the inclination is zero. For non-zero inclination, the direction of the inclination is given as rotation.
+
+        Note, that the definition of the angles has been chosen for the task of measuring an inclination (especially for inclined plane experiments) independent of the rotation (about the z axis) of the phone.
+    </description>
+  <link label="Wiki">http://phyphox.org/wiki/index.php?title=Experiment:_Inclination</link>
+  <translations>
+    <translation locale="de">
+      <title>Neigung</title>
+      <category>Werkzeuge</category>
+      <description>
+        Miss den Neigungswinkel des Smartphones.
+
+                Dieses Werkzeug nutzt den Beschleunigungssensor um die Neigung des Handys zu bestimmen. Wenn das Gerät flach auf einem Tisch liegt, ist die Neigung null. Bei höherer Neigung wird die Richtung der Neigung als Rotation angegeben.
+
+                Die Winkel wurden hier so festgelegt, dass Neigungen (insbesondere für Experimente an der schiefen Ebene) unabhängig von der Rotation (um die z-Achse) des Handys ermittelt werden können.
+    </description>
+      <string original="Inclination">Neigung</string>
+      <string original="Flat">Liegend</string>
+      <string original="Tilt up/down">Kippwinkel auf/ab</string>
+      <string original="Angle">Winkel</string>
+      <string original="Tilt left/right">Kippwinkel links/rechts</string>
+      <string original="This tab helps to measure the tilting angle of the phone, starting from a flat position.">Diese Seite misst den Neigungswinkel des Smartphones aus einer liegenden Position.</string>
+      <string original="Upright">Aufrecht</string>
+      <string original="This tab helps to measure the tilting angle of the phone, starting from an upright position.">Diese Seite misst den Neigungswinkel des Smartphones aus einer aufrechten Position.</string>
+      <string original="Side">Seite</string>
+      <string original="This tab helps to measure the tilting angle of the phone, starting from a sideways position.">Diese Seite misst den Neigungswinkel des Smartphones aus einer seitlichen Position.</string>
+      <string original="Plane">Ebene</string>
+      <string original="This tab helps to measure the inclination of the plane. The inclination of the plane is measured as the phone rests flat on the surface, regardless of its orientation. The rotation gives the direction of the inclination.">Diese Seite misst die Neigung einer Ebene. Dazu muss das Smartphone auf dieser Ebene liegen, wobei die Neigung unabhängig von der Ausrichtung des Smartphones berechnet wird. Die Rotation gibt erst die Richtung der Neigung an.</string>
+    </translation>
+    <translation locale="cs">
+      <title>Náklon</title>
+      <category>Nástroje</category>
+      <description>
+        Měří úhel náklonu mobilního zařízení.
+
+Tento nástroj využívá akcelerometr k určení náklonu mobilu. Když je telefon vodorovně, pak je náklon 0. Pro nenulový náklon je směr udán jako rotace.
+
+Povšimněte si, že úhly byly zadefinovány tak, aby se snadno měřil náklon (například pro experimenty s nakloněnou rovinou) nezávisle na rotaci mobilu (kolem osy z).
+    </description>
+      <string original="Inclination">Náklon</string>
+      <string original="Rotation">Rotace</string>
+      <string original="Flat">Vodorovně</string>
+      <string original="Tilt up/down">Náklon nahoru/dolů</string>
+      <string original="Angle">Úhel</string>
+      <string original="Tilt left/right">Náklon doleva/doprava</string>
+      <string original="This tab helps to measure the tilting angle of the phone, starting from a flat position.">Tato záložka pomáhá měřit úhel náklonu telefonu, počínaje vodorovnou polohou.</string>
+      <string original="Upright">Vzpřímeně</string>
+      <string original="This tab helps to measure the tilting angle of the phone, starting from an upright position.">Tato záložka pomáhá měřit úhel náklonu telefonu, počínaje vzpřímenou polohou.</string>
+      <string original="Side">Na boku</string>
+      <string original="This tab helps to measure the tilting angle of the phone, starting from a sideways position.">Tato záložka pomáhá měřit úhel naklonění telefonu, počínaje polohou na boku.</string>
+      <string original="Plane">Rovina</string>
+      <string original="This tab helps to measure the inclination of the plane. The inclination of the plane is measured as the phone rests flat on the surface, regardless of its orientation. The rotation gives the direction of the inclination.">Tato záložka pomáhá měřit sklon roviny. Sklon roviny se měří, když telefon leží rovně na povrchu, bez ohledu na jeho orientaci. Rotace udává směr sklonu.</string>
+    </translation>
+    <translation locale="pl">
+      <title>Nachylenie</title>
+      <category>Narzędzia</category>
+      <description>
+        Zmierz kąt nachylenia urządzenia.
+
+        To narzędzie wykorzystuje akcelerometr do określenia nachylenia urządzenia względem poziomu. Jeśli urządzenie spoczywa na powierzchni równoległej do podłoża nachylenie wynosi zero. Dla innych położeń nachylenie jest wskazywane jako część obrotu.
+
+        Należy zaznaczyć, że kąta nachylenia został zdefiniowany (szczególnie dla eksperymentu z nachyloną powierzchnią) niezależnie od kąta obrotu (wokół osi z) urządzenia.
+    </description>
+      <string original="Inclination">Nachylenie</string>
+      <string original="Rotation">Obrót</string>
+      <string original="Flat">Płaski</string>
+      <string original="Tilt up/down">Pochyl w górę / w dół</string>
+      <string original="Angle">Kąt</string>
+      <string original="Tilt left/right">Pochyl w lewo / w prawo</string>
+      <string original="This tab helps to measure the tilting angle of the phone, starting from a flat position.">Ta zakładka pomaga zmierzyć kąt nachylenia telefonu, począwszy od poziomego położenia.</string>
+      <string original="Upright">Pionowo</string>
+      <string original="This tab helps to measure the tilting angle of the phone, starting from an upright position.">Ta zakładka pomaga zmierzyć kąt nachylenia telefonu, począwszy od pozycji pionowej.</string>
+      <string original="Side">Bok</string>
+      <string original="This tab helps to measure the tilting angle of the phone, starting from a sideways position.">Ta zakładka pomaga zmierzyć kąt nachylenia telefonu, począwszy od pozycji na boku.</string>
+      <string original="Plane">Płaszczyzna</string>
+      <string original="This tab helps to measure the inclination of the plane. The inclination of the plane is measured as the phone rests flat on the surface, regardless of its orientation. The rotation gives the direction of the inclination.">Ta zakładka pomaga zmierzyć nachylenie płaszczyzny. Pochylenie płaszczyzny jest mierzone, gdy telefon spoczywa płasko na płaszczyźnie, niezależnie od jego na niej orientacji. Rotacja wskazuje kierunek nachylenia.</string>
+    </translation>
+    <translation locale="nl">
+      <title>Helling</title>
+      <category>Gereedschap</category>
+      <description>
+        Meet de hellingshoek van je smartphone.
+
+   Deze tool gebruikt de versnellingsmeter om de helling van de smartphone te bepalen. Wanneer de smartphone op een tafel ligt, is de helling nul. Voor een niet-nul helling wordt de richting van de helling gegeven als een rotatie.
+
+ Merk op dat de definitie van de hoeken is gekozen voor het meten van een helling (in het bijzonder voor experimenten met schuine vlakken), onafhankelijk van de rotatie (rond de z-as) van de smartphone.
+    </description>
+      <string original="Inclination">Helling</string>
+      <string original="Rotation">Rotatie</string>
+      <string original="Flat">Liggend</string>
+      <string original="Tilt up/down">Op/neer kanteling</string>
+      <string original="Angle">Hoek</string>
+      <string original="Tilt left/right">Links/rechts kanteling</string>
+      <string original="This tab helps to measure the tilting angle of the phone, starting from a flat position.">Op dit scherm kun je de kantelingshoek van de smartphone meten, vertrekkend van een horizontale stand.</string>
+      <string original="Upright">Rechtop</string>
+      <string original="This tab helps to measure the tilting angle of the phone, starting from an upright position.">Op dit scherm kun je de kantelingshoek van de smartphone meten, vertrekkend van een vertikale stand.</string>
+      <string original="Side">Zijde</string>
+      <string original="This tab helps to measure the tilting angle of the phone, starting from a sideways position.">Op dit scherm kun je de kantelingshoek van de smartphone meten, vertrekkend van een zijdelingse stand.</string>
+      <string original="Plane">Vlak</string>
+      <string original="This tab helps to measure the inclination of the plane. The inclination of the plane is measured as the phone rests flat on the surface, regardless of its orientation. The rotation gives the direction of the inclination.">Op dit scherm kun je de helling van het vlak meten. De e helling van het vlak wordt bepaald terwijl de smartphone plat op het oppervlak ligt, onafhankelijk van zijn oriëntatie. De rotatie geeft de richting van de helling aan.</string>
+    </translation>
+    <translation locale="ru">
+      <title>Наклон</title>
+      <category>Измерительные инструменты</category>
+      <description>
+        Измерьте угол наклона телефона.
+
+        Этот инструмент использует акселерометр для определения наклона телефона. Когда телефон покоится на столе, наклон равен нулю. При ненулевом наклоне направление наклона задается как вращение.
+
+        Обратите внимание, что выбор углов для измерения наклона (особенно для экспериментов на наклонной плоскости) не зависит от поворота (вокруг оси z) телефона.
+    </description>
+      <string original="Inclination">Наклон</string>
+      <string original="Rotation">Вращение</string>
+      <string original="Flat">Ровный</string>
+      <string original="Tilt up/down">Наклон вверх/вниз</string>
+      <string original="Angle">Угол</string>
+      <string original="Tilt left/right">Наклон влево/вправо</string>
+      <string original="This tab helps to measure the tilting angle of the phone, starting from a flat position.">Эта вкладка позволяет измерять угол наклона телефона, начиная с горизонтального положения.</string>
+      <string original="Upright">Вертикальный</string>
+      <string original="This tab helps to measure the tilting angle of the phone, starting from an upright position.">Эта вкладка позволяет измерять угол наклона телефона, начиная с вертикального положения.</string>
+      <string original="Side">Боковая сторона</string>
+      <string original="This tab helps to measure the tilting angle of the phone, starting from a sideways position.">Эта вкладка позволяет измерять угол наклона телефона, начиная с бокового положения.</string>
+      <string original="Plane">Плоскость</string>
+      <string original="This tab helps to measure the inclination of the plane. The inclination of the plane is measured as the phone rests flat on the surface, regardless of its orientation. The rotation gives the direction of the inclination.">Эта вкладка позволяет измерять наклон плоскости. Наклон плоскости измеряется по мере того, как телефон остается лежать на поверхности, независимо от его ориентации. Вращение дает направление наклона.</string>
+    </translation>
+    <translation locale="it">
+      <title>Inclinazione</title>
+      <category>Strumenti</category>
+      <description>
+        Misura l'angolo d'inclinazione del telefono.
+
+        Questo strumento usa l'accelerometro per misurare l'inclinazione del telefono. L'inclinazione restituisce l'angolo compreso tra un piano orizzontale e lo schermo del telefono. La rotazione, invece, è la misura dell'angolo di rotazione del telefono attorno all'asse z quando è in posizione verticale.
+    </description>
+      <string original="Inclination">Inclinazione</string>
+      <string original="Rotation">Rotazione</string>
+      <string original="Flat">In piano</string>
+      <string original="Tilt up/down">Inclinazione su/giù</string>
+      <string original="Angle">Angolo</string>
+      <string original="Tilt left/right">Inclinazione sinistra/destra</string>
+      <string original="This tab helps to measure the tilting angle of the phone, starting from a flat position.">In questa scheda si misura l'angolo d'inclinazione del telefono, partendo dalla posizione orizzontale in piano.</string>
+      <string original="Upright">In piedi</string>
+      <string original="This tab helps to measure the tilting angle of the phone, starting from an upright position.">In questa scheda si misura l'angolo d'inclinazione del telefono, a partire dalla posizione verticale, in piedi.</string>
+      <string original="Side">Laterale</string>
+      <string original="This tab helps to measure the tilting angle of the phone, starting from a sideways position.">In questa scheda si misura l'angolo d'inclinazione del telefono, quando si trova poggiato su un lato.</string>
+      <string original="Plane">Piano</string>
+      <string original="This tab helps to measure the inclination of the plane. The inclination of the plane is measured as the phone rests flat on the surface, regardless of its orientation. The rotation gives the direction of the inclination.">In questa scheda si misura l'inclinazione di un piano. L'inclinazione del piano si ottiene col telefono fermo sulla sua superficie anteriore o posteriore, indipendentemente dall'orientazione. La rotazione fornisce la direzione dell'inclinazione.</string>
+    </translation>
+    <translation locale="el">
+      <title>Κλίση</title>
+      <category>Εργαλεία</category>
+      <description>
+        Μέτρηση της γωνίας κλίσης του τηλεφώνου.
+
+        Αυτό το εργαλείο χρησιμοποιεί το επιταχυνσιόμετρο για να προσδιορίσει την κλίση του τηλεφώνου. Όταν το τηλέφωνο είναι οριζόντιο σε ένα τραπέζι, η κλίση ειναι μηδέν. Στις μη μηδενικές κλίσεις ή κατεύθυνση της κλίσης δίνεται σαν περιστροφή.
+
+        Σημειώστε ότι ο ορισμός των γωνιών επιλέχθηκε με στόχο τη μέτρηση της κλίσης (ιδιαίτερα σε πειράματα με κεκλιμένο επίπεδο) ανεξάρτητα από την περιστροφή ως προς τον άξονα z του τηλεφώνου.
+    </description>
+      <string original="Inclination">Κλίση</string>
+      <string original="Rotation">Περιστροφή</string>
+      <string original="Flat">Επίπεδο</string>
+      <string original="Tilt up/down">Απόκλιση πάνω/κάτω</string>
+      <string original="Angle">Γωνία</string>
+      <string original="Tilt left/right">Απόκλιση δεξιά/αριστερά</string>
+      <string original="This tab helps to measure the tilting angle of the phone, starting from a flat position.">Αυτή η καρτέλα βοηθά τη μέτρηση της γωνίας απόκλισης του τηλεφώνου ξεκινώντας από οριζόντια θέση.</string>
+      <string original="Upright">Κατακόρυφο</string>
+      <string original="This tab helps to measure the tilting angle of the phone, starting from an upright position.">Αυτή η καρτέλα βοηθά τη μέτρηση της γωνίας απόκλισης του τηλεφώνου ξεκινώντας από κατακόρυφη θέση.</string>
+      <string original="Side">Πλευρά</string>
+      <string original="This tab helps to measure the tilting angle of the phone, starting from a sideways position.">Αυτή η καρτέλα βοηθά τη μέτρηση της γωνίας απόκλισης του τηλεφώνου ξεκινώντας από πλαϊνή θέση.</string>
+      <string original="Plane">Επίπεδο</string>
+      <string original="This tab helps to measure the inclination of the plane. The inclination of the plane is measured as the phone rests flat on the surface, regardless of its orientation. The rotation gives the direction of the inclination.">Αυτή η καρτέλα βοηθά να μετρηθεί η κλίση του επιπέδου. Η κλίση του επιπέδου μετριέται καθώς το τηλέφωνο είναι στο επίπεδο της επιφάνειας, ανεξάρτητα από την περιστροφή του. Η περιστροφή δίνει την κατεύθυνση της κλίσης.</string>
+    </translation>
+    <translation locale="ja">
+      <title>傾斜</title>
+      <category>ツール</category>
+      <description>
+        スマートフォンの傾斜角度の測定．
+
+このツールではスマートフォンの傾斜を加速度計を用いて求めることができます．スマートフォンをテーブルに置いているとき，傾斜はゼロと計測されます．傾斜の向きが，スマートフォンの回転角として得られます．
+
+ここで，測定される回転角は，スマートフォンの向きによりません．
+    </description>
+      <string original="Flat">水平置き</string>
+      <string original="Tilt up/down">前後の傾き</string>
+      <string original="Angle">角度</string>
+      <string original="Tilt left/right">左右の傾き</string>
+      <string original="This tab helps to measure the tilting angle of the phone, starting from a flat position.">”水平置き”タブは水平に置かれたスマートフォンからの傾斜角度の計測に役立ちます．</string>
+      <string original="Upright">垂直置き</string>
+      <string original="This tab helps to measure the tilting angle of the phone, starting from an upright position.">”垂直置き”タブは垂直に置かれたスマートフォンからの傾斜角度の計測に役立ちます．</string>
+      <string original="Side">横置き</string>
+      <string original="This tab helps to measure the tilting angle of the phone, starting from a sideways position.">”横置き”タブは長手方向に立てたスマートフォンからの傾斜角度の計測に役立ちます．</string>
+      <string original="Plane">水平度</string>
+      <string original="Inclination">傾斜</string>
+      <string original="Rotation">左右の傾き</string>
+      <string original="This tab helps to measure the inclination of the plane. The inclination of the plane is measured as the phone rests flat on the surface, regardless of its orientation. The rotation gives the direction of the inclination.">この水平度タブではスマートフォンが置かれた面の傾き角度の大きさが計測されます．</string>
+    </translation>
+    <translation locale="pt">
+      <title>Inclinação</title>
+      <category>Ferramentas</category>
+      <description>
+        Medida do ângulo de inclinação do aparelho.
+
+        Esta ferramenta usa o acelerômetro para determinar a inclinação do aparelho. Quando em repouso sobre um mesa, a inclinação é zero. Para inclinações diferente de zero, a direcão da inclinação é dada como rotacão.
+
+        A definição do ângulos foi escolhida para determinar uma inclinacão (especialmente para experimentos em um plano inclinado) independente da rotacão (sobre o eixo z) do aparelho.
+    </description>
+      <string original="Flat">Plano</string>
+      <string original="Tilt up/down">Incline para cima/baixo</string>
+      <string original="Angle">Ângulo</string>
+      <string original="Tilt left/right">Incline para esquerda/direita</string>
+      <string original="This tab helps to measure the tilting angle of the phone, starting from a flat position.">Esta aba ajuda a medir o ângulo de inclinição do smartphone, iniciando de uma posição horizontal.</string>
+      <string original="Upright">Vertical</string>
+      <string original="This tab helps to measure the tilting angle of the phone, starting from an upright position.">Esta aba ajuda a medir o ângulo de inclinação do smartphone, iniciando de uma posição vertical.</string>
+      <string original="Side">Lado</string>
+      <string original="This tab helps to measure the tilting angle of the phone, starting from a sideways position.">Esta aba ajuda a medir o ângulo de inclinação do smartphone, iniciando de uma posição horizontal (celular deitado).</string>
+      <string original="Plane">Plano</string>
+      <string original="Inclination">Inclinação</string>
+      <string original="Rotation">Rotação</string>
+      <string original="This tab helps to measure the inclination of the plane. The inclination of the plane is measured as the phone rests flat on the surface, regardless of its orientation. The rotation gives the direction of the inclination.">Esta aba ajuda a medir a inclinação de uma superfície. A inclinação da superfície é medida com o aparelho parado sobre a superfície, independente da sua orientação. A rotação fornece a direção de inclinação.</string>
+    </translation>
+    <translation locale="tr">
+      <title>Eğim</title>
+      <category>Araçlar</category>
+      <description>
+        Telefonun eğim açısını ölçün.
+
+Bu araç, telefonun eğimini belirlemek için ivmeölçer kullanır. Telefon bir masada dururken, eğim sıfırdır. Sıfır olmayan eğim için, eğim yönü dönüş olarak verilir.
+
+Dikkat, açıların tanımının telefonun dönüşünden bağımsız olarak (z ekseni ile ilgili) eğimin ölçülmesi (özellikle eğik düzlem deneyleri) görevi için seçildiğini unutmayın.
+    </description>
+      <string original="Flat">Düz</string>
+      <string original="Tilt up/down">Yukarı / aşağı eğim</string>
+      <string original="Angle">Açı</string>
+      <string original="Tilt left/right">Sola / sağa eğim</string>
+      <string original="This tab helps to measure the tilting angle of the phone, starting from a flat position.">Bu sekme, düz bir konumdan başlayarak telefonun eğim açısını ölçmeye yardımcı olur.</string>
+      <string original="Upright">Dik</string>
+      <string original="This tab helps to measure the tilting angle of the phone, starting from an upright position.">Bu sekme, dik pozisyondan başlayarak telefonun eğim açısını ölçmeye yardımcı olur.</string>
+      <string original="Side">Yan</string>
+      <string original="This tab helps to measure the tilting angle of the phone, starting from a sideways position.">Bu sekme, telefonun yana yatma açısını, yan konumdan başlayarak ölçmeye yardımcı olur.</string>
+      <string original="Plane">Uçak</string>
+      <string original="Inclination">Eğim</string>
+      <string original="Rotation">Dönme</string>
+      <string original="This tab helps to measure the inclination of the plane. The inclination of the plane is measured as the phone rests flat on the surface, regardless of its orientation. The rotation gives the direction of the inclination.">Bu sekme, düzlemin eğimini ölçmeye yardımcı olur. Düzlemin eğimi, telefonun yönü ne olursa olsun, yüzeye yaslandığı için ölçülür. Döndürme eğim yönünü verir.</string>
+    </translation>
+    <translation locale="zh_Hant">
+      <title>傾斜度</title>
+      <category>工具</category>
+      <description>
+        測量手機的傾斜角度。
+
+	此工具利用加速儀測得手機的傾斜度。當手機放置於桌面上時，傾斜度為零。當傾斜度不為零時，傾斜的方向以角度顯示。
+
+	注意，此處角度的定義已為測量傾斜度而設計（尤其是傾斜面實驗等），與手機的旋轉（對z軸）無關。
+    </description>
+      <string original="Inclination">傾斜度</string>
+      <string original="Rotation">旋轉角度</string>
+    </translation>
+    <translation locale="fr">
+      <title>Inclinaison</title>
+      <category>Outils</category>
+      <description>
+        Mesure de l'inclinaison du téléphone.
+
+        Cet outil utilise l'accéléromètre pour déterminer l'angle d’inclinaison du téléphone. Lorsque le téléphone est horizontal, l'inclinaison est nulle. Pour une inclinaison non nulle, le sens de l'inclinaison est donné par la mesure de la rotation.
+
+        Ces définitions été choisies pour facilité la mesure d'une inclinaison (en particulier pour les expériences de plan incliné) indépendamment de la valeur de la rotation (autour de l'axe z) du téléphone.
+    </description>
+      <string original="Flat">Horizontal</string>
+      <string original="Tilt up/down">Rotation haut/bas</string>
+      <string original="Tilt left/right">Rotation gauche/droite</string>
+      <string original="This tab helps to measure the tilting angle of the phone, starting from a flat position.">Cet onglet mesure les angles d'inclinaison du téléphone, à partir d'une position horizontale.</string>
+      <string original="Upright">Vertical</string>
+      <string original="This tab helps to measure the tilting angle of the phone, starting from an upright position.">Cet onglet mesure les angles d'inclinaison du téléphone, à partir d'une position verticale.</string>
+      <string original="Side">Coté</string>
+      <string original="This tab helps to measure the tilting angle of the phone, starting from a sideways position.">Cet onglet mesure les angles d'inclinaison du téléphone, à partir d'une position où le téléphone est posé sur le coté.</string>
+      <string original="Plane">Plan</string>
+      <string original="Inclination">Inclinaison</string>
+      <string original="This tab helps to measure the inclination of the plane. The inclination of the plane is measured as the phone rests flat on the surface, regardless of its orientation. The rotation gives the direction of the inclination.">Cet onglet mesure l'inclinaison d'un plan. Cette inclinaison est mesurée en mettant le téléphone à plat sur la surface, indépendamment de son orientation. La rotation donne la direction de l'inclinaison.</string>
+    </translation>
+    <translation locale="vi">
+      <title>Độ nghiêng</title>
+      <category>Công cụ</category>
+      <description>
+        Đo góc nghiêng của điện thoại.
+
+        Công cụ này dùng gia tốc kế để xác định góc nghiêng của điện thoại. Khi điện thoại được đặt trên mặt bàn, độ nghiêng bằng 0. Đối với độ nghiêng khác không, hướng của độ nghiêng được đo theo độ quay.
+
+        Chú ý, định nghĩa của góc nghiêng đã được chọn cho việc xác định góc nghiêng (đặc biệt cho thí nghiệm mặt phẳng nghiêng) độc lập với độ quay (quanh trục z) của điện thoại.
+    </description>
+      <string original="Flat">Mặt ngang</string>
+      <string original="Tilt up/down">Nghiêng lên/xuống</string>
+      <string original="Angle">Góc</string>
+      <string original="Tilt left/right">Độ xoay trái/phải</string>
+      <string original="This tab helps to measure the tilting angle of the phone, starting from a flat position.">Mục này giúp đo độ nghiêng của điện thoại, bắt đầu từ vị trí nằm ngang.</string>
+      <string original="Upright">Thẳng đứng</string>
+      <string original="This tab helps to measure the tilting angle of the phone, starting from an upright position.">Mục này giúp đo độ nghiêng của điện thoại, bắt đầu từ vị ví thẳng đứng.</string>
+      <string original="Side">Cạnh</string>
+      <string original="This tab helps to measure the tilting angle of the phone, starting from a sideways position.">Mục này giúp đo góc nghiêng của điện thoại, bắt đầu từ vị trí cạnh bên.</string>
+      <string original="Plane">Mặt phẳng</string>
+      <string original="Inclination">Độ nghiêng</string>
+      <string original="Rotation">Góc quay</string>
+      <string original="This tab helps to measure the inclination of the plane. The inclination of the plane is measured as the phone rests flat on the surface, regardless of its orientation. The rotation gives the direction of the inclination.">Mục này để đo độ nghiêng của mặt phẳng. Độ nghiêng của mặt phẳng được đo khi điện thoại được gắn nằm cố định trên mặt phẳng, bất kể hướng nào. Độ quay cho biết hướng của mặt phẳng.</string>
+    </translation>
+    <translation locale="zh_Hans">
+      <title>倾角测量</title>
+      <category>工具</category>
+      <description>
+        测量手机的倾斜角度。
+
+        该工具使用加速度计来确定手机倾斜角。当手机放置在桌上时，倾斜角为0。当倾斜角非零时，倾斜方向为转动方向。
+
+       注意，这里角度的定义是用来测试倾斜角的（尤其是斜面实验），和手机（关于z轴）的旋转无关。
+    </description>
+      <string original="Flat">水平</string>
+      <string original="Tilt up/down">向上/向下倾斜</string>
+      <string original="Angle">角度</string>
+      <string original="Tilt left/right">向左/向右倾斜</string>
+      <string original="This tab helps to measure the tilting angle of the phone, starting from a flat position.">此表协助测量从水平位置开始计算的手机倾斜角。</string>
+      <string original="Upright">垂直</string>
+      <string original="This tab helps to measure the tilting angle of the phone, starting from an upright position.">此表协助测量从垂直位置开始计算的手机倾斜角。</string>
+      <string original="Side">侧边</string>
+      <string original="This tab helps to measure the tilting angle of the phone, starting from a sideways position.">此表协助测量从侧边位置开始计算的手机倾斜角。</string>
+      <string original="Plane">平面</string>
+      <string original="Inclination">倾角</string>
+      <string original="Rotation">旋转角度</string>
+      <string original="This tab helps to measure the inclination of the plane. The inclination of the plane is measured as the phone rests flat on the surface, regardless of its orientation. The rotation gives the direction of the inclination.">此表协助测量某平面的倾角。手机平放在表面时，无论方向如何，能测得该平面的倾角。旋转角度给出了倾角的方向。</string>
+    </translation>
+    <translation locale="sr">
+      <title>Nagib</title>
+      <category>Alati</category>
+      <description>
+        Izmerite ugao nagiba telefona.
+
+         Ovaj alat koristi akcelerometar da odredi nagib telefona. Kada se telefon nalazi na stolu, nagib je nula. Za nagib koji nije nula, pravac nagiba se daje kao rotacija.
+
+         Imajte na umu da je definicija uglova odabrana za zadatak merenja nagiba (naročito za eksperimente sa nagibom), nezavisno od rotacije (oko z ose) telefona.
+    </description>
+      <string original="Flat">Polegnut</string>
+      <string original="Tilt up/down">Nagnuti ka gore/dole</string>
+      <string original="Angle">Ugao</string>
+      <string original="Tilt left/right">Nagnuti ulevo/udesno</string>
+      <string original="This tab helps to measure the tilting angle of the phone, starting from a flat position.">Ova kartica Vam pomaže da izmerite ugao naginjanja telefona, počevši od horizontalnog položaja.</string>
+      <string original="Upright">Uspravno</string>
+      <string original="This tab helps to measure the tilting angle of the phone, starting from an upright position.">Ova kartica Vam omogućava da izmerite ugao naginjanja telefona, počevši od uspravnog položaja.</string>
+      <string original="Side">Strana</string>
+      <string original="This tab helps to measure the tilting angle of the phone, starting from a sideways position.">Ova kartica vam omogućava da izmerite ugao naginjanja telefona, počevši od bočne pozicije.</string>
+      <string original="Plane">Ravno</string>
+      <string original="Inclination">Nagib</string>
+      <string original="Rotation">Rotacija</string>
+      <string original="This tab helps to measure the inclination of the plane. The inclination of the plane is measured as the phone rests flat on the surface, regardless of its orientation. The rotation gives the direction of the inclination.">Ova kartica Vam pomaže da izmerite ugao naginjanja ravni uređaja. Ugao naginjanja ravni uređaja se meri dok telefon miruje na ravnoj površini, bez obzira na njegovu orijentaciju. Rotacija daje pravac naginjanja ravni.</string>
+    </translation>
+    <translation locale="sr_Latn">
+      <title>Nagib</title>
+      <category>Alati</category>
+      <description>
+        Izmerite ugao nagiba telefona.
+
+         Ovaj alat koristi akcelerometar da odredi nagib telefona. Kada se telefon nalazi na stolu, nagib je nula. Za nagib koji nije nula, pravac nagiba se daje kao rotacija.
+
+         Imajte na umu da je definicija uglova odabrana za zadatak merenja nagiba (naročito za eksperimente sa nagibom), nezavisno od rotacije (oko z ose) telefona.
+    </description>
+      <string original="Flat">Polegnut</string>
+      <string original="Tilt up/down">Nagnuti ka gore/dole</string>
+      <string original="Angle">Ugao</string>
+      <string original="Tilt left/right">Nagnuti ulevo/udesno</string>
+      <string original="This tab helps to measure the tilting angle of the phone, starting from a flat position.">Ova kartica Vam pomaže da izmerite ugao naginjanja telefona, počevši od horizontalnog položaja.</string>
+      <string original="Upright">Uspravno</string>
+      <string original="This tab helps to measure the tilting angle of the phone, starting from an upright position.">Ova kartica Vam omogućava da izmerite ugao naginjanja telefona, počevši od uspravnog položaja.</string>
+      <string original="Side">Strana</string>
+      <string original="This tab helps to measure the tilting angle of the phone, starting from a sideways position.">Ova kartica vam omogućava da izmerite ugao naginjanja telefona, počevši od bočne pozicije.</string>
+      <string original="Plane">Ravno</string>
+      <string original="Inclination">Nagib</string>
+      <string original="Rotation">Rotacija</string>
+      <string original="This tab helps to measure the inclination of the plane. The inclination of the plane is measured as the phone rests flat on the surface, regardless of its orientation. The rotation gives the direction of the inclination.">Ova kartica Vam pomaže da izmerite ugao naginjanja ravni uređaja. Ugao naginjanja ravni uređaja se meri dok telefon miruje na ravnoj površini, bez obzira na njegovu orijentaciju. Rotacija daje pravac naginjanja ravni.</string>
+    </translation>
+    <translation locale="es">
+      <title>Inclinación</title>
+      <category>Herramientas</category>
+      <description>
+        Mida el ángulo de inclinación del teléfono.
+
+         Esta herramienta usa el acelerómetro del teléfono para determinar la inclinación . Cuando el teléfono descansa sobre una mesa, la inclinación es cero. Para una inclinación distinta de cero, la dirección de la inclinación se da como rotación.
+
+         Tenga en cuenta que la definición de los ángulos se ha elegido para la tarea de medir una inclinación (especialmente para experimentos de plano inclinado) independiente de la rotación (alrededor del eje z) del teléfono
+    </description>
+      <string original="Flat">Horizontal</string>
+      <string original="Tilt up/down">Inclinación arriba/abajo</string>
+      <string original="Angle">Ángulo</string>
+      <string original="Tilt left/right">Inclinación izquierda/derecha</string>
+      <string original="This tab helps to measure the tilting angle of the phone, starting from a flat position.">Esta pestaña ayuda a medir el ángulo de inclinación del teléfono, comenzando desde una posición plana.</string>
+      <string original="Upright">Vertical</string>
+      <string original="This tab helps to measure the tilting angle of the phone, starting from an upright position.">Esta pestaña ayuda a medir el ángulo de inclinación del teléfono, comenzando desde una posición vertical.</string>
+      <string original="Side">Lado</string>
+      <string original="This tab helps to measure the tilting angle of the phone, starting from a sideways position.">Esta pestaña ayuda a medir el ángulo de inclinación del teléfono, comenzando desde una posición lateral.</string>
+      <string original="Plane">Plano inclinado</string>
+      <string original="Inclination">Inclinación</string>
+      <string original="Rotation">Rotación</string>
+      <string original="This tab helps to measure the inclination of the plane. The inclination of the plane is measured as the phone rests flat on the surface, regardless of its orientation. The rotation gives the direction of the inclination.">Esta pestaña ayuda a medir la inclinación de un plano. La inclinación del plano se mide mientras que el teléfono descansa sobre la superficie, independientemente de su orientación. La rotación da la dirección de la inclinación.</string>
+    </translation>
+    <translation locale="ka">
+      <title>გადახრა</title>
+      <category>ხელსაწყოები</category>
+      <description>
+        გაზომე ტელეფონის დახრის კუთხე.
+
+        ეს ხელსაწყო იყენებს აქსელომეტრს ტელეფონის დახრის გამოსათვლელად. როდესაც ტელეფონი დევს მაგიდაზე, დახრა არის ნული. არანულოვანი დახრისთვის, დახრის მიმართულება მოცემულია როგორც მობრუნება.
+
+        ყურადღება მიაქციე, რომ კუთხეები განიმარტება ექსპერიმენტით და არა ტელეფონის დახრილობით.
+    </description>
+      <string original="Flat">სიბრტყე</string>
+      <string original="Tilt up/down">დახრა ზემოთ/ქვემოთ</string>
+      <string original="Angle">კუთხე</string>
+      <string original="Tilt left/right">დახრა მარცხნივ/მარჯვნივ</string>
+      <string original="This tab helps to measure the tilting angle of the phone, starting from a flat position.">ეს გვერდი გეხმარება გაზომო ტელეფონის დახრის კუთხე, როდესაც იწყებთ ბრტყელი პოზიციიდან.</string>
+      <string original="Upright">მაღლა</string>
+      <string original="This tab helps to measure the tilting angle of the phone, starting from an upright position.">ეს გვერდი გეხმარება გაზომო ტელეფონის დახრის კუთხე, ტელეფონის ვერტიკალური მდგომარეობიდან.</string>
+      <string original="Side">გვერდი</string>
+      <string original="This tab helps to measure the tilting angle of the phone, starting from a sideways position.">ეს გვერდი გეხმარება გაზომო ტელეფონის დახრის კუთხე, ლანდშაფტის მდგომარეობაში დაყენებულ იტელეფონის მდგომარეობიდან.</string>
+      <string original="Plane">სიბრტყე</string>
+      <string original="Inclination">დახრა</string>
+      <string original="Rotation">მობრუნება</string>
+      <string original="This tab helps to measure the inclination of the plane. The inclination of the plane is measured as the phone rests flat on the surface, regardless of its orientation. The rotation gives the direction of the inclination.">ეს ვერდი გეხმარება სიბრტყის დახრის გამოთვლაში. სიბრტყის დახრის გამოსათვლელად ტელეფონი მოათავსე ამ სიბრტყეზე (დაწვენილ მდგომარეობაში). მობრუნებსი კუთხე გვაძლევს დახრის მიმართულებას.</string>
+    </translation>
+    <translation locale="hi">
+      <title>अवनत कोण</title>
+      <category>टूल्स</category>
+      <description>
+        फ़ोन का अवनत कोण मापता है।
+
+        यह टूल  फोन के झुकाव को निर्धारित करने के लिए एक्सेलेरोमीटर का उपयोग करता है। जब फोन एक टेबल पर टिका होता है, तो झुकाव शून्य होता है। गैर-शून्य झुकाव के लिए, झुकाव की दिशा रोटेशन के रूप में दी जाती है।
+
+        ध्यान दें, कि कोणों की परिभाषा को फोन के रोटेशन (Z- अक्ष के परितः)  से स्वतंत्र झुकाव (विशेष रूप से, झुके हुए तलों वाले प्रयोगों के लिए) को मापने  के लिए चुना गया है।
+    </description>
+      <string original="Flat">समतल</string>
+      <string original="Tilt up/down">झुकाव ऊपर / नीचे</string>
+      <string original="Angle">कोण</string>
+      <string original="Tilt left/right">झुकाव बाएं /दायें</string>
+      <string original="This tab helps to measure the tilting angle of the phone, starting from a flat position.">यह टैब समतल स्थिति से आरंभ होकर, फ़ोन के झुकाव कोण को मापने में सहायता करता है।</string>
+      <string original="Upright">उर्ध्व स्थिति</string>
+      <string original="This tab helps to measure the tilting angle of the phone, starting from an upright position.">यह टैब एक उर्ध्व स्थिति से आरंभ होकर, फोन के झुकाव कोण को मापने में सहायता करता है।</string>
+      <string original="Side">पार्श्व</string>
+      <string original="This tab helps to measure the tilting angle of the phone, starting from a sideways position.">यह टैब फोन की एक पार्श्व स्थिति से आरंभ होने वाले कोण के मापन में सहायता करता है।</string>
+      <string original="Plane">समतल</string>
+      <string original="Inclination">अवनति</string>
+      <string original="Rotation">घूर्णन</string>
+      <string original="This tab helps to measure the inclination of the plane. The inclination of the plane is measured as the phone rests flat on the surface, regardless of its orientation. The rotation gives the direction of the inclination.">यह टैब किसी समतल के झुकाव को मापने में सहायता करता है। यहाँ समतल के झुकाव को मापा जाता है क्योंकि फोन समतल पर स्थित रहता है, चाहे समतल का अभिविन्यास कुछ भी हो। घूर्णन झुकाव की दिशा देता है।</string>
+    </translation>
+    <translation locale="ta">
+      <title>சாய்வு</title>
+      <category>கருவிகள்</category>
+      <description>
+        தொலைபேசியின் சாய்வுக் கோணத்தை அளவிடுகிறது.
+
+        இந்தக் கருவி தொலைபேசியின் சாய்வைத் தீர்மானிக்க முடுக்கமானியைப் பயன்படுத்துகிறது. தொலைபேசி ஒரு மேஜையில் வைக்கப்படும்போது, சாய்வு பூஜ்ஜியமாக இருக்கும். பூஜ்ஜியமற்ற சாய்வுக்கு, சாய்வின் திசையானது சுழற்சி வடிவத்தில் கொடுக்கப்படுகிறது.
+
+        தொலைபேசியின் சுழற்சியைச் (z அச்சைப் பற்றி) சாராத சாய்வை (குறிப்பாக சாய்தள சோதனைகளுக்கு) அளவிடும் பணிக்காக கோணங்கள் தேர்ந்தெடுக்கப்பட்டுள்ளது என்பதை நினைவில் கொள்க.
+    </description>
+      <string original="Flat">தரை</string>
+      <string original="Tilt up/down">கீழ்/மேல் சாய்வு</string>
+      <string original="Angle">கோணம்</string>
+      <string original="Tilt left/right">இட/வல சாய்வு</string>
+      <string original="This tab helps to measure the tilting angle of the phone, starting from a flat position.">இந்தப் பட்டி, ஒரு தட்டையான நிலையில் இருந்து தொடங்கி, தொலைபேசியின் சாய்வு கோணத்தை அளவிட உதவுகிறது.</string>
+      <string original="Upright">நிமிர்ந்த நிலை</string>
+      <string original="This tab helps to measure the tilting angle of the phone, starting from an upright position.">இந்தப் பட்டி, நேரான(நின்ற) நிலையில் இருந்து தொடங்கி, தொலைபேசியின் சாய்வுக் கோணத்தை அளவிட உதவுகிறது.</string>
+      <string original="Side">ஓரங்கள்</string>
+      <string original="This tab helps to measure the tilting angle of the phone, starting from a sideways position.">இந்தப் பட்டி, பக்கவாட்டு நிலையில் இருந்து தொடங்கி, தொலைபேசியின் சாய்வு கோணத்தை அளவிட உதவுகிறது.</string>
+      <string original="Plane">கிடைநிலை</string>
+      <string original="Inclination">சாய்வு</string>
+      <string original="Rotation">சுழற்சி</string>
+      <string original="This tab helps to measure the inclination of the plane. The inclination of the plane is measured as the phone rests flat on the surface, regardless of its orientation. The rotation gives the direction of the inclination.">இந்தப் பட்டி கிடைநிலை சாய்வை அளவிட உதவுகிறது. தொலைபேசி அதன் சாய்நிலையைப் பொருட்படுத்தாமல் மேற்பரப்பில் தட்டையாக இருப்பதாகக் கொண்டு கிடைநிலை சாய்வை அளவிடப்படுகிறது. சுழற்சி சாய்வின் திசையை அளிக்கிறது.</string>
+    </translation>
+    <translation locale="bn"/>
+    <translation locale="gu">
+      <title>ઢોળાવ</title>
+      <category>ટૂલ્સ</category>
+      <description>
+        ફોનના ઢોળાવના ખૂણાને માપો.
+
+        આ ટૂલ ફોનના ઢોળાવને શોધવા માટે એક્સીલેરોમીટરનો ઉપયોગ કરે છે. જ્યારે ફોન ટેબલ પર હોય છે, ત્યારે ઢોળાવ શૂન્ય હોય છે. શૂન્ય ન હોય તેવા ઢોળાવ માટે, ઢોળાવની દિશા પરિભ્રમણ તરીકે આપવામાં આવે છે.
+
+        નોંધ કરો કે ખૂણાની વ્યાખ્યા ફોનના પરિભ્રમણ (z અક્ષ વિશે) ની બદલે, ઢોળાવ (ખાસ કરીને ઢોળાવવાળા સમતલ પ્રયોગો માટે) માપવા માટે પસંદ કરવામાં આવે છે.
+    </description>
+      <string original="Flat">સપાટ</string>
+      <string original="Tilt up/down">ટિલ્ટ ઉપર/નીચે</string>
+      <string original="Angle">ખૂણો</string>
+      <string original="Tilt left/right">ટિલ્ટ ડાબો/જમણો</string>
+      <string original="This tab helps to measure the tilting angle of the phone, starting from a flat position.">આ ટેબ સપાટ સ્થિતિથી શરૂ કરીને ફોનના ટિલ્ટ ખૂણાને માપવામાં મદદ કરે છે.</string>
+      <string original="Upright">ઉભું</string>
+      <string original="This tab helps to measure the tilting angle of the phone, starting from an upright position.">આ ટેબ ફોનને સીધો ઉભો રાખીને તેના ટિલ્ટ ખૂણાને માપવામાં મદદ કરે છે.</string>
+      <string original="Side">બાજુ</string>
+      <string original="This tab helps to measure the tilting angle of the phone, starting from a sideways position.">આ ટેબ બાજુ (સાઇડ) સ્થિતિથી શરૂ કરીને ફોનના ટિલ્ટ ખૂણાને માપવામાં મદદ કરે છે.</string>
+      <string original="Plane">પ્લેન</string>
+      <string original="Inclination">ઢોળાવ</string>
+      <string original="Rotation">પરિભ્રમણ</string>
+      <string original="This tab helps to measure the inclination of the plane. The inclination of the plane is measured as the phone rests flat on the surface, regardless of its orientation. The rotation gives the direction of the inclination.">આ ટેબ પ્લેનના ઢોળાવને માપવામાં મદદ કરે છે. ફોન સપાટી પર સપાટ રહે છે ત્યારે પ્લેનનો ઢોળાવ માપવામાં આવે છે, પછી ભલે ઓરીએન્ટેશન કઈ પણ હોય. પરિભ્રમણ ઢોળાવની દિશા આપે છે.</string>
+    </translation>
+    <translation locale="kn"/>
+    <translation locale="or"/>
+    <translation locale="ko">
+      <title>기울기</title>
+      <category>도구</category>
+      <description>
+        휴대전화의 기울기 각도를 측정합니다.
+
+        이 도구는 가속도계를 사용하여 휴대전화의 기울기를 측정합니다. 휴대전화가 탁자 위에 놓여 있을 때 기울기는 0입니다. 0이 아닌 기울기의 경우 기울기 방향은 회전 각도로 정해집니다.
+
+        주의, 각도의 정의는 전화기의 회전(z축 기준)과 관계없이 기울기(특히 경사면 실험의 경우)를 측정하는 작업을 위해 임의로 선택되었습니다.
+    </description>
+      <string original="Flat">수평</string>
+      <string original="Tilt up/down">위/아래 기울기</string>
+      <string original="Angle">각도</string>
+      <string original="Tilt left/right">좌/우 기울기</string>
+      <string original="This tab helps to measure the tilting angle of the phone, starting from a flat position.">이 탭은 평평한 위치에서 시작한 휴대전화의 기울기 각도를 측정하는 데 도움이 됩니다.</string>
+      <string original="Upright">수직</string>
+      <string original="This tab helps to measure the tilting angle of the phone, starting from an upright position.">이 탭은 휴대폰을 세운 상태(수직 위치)에서 시작하여 기울어진 각도를 측정하는 데 도움이 됩니다.</string>
+      <string original="Side">사이드</string>
+      <string original="This tab helps to measure the tilting angle of the phone, starting from a sideways position.">이 탭은 측면 위치에서 시작한 휴대전화의 기울기 각도를 측정하는 데 도움이 됩니다.</string>
+      <string original="Plane">평면</string>
+      <string original="Inclination">기울기</string>
+      <string original="Rotation">회전</string>
+      <string original="This tab helps to measure the inclination of the plane. The inclination of the plane is measured as the phone rests flat on the surface, regardless of its orientation. The rotation gives the direction of the inclination.">이 탭은 평면의 기울기를 측정하는 데 도움이 됩니다. 평면의 기울기는 방향에 관계없이 전화기가 표면에 평평하게 놓여 있을 때 측정됩니다. 회전은 기울기의 방향을 제공합니다.</string>
+    </translation>
+  </translations>
+  <data-containers>
+<container size="0" static="false" init="3.178490309E-1,5.315116133E-1,-1.231240542E-2,3.577259155E-1,2.634673927E-1,3.039815028E-1,4.622231189E-1,1.42991329E-1,5.757778399E-1,1.347035575E-1,3.871987802E-1,1.816388279E-1,6.518589624E-1,1.095872281E-1,3.225513939E-1,2.259554956E-1,5.087504064E-1,1.643975475E-1,5.199318187E-1,7.502799549E-1,-3.713356395E0,-5.518457555E0,-6.581809767E0,-5.667032434E0,-6.968810771E0,-8.367042004E0,-9.658895061E0,-1.020841852E1,-1.15601895E1,1.707997163E1,-1.116060619E1,5.465046771E0,2.317284378E0,-6.868243115E0,7.119620554E0,-3.81999207E0,1.410819171E0,1.720575077E0,-2.788897103E0,3.588838732E0,-1.813573285E0,1.239662326E0,4.279462852E-1,-3.889374046E-1,1.622703138E0,-1.339585875E0,1.402956708E0,1.407777496E-1,3.340772656E-1,4.591204579E-1,2.651951604E-1,9.816264461E-1,-7.99161865E-1,-2.854666092E0,-7.706759062E0,-8.74206753E0,-1.007239786E1,-8.029421723E0,-7.94871027E0,-8.695748333E0,-8.606094276E0,-9.704619392E0,-8.116977891E0,-9.864303166E0,8.795407556E0,-7.846262344E0,4.62354368E0,-1.754072305E0,-1.327606882E0,5.2849065E0,-1.841464592E0,1.430866222E0,5.249094427E-1,-1.806337888E0,1.001848929E0,-3.512556277E-1,-1.442895961E0,6.837049757E-1,1.067652219E0,-8.435061421E-1,1.298350496E0,-4.881124486E-1,-2.370460089E-2,-1.699526658E0,-8.036473701E0,-1.147874649E1,-1.27325614E1,-1.199986387E1,-1.047957694E1,-7.87996508E0,-9.690597923E0,-9.856410741E0,-1.004506774E1,-1.070419558E1,1.713818802E1,-1.159796074E1,-1.785041122E0,7.126575636E0,-1.212014189E0,-5.236638166E0,6.827415421E0,-6.292790261E-1,-4.011573041E0,5.513453555E0,-2.585072917E0,-9.787931357E-1,4.001525543E0,-3.422798373E0,3.685185923E-1,-2.637421047E0,2.092018319E0,2.759411449E-1,-1.38300757E0,1.776051008E0,-6.958836792E-1,3.143685242E-1,7.688301027E-1,-1.552966474E-1,4.301272338E-1,3.232685785E-1,1.456208304E-1,1.657752203E-1,9.139418098E-1,-4.900347438E0,-1.172960179E1,-1.379769637E1,-1.314672026E1,-1.168539853E1,-6.682781226E0,-8.168784899E0,-1.012526018E1,-9.972380741E0,-1.185067549E1,-2.09184773E0,6.76911108E0,-7.130239191E0,6.672343455E0,-1.080546118E0,4.900335344E0,-5.891808989E0,3.943796762E0,2.228471148E-1,-2.439384517E0,4.317016293E0,-2.712125585E0,2.782865655E-1,1.817529737E0,-2.244340088E0,3.081378085E0,1.738798762E-1,-7.050968336E-1,1.456122139E0,-1.250163275E0,3.986309316E-1,1.028217048E0,-7.002724879E-1,1.198467056E0,-5.002095834E-1,1.747296572E-1,-1.456130748E-1,1.232399896E0,-2.679584895E-1,1.018437208E0,-8.333885556E-1,-1.143363489E-1,1.375652279E0,-8.556440774E-1,2.524687911E-1,8.041724162E-1,6.679568146E-2,1.897270236E0,-6.073831602E0,-8.207899279E0,-8.959588263E0,-8.91235603E0,-7.915690147E0,-9.483530736E0,-9.698250476E0,-8.816828837E0,-1.068162693E1,-1.063818706E1,-9.966154301E0,-5.030965128E0,-1.527978042E-1,5.896736327E0,-5.447718363E0,4.568168804E0,-6.735610732E-1,-2.120031929E0,2.53581493E0,4.870979459E-2,2.613153439E-1,6.91328878E-1,-1.296203134E-1,7.984805159E-1,-2.8069551E-1,1.172737043E-1,4.45964596E-1,1.311834143E0,-4.04413394E-1,2.610368126E-1,1.148743514E0,-1.200436415E0,1.456314339E0,-4.00010169E-1,1.876594736E0,-1.425971169E0,1.595452852E0,2.172507487E-1,-6.82362387E-1,1.627183426E0,-1.150909807E0,1.591140271E0,-1.053576568E0,8.065198247E-1,7.64354738E-1,-1.204124968E0,1.659544697E0,-2.05382453E-1,-8.915175192E-2,-4.725682349E0,-8.721766729E0,-1.011832168E1,-1.268454342E1,-1.100764473E1,-1.156308927E1,-9.559651035E0,-1.135047051E1,-1.025700064E1,-3.830035611E0,-7.383706077E0,8.831004171E0,-5.852102231E0,-5.067812098E-1,-2.970859116E-1,2.753088013E0,-3.10522313E0,1.010939784E0,2.207717988E0,-1.35533256E0,9.252616606E-1,4.408158812E-1,-1.887654983E-1,4.979285825E-1,-5.341659976E-1,1.808359054E0,-7.341612238E-1,-3.867111292E-1,1.687540745E0,-6.224690162E-1,4.499323989E-1,7.941812235E-1,-4.545720422E-1,7.936190875E-1,2.377295797E-1,-4.320442083E-1,2.117857632E-1,1.071246684E0,1.396535765E0,2.893966572E-1,-1.061564651E0,2.267649918E0,-1.172110782E0,1.252303033E0,4.123307091E-1,-8.232139987E-1,1.499846267E0,-5.815396997E-1,5.513400308E-1,-1.905183563E-1,6.740472765E-1,1.70961858E0,-8.384179803E0,-1.171726999E1,-1.147644641E1,-9.233106333E0,-1.010721587E1,-9.284322769E0,-9.413416448E0,1.618467349E1,-8.700444022E0,4.394590795E0,-2.576234674E0,1.39348959E0,1.052599367E0,-2.643253259E0,3.700978439E0,2.121083828E-2,1.26478895E0,-3.557928711E-1,1.685511365E0,-2.38927081E0,2.383679404E0,-1.161131886E-1,-2.523910602E-1,1.085010976E0,1.10777505E-1,-3.963093957E-2,5.550453499E-1,7.992518035E-1,-1.612006336E0,1.908889574E0,-1.565743844E0,2.465738028E0,-1.537649519E0,4.414547465E-1,1.235081823E0,-1.928930623E0,2.67895132E0,-1.461641584E0,7.795464388E-1,3.503510511E-1,-2.571235082E-1,1.075363222E0,-1.027927166E0,9.233349559E-1,6.666305712E-1,-3.537434218E-1,5.376738185E-1,5.403056558E-1,-1.225329395E-1,9.374020278E-1,-9.325328522E0,-1.356855436E1,-1.226610816E1,-6.328431708E0,-1.071340952E0,-1.331296303E0" >tiltFlatLR</container>
+<container size="0" static="false" init="8.968215096E1,8.946848838E1,9.00123124E1,8.964227408E1,8.97365326E1,8.969601849E1,8.953777688E1,8.985700867E1,8.942422216E1,8.986529644E1,8.961280121E1,8.981836117E1,8.934814103E1,8.989041277E1,8.96774486E1,8.97740445E1,8.949124959E1,8.983560245E1,8.948006818E1,8.924972004E1,9.371335639E1,9.551845755E1,9.658180976E1,9.566703243E1,9.696881077E1,9.8367042E1,9.965889506E1,1.002084185E2,1.015601895E2,7.292002837E1,1.011606062E2,8.453495322E1,8.768271562E1,9.686824311E1,8.288037944E1,9.381999207E1,8.858918082E1,8.827942492E1,9.27888971E1,8.641116126E1,9.181357328E1,8.876033767E1,8.957205371E1,9.03889374E1,8.837729686E1,9.133958587E1,8.859704329E1,8.985922225E1,8.966592273E1,8.954087954E1,8.973480483E1,8.901837355E1,9.079916186E1,9.285466609E1,9.770675906E1,9.874206752E1,1.000723979E2,9.802942172E1,9.794871027E1,9.869574833E1,9.860609427E1,9.970461939E1,9.811697789E1,9.986430316E1,8.120459244E1,9.784626234E1,8.537645632E1,9.17540723E1,9.132760688E1,8.47150935E1,9.184146459E1,8.856913377E1,8.947509055E1,9.180633788E1,8.899815107E1,9.035125562E1,9.144289596E1,8.931629502E1,8.893234778E1,9.084350614E1,8.87016495E1,9.048811244E1,9.00237046E1,9.169952665E1,9.80364737E1,1.014787465E2,1.027325614E2,1.019998639E2,1.004795769E2,9.787996507E1,9.969059792E1,9.985641074E1,1.000450677E2,1.007041956E2,7.286181197E1,1.015979607E2,9.178504112E1,8.287342436E1,9.121201418E1,9.523663816E1,8.317258457E1,9.062927902E1,9.401157304E1,8.448654644E1,9.258507291E1,9.097879313E1,8.599847445E1,9.342279837E1,8.96314814E1,9.263742104E1,8.790798168E1,8.972405885E1,9.138300757E1,8.822394899E1,9.069588367E1,8.968563147E1,8.923116989E1,9.015529664E1,8.956987276E1,8.967673142E1,8.985437916E1,8.983422477E1,8.908605819E1,9.490034743E1,1.017296018E2,1.037976964E2,1.031467203E2,1.016853985E2,9.668278122E1,9.816878489E1,1.001252602E2,9.997238074E1,1.018506755E2,9.209184773E1,8.323088892E1,9.713023919E1,8.332765654E1,9.108054611E1,8.509966465E1,9.589180898E1,8.605620323E1,8.977715288E1,9.243938451E1,8.56829837E1,9.271212558E1,8.972171343E1,8.818247026E1,9.224434008E1,8.691862191E1,8.982612012E1,9.070509683E1,8.854387786E1,9.125016327E1,8.960136906E1,8.897178295E1,9.070027248E1,8.880153294E1,9.050020958E1,8.982527034E1,9.014561307E1,8.87676001E1,9.026795848E1,8.898156279E1,9.083338855E1,9.011433634E1,8.862434772E1,9.085564407E1,8.97475312E1,8.919582758E1,8.993320431E1,8.810272976E1,9.60738316E1,9.820789927E1,9.895958826E1,9.891235602E1,9.791569014E1,9.948353073E1,9.969825047E1,9.881682883E1,1.006816269E2,1.006381871E2,9.99661543E1,9.503096512E1,9.01527978E1,8.410326367E1,9.544771836E1,8.543183119E1,9.067356107E1,9.212003192E1,8.746418506E1,8.99512902E1,8.973868465E1,8.930867112E1,9.012962031E1,8.920151948E1,9.028069551E1,8.988272629E1,8.95540354E1,8.868816585E1,9.040441339E1,8.973896318E1,8.885125648E1,9.120043641E1,8.854368566E1,9.040001016E1,8.812340526E1,9.142597116E1,8.840454714E1,8.978274925E1,9.068236238E1,8.837281657E1,9.11509098E1,8.840885972E1,9.105357656E1,8.919348017E1,8.923564526E1,9.120412496E1,8.83404553E1,9.020538245E1,9.008915175E1,9.472568234E1,9.872176672E1,1.001183217E2,1.026845434E2,1.010076447E2,1.015630893E2,9.955965103E1,1.013504705E2,1.002570006E2,9.383003561E1,9.738370607E1,8.116899582E1,9.585210223E1,9.05067812E1,9.029708591E1,8.724691198E1,9.310522313E1,8.898906021E1,8.779228201E1,9.135533255E1,8.907473833E1,8.955918411E1,9.018876549E1,8.950207141E1,9.053416599E1,8.819164094E1,9.073416122E1,9.038671112E1,8.831245925E1,9.062246901E1,8.95500676E1,8.920581877E1,9.045457204E1,8.920638091E1,8.976227042E1,9.04320442E1,8.978821423E1,8.892875331E1,8.860346423E1,8.971060334E1,9.106156465E1,8.773235008E1,9.117211078E1,8.874769696E1,8.958766929E1,9.082321399E1,8.850015373E1,9.058153969E1,8.944865996E1,9.019051835E1,8.932595272E1,8.829038142E1,9.83841798E1,1.0171727E2,1.014764464E2,9.923310633E1,1.001072159E2,9.928432276E1,9.941341644E1,7.381532651E1,9.870044402E1,8.56054092E1,9.257623467E1,8.86065104E1,8.894740063E1,9.264325325E1,8.629902156E1,8.997878916E1,8.873521105E1,9.035579287E1,8.831448863E1,9.238927081E1,8.761632059E1,9.011611318E1,9.025239106E1,8.891498902E1,8.988922249E1,9.003963093E1,8.944495465E1,8.920074819E1,9.161200633E1,8.809111042E1,9.156574384E1,8.753426197E1,9.153764951E1,8.955854525E1,8.876491817E1,9.192893062E1,8.732104867E1,9.146164158E1,8.922045356E1,8.964964894E1,9.02571235E1,8.892463677E1,9.102792716E1,8.907666504E1,8.933336942E1,9.035374342E1,8.946232618E1,8.945969434E1,9.012253293E1,8.906259797E1,9.932532852E1,1.035685544E2,1.022661082E2,9.63284317E1,9.107134095E1,9.13312963E1" >tiltSideLR</container>
+<container size="1" static="false" init="1.699379263E2" >accT</container>
+<container size="0" static="false" init="1.0506646E1,1.384291875E2,-1.783700721E2,1.516720984E2,1.521583739E2,1.474946828E2,1.414993463E2,1.650158944E2,1.345148279E2,1.666953301E2,1.454118891E2,1.586498771E2,1.299722603E2,1.686546998E2,1.42501132E2,1.600298534E2,1.35049521E2,1.609319744E2,1.413684534E2,1.158069282E2,-9.778088104E1,-9.459425333E1,-9.366788636E1,-9.439802595E1,-9.174274165E1,-9.184956508E1,-9.203679168E1,-9.095674116E1,-9.091647888E1,9.315271805E1,-8.915160534E1,1.01974268E2,1.041581816E2,-9.119318262E1,9.940539533E1,-8.494983258E1,1.293693172E2,1.011140407E2,-9.957699005E1,1.018977801E2,-1.022498197E2,1.224132273E2,1.147975188E2,-1.475127149E2,1.13540296E2,-1.122929846E2,1.153045735E2,1.636104597E2,1.517765143E2,1.372570522E2,1.468013575E2,1.257066914E2,-1.119754611E2,-1.062190148E2,-9.193205809E1,-9.185247738E1,-8.55766178E1,-9.265016709E1,-9.238912584E1,-9.187816321E1,-9.122335732E1,-9.088308198E1,-8.868567648E1,-9.10296148E1,9.191641488E1,-9.288005464E1,1.017942277E2,-8.980046326E1,-1.311750485E2,9.210025424E1,-1.001965597E2,1.213298093E2,8.574217954E1,-1.134804414E2,1.115844468E2,-1.309416384E2,-1.171981279E2,1.214955642E2,1.086183624E2,-1.203009474E2,1.168442379E2,-1.393695916E2,-1.7872697E2,-1.104389559E2,-9.203140752E1,-9.208919687E1,-9.278138126E1,-9.126351672E1,-9.34436664E1,-9.795066759E1,-9.093151429E1,-9.538154705E1,-9.122166701E1,-9.185641962E1,9.084158226E1,-9.084937721E1,-1.045050283E2,9.843588755E1,-1.164663222E2,-8.998076031E1,9.975220053E1,-7.229027547E1,-9.581643344E1,1.023704264E2,-9.199243301E1,-1.231034827E2,9.83471573E1,-9.8768297E1,1.56216263E2,-1.012507808E2,1.008107563E2,1.591570252E2,-1.133267688E2,1.06153217E2,-1.31642496E2,1.462357152E2,1.18848485E2,-1.598636966E2,1.489845791E2,1.29543526E2,1.663007866E2,1.637738594E2,1.21852054E2,-1.078071942E2,-8.805434896E1,-8.900945701E1,-9.229061004E1,-9.414704176E1,-9.097762272E1,-9.347677089E1,-9.089196403E1,-9.311468652E1,-9.063421309E1,-1.157625321E2,9.531590387E1,-8.636514983E1,9.737474143E1,-1.147634188E2,9.763146713E1,-9.237955476E1,1.021592587E2,1.367556428E2,-1.033028506E2,9.855807559E1,-1.041012685E2,1.521071387E2,1.137329398E2,-9.727217033E1,1.015077307E2,1.621511054E2,-1.312420025E2,1.128413274E2,-1.024989195E2,1.600683523E2,9.238797227E1,-1.366888212E2,1.122100436E2,-1.385112592E2,1.639238418E2,-1.680260031E2,9.91393654E1,-1.578140608E2,1.138377725E2,-1.253663392E2,-1.69929519E2,1.021473864E2,-1.274356948E2,1.550239883E2,1.161129238E2,1.748484709E2,1.093871456E2,-9.324235447E1,-9.414381863E1,-9.362276701E1,-9.208122606E1,-9.737109549E1,-9.099593117E1,-9.297318821E1,-9.4961571E1,-9.34366485E1,-9.248312481E1,-9.289666369E1,-8.851015901E1,-1.71687061E2,8.366358803E1,-1.028018749E2,9.540717325E1,-1.294357351E2,-1.181628973E2,9.405857502E1,1.746854543E2,1.569412525E2,1.025829625E2,-1.719768782E2,1.128112061E2,-1.53181269E2,1.669103169E2,1.455144544E2,1.071943719E2,-1.437342793E2,1.497365644E2,1.2191881E2,-1.162955845E2,1.149943642E2,-1.265861572E2,1.04232007E2,-1.099407343E2,1.133543574E2,1.592039437E2,-1.226609127E2,1.111577843E2,-1.023990746E2,1.183631509E2,-9.874974414E1,1.398584629E2,1.27938686E2,-1.162631441E2,1.009597181E2,-1.678582821E2,-1.204655449E2,-1.000997842E2,-8.932358276E1,-8.792471959E1,-9.300509151E1,-8.873438506E1,-8.801659922E1,-8.919321906E1,-9.268405387E1,-9.138361563E1,-8.304210008E1,-9.835044374E1,9.070322199E1,-1.03819675E2,-1.312628979E2,-1.656049578E2,9.650342714E1,-1.081832285E2,1.219783165E2,9.529630607E1,-1.177585406E2,9.37419775E1,1.536838626E2,-1.595416179E2,1.289181172E2,-1.47728819E2,1.051936426E2,-1.219992296E2,-1.450447353E2,1.076805166E2,-1.385621604E2,1.462067589E2,1.023940736E2,-1.481622568E2,1.18552827E2,1.549129639E2,-1.500455362E2,1.538565782E2,1.009540626E2,1.016714152E2,1.623771152E2,-1.033624708E2,1.07731763E2,-1.302057679E2,8.329487191E1,1.594539063E2,-9.115918133E1,1.18376851E2,-1.425582034E2,1.220385981E2,-1.672008719E2,1.12470602E2,1.199588231E2,-8.977531182E1,-9.280191144E1,-9.239292634E1,-9.143523274E1,-9.543133643E1,-9.176239102E1,-9.283056056E1,9.263834898E1,-8.881629939E1,9.92388318E1,-1.045965755E2,1.372253102E2,6.265143297E1,-1.143999194E2,8.728488614E1,1.75219837E2,1.141602998E2,-1.495929761E2,1.089712431E2,-9.959890306E1,1.018929107E2,-1.688057496E2,-1.435804943E2,1.195399509E2,1.71060435E2,-1.752451231E2,1.293041675E2,1.328352108E2,-1.07019361E2,1.006657308E2,-1.108331223E2,1.016428388E2,-1.205123911E2,1.323021944E2,1.101398929E2,-1.11499381E2,9.826418574E1,-1.043275343E2,1.167207458E2,1.515794944E2,-1.491570113E2,1.230139782E2,-1.088296826E2,1.241543464E2,1.215397968E2,-1.59866752E2,8.962305952E1,1.550323559E2,-1.175528116E2,1.333965793E2,-9.444363415E1,-8.857349747E1,-9.591300635E1,-9.353258917E1,-1.043339671E2,-1.128353527E2" >tiltUprightLR</container>
+<container size="0" static="false" init="7.9493354E1,-4.842918752E1,-9.162992788E1,-6.167209841E1,-6.215837393E1,-5.749468277E1,-5.149934628E1,-7.501589437E1,-4.451482793E1,-7.669533015E1,-5.541188906E1,-6.864987711E1,-3.997226027E1,-7.865469976E1,-5.250113203E1,-7.002985339E1,-4.504952097E1,-7.09319744E1,-5.136845339E1,-2.580692821E1,-1.722191189E2,-1.754057467E2,-1.763321136E2,-1.75601974E2,-1.782572583E2,-1.781504349E2,-1.779632083E2,-1.790432588E2,-1.790835211E2,-3.152718051E0,1.791516053E2,-1.1974268E1,-1.415818163E1,-1.788068174E2,-9.405395333E0,1.749498326E2,-3.936931724E1,-1.111404066E1,-1.704230099E2,-1.189778012E1,-1.677501803E2,-3.24132273E1,-2.479751882E1,-1.224872851E2,-2.354029602E1,-1.577070154E2,-2.530457353E1,-7.361045966E1,-6.177651428E1,-4.725705223E1,-5.680135748E1,-3.57066914E1,-1.580245389E2,-1.637809851E2,-1.780679419E2,-1.781475226E2,1.755766178E2,-1.773498329E2,-1.776108741E2,-1.781218368E2,-1.787766427E2,-1.79116918E2,1.786856765E2,-1.789703852E2,-1.916414885E0,-1.771199453E2,-1.179422773E1,1.798004633E2,-1.388249515E2,-2.100254247E0,-1.698034403E2,-3.132980935E1,4.257820455E0,-1.565195586E2,-2.15844468E1,-1.390583616E2,-1.52801872E2,-3.149556418E1,-1.861836241E1,-1.496990526E2,-2.684423793E1,-1.306304083E2,-9.127303002E1,-1.595610441E2,-1.779685925E2,-1.779108031E2,-1.772186187E2,-1.787364833E2,-1.765563336E2,-1.720493324E2,-1.790684857E2,-1.746184529E2,-1.78778333E2,-1.781435804E2,-8.415822628E-1,-1.791506228E2,-1.654949717E2,-8.43588755E0,-1.535336778E2,1.799807603E2,-9.752200539E0,1.622902755E2,-1.741835665E2,-1.237042641E1,-1.78007567E2,-1.468965173E2,-8.347157305E0,-1.71231703E2,-6.6216263E1,-1.687492192E2,-1.081075632E1,-6.915702523E1,-1.566732312E2,-1.615321698E1,-1.38357504E2,-5.623571518E1,-2.884848502E1,-1.101363034E2,-5.898457911E1,-3.954352604E1,-7.630078664E1,-7.377385936E1,-3.185205405E1,-1.621928058E2,1.78054349E2,1.79009457E2,-1.777093899E2,-1.758529582E2,-1.790223773E2,-1.765232291E2,-1.79108036E2,-1.768853135E2,-1.793657869E2,-1.542374679E2,-5.315903876E0,1.763651498E2,-7.374741438E0,-1.552365811E2,-7.631467134E0,-1.776204452E2,-1.215925871E1,-4.67556428E1,-1.666971494E2,-8.558075592E0,-1.658987315E2,-6.210713871E1,-2.37329398E1,-1.727278297E2,-1.15077307E1,-7.215110544E1,-1.387579975E2,-2.284132738E1,-1.675010805E2,-7.006835233E1,-2.387972271E0,-1.333111788E2,-2.221004363E1,-1.314887408E2,-7.39238418E1,-1.019739968E2,-9.139365407E0,-1.121859391E2,-2.383777246E1,-1.446336607E2,-1.00070481E2,-1.214738638E1,-1.425643052E2,-6.502398827E1,-2.611292376E1,-8.48484709E1,-1.938714557E1,-1.767576455E2,-1.758561814E2,-1.76377233E2,-1.779187739E2,-1.726289045E2,-1.790040688E2,-1.770268118E2,-1.75038429E2,-1.765633515E2,-1.775168752E2,-1.771033363E2,1.78510159E2,-9.831293899E1,6.336411967E0,-1.671981251E2,-5.407173255E0,-1.405642648E2,-1.518371027E2,-4.05857503E0,-8.468545433E1,-6.694125246E1,-1.258296249E1,-9.802312182E1,-2.281120615E1,-1.16818731E2,-7.691031691E1,-5.55144544E1,-1.719437195E1,-1.262657207E2,-5.973656445E1,-3.191880998E1,-1.537044155E2,-2.499436417E1,-1.434138428E2,-1.423200697E1,-1.600592657E2,-2.335435745E1,-6.92039437E1,-1.473390873E2,-2.115778429E1,-1.676009253E2,-2.836315091E1,-1.712502558E2,-4.985846292E1,-3.793868605E1,-1.537368559E2,-1.095971813E1,-1.021417179E2,-1.495344551E2,-1.699002158E2,1.793235828E2,1.779247196E2,-1.769949085E2,1.787343851E2,1.780165992E2,1.791932191E2,-1.773159461E2,-1.786163844E2,1.730421001E2,-1.716495562E2,-7.032219962E-1,-1.66180325E2,-1.38737102E2,-1.043950422E2,-6.503427143E0,-1.618167715E2,-3.197831647E1,-5.296306075E0,-1.522414594E2,-3.741977503E0,-6.368386257E1,-1.10458382E2,-3.891811723E1,-1.22271181E2,-1.519364257E1,-1.480007703E2,-1.249552646E2,-1.768051663E1,-1.314378396E2,-5.620675891E1,-1.239407361E1,-1.218377432E2,-2.855282697E1,-6.491296387E1,-1.199544638E2,-6.385657818E1,-1.095406264E1,-1.167141525E1,-7.237711516E1,-1.666375292E2,-1.773176299E1,-1.397942321E2,6.705128081E0,-6.945390628E1,-1.788408187E2,-2.837685105E1,-1.274417966E2,-3.203859815E1,-1.027991281E2,-2.2470602E1,-2.995882314E1,1.797753118E2,-1.771980885E2,-1.776070736E2,-1.785647672E2,-1.745686636E2,-1.78237609E2,-1.771694394E2,-2.638348989E0,1.788162994E2,-9.238831807E0,-1.654034245E2,-4.722531019E1,2.734856703E1,-1.556000806E2,2.715113851E0,-8.521983703E1,-2.416029984E1,-1.204070239E2,-1.897124311E1,-1.704010969E2,-1.189291068E1,-1.011942503E2,-1.264195057E2,-2.953995092E1,-8.106043499E1,-9.475487684E1,-3.930416747E1,-4.283521084E1,-1.62980639E2,-1.066573085E1,-1.591668777E2,-1.164283879E1,-1.494876089E2,-4.230219436E1,-2.013989294E1,-1.58500619E2,-8.264185748E0,-1.656724657E2,-2.672074585E1,-6.157949438E1,-1.208429887E2,-3.301397817E1,-1.611703174E2,-3.415434642E1,-3.153979678E1,-1.10133248E2,3.769404796E-1,-6.503235588E1,-1.524471884E2,-4.339657932E1,-1.755563658E2,1.785734975E2,-1.740869936E2,-1.764674108E2,-1.656660329E2,-1.571646473E2" >tiltSideUD</container>
+<container size="1" static="false" init="-9.535171509E-2" >accX</container>
+<container size="1" static="false" init="-1.170565796E-1" >accY</container>
+<container size="0" static="false" init="1.742555647E0,8.00988758E-1,4.328600171E-1,7.538401782E-1,5.641205086E-1,5.656624368E-1,7.424735352E-1,5.530326387E-1,8.074381001E-1,5.853199194E-1,6.820589187E-1,4.989061709E-1,8.505701994E-1,5.570513017E-1,5.298527411E-1,6.615708954E-1,7.200853931E-1,5.03209509E-1,8.327748104E-1,8.33386814E-1,3.747764807E0,5.536135637E0,6.595200516E0,5.683659469E0,6.972003942E0,8.371341601E0,9.664886165E0,1.020981197E1,1.156162872E1,1.710435157E1,1.116179909E1,5.585845924E0,2.389796134E0,6.869718458E0,7.215619631E0,3.834834722E0,1.824700387E0,1.753440091E0,2.828251973E0,3.6674178E0,1.855797967E0,1.468346584E0,4.714107083E-1,7.240991796E-1,1.769914117E0,1.447755652E0,1.551790801E0,4.989060099E-1,7.063981091E-1,6.764431223E-1,4.843282531E-1,1.208815586E0,8.617656957E-1,2.972779884E0,7.711090053E0,8.746568098E0,1.010187069E1,8.037906349E0,7.955537118E0,8.700350876E0,8.608026983E0,9.705750252E0,8.119085501E0,9.865864806E0,8.800252762E0,7.856061596E0,4.722814893E0,1.754082935E0,1.763547493E0,5.288438985E0,1.870994118E0,1.674988783E0,5.263620888E-1,1.969289789E0,1.077382942E0,4.650023842E-1,1.622177469E0,8.01815807E-1,1.126597385E0,9.769490739E-1,1.455098764E0,7.495601692E-1,1.066847142E0,1.813635265E0,8.041461345E0,1.148617879E1,1.27470882E1,1.200269769E1,1.049811266E1,7.955471572E0,9.691854493E0,9.899186569E0,1.004730506E1,1.070968669E1,1.713992861E1,1.159920072E1,1.843771469E0,7.203709478E0,1.353858533E0,5.236638459E0,6.926555614E0,6.605814918E-1,4.032264464E0,5.643665754E0,2.586634604E0,1.16840108E0,4.04422758E0,3.463176133E0,9.137257931E-1,2.689023346E0,2.129783712E0,7.754924142E-1,1.506060813E0,1.848999646E0,9.311542226E-1,5.656246566E-1,8.777454579E-1,4.511015877E-1,8.347195038E-1,4.192050191E-1,6.14866135E-1,5.932442203E-1,1.075932735E0,5.145639483E0,1.173618038E1,1.379967975E1,1.315686787E1,1.17152274E1,6.683745345E0,8.183643699E0,1.012646185E1,9.986837183E0,1.1851381E1,2.322478271E0,6.798077587E0,7.144463266E0,6.727490456E0,1.189939646E0,4.943910597E0,5.89685801E0,4.034007188E0,3.252695726E-1,2.506559598E0,4.365438335E0,2.796258543E0,5.948418933E-1,1.985306615E0,2.262521023E0,3.144465718E0,5.672768443E-1,9.376773871E-1,1.579961765E0,1.280501294E0,1.169208996E0,1.029110537E0,1.020807216E0,1.294482941E0,7.550397419E-1,6.309634421E-1,7.01825262E-1,1.248241516E0,7.09579243E-1,1.113396288E0,1.021939516E0,6.53848079E-1,1.407146699E0,1.077541474E0,5.979111207E-1,8.955722992E-1,7.43868132E-1,2.011226659E0,6.083497049E0,8.229118257E0,8.977236179E0,8.918144444E0,7.980803987E0,9.484937577E0,9.711073976E0,8.849466445E0,1.070042646E1,1.064795691E1,9.97864823E0,5.032657682E0,1.056724307E0,5.93272307E0,5.585721796E0,4.588500218E0,8.720799488E-1,2.404415231E0,2.542181843E0,5.258763431E-1,6.671488137E-1,7.083404199E-1,9.286140591E-1,8.662208036E-1,6.221316748E-1,5.178063625E-1,7.876136368E-1,1.373183323E0,6.836513854E-1,5.179437804E-1,1.353306191E0,1.338947002E0,1.606716207E0,4.981640931E-1,1.935970056E0,1.516875321E0,1.737748491E0,6.11880153E-1,8.105072329E-1,1.744730186E0,1.178387331E0,1.808072443E0,1.065979421E0,1.250926729E0,9.691354021E-1,1.34268556E0,1.690357578E0,9.763848085E-1,1.034321709E-1,4.799720092E0,8.722365214E0,1.012482519E1,1.270144392E1,1.101026512E1,1.156983407E1,9.560581335E0,1.136261215E1,1.025992856E1,3.858365926E0,7.461937646E0,8.831658877E0,6.025292149E0,6.741743522E-1,1.194844118E0,2.770890946E0,3.268092703E0,1.191748405E0,2.217174493E0,1.531511628E0,9.272381223E-1,9.942630169E-1,5.400459344E-1,6.399638868E-1,1.000374706E0,1.873812818E0,8.656812894E-1,6.749421421E-1,1.771151863E0,9.405120962E-1,8.089063417E-1,8.131291618E-1,8.61675669E-1,9.034893266E-1,5.606755435E-1,8.652304222E-1,4.806453266E-1,1.091122422E0,1.426008314E0,9.558107746E-1,1.091096545E0,2.380625806E0,1.534563775E0,1.260924745E0,1.174718199E0,8.233824811E-1,1.704565824E0,9.564942451E-1,6.503943315E-1,8.599359301E-1,7.29422829E-1,1.973084748E0,8.384243355E0,1.173090623E1,1.148619659E1,9.235953955E0,1.015185244E1,9.288640109E0,9.424709232E0,1.620094725E1,8.702272661E0,4.452117367E0,2.662036248E0,2.051441122E0,1.185019534E0,2.902068072E0,3.705126195E0,2.545299309E-1,1.38617072E0,7.029279408E-1,1.782263138E0,2.423157284E0,2.4359064E0,5.980816715E-1,4.251155344E-1,1.247073797E0,7.128521247E-1,4.780863384E-1,7.172886018E-1,1.089859502E0,1.685794328E0,1.942422461E0,1.675212412E0,2.517471321E0,1.784662522E0,5.968690349E-1,1.3154922E0,2.073057784E0,2.707020315E0,1.50854118E0,8.727347857E-1,7.360946349E-1,5.015117808E-1,1.282363286E0,1.086036656E0,1.115730183E0,7.821626184E-1,1.027615567E0,5.376854537E-1,1.279847494E0,1.382077408E-1,1.2899904E0,9.352948534E0,1.357260522E1,1.232971778E1,6.340381147E0,1.105755943E0,1.444465438E0" >angle</container>
+<container size="0" static="false" init="1.713357108E0,-5.992658819E-1,-4.32684886E-1,-6.635737095E-1,-4.988225095E-1,-4.770511285E-1,-5.81073176E-1,-5.34229304E-1,-5.66108923E-1,-5.696110521E-1,-5.615164033E-1,-4.646693414E-1,-5.46444037E-1,-5.461668675E-1,-4.203712555E-1,-6.217943234E-1,-5.09630551E-1,-4.756003986E-1,-6.505622591E-1,-3.628273227E-1,-5.081025595E-1,-4.448148851E-1,-4.23780252E-1,-4.372763833E-1,-2.130835958E-1,-2.721254707E-1,-3.46793301E-1,-1.723055317E-1,-1.874778886E-1,-9.695827665E-1,1.673923209E-1,-1.162434863E0,-5.848624442E-1,-1.437404653E-1,-1.185272907E0,3.380737476E-1,-1.157671664E0,-3.380990104E-1,-4.709160317E-1,-7.570880913E-1,-3.938847338E-1,-7.871884534E-1,-1.977193481E-1,-6.107947585E-1,-7.070820045E-1,-5.492958709E-1,-6.634145652E-1,-4.786341776E-1,-6.224212634E-1,-4.967945566E-1,-4.052777754E-1,-7.055773789E-1,-3.225017892E-1,-8.310141252E-1,-2.61553922E-1,-2.849579508E-1,7.872412204E-1,-3.741060707E-1,-3.337787864E-1,-2.8735725E-1,-1.851759974E-1,-1.510328566E-1,1.874855203E-1,-1.790542957E-1,-2.966273892E-1,-3.97216001E-1,-9.674315683E-1,6.110618649E-3,-1.161259941E0,-1.943629923E-1,-3.313280275E-1,-8.711142508E-1,3.908063973E-2,-7.848959569E-1,-3.963795722E-1,-3.047152016E-1,-7.416035752E-1,-4.189145612E-1,-3.597225387E-1,-4.929473532E-1,-6.571864361E-1,-5.688743255E-1,-1.066583881E0,-6.335239741E-1,-2.869323765E-1,-4.244252748E-1,-6.28941377E-1,-2.686072085E-1,-6.377180485E-1,-1.107392784E0,-1.590829418E-1,-9.376875979E-1,-2.16435582E-1,-3.510333811E-1,-2.595355333E-1,-1.743328318E-1,-4.619496244E-1,-1.062285396E0,-6.034664453E-1,1.763353989E-3,-1.178853837E0,2.009534998E-1,-4.09305314E-1,-1.212793471E0,-8.999191118E-2,-6.381876912E-1,-5.880591986E-1,-5.285519846E-1,-8.361384037E-1,-5.250092147E-1,-3.996520235E-1,-7.247490682E-1,-5.964776071E-1,-5.145693004E-1,-6.187644024E-1,-4.702260713E-1,-4.235332604E-1,-4.235296339E-1,-7.153919665E-1,-2.66895668E-1,-5.973759378E-1,-5.696146966E-1,-5.678476852E-1,-1.577458668E0,4.041220508E-1,2.432812402E-1,-5.352806342E-1,-8.591454845E-1,-1.145573971E-1,-4.996777923E-1,-1.593012054E-1,-5.481786805E-1,-1.330847359E-1,-1.009895823E0,-6.327677619E-1,4.552941823E-1,-8.674541209E-1,-4.984919907E-1,-6.581604251E-1,-2.456990285E-1,-8.510260416E-1,-2.36940057E-1,-5.771034469E-1,-6.508607713E-1,-6.817798261E-1,-5.257396305E-1,-7.99302636E-1,-2.865428385E-1,-6.279268226E-1,-5.399744318E-1,-6.181864559E-1,-6.134422905E-1,-2.771716157E-1,-1.099191075E0,-4.288343422E-2,-7.428160586E-1,-4.893899117E-1,-5.656040065E-1,-6.062911594E-1,-6.865563268E-1,-1.982968184E-1,-6.570491146E-1,-4.500247219E-1,-5.915425458E-1,-6.437753569E-1,-2.961587998E-1,-6.550545119E-1,-5.420007589E-1,-3.942046166E-1,-7.408637724E-1,-6.678698013E-1,-3.453746061E-1,-5.987391039E-1,-5.719143088E-1,-3.265112338E-1,-1.03046227E0,-1.663837356E-1,-5.085661523E-1,-7.714668925E-1,-6.489709011E-1,-4.666992453E-1,-5.094165068E-1,1.311849115E-1,-1.045623956E0,6.570920264E-1,-1.241428225E0,-4.333064218E-1,-5.539814638E-1,-1.135353831E0,-1.800437293E-1,-5.236158404E-1,-6.138503732E-1,-1.543215977E-1,-9.195261901E-1,-3.358519797E-1,-5.552186198E-1,-5.043527815E-1,-6.492186564E-1,-4.060034523E-1,-5.512251862E-1,-4.473601241E-1,-7.156118929E-1,-5.932431348E-1,-6.790305893E-1,-2.96926014E-1,-4.76126376E-1,-5.174340636E-1,-6.890505516E-1,-5.720189734E-1,-4.374239692E-1,-6.299079495E-1,-2.530568375E-1,-8.591607896E-1,-1.621739734E-1,-9.563393881E-1,-5.958770894E-1,-5.942183569E-1,-3.21458676E-1,-9.545475109E-1,-5.244223469E-2,-8.436068559E-1,1.037740932E-1,3.705053355E-1,-6.769642102E-1,2.462244044E-1,4.059576908E-1,1.358811704E-1,-5.391645981E-1,-2.504201382E-1,4.680998576E-1,-1.089714587E0,-1.092595539E-1,-1.444266079E0,-4.446397239E-1,-1.157341969E0,-3.140801867E-1,-1.020830053E0,-6.31213407E-1,-2.04760723E-1,-7.134291334E-1,-6.051998218E-2,-8.912367732E-1,-5.059850817E-1,-4.020412653E-1,-8.458718266E-1,-4.912559211E-1,-4.587564274E-1,-5.531907301E-1,-5.380705109E-1,-7.051053526E-1,-6.722555026E-1,-1.745365896E-1,-7.320479409E-1,-4.318673551E-1,-5.077869931E-1,-7.496693196E-1,-4.314743468E-1,-2.073613256E-1,-2.885368228E-1,-9.109621484E-1,-2.521929192E-1,-7.254248682E-1,-9.907521516E-1,1.472485518E-1,-1.100013533E0,-1.665829809E-2,-8.103119673E-1,-7.594550888E-1,-3.450386272E-1,-8.385719561E-1,-2.788050851E-1,-9.856065441E-1,3.311583988E-2,-5.815725071E-1,-4.860930347E-1,-2.333556337E-1,-9.709916284E-1,-2.881959327E-1,-4.696488913E-1,-7.662419817E-1,1.811662053E-1,-7.161930174E-1,-6.71316216E-1,-1.506115985E0,5.444623401E-1,-1.199704363E0,1.757561243E-1,-2.53644629E-1,-5.674392665E-1,-6.062491388E-1,-5.795694421E-1,-4.042955275E-1,-5.022889725E-1,-5.867037567E-1,-3.420891667E-1,-6.149186903E-1,-7.041938423E-1,-4.764410566E-1,-4.543714656E-1,-7.410349099E-1,-4.935535197E-1,-3.596344263E-1,-5.959331423E-1,-5.083654248E-1,-9.063347822E-1,-4.017251858E-1,-4.530118472E-1,-7.600445096E-1,-3.893845047E-1,-3.73391627E-1,-3.924428169E-1,-6.473873225E-1,-4.305886043E-1,-6.987695028E-1,-3.505625364E-1,-6.264521254E-1,-4.091604299E-1,-9.648350378E-1,3.537431588E-3,-1.160275394E0,-6.393030022E-2,-8.863594044E-1,-7.311170617E-1,3.443456686E-1,-1.289945966E0,-3.922669616E-1,-2.737877097E-1,-5.606752864E-1" >tiltFlatUD</container>
+<container size="0" static="false" init="-1.825833344E-3,4.980062917E-1,9.978382917E-1,1.497668667E0,1.997500667E0,2.497330917E0,2.997161917E0,3.496993083E0,3.996824083E0,4.496654292E0,4.996485292E0,5.496314958E0,5.996145958E0,6.495976792E0,6.995806792E0,7.495635917E0,7.995465917E0,8.495295542E0,8.995125542E0,9.494953917E0,9.994782917E0,1.049461329E1,1.099444229E1,1.149427054E1,1.199409954E1,1.249392817E1,1.349358554E1,1.399341354E1,1.449324179E1,1.499306979E1,1.549289704E1,1.599272504E1,1.649255442E1,1.699238242E1,1.749220996E1,1.799203796E1,1.849186604E1,1.899169404E1,1.949152279E1,1.999135079E1,2.049117767E1,2.099100567E1,2.149083379E1,2.199066179E1,2.249048908E1,2.299031708E1,2.349014529E1,2.398997329E1,2.448980117E1,2.498962817E1,2.548945629E1,2.598928429E1,2.648911204E1,2.698893904E1,2.798859533E1,2.848842292E1,2.898825092E1,2.948807929E1,2.998790729E1,3.048773471E1,3.098756371E1,3.148739208E1,3.198722108E1,3.248704967E1,3.298687767E1,3.348670679E1,3.398653579E1,3.448636517E1,3.498619317E1,3.548602208E1,3.598585108E1,3.648568042E1,3.698550842E1,3.748533742E1,3.798516642E1,3.848499408E1,3.898482308E1,3.948465146E1,3.998448046E1,4.048430833E1,4.098413733E1,4.198379358E1,4.248362267E1,4.298345067E1,4.348327817E1,4.398310617E1,4.448293442E1,4.498276242E1,4.548259017E1,4.598241817E1,4.648224667E1,4.698207367E1,4.748190096E1,4.798172796E1,4.848155608E1,4.898138308E1,4.948121021E1,4.998103621E1,5.048086342E1,5.098068942E1,5.148051604E1,5.198034204E1,5.248016842E1,5.297999442E1,5.347981933E1,5.397964533E1,5.447947033E1,5.497929533E1,5.547912054E1,5.647876954E1,5.697859454E1,5.747841846E1,5.797824246E1,5.847806617E1,5.897789017E1,5.947771429E1,5.997753729E1,6.047736129E1,6.097718429E1,6.147700767E1,6.197683067E1,6.247665329E1,6.297647629E1,6.347629954E1,6.397612154E1,6.447594467E1,6.497576667E1,6.547558883E1,6.597541183E1,6.647523342E1,6.697505542E1,6.747487571E1,6.797469771E1,6.847451954E1,6.897434154E1,6.947416204E1,6.997398304E1,7.047380458E1,7.147344608E1,7.197326608E1,7.247308667E1,7.297290767E1,7.347272779E1,7.397254779E1,7.447236704E1,7.497218604E1,7.547200621E1,7.597182621E1,7.647164521E1,7.697146421E1,7.747128321E1,7.797110221E1,7.847092158E1,7.897074058E1,7.947055946E1,7.997037846E1,8.047019679E1,8.097001579E1,8.146983454E1,8.196965254E1,8.246947133E1,8.296929033E1,8.396892979E1,8.446875054E1,8.496857154E1,8.546839233E1,8.596821433E1,8.646803667E1,8.696785967E1,8.746768208E1,8.796750508E1,8.846732808E1,8.896715108E1,8.946697492E1,8.996679792E1,9.046662254E1,9.096644554E1,9.146626883E1,9.196609283E1,9.246591679E1,9.296574079E1,9.346556479E1,9.446521267E1,9.496503567E1,9.546485904E1,9.596468304E1,9.646450767E1,9.696433167E1,9.746415379E1,9.796397779E1,9.846380271E1,9.896362671E1,9.946345029E1,9.996327329E1,1.00463097E2,1.00962921E2,1.014627443E2,1.019625683E2,1.024623914E2,1.029622154E2,1.034620377E2,1.039618617E2,1.044616852E2,1.049615082E2,1.054613314E2,1.064609791E2,1.069608021E2,1.07460623E2,1.07960446E2,1.08460269E2,1.08960092E2,1.094599138E2,1.099597368E2,1.104595588E2,1.109593818E2,1.114592041E2,1.119590261E2,1.124588494E2,1.129586714E2,1.134584935E2,1.139583155E2,1.144581375E2,1.149579598E2,1.154577828E2,1.159576048E2,1.164574268E2,1.169572498E2,1.174570718E2,1.179568944E2,1.184567164E2,1.189565382E2,1.194563602E2,1.199561832E2,1.209558278E2,1.214556498E2,1.219554713E2,1.224552933E2,1.22955115E2,1.23454937E2,1.239547589E2,1.244545799E2,1.24954402E2,1.25454224E2,1.259540449E2,1.264538659E2,1.269536887E2,1.274535097E2,1.279533305E2,1.284531505E2,1.289529716E2,1.294527926E2,1.299526123E2,1.304524323E2,1.309522527E2,1.314520727E2,1.319518912E2,1.324517112E2,1.329515304E2,1.339511678E2,1.344509868E2,1.349508058E2,1.354506248E2,1.359504427E2,1.364502607E2,1.369500775E2,1.374498955E2,1.379497134E2,1.384495304E2,1.389493477E2,1.394491657E2,1.399489818E2,1.404487988E2,1.409486169E2,1.414484339E2,1.419482517E2,1.424480687E2,1.429478872E2,1.434477052E2,1.439475235E2,1.444473405E2,1.449471579E2,1.454469759E2,1.459467955E2,1.464466135E2,1.469464295E2,1.474462475E2,1.479460659E2,1.489457E2,1.49445517E2,1.499453343E2,1.504451523E2,1.509449698E2,1.514447868E2,1.519446032E2,1.524444202E2,1.529442377E2,1.534440547E2,1.539438699E2,1.544436869E2,1.549435033E2,1.554433193E2,1.559431352E2,1.564429512E2,1.569427674E2,1.574425834E2,1.579423985E2,1.584422135E2,1.589420279E2,1.594418429E2,1.599416582E2,1.604414732E2,1.609412874E2,1.614411014E2,1.619409167E2,1.624407307E2,1.629405442E2,1.639401717E2,1.644399857E2,1.649397985E2,1.654396115E2,1.659394241E2,1.664392371E2,1.669390504E2,1.674388634E2,1.679386749E2,1.684384879E2,1.689383014E2,1.694381144E2" >t</container>
+<container size="0" static="false" init="8.828664289E1,9.059926588E1,9.043268488E1,9.06635737E1,9.04988225E1,9.047705112E1,9.058107317E1,9.05342293E1,9.056610892E1,9.056961105E1,9.05615164E1,9.046466934E1,9.054644403E1,9.054616686E1,9.042037125E1,9.062179432E1,9.050963055E1,9.047560039E1,9.065056225E1,9.036282732E1,9.050810255E1,9.044481488E1,9.042378025E1,9.043727638E1,9.021308359E1,9.027212547E1,9.03467933E1,9.017230553E1,9.018747788E1,9.096958276E1,8.983260767E1,9.116243486E1,9.058486244E1,9.014374046E1,9.11852729E1,8.966192625E1,9.115767166E1,9.033809901E1,9.047091603E1,9.075708809E1,9.039388473E1,9.078718845E1,9.019771934E1,9.061079475E1,9.0707082E1,9.054929587E1,9.066341456E1,9.047863417E1,9.062242126E1,9.049679455E1,9.040527777E1,9.070557737E1,9.032250178E1,9.083101412E1,9.026155392E1,9.028495795E1,8.921275877E1,9.037410607E1,9.033377878E1,9.028735725E1,9.018517599E1,9.015103285E1,8.981251447E1,9.017905429E1,9.029662738E1,9.0397216E1,9.096743156E1,8.999388938E1,9.116125994E1,9.019436299E1,9.033132802E1,9.087111425E1,8.996091936E1,9.078489595E1,9.039637957E1,9.03047152E1,9.074160357E1,9.041891456E1,9.035972253E1,9.049294735E1,9.065718643E1,9.056887432E1,9.106658388E1,9.063352397E1,9.028693237E1,9.042442527E1,9.062894137E1,9.02686072E1,9.063771804E1,9.110739278E1,9.015908294E1,9.093768759E1,9.021643558E1,9.035103338E1,9.025953553E1,9.017433283E1,9.046194962E1,9.106228539E1,9.060346644E1,8.999823664E1,9.117885383E1,8.97990465E1,9.040930531E1,9.121279347E1,9.008999191E1,9.063818769E1,9.058805919E1,9.052855198E1,9.08361384E1,9.052500921E1,9.039965202E1,9.072474906E1,9.05964776E1,9.05145693E1,9.06187644E1,9.047022607E1,9.042353326E1,9.042352963E1,9.071539196E1,9.026689566E1,9.059737593E1,9.056961469E1,9.056784768E1,9.157745866E1,8.959587794E1,8.975671876E1,9.053528063E1,9.085914548E1,9.011455739E1,9.049967779E1,9.01593012E1,9.054817868E1,9.013308473E1,9.100989582E1,9.063276776E1,8.954470581E1,9.086745412E1,9.049849199E1,9.065816042E1,9.024569902E1,9.085102604E1,9.023694005E1,9.057710344E1,9.065086077E1,9.068177982E1,9.052573963E1,9.079930263E1,9.028654283E1,9.062792682E1,9.053997443E1,9.061818645E1,9.061344229E1,9.027717161E1,9.109919107E1,9.004288343E1,9.074281605E1,9.048938991E1,9.0565604E1,9.060629115E1,9.068655632E1,9.019829681E1,9.065704911E1,9.045002472E1,9.059154254E1,9.064377535E1,9.029615879E1,9.065505451E1,9.054200075E1,9.039420461E1,9.074086377E1,9.06678698E1,9.03453746E1,9.05987391E1,9.05719143E1,9.032651123E1,9.103046227E1,9.016638373E1,9.050856615E1,9.077146689E1,9.06489709E1,9.046669924E1,9.05094165E1,8.986881508E1,9.104562395E1,8.934290797E1,9.124142822E1,9.043330642E1,9.055398146E1,9.113535383E1,9.018004372E1,9.052361584E1,9.061385037E1,9.015432159E1,9.091952619E1,9.033585197E1,9.055521861E1,9.050435278E1,9.064921865E1,9.040600345E1,9.055122518E1,9.044736012E1,9.071561189E1,9.059324313E1,9.067903058E1,9.029692601E1,9.047612637E1,9.051743406E1,9.068905055E1,9.057201897E1,9.043742396E1,9.062990794E1,9.025305683E1,9.085916078E1,9.016217397E1,9.095633938E1,9.059587708E1,9.059421835E1,9.032145867E1,9.095454751E1,9.005244223E1,9.084360685E1,8.98962259E1,8.962949466E1,9.067696421E1,8.975377559E1,8.95940423E1,8.986411882E1,9.053916459E1,9.025042013E1,8.953190014E1,9.108971458E1,9.010925955E1,9.144426607E1,9.044463972E1,9.115734196E1,9.031408018E1,9.102083005E1,9.06312134E1,9.020476072E1,9.071342913E1,9.006051998E1,9.089123677E1,9.050598508E1,9.040204126E1,9.084587182E1,9.049125592E1,9.045875642E1,9.055319073E1,9.053807051E1,9.070510535E1,9.06722555E1,9.017453658E1,9.073204794E1,9.043186735E1,9.050778699E1,9.074966931E1,9.043147434E1,9.020736132E1,9.028853682E1,9.091096214E1,9.025219291E1,9.072542486E1,9.099075215E1,8.985275144E1,9.110001353E1,9.001665829E1,9.081031196E1,9.075945508E1,9.034503862E1,9.083857195E1,9.027880508E1,9.098560654E1,8.996688416E1,9.05815725E1,9.048609303E1,9.023335563E1,9.097099162E1,9.028819593E1,9.046964889E1,9.076624198E1,8.981883379E1,9.071619301E1,9.067131621E1,9.150611598E1,8.945553766E1,9.119970436E1,8.982424387E1,9.025364462E1,9.056743926E1,9.060624913E1,9.057956944E1,9.040429552E1,9.050228897E1,9.058670375E1,9.034208916E1,9.061491869E1,9.070419384E1,9.047644105E1,9.045437146E1,9.074103491E1,9.049355351E1,9.035963442E1,9.059593314E1,9.050836542E1,9.090633478E1,9.040172518E1,9.045301184E1,9.07600445E1,9.03893845E1,9.037339162E1,9.039244281E1,9.064738732E1,9.04305886E1,9.06987695E1,9.035056253E1,9.062645212E1,9.040916043E1,9.096483503E1,8.999646256E1,9.116027539E1,9.00639303E1,9.08863594E1,9.073111706E1,8.965565433E1,9.128994596E1,9.039226696E1,9.02737877E1,9.056067528E1" >tiltUprightUD</container>
+<container size="0" static="false" init="1.0506646E1,1.384291875E2,-1.783700721E2,1.516720984E2,1.521583739E2,1.474946828E2,1.414993463E2,1.650158944E2,1.345148279E2,1.666953301E2,1.454118891E2,1.586498771E2,1.299722603E2,1.686546998E2,1.42501132E2,1.600298534E2,1.35049521E2,1.609319744E2,1.413684534E2,1.158069282E2,-9.778088104E1,-9.459425333E1,-9.366788636E1,-9.439802595E1,-9.174274165E1,-9.184956508E1,-9.203679168E1,-9.095674116E1,-9.091647888E1,9.315271805E1,-8.915160534E1,1.01974268E2,1.041581816E2,-9.119318262E1,9.940539533E1,-8.494983258E1,1.293693172E2,1.011140407E2,-9.957699005E1,1.018977801E2,-1.022498197E2,1.224132273E2,1.147975188E2,-1.475127149E2,1.13540296E2,-1.122929846E2,1.153045735E2,1.636104597E2,1.517765143E2,1.372570522E2,1.468013575E2,1.257066914E2,-1.119754611E2,-1.062190148E2,-9.193205809E1,-9.185247738E1,-8.55766178E1,-9.265016709E1,-9.238912584E1,-9.187816321E1,-9.122335732E1,-9.088308198E1,-8.868567648E1,-9.10296148E1,9.191641488E1,-9.288005464E1,1.017942277E2,-8.980046326E1,-1.311750485E2,9.210025424E1,-1.001965597E2,1.213298093E2,8.574217954E1,-1.134804414E2,1.115844468E2,-1.309416384E2,-1.171981279E2,1.214955642E2,1.086183624E2,-1.203009474E2,1.168442379E2,-1.393695916E2,-1.7872697E2,-1.104389559E2,-9.203140752E1,-9.208919687E1,-9.278138126E1,-9.126351672E1,-9.34436664E1,-9.795066759E1,-9.093151429E1,-9.538154705E1,-9.122166701E1,-9.185641962E1,9.084158226E1,-9.084937721E1,-1.045050283E2,9.843588755E1,-1.164663222E2,-8.998076031E1,9.975220053E1,-7.229027547E1,-9.581643344E1,1.023704264E2,-9.199243301E1,-1.231034827E2,9.83471573E1,-9.8768297E1,1.56216263E2,-1.012507808E2,1.008107563E2,1.591570252E2,-1.133267688E2,1.06153217E2,-1.31642496E2,1.462357152E2,1.18848485E2,-1.598636966E2,1.489845791E2,1.29543526E2,1.663007866E2,1.637738594E2,1.21852054E2,-1.078071942E2,-8.805434896E1,-8.900945701E1,-9.229061004E1,-9.414704176E1,-9.097762272E1,-9.347677089E1,-9.089196403E1,-9.311468652E1,-9.063421309E1,-1.157625321E2,9.531590387E1,-8.636514983E1,9.737474143E1,-1.147634188E2,9.763146713E1,-9.237955476E1,1.021592587E2,1.367556428E2,-1.033028506E2,9.855807559E1,-1.041012685E2,1.521071387E2,1.137329398E2,-9.727217033E1,1.015077307E2,1.621511054E2,-1.312420025E2,1.128413274E2,-1.024989195E2,1.600683523E2,9.238797227E1,-1.366888212E2,1.122100436E2,-1.385112592E2,1.639238418E2,-1.680260031E2,9.91393654E1,-1.578140608E2,1.138377725E2,-1.253663392E2,-1.69929519E2,1.021473864E2,-1.274356948E2,1.550239883E2,1.161129238E2,1.748484709E2,1.093871456E2,-9.324235447E1,-9.414381863E1,-9.362276701E1,-9.208122606E1,-9.737109549E1,-9.099593117E1,-9.297318821E1,-9.4961571E1,-9.34366485E1,-9.248312481E1,-9.289666369E1,-8.851015901E1,-1.71687061E2,8.366358803E1,-1.028018749E2,9.540717325E1,-1.294357351E2,-1.181628973E2,9.405857502E1,1.746854543E2,1.569412525E2,1.025829625E2,-1.719768782E2,1.128112061E2,-1.53181269E2,1.669103169E2,1.455144544E2,1.071943719E2,-1.437342793E2,1.497365644E2,1.2191881E2,-1.162955845E2,1.149943642E2,-1.265861572E2,1.04232007E2,-1.099407343E2,1.133543574E2,1.592039437E2,-1.226609127E2,1.111577843E2,-1.023990746E2,1.183631509E2,-9.874974414E1,1.398584629E2,1.27938686E2,-1.162631441E2,1.009597181E2,-1.678582821E2,-1.204655449E2,-1.000997842E2,-8.932358276E1,-8.792471959E1,-9.300509151E1,-8.873438506E1,-8.801659922E1,-8.919321906E1,-9.268405387E1,-9.138361563E1,-8.304210008E1,-9.835044374E1,9.070322199E1,-1.03819675E2,-1.312628979E2,-1.656049578E2,9.650342714E1,-1.081832285E2,1.219783165E2,9.529630607E1,-1.177585406E2,9.37419775E1,1.536838626E2,-1.595416179E2,1.289181172E2,-1.47728819E2,1.051936426E2,-1.219992296E2,-1.450447353E2,1.076805166E2,-1.385621604E2,1.462067589E2,1.023940736E2,-1.481622568E2,1.18552827E2,1.549129639E2,-1.500455362E2,1.538565782E2,1.009540626E2,1.016714152E2,1.623771152E2,-1.033624708E2,1.07731763E2,-1.302057679E2,8.329487191E1,1.594539063E2,-9.115918133E1,1.18376851E2,-1.425582034E2,1.220385981E2,-1.672008719E2,1.12470602E2,1.199588231E2,-8.977531182E1,-9.280191144E1,-9.239292634E1,-9.143523274E1,-9.543133643E1,-9.176239102E1,-9.283056056E1,9.263834898E1,-8.881629939E1,9.92388318E1,-1.045965755E2,1.372253102E2,6.265143297E1,-1.143999194E2,8.728488614E1,1.75219837E2,1.141602998E2,-1.495929761E2,1.089712431E2,-9.959890306E1,1.018929107E2,-1.688057496E2,-1.435804943E2,1.195399509E2,1.71060435E2,-1.752451231E2,1.293041675E2,1.328352108E2,-1.07019361E2,1.006657308E2,-1.108331223E2,1.016428388E2,-1.205123911E2,1.323021944E2,1.101398929E2,-1.11499381E2,9.826418574E1,-1.043275343E2,1.167207458E2,1.515794944E2,-1.491570113E2,1.230139782E2,-1.088296826E2,1.241543464E2,1.215397968E2,-1.59866752E2,8.962305952E1,1.550323559E2,-1.175528116E2,1.333965793E2,-9.444363415E1,-8.857349747E1,-9.591300635E1,-9.353258917E1,-1.043339671E2,-1.128353527E2" >anglePlane</container>
+<container size="1" static="false" init="9.805209961E0" >accZ</container>
+
+</data-containers>
+  <input>
+    <sensor type="accelerometer" rate="2" average="true">
+      <output component="x">accX</output>
+      <output component="y">accY</output>
+      <output component="z">accZ</output>
+      <output component="t">accT</output>
+    </sensor>
+  </input>
+  <views>
+    <view label="Flat">
+      <graph label="Tilt up/down" timeOnX="true" labelX="[[quantity_short_time]]" unitX="[[unit_short_second]]" labelY="Angle" unitY="[[unit_short_degree]]" partialUpdate="true" style="lines">
+        <input axis="x">t</input>
+        <input axis="y">tiltFlatUD</input>
+      </graph>
+      <value label="Tilt up/down" size="2" precision="2" scientific="false" unit="[[unit_short_degree]]" factor="1">
+        <input>tiltFlatUD</input>
+      </value>
+      <separator height="1"/>
+      <graph label="Tilt left/right" timeOnX="true" labelX="[[quantity_short_time]]" unitX="[[unit_short_second]]" labelY="Angle" unitY="[[unit_short_degree]]" partialUpdate="true" style="lines">
+        <input axis="x">t</input>
+        <input axis="y">tiltFlatLR</input>
+      </graph>
+      <value label="Tilt left/right" size="2" precision="2" scientific="false" unit="[[unit_short_degree]]" factor="1">
+        <input>tiltFlatLR</input>
+      </value>
+      <info label="This tab helps to measure the tilting angle of the phone, starting from a flat position."/>
+    </view>
+    <view label="Upright">
+      <graph label="Tilt up/down" timeOnX="true" labelX="[[quantity_short_time]]" unitX="[[unit_short_second]]" labelY="Angle" unitY="[[unit_short_degree]]" partialUpdate="true" style="lines">
+        <input axis="x">t</input>
+        <input axis="y">tiltUprightUD</input>
+      </graph>
+      <value label="Tilt up/down" size="2" precision="2" scientific="false" unit="[[unit_short_degree]]" factor="1">
+        <input>tiltUprightUD</input>
+      </value>
+      <separator height="1"/>
+      <graph label="Tilt left/right" timeOnX="true" labelX="[[quantity_short_time]]" unitX="[[unit_short_second]]" labelY="Angle" unitY="[[unit_short_degree]]" partialUpdate="true" style="lines">
+        <input axis="x">t</input>
+        <input axis="y">tiltUprightLR</input>
+      </graph>
+      <value label="Tilt left/right" size="2" precision="2" scientific="false" unit="[[unit_short_degree]]" factor="1">
+        <input>tiltUprightLR</input>
+      </value>
+      <info label="This tab helps to measure the tilting angle of the phone, starting from an upright position."/>
+    </view>
+    <view label="Side">
+      <graph label="Tilt up/down" timeOnX="true" labelX="[[quantity_short_time]]" unitX="[[unit_short_second]]" labelY="Angle" unitY="[[unit_short_degree]]" partialUpdate="true" style="lines">
+        <input axis="x">t</input>
+        <input axis="y">tiltSideUD</input>
+      </graph>
+      <value label="Tilt up/down" size="2" precision="2" scientific="false" unit="[[unit_short_degree]]" factor="1">
+        <input>tiltSideUD</input>
+      </value>
+      <separator height="1"/>
+      <graph label="Tilt left/right" timeOnX="true" labelX="[[quantity_short_time]]" unitX="[[unit_short_second]]" labelY="Angle" unitY="[[unit_short_degree]]" partialUpdate="true" style="lines">
+        <input axis="x">t</input>
+        <input axis="y">tiltSideLR</input>
+      </graph>
+      <value label="Tilt left/right" size="2" precision="2" scientific="false" unit="[[unit_short_degree]]" factor="1">
+        <input>tiltSideLR</input>
+      </value>
+      <info label="This tab helps to measure the tilting angle of the phone, starting from a sideways position."/>
+    </view>
+    <view label="Plane">
+      <graph label="Inclination" timeOnX="true" labelX="[[quantity_short_time]]" unitX="[[unit_short_second]]" labelY="Angle" unitY="[[unit_short_degree]]" partialUpdate="true" style="lines">
+        <input axis="x">t</input>
+        <input axis="y">angle</input>
+      </graph>
+      <value label="Inclination" size="2" precision="2" scientific="false" unit="[[unit_short_degree]]" factor="1">
+        <input>angle</input>
+      </value>
+      <separator height="1"/>
+      <graph label="Rotation" timeOnX="true" labelX="[[quantity_short_time]]" unitX="[[unit_short_second]]" labelY="Angle" unitY="[[unit_short_degree]]" partialUpdate="true" style="lines">
+        <input axis="x">t</input>
+        <input axis="y">anglePlane</input>
+      </graph>
+      <value label="Rotation" size="2" precision="2" scientific="false" unit="[[unit_short_degree]]" factor="1">
+        <input>anglePlane</input>
+      </value>
+      <info label="This tab helps to measure the inclination of the plane. The inclination of the plane is measured as the phone rests flat on the surface, regardless of its orientation. The rotation gives the direction of the inclination."/>
+    </view>
+  </views>
+  <analysis sleep="0.5">
+    <formula formula="atan2([1_],[2_])*57.29577951">
+      <input clear="false">accY</input>
+      <input clear="false">accZ</input>
+      <output clear="false">tiltFlatUD</output>
+    </formula>
+    <formula formula="atan2([1_],[2_])*57.29577951">
+      <input clear="false">accX</input>
+      <input clear="false">accZ</input>
+      <output clear="false">tiltFlatLR</output>
+    </formula>
+    <formula formula="atan2([1_],[2_])*57.29577951">
+      <input clear="false">accZ</input>
+      <input clear="false">accY</input>
+      <output clear="false">tiltUprightUD</output>
+    </formula>
+    <formula formula="atan2([1_],[2_])*57.29577951">
+      <input clear="false">accX</input>
+      <input clear="false">accY</input>
+      <output clear="false">tiltUprightLR</output>
+    </formula>
+    <formula formula="atan2([1_],[2_])*57.29577951">
+      <input clear="false">accY</input>
+      <input clear="false">accX</input>
+      <output clear="false">tiltSideUD</output>
+    </formula>
+    <formula formula="atan2([1_],[2_])*57.29577951">
+      <input clear="false">accZ</input>
+      <input clear="false">accX</input>
+      <output clear="false">tiltSideLR</output>
+    </formula>
+    <formula formula="atan2(sqrt([1_]*[1_]+[2_]*[2_]),[3_])*57.29577951">
+      <input clear="false">accX</input>
+      <input clear="false">accY</input>
+      <input clear="false">accZ</input>
+      <output clear="false">angle</output>
+    </formula>
+    <formula formula="atan2([1_],[2_])*57.29577951">
+      <input clear="false">accX</input>
+      <input clear="false">accY</input>
+      <output clear="false">anglePlane</output>
+    </formula>
+    <append>
+      <input clear="false">accT</input>
+      <output clear="false">t</output>
+    </append>
+  </analysis>
+  <export>
+    <set name="Flat">
+      <data name="t (s)">t</data>
+      <data name="Tilt up/down (deg)">tiltFlatUD</data>
+      <data name="Tilt left/right (deg)">tiltFlatLR</data>
+    </set>
+    <set name="Upright">
+      <data name="t (s)">t</data>
+      <data name="Tilt up/down (deg)">tiltUprightUD</data>
+      <data name="Tilt left/right (deg)">tiltUprightLR</data>
+    </set>
+    <set name="Side">
+      <data name="t (s)">t</data>
+      <data name="Tilt up/down (deg)">tiltSideUD</data>
+      <data name="Tilt left/right (deg)">tiltSideLR</data>
+    </set>
+    <set name="Plane">
+      <data name="t (s)">t</data>
+      <data name="Inclination (deg)">angle</data>
+      <data name="Rotation (deg)">anglePlane</data>
+    </set>
+  </export>
+
+<state-title>기울기 2026-11-03 20-05-09</state-title>
+<color>blue</color>
+<events><start experimentTime="0.0" systemTime="1793703735147" /><pause experimentTime="170.16746204165975" systemTime="1793703905306" /></events>
+</phyphox>

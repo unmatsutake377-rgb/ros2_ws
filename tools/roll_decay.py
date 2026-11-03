@@ -37,8 +37,8 @@ def releases(t, dev, thr=4.0, hold=1.0):
 def analyze(key):
     t, lr = load(os.path.join(D, "수조시험", f"{NAME[key]}_롤감쇠_phyphox_inclination.phyphox"))
     base = st.median(lr[t < 10]); dev = lr - base
-    rel = releases(t, dev); res = []
-    fig, axes = plt.subplots(1, len(rel), figsize=(4.2 * len(rel), 3.6), sharey=True)
+    rel = [r for r in releases(t, dev) if r + 6 <= t[-1]]; res = []   # 놓은 뒤 6 s 미만 기록은 제외
+    ncol = len(rel); fig, axes = plt.subplots(1, ncol, figsize=(min(4.2 * ncol, 14.5), 3.6), sharey=True)
     for ax, t0 in zip(np.atleast_1d(axes), rel):
         m = (t > t0) & (t <= t0 + 12); tt = t[m] - t0; a = np.abs(dev[m])
         # 0.5 s 샘플링은 위상이 제멋대로라 2 s 창의 |편차| 최대값을 그 창의 진폭으로 본다
