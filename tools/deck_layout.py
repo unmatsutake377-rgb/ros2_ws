@@ -5,6 +5,8 @@
   1번배 킬 제거 STL ×1.66 / 2번배 Fusion STL 을 실측 1770×522 에 맞춤.
 장비 x(선미 트랜섬 0 → 선수) 는 docs/전달용/하드웨어_배치_요구사항.md §2-1·§2-5 채택값.
   방수박스 400×300 (1번배 790~1190, 2번배 626~1026) · GPS 안테나 x 535 중심선(접지판 Ø120)
+  팀장 11-03: 박스 뒤쪽 갑판을 뚫고 3D 프린팅 박스를 뒤로 덧붙여 연장 — 1번배 +80 (710~1190), 2번배 +135 (491~1026).
+    2번배는 연장부(491)가 GPS 접지판(475~595)을 덮으므로 안테나를 뒤로 옮겨 그림 — 실제 위치 확인 필요.
   마스트 베이스 168×160 (1번배 1294, 2번배 1130) · LiDAR A3 Ø76 (1번배 1470, 2번배 1420 — 2번배는 미확정)
 팀장 11-01: 마스트 가로대 없이 갑판에 직접 고정, RC 수신기·LTE 핫스팟 폰은 방수박스 안.
   폰은 GPS 안테나·RC 수신기에서 멀리 — 박스 앞쪽 좌현 모서리 (부품_추천목록 §9-2 RF 이격).
@@ -41,12 +43,12 @@ def plan_outline(stl, **kw):   # tools/thruster_layout.py plan_outline 과 같�
 BOATS = {
     "A": dict(title="1번배 갑판 배치 (LOA 1660 × B 550 mm)", L=1660., B=550.,
               poly=lambda: plan_outline(os.path.join(DOCS, "선도_1번배", "1번배_킬제거_Fusion360.stl"), scale=1.66, flip_z=True),
-              box=(790., 1190.), mast=1294., lidar=1470., lidar_note=""),
+              box=(790., 1190.), ext=80., gps=535., gps_note="", mast=1294., lidar=1470., lidar_note=""),
     "B": dict(title="2번배 갑판 배치 (LOA 1770 × B 522 mm)", L=1770., B=522.,
               poly=lambda: plan_outline(os.path.join(DOCS, "선도_2번배", "2번배_Fusion360.stl"), fit=(1770., 522.)),
-              box=(626., 1026.), mast=1130., lidar=1420., lidar_note=" — 위치 미확정"),
+              box=(626., 1026.), ext=135., gps=411., gps_note="연장부에 밀려 뒤로\n(위치 확인 필요)", mast=1130., lidar=1420., lidar_note=" — 위치 미확정"),
 }
-BOX_W = 300.; GPS_X, GPS_R = 535., 60.; MAST_L, MAST_W = 168., 160.; LIDAR_R = 38.
+BOX_W = 300.; GPS_R = 60.; MAST_L, MAST_W = 168., 160.; LIDAR_R = 38.
 PHONE_L, PHONE_W = 150., 75.   # 공기계 폰 개념 크기
 
 
@@ -54,9 +56,12 @@ def draw(k):
     c = BOATS[k]
     fig, ax = plt.subplots(figsize=(14, 4.6))
     ax.add_patch(Polygon(c["poly"](), closed=True, fc="#dfe7ef", ec="k", lw=1.3))
-    x0, x1 = c["box"]
+    x0, x1 = c["box"]; e = c["ext"]; xe = x0 - e; GPS_X = c["gps"]
     ax.add_patch(Rectangle((x0, -BOX_W / 2), x1 - x0, BOX_W, fc="#fff1cc", ec="k", lw=1.2))
-    ax.text(x0, BOX_W / 2 + 8, "방수박스 400×300 (선체 안, 뚜껑 = 해치)", fontsize=9.5, va="bottom")
+    # 3D 프린팅 연장부 — 기존 박스 뒤쪽 갑판을 뚫고 덧붙임 (팀장 11-03)
+    ax.add_patch(Rectangle((xe, -BOX_W / 2), e, BOX_W, fc="#ffe0a3", ec="k", lw=1.2, hatch="///"))
+    ax.text(xe + e / 2, -BOX_W / 2 - 12, f"3D 프린팅\n연장부 +{e:.0f}", fontsize=8.3, ha="center", va="top")
+    ax.text(xe, BOX_W / 2 + 8, f"방수박스 400×300 + 뒤쪽 연장 {e:.0f} → {400 + e:.0f}×300 (선체 안, 뚜껑 = 해치)", fontsize=9.5, va="bottom")
     ax.text(x0 + 12, BOX_W / 2 - 16, "노트북 · 배터리 ×2\n접촉기 · 허브\nArduino · ESC\nGPS 수신기", fontsize=8.3, va="top", color="#555", linespacing=1.4)
     # RC 수신기 — 박스 안
     ax.add_patch(Rectangle((x0 + 30, -BOX_W / 2 + 25), 47, 32, fc="#d9d9d9", ec="k", lw=1.0))
@@ -69,6 +74,8 @@ def draw(k):
     # GPS 안테나 — 중심선, 접지판
     ax.add_patch(Circle((GPS_X, 0), GPS_R, fc="#ffd966", ec="k", lw=1.1))
     ax.text(GPS_X, GPS_R + 14, "GPS 안테나\n(접지판 Ø120)", fontsize=9, ha="center", va="bottom")
+    if c["gps_note"]:
+        ax.text(GPS_X, -GPS_R - 14, c["gps_note"].strip(), fontsize=8.3, ha="center", va="top", color="#a00")
     # 마스트 베이스 — 가로대 없이 갑판에 직접
     m = c["mast"]
     ax.add_patch(Rectangle((m - MAST_L / 2, -MAST_W / 2), MAST_L, MAST_W, fc="#c8c8c8", ec="k", lw=1.1))

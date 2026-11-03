@@ -32,7 +32,7 @@ const B = isA ? {
   layer: 'FRP 적층', hullImg: HULL('1번배_선형_3D.png'), planImg: FIG('hull_plan_A.png'),
   thrImg: FIG('thruster_asbuilt_A.png'), resImg: FIG('resistance_A.png'),
   circImg: TEAMFIG('회로_구성도_A.png'), estopImg: TEAMFIG('비상정지_구성도_A.png'),
-  draftMeasured: true,
+  draftMeasured: true, boxExt: '80 → 480×300',
   cost: [
     ['RPLIDAR A3', '1', '800,000'], ['T200 스러스터 + ESC', '2+2', '776,882'], ['OAK-1 PoE FF', '1', '661,000'],
     ['GPS ZED-F9P + 안테나', '1+1', '610,900'], ['선체 재료 (FRP 등 8종)', '1식', '571,740'], ['IMU iAHRS', '1', '198,000'],
@@ -42,6 +42,7 @@ const B = isA ? {
 } : {
   team: 'S.S.F B', no: '2번배', leader: '박유진',
   members: '박윤서, 차준혁, 이송언, 이태훈, 김세연, 김현지, 전홍윤, 황예진',
+  boxExt: '135 → 535×300',
   loa: '1.77', boa: '0.522', depth: '0.19 m (선체)',
   thr: 'T200 ×4 · V자형 (선미 간격 280, 선수 측 125, 전후 365 mm)',
   mass: '35 (추정)', draft: null, freeboard: null,
@@ -308,7 +309,7 @@ pres.addSection({ title: '선형 설계 및 제작' });
     '잠김 깊이: 흘수·파랑 고려, 환기(ventilation) 없는 높이',
   ], 5.1, 3.85, 4.4, 1.25, { fontSize: 10, gap: 2 });
   card(s, M, 5.15, 9, 1.7, '침몰방지·수밀', [
-    '전장품 전부 400×300×200 방수박스 (뚜껑 = 해치, 개스킷·물끊기). 갑판 관통은 마스트 구멍 하나로 모아 실란트 마감',
+    `전장품 전부 400×300×200 방수박스 + 선미 쪽 3D 프린팅 연장 ${B.boxExt} (뚜껑 = 해치, 개스킷·물끊기). 갑판 관통은 마스트 구멍 하나로 모아 실란트 마감`,
     '선체·스러스터 관통부, 갑판 부착부, 박스 관통부 방수 마감 후 수조에서 수밀 확인',
     isA ? 'FRP 적층 선체 + 방수제(노루페인트) 외벽, 관통부 실리콘' : '카본섬유 적층 선체 + 방수제 외벽, 관통부 실리콘(TYTAN FIX2)',
   ], { fontSize: 11 });
