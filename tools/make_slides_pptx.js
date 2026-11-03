@@ -46,7 +46,7 @@ const B = isA ? {
   loa: '1.77', boa: '0.522', depth: '0.19 m (선체)',
   thr: 'T200 ×4 · V자형 (선미 간격 280, 선수 측 125, 전후 365 mm)',
   mass: '25 (실측)', draft: '선미 80 · 중앙 65 · 선수 75 (부상 시험)', freeboard: '선미 110 · 중앙 125 · 선수 115',
-  kb: '0.0367', bm: '0.568', km: '0.605', wl: '53.2 mm (STL 계산)', cb: '0.369',
+  kb: '0.0316', bm: '0.4725', km: '0.5041', wl: '52.9 mm (STL 계산)', cb: '0.512 (STL) / 0.369 (실측 흘수)',
   thrustTotal: '188 N (4기)', S: '0.678 m²', lwl: '1.523 m',
   layer: '카본섬유 적층', hullImg: FIG('hull_plan_B.png'), planImg: FIG('hull_plan_B.png'),
   thrImg: FIG('thruster_asbuilt_B.png'), resImg: FIG('resistance_B.png'),
