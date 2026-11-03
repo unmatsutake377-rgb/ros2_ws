@@ -101,7 +101,8 @@ function renderMd(mdRaw, opt) {
 
   const md = substitute(mdRaw, opt.boat);
   const out = []; let tb = null;
-  const flush = () => { if (tb) { out.push(table(tb), SP()); tb = null; } };
+  let lastSp = null;
+  const flush = () => { if (tb) { out.push(table(tb), (lastSp = SP())); tb = null; } };
   for (const line of md.split('\n')) {
     if (line.startsWith('|')) {
       if (/^\|[\s:|-]+\|\s*$/.test(line)) continue;
@@ -116,6 +117,7 @@ function renderMd(mdRaw, opt) {
     else if ((m = line.match(/^#### (.*)$/))) out.push(H4(m[1].trim()));
     else if ((m = line.match(/^!\[([^\]]*)\]\(([^)]+)\)\s*$/))) out.push(...img(m[2].trim(), m[1].trim()));
     else if ((m = line.match(/^그림:\s*(.*)$/))) out.push(BOX(clean(m[1])), CAP(clean(m[1])));
+    else if ((m = line.match(/^(표 [ⅠⅡⅢⅣⅤ]-\d+\s.*)$/))) { if (out.length && out[out.length - 1] === lastSp) out.pop(); out.push(CAP(clean(m[1]))); }   // 표 캡션(표 바로 아래)
     else if ((m = line.match(/^\s*[-*] (.*)$/))) out.push(B(m[1]));
     else if (/^>/.test(line)) continue;      // 인용(작성 메모)은 보고서에 넣지 않는다
     else out.push(P(line.trim()));
