@@ -102,7 +102,7 @@ def install():
         setattr(qos, n, type(n, (), {"__init__": lambda self, **k: None, "BEST_EFFORT": 1, "RELIABLE": 2,
                                       "KEEP_LAST": 1, "VOLATILE": 1, "TRANSIENT_LOCAL": 2}))
     std = types.ModuleType("std_msgs"); stdm = types.ModuleType("std_msgs.msg")
-    for n in ("Float32", "Int32", "Bool", "Float32MultiArray", "String", "Int32MultiArray"):
+    for n in ("Float32", "Float64", "Int32", "Bool", "Float32MultiArray", "String", "Int32MultiArray", "Float64MultiArray"):
         setattr(stdm, n, type(n, (Msg,), {}))
     sen = types.ModuleType("sensor_msgs"); senm = types.ModuleType("sensor_msgs.msg"); senm.LaserScan = type("LaserScan", (), {})
     for k, v in {"rclpy": rclpy, "rclpy.node": node, "rclpy.executors": ex, "rclpy.qos": qos,
