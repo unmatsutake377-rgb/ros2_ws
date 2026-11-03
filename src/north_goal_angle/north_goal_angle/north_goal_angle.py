@@ -14,11 +14,13 @@
       /geofence_state (Float32MultiArray)
         = [angle_min_deg, angle_inc_deg, r0, r1, r2, ...]   (상대방위 기준, 멀면 inf)
         정보 없으면 **빈 배열**.
+        🚨 상대방위는 **좌 양수**(좌현 = +) — LiDAR 프레임 `a−80`·/candidate_angle 과 같은 부호.
+           인덱스 0 (−80°) = 우현 끝, 마지막 (+80°) = 좌현 끝. 절대 방위 = yaw − rel (geofence_rays.py).
 
       ★ 왜 '광선'인가 (원뿔 방식을 버린 이유):
         **벽은 '점'이 아니라 '선'이다.** 최근접점 한 방향으로 ±각도 원뿔을 막는 건 기하학적으로
         틀렸다. 40×40 경기장 (40,40) 모서리에서 배가 대각선(45°)을 향하면:
-            북벽 최근접점 → 상대 -45°   /   동벽 최근접점 → 상대 +45°
+            북벽 최근접점 → 상대 +45°(좌)   /   동벽 최근접점 → 상대 -45°(우)
             그런데 **탈출구(모서리)는 상대 0° — 배 정면이다.**
         half_block=40° 면 차단 구역이 [-85,-5] 와 [5,85] → **정면 0° 가 정확히 '틈'으로 열린다.**
         배가 대각선으로 탈출한다. 실격. (경기장이 사각형이 아니면 또 뚫린다.)
@@ -31,7 +33,9 @@
 
       계산량: 161방향 × 변 개수 @ 2Hz — 무시할 수준.
 
-프레임 규약: 광선 각도는 **상대 방위**(0=정면)다 — /candidate_angle 과 같은 규약.
+프레임 규약: 광선 각도는 **상대 방위**(0=정면, **좌 양수**)다 — /candidate_angle·LiDAR `a−80` 과 같은 규약.
+  배열 인덱스 0 = ray_min(−80°) = 우현, 끝 = 좌현. /imu/yaw 는 나침반 CW+ 라 절대 방위 = **yaw − rel**
+  (🚨 `-` 가 맞다. 계약서_geofence부호_20261104 — 전에는 `+` 라 소비자 쪽에서 좌우가 거울이었다).
   ⚠️ 광선 방향이 /imu/yaw 에 통째로 의존한다 (CLAUDE.md 3-5).
      N1 에서 /imu/yaw 는 ssf_heading/yaw_mux 단독 발행으로 바뀌었다 —
      부팅 0점화와 GPS COG override 를 걷어낸 절대방위다.
@@ -58,6 +62,9 @@ from north_goal_angle.waypoint_loader import parse_waypoints, WaypointError
 from north_goal_angle.gps_guard import (
     DEFAULT_GPS_STALE_SEC, fix_is_fresh, fix_is_usable, sanitize_stale_sec)
 from north_goal_angle import los_logic          # LOS 유도 (순수, 테스트됨)
+# geofence 광선은 순수 모듈로 분리 (계약서_geofence부호_20261104). 기존 이름은 호환용 재수출.
+from north_goal_angle.geofence_rays import (  # noqa: F401
+    cast_rays, _ray_polygon_dist, _point_in_polygon)
 from north_goal_angle.gps_filter import GPSFilter  # 공분산·점프·스무딩 (순수, 테스트됨)
 from north_goal_angle.wp_timeout import (            # WP 타임아웃 표 (순수, 테스트됨)
     DEFAULT_WP_TIMEOUT_MODES, DEFAULT_WP_TIMEOUT_SEC, WpTimeoutError,
@@ -136,10 +143,11 @@ class NorthGoalAngle(Node):
         # ⚠️ 실측 필요 — 대회장 경계 좌표를 아직 모른다. 비어 있으면 geofence 는 꺼진다.
         self.geofence_polygon = list(
             self.declare_parameter('geofence_polygon', []).value or [])
-        # 경계를 '가짜 LiDAR'로 쏜다 — 스캔과 같은 각도 격자(상대방위).
+        # 경계를 '가짜 LiDAR'로 쏜다 — 스캔과 같은 각도 격자(상대방위, **좌 양수**:
+        #   −80 = 우현 끝, +80 = 좌현 끝. LiDAR a−80·/candidate_angle 과 같은 부호. geofence_rays.py).
         # ★ 왜 광선인가: 벽은 '점'이 아니라 '선'이다. 최근접점 한 방향으로 ±각도 원뿔을 막는 건
-        #   기하학적으로 틀렸다. 40x40 모서리에서 배가 대각선(45°)을 보면 북벽 최근접점은 -45°,
-        #   동벽은 +45° 인데 **탈출구(모서리)는 정면 0°** 라 원뿔 사이 '틈'으로 그대로 빠져나간다.
+        #   기하학적으로 틀렸다. 40x40 모서리에서 배가 대각선(45°)을 보면 북벽 최근접점은 +45°(좌),
+        #   동벽은 -45°(우) 인데 **탈출구(모서리)는 정면 0°** 라 원뿔 사이 '틈'으로 그대로 빠져나간다.
         #   광선으로 쏘면 정면 방향의 경계 거리(2.12m)가 그대로 잡혀 벽이 된다. 튜닝도 필요 없다.
         self.ray_min_deg = float(self.declare_parameter('geofence_ray_min_deg', -80.0).value)
         self.ray_max_deg = float(self.declare_parameter('geofence_ray_max_deg', 80.0).value)
@@ -385,18 +393,12 @@ class NorthGoalAngle(Node):
                 throttle_duration_sec=2.0)
             return None
 
-        if self.ray_inc_deg <= 0.0 or self.ray_max_deg < self.ray_min_deg:
+        # 광선 계산은 순수 모듈(geofence_rays.cast_rays). 상대방위 **좌 양수**, 절대 방위 = yaw − rel.
+        # 격자가 잘못돼(inc ≤ 0, max < min) 빈 리스트가 오면 '없음'으로 다룬다.
+        ranges = cast_rays(self.yaw, pts, self.ray_min_deg, self.ray_max_deg,
+                           self.ray_inc_deg, self.geofence_max_range_m)
+        if not ranges:
             return None
-
-        n = int(round((self.ray_max_deg - self.ray_min_deg) / self.ray_inc_deg)) + 1
-        ranges = []
-        for k in range(n):
-            rel = self.ray_min_deg + k * self.ray_inc_deg
-            th = math.radians((self.yaw + rel) % 360.0)      # 절대 방위(compass)
-            d = (math.sin(th), math.cos(th))                 # (east, north) 단위벡터
-            t = _ray_polygon_dist((0.0, 0.0), d, pts)
-            ranges.append(float(t) if (t is not None and t <= self.geofence_max_range_m)
-                          else float('inf'))
 
         return self.ray_min_deg, self.ray_inc_deg, ranges
 
@@ -552,51 +554,6 @@ class NorthGoalAngle(Node):
                 self.wp_enter_time = None
         else:
             self.t_start = None
-
-
-# ───────────────────────── 순수 기하 (테스트 가능) ─────────────────────────
-def _ray_polygon_dist(o, d, pts):
-    """원점 o 에서 방향 d 로 쏜 광선이 폴리곤 변에 처음 닿는 거리. 안 닿으면 None.
-
-    ★ 이게 '벽은 선이다'를 정직하게 푸는 방법이다. 최근접점 한 방향으로 원뿔을 막으면
-      모서리에서 정면(탈출구)이 원뿔 사이 '틈'으로 열려 배가 대각선으로 빠져나간다.
-    """
-    ox, oy = o
-    dx, dy = d
-    best = None
-    n = len(pts)
-    for i in range(n):
-        ax, ay = pts[i]
-        bx, by = pts[(i + 1) % n]
-        ex, ey = bx - ax, by - ay
-
-        denom = dx * ey - dy * ex
-        if abs(denom) < 1e-12:
-            continue                       # 광선과 변이 평행
-
-        rx, ry = ax - ox, ay - oy
-        t = (rx * ey - ry * ex) / denom    # 광선 위 거리
-        s = (rx * dy - ry * dx) / denom    # 변 위 위치 (0~1 이어야 선분 안)
-
-        if t >= 0.0 and 0.0 <= s <= 1.0:
-            if best is None or t < best:
-                best = t
-    return best
-
-
-def _point_in_polygon(p, pts):
-    """레이 캐스팅. 점 p 가 폴리곤 안인가."""
-    px, py = p
-    inside = False
-    n = len(pts)
-    for i in range(n):
-        x1, y1 = pts[i]
-        x2, y2 = pts[(i + 1) % n]
-        if (y1 > py) != (y2 > py):
-            xint = x1 + (py - y1) * (x2 - x1) / (y2 - y1)
-            if px < xint:
-                inside = not inside
-    return inside
 
 
 def calc_angle(lat1, lon1, lat2, lon2):

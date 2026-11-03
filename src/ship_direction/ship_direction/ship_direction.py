@@ -128,6 +128,9 @@ class ShipDirection(Node):
     [H] Geofence (6a-2). 경기장 밖으로 나가면 실격인데 방어가 0 이었다.
         north 가 경계를 **'가짜 LiDAR'** 로 쏴서 보낸다:
           /geofence_state = [angle_min_deg, angle_inc_deg, r0, r1, ...] (상대방위, 멀면 inf)
+          🚨 상대방위는 **좌 양수** — LiDAR 프레임 `a−80`·/candidate_angle 과 같은 부호.
+             배열 인덱스 0 (rel −80) = 우현, 끝 인덱스 (+80) = 좌현. north 가 이 규약으로 낸다
+             (계약서_geofence부호_20261104). 여기(소비자)는 변환하지 않는다 — 양쪽을 다 고치면 다시 거울.
         여기서 하는 일은 **스캔 병합 한 줄**이 전부다:
           ranges[i] = min(real_ranges[i], geofence_ranges[i])
         그 뒤는 기존 파이프라인이 알아서 한다 — detection_distance 로 마스크가 되고,
@@ -136,7 +139,7 @@ class ShipDirection(Node):
 
         ★ 왜 '원뿔 칠하기'를 버렸나: **벽은 '점'이 아니라 '선'이다.**
           최근접점 한 방향으로 ±각도를 막는 건 기하학적으로 틀렸다. 40×40 모서리에서
-          배가 대각선(45°)을 보면 북벽 최근접점 -45°, 동벽 +45° 인데 **탈출구(모서리)는 정면 0°**.
+          배가 대각선(45°)을 보면 북벽 최근접점 +45°(좌), 동벽 -45°(우) 인데 **탈출구(모서리)는 정면 0°**.
           half_block=40° 면 [-85,-5]·[5,85] 만 막혀 **정면 0° 가 '틈'으로 열린다** → 대각선 탈출, 실격.
           광선으로 쏘면 정면 경계 거리(2.12m)가 그대로 벽이 된다. 경기장이 사각형이 아니어도 맞다.
 
@@ -358,6 +361,7 @@ class ShipDirection(Node):
 
     def geofence_cb(self, msg):
         """/geofence_state = [angle_min_deg, angle_inc_deg, r0, r1, ...] (상대방위, 멀면 inf).
+        상대방위는 **좌 양수**(인덱스 0 = −80 = 우현) — LiDAR a−80·/candidate_angle 과 동일.
         경계를 '가짜 LiDAR'로 쏜 것이다. **빈 배열 = 경계 정보 없음**
         (north 가 '모르면 입을 다무는' 계약: 폴리곤 미설정 / IMU stale / 이미 이탈)."""
         d = msg.data
@@ -588,6 +592,10 @@ class ShipDirection(Node):
         """경계 '가짜 LiDAR'를 실제 스캔과 병합한다 — **한 줄이 전부다**:
               ranges[i] = min(real_ranges[i], geofence_ranges[i])
 
+        🚨 부호 규약 (계약서_geofence부호_20261104): geofence 상대방위 = LiDAR `a − 80` 과 **같은 좌 양수**.
+           배열 인덱스 0 (rel −80) = 우현 = LiDAR 0°, 끝 인덱스 (+80) = 좌현 = LiDAR 160°.
+           north 가 이 규약으로 발행하므로 여기서는 부호 변환을 하지 않는다 (test_geofence_merge.py 가 고정).
+
         이후는 기존 파이프라인이 알아서 한다: detection_distance 로 이진 마스크가 되고,
         dilate 가 배 폭(half_width+clearance) 여유를 더하고, 갭-팔로잉이 피한다.
         특수 로직도, 새 상태기계도, 튜닝 파라미터(half_block)도 없다.
@@ -617,7 +625,7 @@ class ShipDirection(Node):
         hits = 0
         nearest = float('inf')
         for i, a in enumerate(angle_array):
-            rel = a - LIDAR_FORWARD_DEG          # LiDAR 프레임(80=정면) → 상대방위(0=정면)
+            rel = a - LIDAR_FORWARD_DEG          # LiDAR 프레임(80=정면) → 상대방위(0=정면, 좌 양수 그대로)
             k = int(round((rel - a0) / inc))
             if not (0 <= k < n):
                 continue
@@ -644,6 +652,8 @@ class ShipDirection(Node):
         → 여기서 하드하게 막는다. **미션보다 실격 방지가 우선.** 경계를 등지고 멈춘다.
         (C) 자율회피는 이미 _merge_geofence 로 처리되므로 이 가드를 호출하지 않는다.
         ⚠️ north 의 광선은 전방 ±80° 만 쏜다 → 뒤쪽(후진 중) 경계는 못 본다. 접안 방향(전방) 방어용.
+        🚨 부호 규약: best_rel(geofence, 인덱스 0 = −80 = 우현)과 intended_rel(/candidate_angle, 좌 양수)은
+           **같은 좌 양수** 라 그대로 뺀다. north 가 그 규약으로 낸다 (계약서_geofence부호_20261104).
         """
         with self.lock:
             gf = self.geofence

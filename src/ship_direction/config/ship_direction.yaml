@@ -23,6 +23,8 @@
     # ---- Geofence (경계 이탈 = 실격). 6a-2 ----
     # north 가 경계를 '가짜 LiDAR'로 쏴서 보낸다 → 여기선 스캔과 min() 병합만 한다.
     # /geofence_state = [angle_min_deg, angle_inc_deg, r0, r1, ...] (상대방위, 멀면 inf).
+    #   상대방위는 **좌 양수** — LiDAR a−80·/candidate_angle 과 같은 부호. 인덱스 0(−80)=우현, 끝(+80)=좌현.
+    #   (계약서_geofence부호_20261104. 여기서는 부호 변환 없음 — north 가 이 규약으로 낸다.)
     #   ranges[i] = min(real_ranges[i], geofence_ranges[i])
     # 그 뒤는 기존 파이프라인(마스크→dilate→갭팔로잉)이 알아서 한다.
     # ★ 튜닝 파라미터가 없다. 원뿔 방식(half_block)은 모서리에서 정면이 '틈'으로 열려 폐기했다.

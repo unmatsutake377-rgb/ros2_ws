@@ -7,7 +7,8 @@
     틱마다 호출한다. 파라미터는 두 노드의 config yaml 에서 읽는다(대회 launch 와 같은 값).
   · 세계·코스·접촉 판정은 스윕과 동일(kaboat_full_course_sim.build_course 의 장애물 구간, FastWorld 부표
     레이캐스팅, 배 = 반경 half_width 원, 부표마다 접촉 1회). 같은 시드·같은 출발로 재구현(K.leg)과 나란히 비교.
-  · 실코드에만 있는 것: /geofence_state 병합(north_goal_angle 의 가짜 LiDAR 규약 그대로 경계 사각형에서 생성),
+  · 실코드에만 있는 것: /geofence_state 병합(north_goal_angle 의 가짜 LiDAR 규약 — 상대방위 좌 양수, LiDAR a−80 과
+    동일 — 그대로 경계 사각형에서 생성; 계약서_geofence부호_20261104 수정 후 규약),
     페일세이프 워치독, 변화율 제한, 후진/재탐색 상태기계, motor_control 감속·명령 워치독.
   · 운동 모델은 스윕과 같다(순항 1.2 m/s, k_w 0.22, 지연 없음). 지연 τ 0.5 s 변형도 함께 돌린다.
 
@@ -78,7 +79,7 @@ def geofence_msg(x, y, psi, rect):
     n = int(round((GF_MAX - GF_MIN) / GF_INC)) + 1
     r = []
     for k in range(n):
-        t = ray_rect(x, y, psi + GF_MIN + k * GF_INC, rect)
+        t = ray_rect(x, y, psi - (GF_MIN + k * GF_INC), rect)      # rel 양수 = 좌현 → 절대 방위 = yaw − rel
         r.append(t if t <= GF_RANGE else math.inf)
     return F32MA([GF_MIN, GF_INC] + r)
 
@@ -192,8 +193,8 @@ def main():
     same = sum(1 for p, q in zip(a, b) if p["hits"] == q["hits"]); print(f"  실코드(경계)·재구현 접촉 수 일치 시드 {same}/{N}")
 
     # ── 그림 ──
-    fig = plt.figure(figsize=(13.4, 9.4))
-    gs = fig.add_gridspec(2, 3, height_ratios=[1.0, 0.95], hspace=0.3, wspace=0.28)
+    fig = plt.figure(figsize=(13.4, 8.6))
+    gs = fig.add_gridspec(2, 3, height_ratios=[0.9, 1.0], hspace=0.3, wspace=0.28)
     ax = fig.add_subplot(gs[0, :])
     show = [r for r in res["실코드 + 경계"] if r["seed"] in (1, 2, 3)]
     cols = {1: "#1f77b4", 2: "#2ca02c", 3: "#9467bd"}
@@ -211,7 +212,7 @@ def main():
     ax.plot(*c["wp2"], "o", color="#333", ms=7); ax.text(c["wp2"][0] + 0.5, c["wp2"][1] - 1.2, "출발 (위치유지 2)", fontsize=8.5)
     ax.plot(*c["goal"], "*", color="k", ms=13); ax.text(c["goal"][0], c["goal"][1] + 1.0, "도착", ha="center", fontsize=8.5)
     ax.plot([], [], color="gray", lw=1.6, label="실선 = 실제 노드 코드"); ax.plot([], [], color="gray", lw=1.0, ls="--", label="점선 = 재구현(스윕 모델)")
-    ax.set_xlim(1, 49); ax.set_ylim(8.5, 21.5); ax.set_aspect("equal"); ax.grid(alpha=0.2)
+    ax.set_xlim(1, 49); ax.set_ylim(9.3, 21.2); ax.set_aspect("equal"); ax.grid(alpha=0.2)
     ax.set_xlabel("x [m]"); ax.set_ylabel("y [m]"); ax.legend(fontsize=8, loc="lower right", ncol=3, framealpha=0.9)
     ax.set_title("(a) 장애물 회피 구간 (70 × 20 m 코스 중 y 10.5~20, 부표 16개) — 시드 1·2·3, 실제 코드 vs 재구현", fontsize=10.5)
     # (b) 시드별 접촉: 실코드 vs 재구현
@@ -219,6 +220,7 @@ def main():
     xs = np.arange(1, N + 1)
     ax2.bar(xs - 0.2, [r["hits"] for r in res["실코드 + 경계"]], width=0.4, color="#1f77b4", label="실제 코드 + 경계")
     ax2.bar(xs + 0.2, [r["hits"] for r in res["재구현(스윕 모델)"]], width=0.4, color="#bbbbbb", label="재구현(스윕 모델)")
+    ax2.set_xlim(0, N + 1); ax2.set_yticks(range(0, 5))
     for r in res["실코드 + 경계"]:
         if not r["ok"]: ax2.plot(r["seed"] - 0.2, max(r["hits"], 0) + 0.15, "rx", ms=6)
     ax2.set_xlabel("시드"); ax2.set_ylabel("접촉 횟수"); ax2.set_title("(b) 시드별 접촉 횟수 (× = 미도달)", fontsize=10.5); ax2.legend(fontsize=7.5); ax2.grid(alpha=0.2, axis="y")

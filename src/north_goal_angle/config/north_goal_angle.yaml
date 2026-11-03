@@ -39,12 +39,14 @@
     # 경기장 폴리곤: [lat1, lon1, lat2, lon2, ...] 평탄 배열. 최소 3점(=6개 수).
     # ⚠️ 실측 필요 — 대회장 경계 좌표를 아직 모른다. 비어 있으면 geofence 는 꺼진다(=빈 배열).
     geofence_polygon: []
-    # 경계를 '가짜 LiDAR'로 쏘는 각도 격자 (상대방위, 0=정면)
+    # 경계를 '가짜 LiDAR'로 쏘는 각도 격자 (상대방위, 0=정면, **좌 양수** — LiDAR a−80·/candidate_angle 과 동일)
+    #   배열 인덱스 0 = ray_min(−80°) = 우현 끝, 마지막 = +80° = 좌현 끝. 절대 방위 = yaw − rel.
+    #   (계약서_geofence부호_20261104. 격자가 0 대칭이라 부호 수정에 값 변경은 없었다.)
     # ★ 원뿔(half_block) 방식은 폐기했다: 벽은 '점'이 아니라 '선'이다. 최근접점 한 방향으로
     #   ±각도를 막으면 40x40 모서리에서 탈출구(정면 0°)가 원뿔 사이 '틈'으로 열려 배가
     #   대각선으로 빠져나간다(실격). 광선으로 쏘면 정면 경계 거리가 그대로 벽이 된다.
-    geofence_ray_min_deg: -80.0
-    geofence_ray_max_deg: 80.0
+    geofence_ray_min_deg: -80.0    # 우현 끝 (좌 양수 규약)
+    geofence_ray_max_deg: 80.0     # 좌현 끝
     geofence_ray_inc_deg: 1.0      # 161방향 x 변 개수 @2Hz — 무시할 수준
     geofence_max_range_m: 30.0     # 이보다 멀면 그 방향은 inf
     geofence_check_after_sec: 5.0  # 부팅 후 이 시간이 지나면 구독자 0 검사를 시작한다
