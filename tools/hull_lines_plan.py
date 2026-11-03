@@ -260,6 +260,23 @@ def draw_profile(ax, by, cl, dims):
     ax.set_xlim(-40, dims["L"] + 90); ax.set_ylim(-35, dims["D"] + 30)
 
 
+def _knot_smooth(x, y, step=45.0):
+    """성긴 메시 곡선을 부드럽게: step 간격 구간의 중앙값을 매듭으로 잡고 단조 3차(pchip)로 잇는다. 양 끝점은 그대로 둔다."""
+    x = np.asarray(x, float); y = np.asarray(y, float)
+    if len(x) < 6 or x[-1] - x[0] < 3 * step:
+        return x, y
+    b = np.floor((x - x[0]) / step).astype(int)
+    kx = [x[0]]; ky = [y[0]]
+    for u in np.unique(b):
+        m = b == u; xm, ym = x[m].mean(), np.median(y[m])
+        if xm - kx[-1] > step * 0.4 and x[-1] - xm > step * 0.4:
+            kx.append(xm); ky.append(ym)
+    kx.append(x[-1]); ky.append(y[-1])
+    kx, ky = np.array(kx), np.array(ky)
+    xf = np.linspace(x[0], x[-1], 400)
+    return xf, pchip(kx, ky, xf)
+
+
 def draw_halfbreadth(ax, by, cl, dims):
     st = sorted(by["HULL_STATION_LINES"], key=lambda p: p[0, 0])
     sheer = [p for p in by["HULL_SHEER"] if np.mean(p[:, 1]) > cl]
@@ -275,7 +292,9 @@ def draw_halfbreadth(ax, by, cl, dims):
             if np.mean(p[:, 1]) > cl:
                 ax.plot(p[:, 0], p[:, 1] - cl, color=C_LG, lw=0.8, label=dims.get("lg_label") if dims.get("lg_label") else None)
     for p in sheer:
-        ax.plot(p[:, 0], p[:, 1] - cl, color=C_SH, lw=1.8, label="현측 상단선(Sheer)")
+        xs_, ys_ = (p[:, 0], p[:, 1] - cl)
+        if dims.get("smooth"): xs_, ys_ = _knot_smooth(xs_, ys_)
+        ax.plot(xs_, ys_, color=C_SH, lw=1.8, label="현측 상단선(Sheer)")
     for p in by["HULL_WATERLINES"]:
         if np.mean(p[:, 1]) > cl:
             q = half(p, cl, +1)
@@ -291,6 +310,9 @@ def draw_halfbreadth(ax, by, cl, dims):
                     k = int(np.argmax(yv)); tail = np.minimum.accumulate(yv[k:]); yv[k:] = np.minimum(yv[k:], tail + 2.0)
                     cut = np.where(yv[k:] < 15.0)[0]
                     if len(cut): xv, yv = xv[:k + cut[0] + 1], yv[:k + cut[0] + 1]
+                    if dims.get("smooth"):
+                        xv, yv = _knot_smooth(xv, yv)
+                        k = int(np.argmax(yv)); yv[k:] = np.minimum.accumulate(yv[k:])
                     ax.plot(xv, yv, color=C_WL, lw=1.3, ls="--", label=f"수선 WL {z:.1f}")
                     continue
             ax.plot(q[:, 0], q[:, 1] - cl, color=C_WL, lw=1.3, ls="--", label=f"수선 WL {z:.1f}")
@@ -404,6 +426,7 @@ def main():
         sub += f"  (STL ×{a.scale:g})"
     if stl and a.fit:
         sub += "  (모델 형상을 실측 길이·폭에 맞춤)"
+        dims["smooth"] = True   # 성긴 Fusion 메시 → 반폭도 현측선·수선을 매듭 pchip 으로 평활
     outs = []
 
     for key, fn, size in (("정면도", draw_body, (6.4, 4.4)), ("측면도", draw_profile, (13, 3.0)),
