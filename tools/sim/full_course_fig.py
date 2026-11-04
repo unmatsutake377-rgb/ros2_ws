@@ -16,6 +16,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import full_course_sim as F  # noqa: E402
 
+HIDE_DOCK_WP = False
 MODE_NAME = {0: "게이트(항로추종)", 1: "게이트(항로추종)", 2: "위치유지", 3: "탐색",
              5: "장애물 회피", 7: "도킹", 8: "토너먼트 회피"}
 
@@ -54,6 +55,8 @@ def draw(ax, r, zoom=None):
         key = (round(wx, 1), round(wy, 1))
         k = seen.get(key, 0)
         seen[key] = k + 1
+        if HIDE_DOCK_WP and w["mode"] in (5, 7) and short(w["label"]).startswith(("접근", "WP8", "WP9")):
+            continue            # --plain: 도킹 구역 웨이포인트는 그리지 않음(규정 확인 전 보고서용, 11-04)
         ax.plot(wx, wy, "+", color="k", ms=9, mew=1.4, zorder=6)
         if zoom is None and w["mode"] in (5, 7) and short(w["label"]).startswith(("접근", "WP8", "WP9")):
             continue            # 전체 그림에서는 도킹 네 줄 이름을 생략(확대 그림에 적음)
@@ -75,7 +78,10 @@ def main():
     ap.add_argument("--variant", default="B")
     ap.add_argument("--world-wp-file", required=True)
     ap.add_argument("--png", required=True)
+    ap.add_argument("--plain", action="store_true", help="도킹 확대 칸·도킹 웨이포인트 표시 없이 (a) 만")
     a = ap.parse_args()
+    global HIDE_DOCK_WP
+    HIDE_DOCK_WP = a.plain
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -85,13 +91,17 @@ def main():
     r = F.run(a.seed, a.variant, world_wp_file=a.world_wp_file, record=True)
     assert r["ok"], r.get("traceback")
     W = r["W"]
-    fig = plt.figure(figsize=(12, 8.2))
-    gs = fig.add_gridspec(1, 2, width_ratios=[1.55, 1.0], wspace=0.12)
-    ax = fig.add_subplot(gs[0])
+    if a.plain:
+        fig = plt.figure(figsize=(7.6, 8.2))
+        ax = fig.add_subplot(111)
+    else:
+        fig = plt.figure(figsize=(12, 8.2))
+        gs = fig.add_gridspec(1, 2, width_ratios=[1.55, 1.0], wspace=0.12)
+        ax = fig.add_subplot(gs[0])
     draw(ax, r)
     ax.set_xlabel("x [m] (동)")
     ax.set_ylabel("y [m] (북)")
-    ax.set_title("(a) 전체 코스 궤적 (색 = 임무 mode)", fontsize=11)
+    ax.set_title(("" if a.plain else "(a) ") + "전체 코스 궤적 (색 = 임무 mode)", fontsize=11)
     used = []
     for m in [0, 2, 3, 5, 7, 8]:
         if m in r["rec"]["mode"]:
@@ -99,6 +109,10 @@ def main():
     used += [Line2D([], [], marker="+", color="k", ls="", ms=9, mew=1.4, label="웨이포인트"),
              Line2D([], [], marker="s", color="crimson", ls="", ms=7, label="도킹 목표 표식")]
     ax.legend(handles=used, fontsize=8.5, loc="upper left", framealpha=0.9)
+    if a.plain:
+        fig.savefig(a.png, dpi=160, bbox_inches="tight")
+        print(a.png, "코스", r["t_course"], "s")
+        return
     dx, dy = W["dock"]["marker"]
     ax2 = fig.add_subplot(gs[1])
     draw(ax2, r, zoom=((dx - 9, dx + 9), (dy - 3, dy + 14)))
