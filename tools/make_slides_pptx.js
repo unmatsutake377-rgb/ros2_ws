@@ -123,11 +123,13 @@ function PH(s, x, y, w, h, label, opt = {}) {
     align: 'center', valign: 'middle', isTextBox: true, margin: 0.04, objectName: `빈칸 ${label}`,
   });
 }
+// 줄 간격을 글자 크기 × 1.2 pt 로 고정 — 맑은 고딕(줄 높이 큼)·대체 글꼴 어디서 열어도 높이가 같게(넘침 방지)
+const LS = (fs) => Math.round(fs * 1.2 * 10) / 10;
 function bullets(s, items, x, y, w, h, opt = {}) {
   const arr = items.map((t, i) => ({
     text: t, options: { bullet: { indent: 14 }, breakLine: i < items.length - 1, paraSpaceAfter: opt.gap ?? 6 },
   }));
-  s.addText(arr, { x, y, w, h, fontSize: opt.fontSize || 13, color: C.text1, valign: 'top', isTextBox: true, margin: 0, objectName: opt.name || '본문' });
+  s.addText(arr, { x, y, w, h, fontSize: opt.fontSize || 13, lineSpacing: LS(opt.fontSize || 13), color: C.text1, valign: 'top', isTextBox: true, margin: 0, objectName: opt.name || '본문' });
 }
 function sub(s, text, x, y, w) {
   s.addText(text, { x, y, w, h: 0.32, fontSize: 13, bold: true, color: C.text2, isTextBox: true, margin: 0, objectName: `소제목 ${text}` });
@@ -160,7 +162,7 @@ function table(s, rows, x, y, w, colW, opt = {}) {
   const data = rows.map((r, ri) => r.map((c) => {
     const ph = typeof c === 'object' && c && c.ph;
     const txt = ph ? `( ${c.ph} )` : String(c);
-    const o = { fontSize: fs_, color: C.text1, valign: 'middle', margin: [3, 5, 3, 5] };
+    const o = { fontSize: fs_, lineSpacing: LS(fs_), color: C.text1, valign: 'middle', margin: [3, 5, 3, 5] };
     if (ri === 0 && opt.header !== false) { o.bold = true; o.fill = { color: C.background2 }; }
     else if (ph) { o.color = C.accent4; o.fill = { color: C.accent5 }; o.align = 'center'; }
     return { text: txt, options: o };
@@ -171,7 +173,7 @@ function table(s, rows, x, y, w, colW, opt = {}) {
 function card(s, x, y, w, h, head, body, opt = {}) {
   sub(s, head, x, y, w);
   if (Array.isArray(body)) bullets(s, body, x, y + 0.38, w, opt.bodyH || (h - 0.4), { fontSize: opt.fontSize || 11.5, gap: 3, name: `카드 본문 ${head}` });
-  else s.addText(body, { x, y: y + 0.38, w, h: h - 0.4, fontSize: opt.fontSize || 11.5, color: C.text1, valign: 'top', isTextBox: true, margin: 0, objectName: `카드 본문 ${head}` });
+  else s.addText(body, { x, y: y + 0.38, w, h: h - 0.4, fontSize: opt.fontSize || 11.5, lineSpacing: LS(opt.fontSize || 11.5), color: C.text1, valign: 'top', isTextBox: true, margin: 0, objectName: `카드 본문 ${head}` });
 }
 
 // ── 1. 표지 ─────────────────────────────────────────────────────────────────────
@@ -302,7 +304,7 @@ pres.addSection({ title: '선형 설계 및 제작' });
     '추 w 를 중심선에서 d 만큼 좌·우로 옮겨 기울기 θ 측정',
     'GM = w·d / (W·tan θ)',
   ], { fontSize: 11, bodyH: 1.3 });
-  if (B.incl) s.addText(B.incl, { x: x2 + 0.15, y: 5.7, w: w2 - 0.3, h: 0.6, fontSize: 10.5, color: C.text1, isTextBox: true, margin: 0, valign: 'top' });
+  if (B.incl) s.addText(B.incl, { x: x2 + 0.15, y: 5.7, w: w2 - 0.3, h: 0.6, fontSize: 10.5, lineSpacing: LS(10.5), color: C.text1, isTextBox: true, margin: 0, valign: 'top' });
   else PH(s, x2 + 0.15, 5.7, w2 - 0.3, 0.6, 'w · d · θ · GM 값 + 경사 사진', { fontSize: 11 });
 }
 
@@ -339,7 +341,7 @@ pres.addSection({ title: '선형 설계 및 제작' });
     const x = M + i * 2.3;
     img(s, TEAMFIG(f), x, 1.3, 2.1, 2.9);
     s.addText(h, { x, y: 4.3, w: 2.1, h: 0.35, fontSize: 13, bold: true, color: C.text2, isTextBox: true, margin: 0 });
-    s.addText(d, { x, y: 4.65, w: 2.1, h: 0.8, fontSize: 11, color: C.text1, valign: 'top', isTextBox: true, margin: 0 });
+    s.addText(d, { x, y: 4.65, w: 2.1, h: 0.8, fontSize: 11, lineSpacing: LS(11), color: C.text1, valign: 'top', isTextBox: true, margin: 0 });
   });
   card(s, M, 5.6, 9, 1.2, '재료', isA
     ? 'PLA+ 필라멘트(몰드) · FRP 촙 매트/얀 크로스 · 방수 실리콘(TYTAN FIX2)·실란트 · 방수제(노루페인트) · Six10 에폭시 · 방수박스 400×300×200 mm'
@@ -386,7 +388,7 @@ pres.addSection({ title: '소프트웨어' });
     '부표를 놓치면 5 s 정지 후 재탐색, LiDAR 거리 10 s 모름·합계 60 s 넘으면 포기하고 다음. 탐색 색은 당일 공지 색(파라미터)',
     '도킹: 목표 칸 정면 접근점 2개(10·6 m) → 칸 입구 → 후진 이탈점. 도크가 멀면 GPS 주행(TRANSIT)',
     '특수 코드: 5000 우선회 · 6000 좌선회 · 20000 미션 없음(GPS 방위 + LiDAR 갭 회피) · 50000 정지',
-  ], M, 4.75, 9, 2.1, { fontSize: 10.5, gap: 4 });
+  ], M, 4.75, 9, 2.1, { fontSize: 10, gap: 3 });
 }
 
 // ── 8. 영상 파이프라인·회피·제어기 (Ⅲ-2.4, 4) ──────────────────────────────
@@ -431,14 +433,14 @@ pres.addSection({ title: '소프트웨어' });
     'IMU 끊김: /yaw_error 0.8 s 뒤 멈춤 → 1.8 s 경고, 4.1 s 정지',
     'GPS fix 2.5 s 없으면 방위·도착 판정 정지. 후보각 1.0 s 끊기면 20000(GPS + 회피)으로 대체',
     '진단(/health_ok)은 기록만, 제어에 연결하지 않음'
-  ], M, 4.85, 4.4, 2.0, { fontSize: 10.5 });
+  ], M, 4.85, 4.4, 2.0, { fontSize: 10, gap: 3 });
   sub(s, '회피 파라미터 스윕 (2,400 런)', 5.1, 3.3, 4.4);
   bullets(s, [
     '선폭 5 × clearance 6 × 탐지거리 2 × 게이트폭 2, 칸마다 80 런. 채택 half_width 0.29 m · clearance 0.25 m',
     'clearance 0.20 → 접촉 1.95, 0.25 → 1.32, 0.30 → 1.46 (정체 2 %), 0.35 → 정체 28 %',
     '정체 0 % 범위에서 접촉 최소인 0.25 채택. 통과 최소 폭 0.83 m',
     '실제 노드 전체 코스 200 시드: 전 WP 완료 200/200, 코스 중앙값 314 s (보고서 그림 Ⅲ-11)',
-  ], 5.1, 3.75, 4.4, 2.6, { fontSize: 10.5 });
+  ], 5.1, 3.75, 4.4, 2.6, { fontSize: 10, gap: 3 });
   s.addNotes('페일세이프: 센서가 끊기면 바로 멈추지 않고 경고(0.7 s, 속도 0.7배·조향 유지) → 정지(3.0 s) 두 단계. 오판 방지로 연속 3회 확인. 벤치 실측 LiDAR 0.70/2.99 s, IMU 1.8/4.1 s. 왜 경고 때 직진 안 시키나 → 회피 중 직진 강제는 피하던 부표에 부딪힌다. 비상정지와 다름: 이건 소프트웨어 판단, 비상정지는 접촉기가 물리적으로 추진 전원을 끊는다. 스윕: half_width·clearance 조합마다 80번 주행, 정체 0 % 범위에서 접촉 최소 조합(0.29·0.25) 채택.');
 }
 
