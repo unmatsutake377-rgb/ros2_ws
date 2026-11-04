@@ -73,7 +73,7 @@ git commit -m "작년 대회 최종본 (수정 전 기준선)"
 | GPS (A·B배) | u-blox **ZED-F9P** | NTRIP RTK, `zed_f9p_rover.yaml`. 🚨 종전 표기 "A배 C94-M8P" 는 틀렸다 — 두 배 모두 F9P (11-01 팀장 확인) |
 | MCU | **Arduino Mega 2560 R3** (07-28 확정) | 🚨 종전 표기 "Due + micro-ROS" 는 **둘 다 틀렸다**(09-28 정정). 통신은 **`ssf_bridge` 의 USB 시리얼**이다 — launch 가 micro-ROS 를 띄우지 않는다. `Motor_run = pwm_r*10000 + pwm_l`, **1500 = 중립** |
 | ESC 채널 | **좌/우 2채널뿐** — 핀 12(좌) · 핀 11(우) | 🔒 **선수·선미를 구분하지 않는다.** 한 신호를 그 측 ESC 가 나눠 받는다(팬아웃): 2번배 측당 2개 · 1번배 측당 1개. **배가 달라도 펌웨어가 같아** 배 ID 분기가 필요 없다 (§2-2) |
-| 카메라 | **RealSense D455 (현역)** / OAK-1 W POE (미구매) | 현재 D455 사용. OAK 는 RGB 전용(**뎁스 없음**)·광각 120~150° DFOV·PoE=이더넷. **코드는 중립화** 🚨 3-3 |
+| 카메라 | **OAK-1 PoE (자율 비전, 11-04 전환)** / D455 (수동 영상만) | 11-04 대회 launch 를 depthai 노드로 전환(640×360, ISP 1/3, hfov 63.9°, `/oak/rgb/image_raw`). D455 는 launch 에서 제거, `cam_stream.sh`(v4l2) 수동 영상과 `camera.launch.py` 벤치용만. 종전 표기 "D455 현역 / OAK-1 **W** 미구매·광각 120~150°" 는 옛 기록 — 실구매는 OAK-1 PoE FF(표준 화각). 3-3 은 전환 전 중립화 기록 |
 
 > 현행 요약은 `CLAUDE.md` §2. 위 표는 날짜·정정 이력 포함 원문.
 
@@ -195,6 +195,8 @@ self.sub_angle = self.create_subscription(Float32, "/desired_angle", self.angle_
 감속(점진적)은 노이즈에 강해 유지, TTC(이진 급정지)만 버린다.
 
 ### 3-3. 🚨 카메라 **중립화** — RealSense 현역 유지 + OAK 준비 완료
+
+> **[2026-11-04] 전환 완료.** 아래는 중립화 당시(07-23~) 기록. 현행: 자율 비전 = OAK-1 PoE(hfov 63.9°, `/oak/rgb/image_raw`), 대회 launch 에 depthai 노드(미설치면 건너뜀), D455 는 수동 영상·벤치용. 계약서 `docs/문제와작업/계약서_OAK전환_20261104.md`.
 
 > **[2026-07-23 정정]** 이전 판은 "카메라 = OAK-1 W POE **확정**", "`basic_image_*.py` **전부 삭제**",
 > "`realsense2_camera` → `depthai-ros` **교체**" 라고 적혀 있었다. **셋 다 틀렸다.**

@@ -152,6 +152,12 @@ ros2 run ssf_tools mission_monitor
 - 사방 20m 이상 열린 공간
 - 블랙박스가 켜져 있는지 확인 → `~/ssf_logs/` 에 CSV가 쌓이는지
 - 로깅 주파수를 **20~50Hz**로 (system-ID 땐 촘촘해야 함. `rate_hz` 파라미터)
+- **OAK 카메라 (11-04 부터 대회 launch 의 비전 입력, D455 노드는 launch 에서 빠짐)**
+  - 노트북 이더넷 프로파일이 OAK 쪽(169.254.1.x) 인지: `nmcli con show --active` → `ping -c 2 169.254.1.222`
+  - launch 뒤 13~17 s 지나 `ros2 topic hz /oak/rgb/image_raw` ≈ 30, `ros2 topic echo /oak/rgb/camera_info --once` 에서 width 640·K[0] ≈ 513.5 (ISP 1/3 이 빠지면 K[0] 는 같아도 시야가 40° 로 좁아진다 — 한 번은 화면으로 좌우 끝 확인)
+  - healthcheck CAM ✅ (영상을 한 번도 못 받은 채 유예가 지나면 ✗ 로 바뀐다). ✗ 면 PoE 인젝터 48 V·2 A 퓨즈·링크 LED 부터
+  - 카메라를 강제 종료(전원 뽑기)하면 ~90 s 재연결 불가 — 다시 꽂고 기다린다
+  - 2번배 노트북: `ros2 pkg prefix depthai_ros_driver` 가 나와야 한다. 없으면 launch 가 카메라만 건너뛰고 뜬다(비전 전부 침묵)
 
 ---
 

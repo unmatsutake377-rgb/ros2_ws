@@ -138,7 +138,8 @@ healthcheck 는 `camera_info` 구독으로 같은 판정 가능.)
 
 - **부호 ✅** 왼쪽 = 양수, 오른쪽 = 음수. **크기 ✅** 1° 안. 오차가 바깥으로 갈수록 같은 방향(−)으로 커지는 건 거리 2.0 m 가 실제로 몇 cm 길었거나 렌즈 왜곡(가장자리 −0.1~−0.2°)으로 설명된다.
 - 화면 아래쪽 책상의 빨간 물체 3개는 게이트 높이 띠(0.15~0.55) 밖이라 무시됐다. 원은 화면 높이 0.25~0.30 — **마스트 위에서도 띠 안**.
-- 남은 것: HSV 재조정(§6, 실외), D455 와 비교 후 `vision.yaml`·`ssf_tools.yaml` 전환, 대회 launch 에 OAK 드라이버 추가(ISP 1/3 설정 포함), 배 위 PoE 인젝터.
+- 남은 것: HSV 재조정(§6, 실외), 배 위 PoE 인젝터 급전·링크 확인, 마스트 실물 틸트(CAD 11° 아래) 확인, 2번배 노트북 depthai_ros_driver 설치.
+- ✅ 11-04 전환 완료(계약서 `docs/문제와작업/계약서_OAK전환_20261104.md`): 대회 launch realsense → depthai 노드(ISP 1/3, 640×360, 169.254.1.222), `vision.yaml` hfov 63.9·image_topic `/oak/rgb/image_raw`, `ssf_tools.yaml` image_topic, ship_gate cam_hfov 63.9·pass_behind 28°. D455 는 camera.launch.py(벤치)·cam_stream(수동 영상)만.
 
 ## 0. 지금 상태 (도착 전)
 
