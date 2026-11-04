@@ -10,7 +10,7 @@
   turn  → node_turn.png   ship_turn + ship_direction + motor_control, 빨강 부표 1개(시계 선회 — 2025 규정, orbit 옵션)
   avoid → node_avoid.png  ship_direction + motor_control, 장애물 구간 (avoid_sim.run_real)
   dock  → node_dock.png   ship_dock, 도크 벽 + 표식 (dock_sim.run)
-운동 모델·카메라·LiDAR 모델은 각 *_sim.py 와 같다(순항 1.2 m/s, HFOV 80.32°, 좌 양수). 전부 가정값 — 경향용.
+운동 모델·카메라·LiDAR 모델은 각 *_sim.py 와 같다(순항 1.2 m/s, HFOV 63.9°, 좌 양수). 전부 가정값 — 경향용.
 """
 import math
 import os
@@ -29,7 +29,7 @@ import matplotlib.pyplot as plt
 matplotlib.rcParams["font.family"] = "Apple SD Gothic Neo"
 matplotlib.rcParams["axes.unicode_minus"] = False
 
-HFOV, CAM_MIN, CAM_MAX = 80.32, 0.5, 12.0
+HFOV, CAM_MIN, CAM_MAX = 63.9, 0.5, 12.0
 
 
 def wrap(a): return (a + 180.0) % 360.0 - 180.0

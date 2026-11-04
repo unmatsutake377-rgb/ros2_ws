@@ -2,7 +2,7 @@
 """항로추종(빨강-초록 게이트) 2D 시뮬레이션 — 실제 ship_gate·ship_direction·motor_control 노드 코드를 그대로 돌린다.
 
   · rosstub.py 로 세 노드 파일을 import 해 틱마다 콜백·타이머를 호출(파라미터는 각 노드 yaml).
-  · 카메라 모델: 색별로 HFOV 80.32°(vision.yaml) 안·0.5~12 m 의 가장 가까운 부표(검출기의 '가장 큰 컨투어 1개'와 같음)
+  · 카메라 모델: 색별로 HFOV 63.9°(vision.yaml, OAK 640×360 ISP 1/3) 안·0.5~12 m 의 가장 가까운 부표(검출기의 '가장 큰 컨투어 1개'와 같음)
     의 상대 방위를 /red_angle·/green_angle 로 발행. 부호는 vision_geom.angle_from_pixel 과 같이 **왼쪽 = 양수**.
     confirm_frames 1(vision.yaml 기본). 안 보이면 10000. 방위 잡음 0.5°.
   · LiDAR: FastWorld 부표 레이캐스팅(ship_gate 의 arming 거리, ship_direction 의 갭 회피가 쓴다).
@@ -51,7 +51,7 @@ matplotlib.rcParams["axes.unicode_minus"] = False
 
 GATE_MODE = 1                    # 표 Ⅲ-7: 0·1 = 게이트 (ship_gate 담당)
 GATE_X = [15.0, 24.0, 33.0, 42.0]
-HFOV, CAM_MIN, CAM_MAX, CAM_NOISE = 80.32, 0.5, 12.0, 0.5
+HFOV, CAM_MIN, CAM_MAX, CAM_NOISE = 63.9, 0.5, 12.0, 0.5
 DT, MAX_T, X_END = K.DT, 150.0, 46.0
 INVALID = 10000.0
 

@@ -5,7 +5,7 @@
     timer_cb() 를 틱마다 호출한다(로직 이식이 아니라 실제 FSM 코드 실행). 파라미터는
     src/ship_dock/config/ship_dock.yaml 에서 읽는다.
   · 2D 세계: 도크 정면 벽(폭 3 m, 1 m 간격 3칸, 칸막이 0.5 m) + 가운데 칸 표식.
-    카메라: 표식 상대 방위(HFOV 80.32° = vision.yaml, 확정 지연 0.3 s = 3프레임, 0.7~12 m 에서 보임).
+    카메라: 표식 상대 방위(HFOV 63.9° = vision.yaml, 확정 지연 0.3 s = 3프레임, 0.7~12 m 에서 보임).
     LiDAR: 벽 레이캐스팅(0.5° 간격, 80° = 정면 규약), ship_dock 이 전방 ±15° 최소거리를 스스로 고른다.
   · 조향·추진: ship_direction 의 candidate 매핑(desired = 80 + rel)과 motor_control 분기
     (조향 차동, SPIN 제자리 선회, 후진 1590, 1.2 m 이내 감속 0.7)를 재현. 운동 상수는 tools/sim/ssf_sim.py
@@ -96,7 +96,7 @@ DOCK_W, BAY, DIV = 3.0, 1.0, 0.5         # 정면 벽 폭, 칸 폭, 칸막이 �
 MARKER = (0.0, 0.0)                      # 가운데 칸 표식 (벽 y=0, 배는 y>0 쪽에서 접근)
 SEGS = [((-DOCK_W / 2, 0.0), (DOCK_W / 2, 0.0))] + \
        [((x, 0.0), (x, DIV)) for x in (-1.5, -0.5, 0.5, 1.5)]
-HFOV = 80.32                             # vision.yaml hfov_deg
+HFOV = 63.9                              # vision.yaml hfov_deg
 CAM_CONFIRM, CAM_MIN, CAM_MAX = 0.3, 0.7, 12.0
 SCAN_MIN_DEG, SCAN_INC = -180.0, 0.5
 LIDAR_FWD = SD.LIDAR_FORWARD_DEG         # 80
