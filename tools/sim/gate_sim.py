@@ -216,9 +216,14 @@ def main():
         ax.plot([g["x"], g["x"]], [g["green"][1], g["red"][1]], color="k", lw=0.8, ls=":")
     for k in ("vision", "flip", "gps"):
         r = res[k][seed_show - 1]
-        ax.plot(r["traj"][:, 0], r["traj"][:, 1], color=cols[k], lw=1.7, label=f"{names[k]} — 통과 {r['passed']}/4, 접촉 {r['hits']}, {r['t']:.0f} s")
+        if k == "flip":   # 비교용(수정 전 부호) — 현재 코드로 오해하지 않게 점선·흐리게
+            ax.plot(r["traj"][:, 0], r["traj"][:, 1], color=cols[k], lw=1.4, ls="--", alpha=0.55,
+                    label=f"[비교용·현재 코드 아님] {names[k]} — 통과 {r['passed']}/4, 접촉 {r['hits']}, {r['t']:.0f} s")
+        else:
+            ax.plot(r["traj"][:, 0], r["traj"][:, 1], color=cols[k], lw=1.7, label=f"{names[k]} — 통과 {r['passed']}/4, 접촉 {r['hits']}, {r['t']:.0f} s")
     ax.plot(*res["vision"][seed_show - 1]["traj"][0], "o", color="k", ms=7); ax.text(5.0, 0.4, "출발", ha="center", fontsize=8.5)
-    ax.set_xlim(2, 48); ax.set_ylim(-1.5, 8.5); ax.set_aspect("equal"); ax.grid(alpha=0.2)
+    y_top = max(8.5, max(float(res[k][seed_show - 1]["traj"][:, 1].max()) for k in ("vision", "flip", "gps")) + 3.2)  # 궤적이 위로 잘리지 않고 범례(3줄)가 궤적을 덮지 않게
+    ax.set_xlim(2, 48); ax.set_ylim(-1.5, y_top); ax.set_aspect("equal"); ax.grid(alpha=0.2)
     ax.set_xlabel("x [m]"); ax.set_ylabel("y [m]  (빨강 = 진행 방향 좌현)")
     ax.legend(fontsize=8, loc="upper left", ncol=1, framealpha=0.9)
     ax.set_title(f"(a) 시드 {seed_show} — 게이트 4개 통과 궤적, 변형 3종", fontsize=10.5)
