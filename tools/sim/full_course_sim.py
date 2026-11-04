@@ -80,6 +80,7 @@
   · 위치유지(규정) = mode 2 동안 흰 부표(WP2) 5 m 이내 연속 5 s. 노드 판정(HOLD→DONE) 도 따로 적는다.
   · 탐색 = mode 3 동안 ship_back 이 HOLD→DONE 했고 그때 가장 가까운 부표가 빨강(turn 검출기 mode 3 대상 색).
     규정 기하(빨강 5 m 이내 연속 5 s)도 따로 적는다.
+  · 포기 = ship_back 이 ERROR '포기'(거리 unknown 10 s 또는 HOLD 총 60 s)를 남기고 DONE — 성공으로 세지 않는다.
   · 도킹 = ship_dock 이 CONTACT 에 들어간 순간 배 중심이 목표 칸 중심 ±0.5 m(칸 폭) 안 → '칸 안 접안'.
     후진 이탈 = BACKOFF→DONE 이 거리(2.5 m) 도달로 끝남. SEARCH 타임아웃 = SEARCH→DONE.
   · 코스 시간 = WP10(마지막 WP) 2.5 m 안에 처음 든 시각. 그 뒤 dwell 완료를 --tail 초까지만 기다린다.
@@ -437,6 +438,8 @@ def run(seed, variant="A", wp_file=None, world_wp_file=WP_DEFAULT, gps_sigma=0.0
     gate_cross = [0] * 4; gate_wrong = [0] * 4
     hold_run = 0.0; hold_best = 0.0; srch_run = {}; srch_best = {}
     sb_events = []; sk_events = []; prev_sb = sb.state; prev_sk = sk.state
+    sb_log_idx = 0
+    contacts_sb_state = {}
     dock_contact = None; dock_mode7_t0 = None; dock_dist_at = {}
     t_last_reach = None; img_pub_conflict = 0
     rec = dict(t=[], x=[], y=[], psi=[], v=[], mode=[], wp=[], sk=[], sb=[], cand=[], des=[], dd=[]) if record else None
@@ -610,6 +613,9 @@ def run(seed, variant="A", wp_file=None, world_wp_file=WP_DEFAULT, gps_sigma=0.0
                 if on and not contact_on.get(("b", i)):
                     kind = b["kind"]; key = "gate" if kind.startswith("gate") else ("search" if kind.startswith("search") else kind)
                     contacts[key] += 1; contacts_by_mode[cur_mode] = contacts_by_mode.get(cur_mode, 0) + 1
+                    if key in ("hold", "search"):        # 미션 부표 접촉 때 ship_back 상태(원인 진단용)
+                        ks = f"{kind}@WP{nga.wp_idx}(m{cur_mode}):{sb.state}"
+                        contacts_sb_state[ks] = contacts_sb_state.get(ks, 0) + 1
                 contact_on[("b", i)] = on if on else (dd < HALF_W + 0.1 and contact_on.get(("b", i), False))
             if math.hypot(x - dock["O"][0], y - dock["O"][1]) < 4.0:
                 h = np.array([math.sin(math.radians(psi)), math.cos(math.radians(psi))])
@@ -634,8 +640,14 @@ def run(seed, variant="A", wp_file=None, world_wp_file=WP_DEFAULT, gps_sigma=0.0
             # 미션 노드 상태 전이
             if sb.state != prev_sb:
                 near = min(W["buoys"], key=lambda b: math.hypot(x - b["x"], y - b["y"]))
-                sb_events.append((round(t, 1), cur_mode, prev_sb, sb.state, near["kind"], round(math.hypot(x - near["x"], y - near["y"]), 2)))
+                # 포기 DONE(unknown 10 s·HOLD 총 60 s, ship_back ERROR '포기') 은 성공과 따로 센다
+                sb_new = sb.get_logger().lines[sb_log_idx:]
+                why = ""
+                if sb.state == "DONE" and any(lv_ == "ERROR" and "포기" in ln_ for lv_, ln_ in sb_new):
+                    why = "포기"
+                sb_events.append((round(t, 1), cur_mode, prev_sb, sb.state, near["kind"], round(math.hypot(x - near["x"], y - near["y"]), 2), why))
                 prev_sb = sb.state
+            sb_log_idx = len(sb.get_logger().lines)
             dist_dock = math.hypot(x - dock["O"][0], y - dock["O"][1])
             if cur_mode == 7 and dock_mode7_t0 is None:
                 dock_mode7_t0 = t; dock_dist_at["mode7"] = dist_dock
@@ -682,12 +694,18 @@ def run(seed, variant="A", wp_file=None, world_wp_file=WP_DEFAULT, gps_sigma=0.0
     out["hold_geo"] = hold_best >= 5.0
     out["hold_best_s"] = round(hold_best, 1)
     m2 = [e for e in sb_events if e[1] == 2]
-    out["hold_node"] = "HOLD→DONE" if any(e[2] == "HOLD" and e[3] == "DONE" for e in m2) else ("SEARCH 타임아웃" if any(e[2] == "SEARCH" and e[3] == "DONE" for e in m2) else "미완")
+    done2 = [e for e in m2 if e[3] == "DONE"]
+    if not done2:
+        out["hold_node"] = "미완"
+    elif done2[0][6] == "포기":
+        out["hold_node"] = "포기"
+    else:
+        out["hold_node"] = "HOLD→DONE" if done2[0][2] == "HOLD" else "SEARCH 타임아웃"
     m3 = [e for e in sb_events if e[1] == 3]
     done3 = [e for e in m3 if e[3] == "DONE"]
     if done3:
         e = done3[0]
-        out["search_node"] = ("HOLD→DONE" if e[2] == "HOLD" else "SEARCH 타임아웃")
+        out["search_node"] = ("포기" if e[6] == "포기" else ("HOLD→DONE" if e[2] == "HOLD" else "SEARCH 타임아웃"))
         out["search_at"] = e[4] if e[2] == "HOLD" else ""
     else:
         out["search_node"] = "미완"; out["search_at"] = ""
@@ -704,6 +722,7 @@ def run(seed, variant="A", wp_file=None, world_wp_file=WP_DEFAULT, gps_sigma=0.0
     out["contacts"] = contacts; out["contacts_total"] = sum(contacts.values())
     out["contacts_avoid"] = contacts["obst_5"] + contacts["obst_8"]
     out["contacts_by_mode"] = contacts_by_mode
+    out["contacts_sb_state"] = contacts_sb_state
     out["mode_pubs"] = mode_pubs; out["multi_pub_ticks"] = multi_pub_ticks
     out["turn_published"] = st.pubs["/candidate_angle"].count
     out["img_pub_conflict"] = img_pub_conflict
@@ -854,8 +873,10 @@ def variant_b_file(W):
     note = (f"  # ↓ tools/dock_wp.py --bay {lat:.9f} {lon:.9f} --out-deg {out_deg:.3f}"
             f" (full_course_sim 변형 B, 목표 칸 {bay:+.0f})")
     outl = head + [note] + ["  " + ln for ln in lines] + src[blk[-1] + 1:]
-    with open(path, "w", encoding="utf-8") as f:
+    tmp = f"{path}.{os.getpid()}.tmp"                    # 병렬 워커가 같은 파일을 쓰므로 원자적 교체
+    with open(tmp, "w", encoding="utf-8") as f:
         f.write("\n".join(outl) + "\n")
+    os.replace(tmp, path)
     _B_CACHE[bay] = path
     return path
 
@@ -907,7 +928,7 @@ def summarize(R, label):
                  f"/candidate_angle 같은 틱 발행자 2개 이상: {sum(sum(r['multi_pub_ticks'].values()) for r in R)} 틱 | /image_angle 충돌 {sum(r['img_pub_conflict'] for r in R)}")
     g4 = sum(1 for r in R if r["gates_geo"] == 4); gm = sum(1 for r in R if r["gates_node"] == r["gates_geo"])
     lines.append(f"  게이트 4/4 기하 통과 {ci(g4)} | 기하 통과 합 {sum(r['gates_geo'] for r in R)}/{4 * n} | /gates_passed = 기하 {gm}/{n} | 역방향 가로지름 {sum(r['gates_wrongdir'] for r in R)}")
-    lines.append(f"  위치유지 규정(5 m·5 s) {ci(S('hold_geo'))} | 노드 HOLD→DONE {sum(1 for r in R if r['hold_node'] == 'HOLD→DONE')}, SEARCH 타임아웃 {sum(1 for r in R if r['hold_node'] == 'SEARCH 타임아웃')}")
+    lines.append(f"  위치유지 규정(5 m·5 s) {ci(S('hold_geo'))} | 노드 HOLD→DONE {sum(1 for r in R if r['hold_node'] == 'HOLD→DONE')}, SEARCH 타임아웃 {sum(1 for r in R if r['hold_node'] == 'SEARCH 타임아웃')}, 포기 {sum(1 for r in R if r['hold_node'] == '포기')}")
     at = {}
     for r in R:
         at[r["search_at"] or r["search_node"]] = at.get(r["search_at"] or r["search_node"], 0) + 1
@@ -918,6 +939,12 @@ def summarize(R, label):
     lines.append(f"  WP 시간 초과 합 {sum(r['timeouts'] for r in R)} (런당 중앙값 {med(sorted(r['timeouts'] for r in R))}) | 접촉 합 {sum(r['contacts_total'] for r in R)} "
                  f"(회피 장애물 {sum(r['contacts_avoid'] for r in R)}, 게이트 {sum(r['contacts']['gate'] for r in R)}, 위치유지 {sum(r['contacts']['hold'] for r in R)}, "
                  f"탐색 부표 {sum(r['contacts']['search'] for r in R)}, 도크 {sum(r['contacts']['dock'] for r in R)})")
+    cs = {}
+    for r in R:
+        for kk, vv in r.get("contacts_sb_state", {}).items():
+            cs[kk] = cs.get(kk, 0) + vv
+    if cs:
+        lines.append("  미션 부표 접촉 때 ship_back 상태: " + ", ".join(f"{kk} {vv}" for kk, vv in sorted(cs.items())))
     # WP 별 시간초과·소요
     nw = max(len(r["segments"]) for r in R)
     parts = []
@@ -955,7 +982,7 @@ def timeline_text(r):
     for s in r["segments"]:
         L.append(f"    WP{s['i']:>2} m{s['mode']} {s['label']:<16} 진입 {s['t0']:6.1f}s  소요 {s['dur']:6.1f}s  {s['how']}")
     L.append("    ship_dock 전이: " + " ; ".join(f"{e[0]:.1f}s(m{e[1]}) {e[2]}→{e[3]} 도크까지 {e[4]} m" for e in r["sk_events"]))
-    L.append("    ship_back 전이: " + " ; ".join(f"{e[0]:.1f}s(m{e[1]}) {e[2]}→{e[3]} 최근접 {e[4]} {e[5]} m" for e in r["sb_events"]))
+    L.append("    ship_back 전이: " + " ; ".join(f"{e[0]:.1f}s(m{e[1]}) {e[2]}→{e[3]}{'(' + e[6] + ')' if e[6] else ''} 최근접 {e[4]} {e[5]} m" for e in r["sb_events"]))
     return "\n".join(L)
 
 
