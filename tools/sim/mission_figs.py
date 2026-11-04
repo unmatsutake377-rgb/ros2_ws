@@ -124,6 +124,7 @@ def _single_buoy_run(node_kind, t_max=60.0, current=(0.0, 0.0), color="red", mod
         node = M.ShipBack(); mode = mode_override if mode_override is not None else P["active_wp_modes"][0]
     else:
         P = rosstub.load_params(os.path.join(ROOT, "src/ship_turn/config/ship_turn.yaml"), "/ship_turn")
+        if param_override: rosstub.PARAMS["ship_turn"] = dict(P, **param_override)
         M = rosstub.load_node(os.path.join(ROOT, "src/ship_turn/ship_turn/ship_turn.py"), "ship_turn_real", extra_path=os.path.join(ROOT, "src/ship_turn"))
         node = M.ShipTurn(); mode = P["active_wp_mode"]
     sd = A.SD.ShipDirection(); mc = A.MC.MotorController()
@@ -184,7 +185,7 @@ def fig_back():
 
 def fig_turn():
     import numpy as np
-    r = _single_buoy_run("turn", t_max=90.0, color="red")
+    r = _single_buoy_run("turn", t_max=90.0, color="red", param_override={"enabled": True})   # orbit 옵션(launch search_behavior:=orbit 이 True 를 넘김)
     tr = np.array(r["traj"]); P = r["P"]
     # 실제 회전 방향: 부표 기준 방위각의 부호 있는 누적
     ang = np.degrees(np.arctan2(tr[:, 0], tr[:, 1])); d = ((np.diff(ang) + 180) % 360) - 180
@@ -200,7 +201,7 @@ def fig_turn():
         ax.annotate("", xy=tr[k + 1], xytext=tr[k], arrowprops=dict(arrowstyle="-|>", lw=1.2, color="#2ca02c", mutation_scale=14))
     ax.plot(tr[0, 0], tr[0, 1], "o", color="k", ms=7); ax.text(tr[0, 0] + 0.3, tr[0, 1], "출발 (8 m 남쪽)", fontsize=9)
     ax.set_xlim(-6.5, 6.5); ax.set_ylim(-9, 6.5)
-    finish(fig, ax, "turn", f"탐색 선회 (ship_turn) — 실제 {dirn}방향 {abs(turned):.0f}° 선회, 반경 {orbit_r.mean():.1f} m (목표 {P['orbit_radius_m']}), {r['done_t'] or r['t']:.0f} s")
+    finish(fig, ax, "turn", f"탐색 선회 옵션 (ship_turn, search_behavior:=orbit) — 실제 {dirn}방향 {abs(turned):.0f}° 선회, 반경 {orbit_r.mean():.1f} m (목표 {P['orbit_radius_m']}), {r['done_t'] or r['t']:.0f} s")
     print(f"  turn: 노드 dir_cw={r['node'].dir_cw}, 궤적 실제 회전 {dirn} {abs(turned):.0f}°, 상태 {r['node'].state}, 진행각(노드) {r['node'].progress.progress_deg():.0f}°")
     return r
 
@@ -208,7 +209,7 @@ def fig_turn():
 def fig_search():
     """탐색 = 2026 안내문: 특정 색 부표 탐지 후 그 앞 위치유지. launch 기본 search_behavior=hold → ship_back 이 모드 3 담당([2,3])."""
     import numpy as np
-    r = _single_buoy_run("back", t_max=60.0, current=(0.2, 0.0), color="red", mode_override=3, param_override={"active_wp_modes": [2, 3]})
+    r = _single_buoy_run("back", t_max=60.0, current=(0.2, 0.0), color="red", mode_override=3)   # yaml 기본 [2,3] (hold)
     tr = np.array(r["traj"]); P = r["P"]
     fig, ax = plt.subplots(figsize=(7.5, 6.2))
     ax.add_patch(plt.Circle((0, 0), P["keep_radius_m"], color="gold", alpha=0.15)); ax.text(0, P["keep_radius_m"] + 0.3, "5 m 이내 5 s 유지", ha="center", fontsize=8.5, color="#8a6d00")
