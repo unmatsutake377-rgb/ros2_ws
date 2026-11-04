@@ -20,9 +20,9 @@ CANDIDATE_INVALID = 20000.0  # 미션 없음 → yaw_error 기반 자율 회피
 STOP_HOLD = 50000.0          # 정지/대기
 
 REVERSE_ANGLE = 260.0        # 후진 (motor_control 분기 5). 두 곳에서 나온다:
-                             #   (C) 회피 경로 없음 → [L] 상태기계, (B) /candidate_angle 180.0 정확 일치(아래)
+#   (C) 회피 경로 없음 → [L] 상태기계, (B) /candidate_angle 180.0 정확 일치(아래)
 REVERSE_REL = 180.0          # /candidate_angle 180.0 = 후진 요청 (ship_dock BACKOFF·ship_back).
-                             #   (B) 에서 범위 검사 앞 정확 일치로만 260 으로 통과 (계약서_후진통과_20261104).
+#   (B) 에서 범위 검사 앞 정확 일치로만 260 으로 통과 (계약서_후진통과_20261104).
 LIDAR_FORWARD_DEG = 80.0     # LiDAR 프레임에서 정면 (상대방위 0 에 대응)
 
 

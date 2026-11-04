@@ -41,7 +41,7 @@ IMAGE_ANGLE_INVALID = 10000.0
 CANDIDATE_INVALID = 20000.0
 STOP_HOLD = 50000.0
 REVERSE_REL = 180.0          # 상대 180° = 후진 (→ ship_direction 260 → motor_control 분기 5)
-                             #   근거: ship_direction (B) 정확 일치 예외(test_candidate_reverse)
+#   근거: ship_direction (B) 정확 일치 예외(test_candidate_reverse)
 LIDAR_FORWARD_DEG = 80.0     # LiDAR 프레임 정면
 # ship_direction (B) 매핑: mapped = 80 + raw, 정상 범위 0~160 → 상대 조향 |steer| ≤ 80 만 조향이 된다.
 # 180.0 정확 일치는 후진(260) 예외라, 부표 방위가 ±180 이면 전진 대신 후진한다 → 발행 직전 클램프.
