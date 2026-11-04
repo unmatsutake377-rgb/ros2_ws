@@ -212,7 +212,7 @@ async function coverFromLastYear(file) {
     coverText('대회', tx, 4.6, tw, 0.3, [{ text: 'KABOAT 2026', pt: 13, bold: false, color: '666666' }]),
     coverText('대회명', tx, 4.9, tw, 0.5, [{ text: '자율운항보트경진대회', pt: 26, bold: true, color: '052E65' }]),
     coverText('팀명', tx, 5.45, tw, 0.35, [{ text: 'S.S.F (Symbio Ship to Future)', pt: 14, bold: false, color: '000000' }]),
-    coverText('소속', tx, 5.85, tw, 0.5, [{ text: '홍익대학교 조선해양공학과', pt: 12, bold: true, color: '000000' }, { text: `TEAM ${B.team} (${B.no})`, pt: 12, bold: true, color: '000000' }]),
+    coverText('소속', tx, 5.85, tw, 0.5, [{ text: '홍익대학교 조선해양모빌리티공학과', pt: 12, bold: true, color: '000000' }, { text: `TEAM ${B.team} (${B.no})`, pt: 12, bold: true, color: '000000' }]),
     coverText('팀 명단', tx, 6.38, tw, 0.6, [{ text: `조장 ${B.leader} · 지도교수 권순범`, pt: 9.5, bold: false, color: '666666' }, { text: `조원 ${B.members}`, pt: 9.5, bold: false, color: '666666' }]),
   ].join('');
   xml = xml.replace('</p:spTree>', add + '</p:spTree>');

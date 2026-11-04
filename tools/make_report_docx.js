@@ -95,7 +95,7 @@ const children = [
   // ── 표지
   new Paragraph({ children: [t('자율운항보트경진대회 2026', { size: 28 })], alignment: AlignmentType.CENTER, spacing: { before: 2400, after: 200 } }),
   new Paragraph({ children: [t('KABOAT 2026', { size: 48, bold: true })], alignment: AlignmentType.CENTER, spacing: { after: 600 } }),
-  new Paragraph({ children: [t('홍익대학교 조선해양공학과', { size: 26 })], alignment: AlignmentType.CENTER, spacing: { after: 200 } }),
+  new Paragraph({ children: [t('홍익대학교 조선해양모빌리티공학과', { size: 26 })], alignment: AlignmentType.CENTER, spacing: { after: 200 } }),
   new Paragraph({ children: [t(`TEAM _ ${BT.team}  (${BT.no})`, { size: 30, bold: true })], alignment: AlignmentType.CENTER, spacing: { after: 1200 } }),
   new Paragraph({ children: [t(`조장 : ${BT.lead}`, { size: 22 })], alignment: AlignmentType.CENTER }),
   new Paragraph({ children: [t(`조원 : ${BT.members.join(', ')}`, { size: 22 })], alignment: AlignmentType.CENTER }),
@@ -123,8 +123,8 @@ const children = [
   H3('1.1) 대회 규정 조건 (경기규정 2025-11 수정본 4.2 보트 검사)'),
   table(['항목', '규정', '본 설계'], [
     ['크기', '탑재장비·부가물 포함 길이 L ≥ 1.0 m, 높이 H ≤ 1.0 m', isA ? '1번배 LOA 1.66 m × BOA 0.55 m, 선미 깊이 0.255 m (추진기 포함)' : '2번배 LOA 1.77 m × BOA 0.522 m × 깊이 0.19 m (선체)'],
-    ['흘수선', '100~110% 부력 범위 흘수선 표시', isA ? '부상 시험 흘수 선미 45 · 중앙 95 · 선수 105 mm (Ⅱ-3.2)' : '진수 후 실측·표시'],
-    ['복원성', '복원성 확보, 중량물 고정', isA ? '배터리·방수박스 선체 내부 고정, 좌우 중량 균형 고려, 부상 시험 실시' : '방수박스·배터리 선체 내부 고정, 정수력 추정 (Ⅱ-3.2)'],
+    ['흘수선', '100~110% 부력 범위 흘수선 표시', isA ? '부상 시험 흘수 선미 45 · 중앙 95 · 선수 105 mm (Ⅱ-3.2)' : '부상 시험 흘수 선미 80 · 중앙 65 · 선수 75 mm (Ⅱ-3.2)'],
+    ['복원성', '복원성 확보, 중량물 고정', isA ? '배터리·방수박스 선체 내부 고정, 좌우 중량 균형 고려, 부상 시험·경사시험 GM 0.18 m (Ⅱ-3.2)' : '방수박스·배터리 선체 내부 고정, 부상 시험·경사시험 GM 0.20 m (Ⅱ-3.2)'],
     ['추진·전압', 'DC 모터 + 축전지, 최대 24V DC 이하', '4S LiPo 14.8V(만충 16.8V), T200'],
     ['표시등', '원격 초록 / 자율 노랑 / 비상정지 빨강', 'WS2812 스트립, Mega 핀 16'],
     ['비상스위치', '버튼식 + 무선식 모두 필수, 추진 전원 차단', '접촉기 2극 차단, NC 버튼 + 무선 릴레이 (Ⅳ-2)'],
@@ -153,7 +153,7 @@ const children = [
   table(['최종 주요 제원', `${BT.team} (${BT.no})`], isA ? [
     ['LOA [m]', '1.66'],
     ['BOA [m]', '0.55'],
-    ['깊이 D [m]', '선미 0.255 (추진기 포함)'],
+    ['깊이 D [m]', '선수 0.240 · 중앙 0.220 · 선미 0.150 (선미 추진기 포함 0.255)'],
     ['추진기', 'T200 ×2, 선미 좌우 대칭 배치 (중심선 기준 ±120 mm, 추진기 간격 240 mm)'],
     ['방수박스', '400×300×200 + 선미 쪽 3D 프린팅 연장 80 → 480×300×200, 갑판 아래'],
     ['전비 질량 [kg]', '34 (실측)'],
