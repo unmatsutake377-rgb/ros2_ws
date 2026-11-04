@@ -23,6 +23,8 @@ class MotorController(Node):
         '전진 명령'(분기 2,4,6)을 중립(1500) 쪽으로 당겨 감속한다. SPIN(3)·후진(5)·STOP(1)은
         제외 — 다가가지 않으므로 감속 대상이 아니다. 작년엔 이 노드가 /desired_angle 하나만
         구독해 '장애물이 코앞이어도 감속하지 않았다'.
+      · 페일세이프 L1 상한: 근접 감속과 별개. 전진(2,4,6)·후진(5) 공통, SPIN(3)·STOP(1) 제외.
+        정리: L1 상한 = 전진·후진 공통, 근접 감속 = 전진만 (계약서_후진감속_L1_20261104).
       · 명령 워치독: /desired_angle 이 cmd_timeout_sec 넘게 끊기면 중립(1500/1500).
         + 부팅 직후 첫 명령이 오기 전에도 중립 (명령 없이 전진 금지).
 
@@ -48,6 +50,7 @@ class MotorController(Node):
         # ---- 페일세이프 속도 상한 (/failsafe_level 구독, ship_direction 이 발행) ----
         # /desired_angle 은 '각도'라 속도를 담을 수 없다 → 속도는 여기서 건다.
         #   레벨0 100% / 레벨1(경고) 70% / 레벨2(정지)는 STOP_HOLD 가 각도로 오므로 분기 (1) 이 처리.
+        #   L1 상한 = 전진(2,4,6)·후진(5) 공통. SPIN(3) 은 100% 유지. 근접 감속(speed_ratio)은 전진만.
         # ⚠️ 경고 감속의 효과는 아직 미측정. 1.0 으로 두면 꺼진다(효과 없으면 뺀다, TTC 때처럼).
         self.fs_l1_speed = float(self.declare_parameter("failsafe_l1_speed", 0.7).value)
 
@@ -144,8 +147,9 @@ class MotorController(Node):
 
     def apply_slow(self, pwm, ratio):
         """PWM 을 중립(1500) 쪽으로 ratio 만큼 당긴다.
-        '전진 명령' 분기(2,4,6)에서만 호출한다 — 감속은 '앞으로 가며 장애물에 다가가니 천천히'.
-        제자리 선회(3)·후진(5)·정지(1)는 다가가지 않으므로 감속 대상이 아니다.
+        근접 감속(speed_ratio)은 '전진 명령' 분기(2,4,6)에만 — '앞으로 가며 다가가니 천천히'.
+        페일세이프 L1 상한은 전진(2,4,6)·후진(5) 공통으로 이 함수를 쓴다(1500 기준 편차 축소).
+        제자리 선회(3)·정지(1)는 어느 쪽도 안 건다.
         (과거 '전진 성분(pwm<1500)' 규칙은 SPIN 의 1400 쪽만 깎아 배가 뒤로 밀리며 돌게 했다.)"""
         return int(round(1500 + (pwm - 1500) * ratio))
 
@@ -181,7 +185,7 @@ class MotorController(Node):
             return
 
         angle = self.desired_angle
-        slow_ok = False   # 감속은 '전진 명령'(2,4,6)에만. SPIN(3)·후진(5)·STOP(1)은 제외.
+        slow_ok = False   # 아래 공통 감속은 '전진 명령'(2,4,6)에만. 후진(5) L1 상한은 분기 안에서.
 
         # (1) STOP
         if angle >= STOP_HOLD:
@@ -211,10 +215,15 @@ class MotorController(Node):
             pwm_r, pwm_l = self.apply_steer(diff if offset > 0 else -diff)
             slow_ok = True
 
-        # (5) 후진 구간
+        # (5) 후진 구간 — 페일세이프 L1 상한만 여기서 건다(계약서_후진감속_L1_20261104).
+        #     근접 감속(speed_ratio)은 안 건다: 후진은 전방 장애물에 다가가지 않는다(slow_ok 그대로).
+        #     cap < 1.0 게이트는 전진과 같다. 예) 1590, L1 0.7 → 1563.
         elif 161.0 < angle < SPIN_RIGHT:
             pwm_r = self.reverse_pwm
             pwm_l = self.reverse_pwm
+            cap = self.failsafe_speed_cap()
+            if cap < 1.0:
+                pwm_r = pwm_l = self.apply_slow(self.reverse_pwm, cap)
 
         # (6) 기본값: 직진 유지
         else:
@@ -222,11 +231,12 @@ class MotorController(Node):
             pwm_l = self.base_pwm
             slow_ok = True
 
-        # (감속) '전진 명령'일 때만. 두 가지 이유로 느려진다 — 더 보수적인 쪽(min)을 쓴다:
-        #   ① 장애물 근접 (speed_ratio)
-        #   ② 페일세이프 레벨 (failsafe_speed_cap) — 센서가 묵었으니 속도를 줄여 오차를 줄인다
+        # (감속) '전진 명령'일 때. 두 가지 이유로 느려진다 — 더 보수적인 쪽(min)을 쓴다:
+        #   ① 장애물 근접 (speed_ratio) — 전진만
+        #   ② 페일세이프 레벨 (failsafe_speed_cap) — 센서가 묵었으니 속도를 줄여 오차를 줄인다.
+        #      후진(5)의 ② 는 분기 (5) 안에서 따로 건다(① 은 후진에 안 건다).
         # ★ 반드시 slow_ok 뒤에 둔다. SPIN(제자리 1400/1600)에 감속이 걸리면 전진 쪽만 깎여
-        #   배가 뒤로 밀리며 돈다(이미 겪은 버그). 후진·STOP 도 같은 이유로 제외.
+        #   배가 뒤로 밀리며 돈다(이미 겪은 버그). STOP 도 제외. 후진에 slow_ok=True 금지(① 이 걸림).
         ratio = min(self.speed_ratio(), self.failsafe_speed_cap())
         if slow_ok and ratio < 1.0:
             pwm_r = self.apply_slow(pwm_r, ratio)

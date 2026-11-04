@@ -214,6 +214,7 @@ def linear_diff(offset):
 
 
 def motor_control_step(angle):
+    # L1 상한 미모사: 실코드는 failsafe L1 이면 전진·후진 ×0.7 — 이 사본엔 페일세이프 레벨이 없다
     if angle >= 50000:                       # (1) STOP
         return PWM_NEUTRAL, PWM_NEUTRAL, "STOP"
     elif 20000 <= angle < 50000:             # (2) fallback 전진

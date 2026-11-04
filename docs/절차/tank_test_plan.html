@@ -167,6 +167,8 @@ gps_vel(RTK) 로 기록. ★ RTK fix 품질 확인 필수(아래).</pre>
   ros2 param get /ship_direction candidate_reverse_stale_sec → 0.5
   ros2 topic pub -r 10 /candidate_angle std_msgs/Float32 "{data: 180.0}" → /desired_angle 260, Motor_run 15901590, /motor_reverse true, 양쪽 실물 후진(좌우 따로 눈으로)
   pub 을 끊으면 0.5 s 안에 /desired_angle 50000 + warn 1초 1번 / 179.0 → 50000 / 0.0 → 80
+  <b>센서 경고(L1) 중 후진 70% (11-04, 계약서_후진감속_L1)</b>: motor_control+ssf_bridge 만 띄우고 /desired_angle 260 20 Hz + /failsafe_level 1 10 Hz
+    → Motor_run 15631563, /motor_reverse true, 시리얼 1437/1437, 레벨 0 때보다 약하게 후진. 레벨 0 → 15901590 (+ /obstacle_distance_array [0.5, 80.0] 줘도 1590)
   (/scan·/yaw_error 가 살아 있어야 함 — 아니면 L2 정지가 먼저 덮는다)
 근접 도킹 이탈: 접안(CONTACT) 뒤 BACKOFF 에서 실제로 <b>뒤로 빠져</b> 2.5 m 에서 DONE 되는지. 예전 코드는 여기서 8 s 멈춰 있다 DONE(시뮬 확인).
   후진은 뒤를 안 본다 → 수조 벽이 선미 쪽 3 m 안이면 하지 말 것. 후진 중 선수 흔들림·속도 기록.

@@ -155,6 +155,7 @@ def lidar(x, y, psi):
 
 def motor(desired, front_d):
     """motor_control 분기 → (pwm_r, pwm_l)."""
+    # L1 상한 미모사: 실코드는 failsafe L1 이면 전진·후진 ×0.7 — 이 사본엔 페일세이프 레벨이 없다
     if desired >= 50000: return NEUTRAL, NEUTRAL
     if 20000 <= desired < 50000: r = l = BASE_PWM
     elif 5000 <= desired < 6000: return SPIN_CENTER + SPIN_DIFF, SPIN_CENTER - SPIN_DIFF   # 우선회
