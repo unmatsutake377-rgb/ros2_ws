@@ -154,6 +154,8 @@ SK = _load("ship_dock/ship_dock/ship_dock.py", "sk_real", "ship_dock")
 sys.path.insert(0, os.path.join(SRC, "color_shape_detector"))
 from color_shape_detector.mode_gate import ModeGate              # noqa: E402
 from color_shape_detector.dock_logic import DetectionConfirmer   # noqa: E402
+from color_shape_detector.turn_color_logic import (             # noqa: E402
+    build_wp_color_map, detection_disabled, resolve_turn_color)
 
 with open(os.path.join(SRC, "north_goal_angle/config/north_goal_angle.yaml"), encoding="utf-8") as _f:
     P_NGA = yaml.safe_load(_f)["/north_goal_angle"]["ros__parameters"]
@@ -175,7 +177,19 @@ CAM_MIN, CAM_MAX, CAM_NOISE = 0.5, 12.0, 0.5
 DOCK_CAM_MIN = 0.7
 LIDAR_MAX = 20.0
 INVALID = 10000.0
-TURN_COLOR_MAP = {2: ["white"], 3: ["red"], 4: ["red"], 5: ["red"]}   # basic_image_subscriberturn.py wp_color_map
+# basic_image_subscriberturn.py wp_color_map — vision.yaml turn_color_mode2/3 에서 노드와 같은
+# 규칙으로 만든다(C6). 무효 색이면 노드처럼 그 모드는 빈 목록(검출·발행 없음) + 경고 한 줄.
+
+
+def _turn_color(name):
+    c, err = resolve_turn_color(VIS["image_subscriber_turn"][name])
+    if err:
+        print(f"[full_course_sim] 경고: {name}: {err}", file=sys.stderr)
+    return c
+
+
+TURN_COLOR_MAP = build_wp_color_map(_turn_color("turn_color_mode2"),
+                                    _turn_color("turn_color_mode3"))
 MODE_NAME = {0: "게이트 0", 1: "게이트 1", 2: "위치유지 2", 3: "부표 3", 5: "회피 5", 7: "도킹 7", 8: "토너먼트 8"}
 MODE_COL = {0: "#1f77b4", 1: "#17becf", 2: "#bcbd22", 3: "#9467bd", 5: "#ff7f0e", 7: "#d62728", 8: "#2ca02c"}
 R_EARTH = 6371000.0
@@ -521,8 +535,9 @@ def run(seed, variant="A", wp_file=None, world_wp_file=WP_DEFAULT, gps_sigma=0.0
                 sg.red_angle_cb(Float32(det_gate.frame("red", "red", None if r is None else r[1], Clock.t)))
                 sg.green_angle_cb(Float32(det_gate.frame("green", "green", None if g is None else g[1], Clock.t)))
             img = None; col = None
-            if det_turn.gate.is_active(Clock.t):
-                wm = getattr(det_turn, "wp_mode", -1)
+            wm = getattr(det_turn, "wp_mode", -1)
+            # C6: 노드와 같이 무효 색 모드는 검출·발행 없음
+            if det_turn.gate.is_active(Clock.t) and not detection_disabled(wm, TURN_COLOR_MAP):
                 cols = TURN_COLOR_MAP.get(wm, ["red", "green", "white"])
                 best = None
                 for cname in cols:

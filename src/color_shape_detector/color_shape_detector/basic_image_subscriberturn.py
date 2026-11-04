@@ -11,6 +11,11 @@ from color_shape_detector.vision_geom import (
 )
 from color_shape_detector import hsv_ranges
 from color_shape_detector.dock_logic import DetectionConfirmer
+from color_shape_detector.turn_color_logic import (
+    DEFAULT_TURN_COLOR_MODE2, DEFAULT_TURN_COLOR_MODE3, TURN_COLORS,
+    build_wp_color_map, detection_disabled, log_due, resolve_turn_color,
+    target_colors_for,
+)
 
 import cv2
 import numpy as np
@@ -57,6 +62,25 @@ class ImageSubscriber(Node):
             self.declare_parameter('active_wp_modes', [2, 3]).value,
             stale_sec=float(self.declare_parameter('wp_mode_stale_sec', 2.0).value))
         self._last_gate_log = 0.0
+        # C6: 목표 색 무효 모드의 주기 ERROR 마지막 시각(monotonic). None = 아직 안 찍음.
+        self._last_color_err_log = None
+
+        # C6(U5, 2026-11-04): 모드별 목표 색. 예전엔 wp_color_map 이 코드에 박혀 있었다.
+        #   탐색(mode 3) 부표 색은 **대회 당일 공지** → vision.yaml 한 줄로 바꾼다.
+        #   허용 색 = 아래 hsv_ranges.load 가 읽는 TURN_COLORS. 모르는 색은 부팅 ERROR 1회 +
+        #   그 모드 검출 안 함(기본값 대체 없음 — 오타로 게이트 빨강에 HOLD 하는 것 방지).
+        #   문자열 아닌 값은 rclpy 가 declare_parameter 에서 부팅 때 노드를 세운다.
+        #   4·5 는 mode 3 색을 따른다(active_wp_modes [2, 3] 이라 지금은 게이트가 막아 안 쓰인다).
+        #   ⚠️ 구독 생성보다 먼저 선언한다(process_image 가 이 맵을 읽는다).
+        self.turn_color_mode2 = self._turn_color_param(
+            'turn_color_mode2', DEFAULT_TURN_COLOR_MODE2)
+        self.turn_color_mode3 = self._turn_color_param(
+            'turn_color_mode3', DEFAULT_TURN_COLOR_MODE3)
+        self.wp_color_map = build_wp_color_map(
+            self.turn_color_mode2, self.turn_color_mode3)
+        self.get_logger().info(
+            f"turn 목표 색: mode 2={self.turn_color_mode2 or '검출 안 함'}, "
+            f"mode 3={self.turn_color_mode3 or '검출 안 함'} (4·5 = mode 3 색)")
 
         self.br = CvBridge()
 
@@ -111,7 +135,7 @@ class ImageSubscriber(Node):
         # 잘못된 값이면 기본값으로 되돌리고 ERROR 로 알린다(조용히 못 찾는 것 방지).
         self.color_ranges = hsv_ranges.load(
             lambda n, d: self.declare_parameter(n, d).value,
-            ("red", "green", "white"),
+            TURN_COLORS,
             on_error=self.get_logger().error)
 
         # 최소 면적[px²] — 예전엔 `if area < 40:` 로 코드에 박혀 있었다(gate 와 각각).
@@ -159,14 +183,14 @@ class ImageSubscriber(Node):
 
         # ★ 추가: WP 모드 초기값
         self.wp_mode = -1
+        # 각 WP 에서 인식할 색(self.wp_color_map)은 위 C6 절에서 파라미터로 만든다.
 
-        # ★ 추가: 각 WP에서 인식할 색상 지정
-        self.wp_color_map = {
-            2: ["white"],
-            3: ["red"],
-            4: ["red"],
-            5: ["red"]
-        }
+    def _turn_color_param(self, name, default):
+        raw = self.declare_parameter(name, default).value
+        color, err = resolve_turn_color(raw)
+        if err:
+            self.get_logger().error(f"{name}: {err}")
+        return color   # 무효면 None → build_wp_color_map 이 빈 목록으로
 
     def wp_mode_callback(self, msg: Int32):
         self.mode_gate.update(msg.data, time.monotonic())
@@ -186,6 +210,18 @@ class ImageSubscriber(Node):
                 self._last_gate_log = now_m
                 self.get_logger().warn(
                     f"비활성({why}) → 검출 정지. /wp_mode 가 오고 있나?")
+            return
+
+        # C6: 목표 색이 무효인 모드 — 검출도 발행(fallback 포함)도 하지 않는다(10000 도 안 냄).
+        #   /image_angle 이 안 오면 (search_behavior hold 기본일 때) ship_back SEARCH 20000 유지
+        #   — orbit 이면 mode 3 은 ship_turn 담당. ERROR 는 부팅 때 1회 + 여기(담당 모드,
+        #   모드 게이트 통과 뒤)에서 5 s 주기로 다시 찍는다(§1-7: 전용 호출 지점).
+        if detection_disabled(self.wp_mode, self.wp_color_map):
+            if log_due(self._last_color_err_log, now_m):
+                self._last_color_err_log = now_m
+                self.get_logger().error(
+                    f"turn 목표 색 무효(mode {self.wp_mode}) — 검출 안 함, "
+                    f"vision.yaml turn_color_mode{3 if self.wp_mode >= 3 else 2} 확인")
             return
 
         self.found_in_frame = False
@@ -232,10 +268,8 @@ class ImageSubscriber(Node):
         color_ranges = self.color_ranges
 
         # ★ 현재 WP에서 사용할 색만 선택
-        if self.wp_mode in self.wp_color_map:
-            target_colors = self.wp_color_map[self.wp_mode]
-        else:
-            target_colors = color_ranges.keys()  # Default: 모든 색
+        #   맵에 없는 모드 = 모든 색, 무효 색 모드 = 빈 목록(아무 색도 통과 안 함).
+        target_colors = target_colors_for(self.wp_mode, self.wp_color_map, color_ranges.keys())
 
         # V1: 후보 선택 기준 '가장 가까운 것(depth)' → '가장 큰 것(면적)'
         best = {
