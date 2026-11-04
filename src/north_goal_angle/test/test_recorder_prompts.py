@@ -235,7 +235,7 @@ def test_template_defaults_none_template():
 
 def test_dwell_default_priority_template_over_table():
     assert dwell_default(7, 12.5) == 12.5          # 템플릿 우선
-    assert dwell_default(7, None) == 60.0          # 표
+    assert dwell_default(7, None) == 1.0           # 표(소스 yaml mode 7 = 1.0)
     assert dwell_default(99, None) is None         # 둘 다 없음 → None(재질문)
 
 

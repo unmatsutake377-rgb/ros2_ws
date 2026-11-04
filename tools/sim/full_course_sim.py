@@ -8,8 +8,10 @@
   python3 tools/sim/full_course_sim.py --variant AB --faults --seeds 20  # 고장 주입 (a)~(e) + 기준 런 → full_course_sim_faults.csv
   python3 tools/sim/full_course_sim.py --variant AB --seeds 20 --dwell-label "WP6=3,WP7=3" --csv tools/sim/out/full_course_sim_dwell_diag.csv
       # 보조 진단(현재 설정 아님): WP6·WP7 dwell 만 3 s 로 바꾼 스크래치 사본 → WP7 도착 뒤 도킹 구간만 따로 본다
-  변형 B = tools/dock_wp.py 로 목표 칸 입구(벽에서 0.5 m) 법선 위 10·6 m 접근점 2개(mode 5)를 WP8 앞에 넣고 WP8·WP9 를 칸 입구로 바꾼
-           파일(목표 칸별로 스크래치 fullcourse/ 에 생성). 세계 배치는 변형과 무관하게 원본 waypoints.yaml 기준.
+  변형 A = north 가 --wp-file(없으면 --world-wp-file)을 그대로 읽는다. 기본 yaml 의 도킹 네 줄은 자리표시값(가운데 칸).
+  변형 B = 기본 waypoints.yaml 의 도킹 네 줄(접근 10m·6m mode 5, WP8 입구·WP9 이탈 mode 7, ⚠️ 현장 교체)을
+           tools/dock_wp.py 가 목표 칸 입구(벽에서 0.5 m)로 찍은 네 줄로 바꾼 파일(목표 칸별로 스크래치 fullcourse/ 에 생성).
+           세계 배치는 변형과 무관하게 --world-wp-file 기준(전후 비교는 5faf86b waypoints 사본으로 고정).
   페일세이프 기록(모든 런): ship_direction /failsafe_level L1·L2 진입 수·시간·첫 진입, motor_control 명령 워치독 중립(로그 문구),
            north GPS stale/fix 없음·IMU stale 경고, ship_goal_angle IMU·목표각 stale 경고, /desired_angle 50000 시간(모드별).
   옵션: --wp-file <yaml>(north_goal_angle 이 읽을 파일; 세계 배치는 늘 --world-wp-file 기준), --gps-sigma 0.03,
@@ -63,7 +65,8 @@
 세계 배치 (--world-wp-file, 기본 src/north_goal_angle/config/waypoints.yaml; 원점 = WP0, x = 동, y = 북)
   · 게이트 4쌍: WP0→WP1 선분의 1/8·3/8·5/8·7/8 지점이 중심, 폭 3~6 m 무작위, 선분에 수직, 빨강 = 진행 방향 좌현.
   · WP2 위치에 흰 부표(위치유지), WP3 초록·WP4 빨강·WP5 흰 부표(구역 이름대로, WP 좌표 그대로).
-  · 장애물(주황, 검출기 대상 색 아님): WP6→WP7 선분의 10~90 % 구간에 6~10개, WP9→WP10 선 위 WP10 앞 3~20 m 구간에 6~10개,
+  · 장애물(주황, 검출기 대상 색 아님): WP6→WP7(처음 두 mode 5) 선분의 10~90 % 구간에 6~10개,
+    도크(첫 mode 7)→WP10 선 위 WP10 앞 3~20 m 구간에 6~10개,
     경로선 ±3 m, 서로 1.5 m 이상, 다른 부표와 1.5 m 이상.
   · 도크(dock_sim 과 같은 규격): 정면 벽 3 m(1 m 칸 3개) + 칸막이 0.5 m 4개. 정면 벽 중심 = WP8 좌표,
     정면(물 쪽)이 WP7 방향을 향함. 목표 칸(표식) 좌·중·우 무작위.
@@ -247,10 +250,10 @@ def build_world(world_wps, seed):
                np.linalg.norm(p - W["dock"]["O"]) > 5.0:
                 add_buoy(p, "orange", tag); placed += 1
     i5 = [i for i, m in enumerate(by_mode) if m == 5]
-    a, b = P[i5[0]], P[i5[-1]]; L = np.linalg.norm(b - a)
+    a, b = P[i5[0]], P[i5[1]]; L = np.linalg.norm(b - a)       # WP6→WP7 (뒤의 mode 5 는 도킹 접근점)
     scatter(a, b, 0.1 * L, 0.9 * L, "obst_5")
     i8 = by_mode.index(8)
-    a, b = P[i8 - 1], P[i8]; L = np.linalg.norm(b - a)
+    a, b = P[i7], P[i8]; L = np.linalg.norm(b - a)    # 도크(첫 mode 7)→WP10. 옛 yaml 은 WP9 = 도크라 같다
     scatter(a, b, max(0.0, L - 20.0), L - 3.0, "obst_8")
     arr = np.array([[q["x"], q["y"]] for q in W["buoys"]])
     W["bx"], W["by"] = arr[:, 0], arr[:, 1]
@@ -800,11 +803,25 @@ def _backoff_by_dist(sk_events):
     return False
 
 
-# ───────────────────────── 변형 B: dock_wp.py 로 접근점 2개 ─────────────────────────
+# ───────────────────────── 변형 B: 도킹 네 줄을 목표 칸에 맞게 dock_wp.py 로 교체 ─────────────────────────
 _B_CACHE = {}
 
 
+def dock_block(src_lines):
+    """기본 yaml 줄 목록에서 도킹 네 줄(접근 10m·6m mode 5, WP8 입구·WP9 이탈 mode 7)의 줄 번호 4개.
+
+    첫 mode 7 항목과 그 앞 두 항목·뒤 한 항목이 mode [5, 5, 7, 7] 이어야 한다(계약서 C3 구조). 아니면 AssertionError.
+    """
+    items = [(k, int(yaml.safe_load(ln.strip())[0]["mode"]))
+             for k, ln in enumerate(src_lines) if ln.strip().startswith("- {")]
+    j = next(q for q, (_, m) in enumerate(items) if m == 7)
+    assert j >= 2 and [m for _, m in items[j - 2:j + 2]] == [5, 5, 7, 7], \
+        f"도킹 네 줄 구조가 아니다: {[m for _, m in items]}"
+    return [k for k, _ in items[j - 2:j + 2]]
+
+
 def variant_b_file(W):
+    """기본 waypoints.yaml(WP_DEFAULT)의 도킹 네 줄(⚠️ 현장 교체)을 목표 칸 dock_wp.py 출력 네 줄로 교체한 사본."""
     bay = W["dock"]["bay"]
     if bay in _B_CACHE:
         return _B_CACHE[bay]
@@ -815,21 +832,20 @@ def variant_b_file(W):
     entr = d["marker"] + 0.5 * d["n"]                      # 칸 입구 중심(칸막이 끝 선 위)
     lat, lon = geo.ll(*entr)
     out_deg = math.degrees(math.atan2(d["n"][0], d["n"][1])) % 360.0
-    res = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "dock_wp.py"), "--bay", f"{lat:.9f}", f"{lon:.9f}",
-                          "--out-deg", f"{out_deg:.3f}"], capture_output=True, text=True, check=True)
+    res = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "dock_wp.py"),
+                          "--bay", f"{lat:.9f}", f"{lon:.9f}", "--out-deg", f"{out_deg:.3f}"],
+                         capture_output=True, text=True, check=True)
     lines = [ln.strip() for ln in res.stdout.splitlines() if ln.strip().startswith("- {")]
-    assert len(lines) == 2, res.stdout
+    assert len(lines) == 4, res.stdout                     # 접근 10m·6m, WP8 입구, WP9 이탈
     with open(WP_DEFAULT, encoding="utf-8") as f:
         src = f.read().splitlines()
-    outl = []; done = False
-    for ln in src:
-        if not done and "mode: 7" in ln:
-            outl.append(f"  # ↓ tools/dock_wp.py --bay {lat:.9f} {lon:.9f} --out-deg {out_deg:.3f} (full_course_sim 변형 B, 목표 칸 {bay:+.0f})")
-            outl += ["  " + l for l in lines]
-            done = True
-        if "mode: 7" in ln:
-            ln = re.sub(r"lat:\s*[0-9.]+", f"lat: {lat:.9f}", ln); ln = re.sub(r"lon:\s*[0-9.]+", f"lon: {lon:.9f}", ln)
-        outl.append(ln)
+    blk = dock_block(src)
+    head = src[:blk[0]]
+    if head and head[-1].strip().startswith("# ↓"):        # 자리표시값 설명 줄은 뺀다
+        head = head[:-1]
+    note = (f"  # ↓ tools/dock_wp.py --bay {lat:.9f} {lon:.9f} --out-deg {out_deg:.3f}"
+            f" (full_course_sim 변형 B, 목표 칸 {bay:+.0f})")
+    outl = head + [note] + ["  " + ln for ln in lines] + src[blk[-1] + 1:]
     with open(path, "w", encoding="utf-8") as f:
         f.write("\n".join(outl) + "\n")
     _B_CACHE[bay] = path

@@ -2,7 +2,8 @@
 """도킹 목표 칸 정면 접근 웨이포인트 계산기 (대회장용, ROS 불필요).
 
 목표 칸 입구 중심 좌표와 '도크에서 물 쪽으로 나가는 방향'을 주면, 그 방향(도크 법선) 위
-far·near 거리(기본 10 m·6 m)의 접근점 두 개를 계산해 waypoints.yaml 에 붙일 줄을 찍는다.
+far·near 거리(기본 10 m·6 m)의 접근점 두 개와 WP8(칸 입구)·WP9(이탈점) 까지 네 줄을 찍는다.
+waypoints.yaml 의 '도킹 접근 10m' ~ 'WP9 도킹 이탈' 네 줄(⚠️ 현장 교체 자리표시값)을 통째로 바꾼다.
 
   # 방향을 도크 정면 양 끝 두 점으로 (물에서 도크를 바라볼 때 왼쪽 끝 L, 오른쪽 끝 R)
   python3 tools/dock_wp.py --bay 35.1859269 128.5655428 \
@@ -17,6 +18,9 @@ far·near 거리(기본 10 m·6 m)의 접근점 두 개를 계산해 waypoints.y
 왜 두 점인가: 도킹이 아닌 웨이포인트는 2.5 m 안에 들면 도착이라(los_logic.get_dynamic_arrive_radius),
 하나만 두면 옆에서 들어온 채 도킹 모드로 넘어간다. 법선 위 두 점이면 마지막 구간을 정면으로 들어온다.
 시뮬(tools/sim/dock_sim.py 의 run, 300 런): 칸 안 접안 무작위 출발 186/300 → 법선 위 2점 300/300(횡오차 σ0.4 m 가정).
+왜 WP9 = 가까운 접근점(mode 7): 도킹이 끝나면 칸 앞 near 거리로 되나온 뒤 WP10 으로 간다. mode 7 을
+이어 두면(7→7) ship_dock 이 리셋되지 않아 도킹을 다시 시작하지 않는다. WP9 를 칸 좌표로 두면 도킹을
+마친 배가 다시 칸으로 들어간다(계약서 docs/문제와작업/계약서_전체코스_20261104.md §2-3).
 절차: docs/절차/도킹_칸별_웨이포인트.md
 """
 import argparse
@@ -58,7 +62,8 @@ def main():
     ap.add_argument("--far", type=float, default=10.0, help="먼 접근점 거리 [m] (기본 10)")
     ap.add_argument("--near", type=float, default=6.0, help="가까운 접근점 거리 [m] (기본 6, 회피 감지 3 m 보다 멀게)")
     ap.add_argument("--mode", type=int, default=5, help="접근점 mode (기본 5 = 회피 주행. 7 로 두면 다가가는 동안 도킹 노드가 켜진다)")
-    ap.add_argument("--dwell", type=float, default=0.5, help="접근점 머무는 시간 [s] (기본 0.5)")
+    ap.add_argument("--dwell", type=float, default=1.0,
+                    help="접근점·WP8·WP9 머무는 시간 [s] (기본 1.0 = waypoints.yaml mode 5·7)")
     a = ap.parse_args()
     if a.left is not None and a.right is None:
         ap.error("--left 를 쓰면 --right 도 필요")
@@ -77,13 +82,20 @@ def main():
         print(f"물 쪽 방향 {brg:.1f}° (도크 정면 폭 {span:.2f} m 에서 계산 — 폭이 실제 도크와 맞는지 확인)")
     ux, uy = math.sin(math.radians(brg)), math.cos(math.radians(brg))
     names = {1: ["목표칸"], 3: ["왼쪽칸", "가운데칸", "오른쪽칸"]}.get(len(a.bay), [f"칸{i + 1}" for i in range(len(a.bay))])
+    if len(a.bay) > 1:
+        print("※ 칸이 여럿이면 대회 당일 공지된 목표 칸 하나의 네 줄만 쓴다")
     for nm, (lat, lon) in zip(names, a.bay):
         f = to_ll(lat, lon, ux * a.far, uy * a.far)
         n = to_ll(lat, lon, ux * a.near, uy * a.near)
-        print(f"\n# ── {nm}: 아래 두 줄을 'WP8 도킹 시작' 바로 앞에 넣고, WP8·WP9 의 lat/lon 을 칸 중심으로 ──")
-        print(f'  - {{구역: "도킹 접근 {a.far:.0f}m({nm})", lat: {f[0]:.7f}, lon: {f[1]:.7f}, mode: {a.mode}, dwell: {a.dwell}}}')
-        print(f'  - {{구역: "도킹 접근 {a.near:.0f}m({nm})", lat: {n[0]:.7f}, lon: {n[1]:.7f}, mode: {a.mode}, dwell: {a.dwell}}}')
-        print(f'  # WP8·WP9 칸 중심 → lat: {lat:.7f}, lon: {lon:.7f}')
+        print(f"\n# ── {nm}: waypoints.yaml 의 '도킹 접근 {a.far:.0f}m' ~ 'WP9 도킹 이탈' 네 줄을"
+              f" 아래 네 줄로 통째로 교체 ──")
+        rows = [(f"도킹 접근 {a.far:.0f}m({nm})", f, a.mode),
+                (f"도킹 접근 {a.near:.0f}m({nm})", n, a.mode),
+                (f"WP8 도킹 입구({nm})", (lat, lon), 7),             # 칸 입구 중심
+                (f"WP9 도킹 이탈({nm})", n, 7)]                      # near 접근점으로 되나옴
+        for label, (la, lo), md in rows:
+            print(f'  - {{구역: "{label}", lat: {la:.7f}, lon: {lo:.7f}, '
+                  f'mode: {md}, dwell: {a.dwell}}}')
 
 
 if __name__ == "__main__":

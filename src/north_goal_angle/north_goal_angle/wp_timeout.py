@@ -26,7 +26,8 @@ from north_goal_angle.waypoint_loader import VALID_MODES
 # 코드 기본값 — config/north_goal_angle.yaml 과 **똑같이** 둔다(대회 launch 는 yaml 을 싣지만,
 # 단독 실행·yaml 누락 때는 이 값이 쓰인다. 둘이 다르면 test_wp_timeout.py 가 잡는다).
 # mode 0·1·2·5 = 120 s, 3 = 90 s 는 옛 순번 규칙(WP0~6)과 같은 값 — WP0~6 동작 불변.
-# mode 7 = 150 s: ship_dock 선형 최악 ≈129 s 보다 크고 dwell 60 s 보다 크다(WP8·9 → 최대 300 s).
+# mode 7 = 150 s: ship_dock 선형 최악 ≈129 s 보다 크고 dwell(waypoints.yaml mode 7 = 1.0 s)보다
+# 충분히 크다(WP8 입구·WP9 이탈 → 최대 300 s).
 DEFAULT_WP_TIMEOUT_MODES = [0, 1, 2, 3, 5, 7]
 DEFAULT_WP_TIMEOUT_SEC = [120.0, 120.0, 120.0, 90.0, 120.0, 150.0]
 
