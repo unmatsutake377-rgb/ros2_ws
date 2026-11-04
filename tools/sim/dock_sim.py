@@ -4,13 +4,17 @@
   · src/ship_dock/ship_dock/ship_dock.py 의 ShipDock 클래스를 rclpy 스텁으로 import 해서
     timer_cb() 를 틱마다 호출한다(로직 이식이 아니라 실제 FSM 코드 실행). 파라미터는
     src/ship_dock/config/ship_dock.yaml 에서 읽는다.
-  · 2D 세계: 도크 정면 벽(폭 3 m, 1 m 간격 3칸, 칸막이 0.5 m) + 가운데 칸 표식.
+  · 2D 세계: 도크 정면 벽(폭 3 m, 1 m 간격 3칸, 칸막이 0.5 m) + 목표 칸 표식(좌·중·우 중 하나).
+    검출기는 목표 모양의 표식만 낸다고 가정한다(다른 칸 표식 오인식은 모사하지 않음).
     카메라: 표식 상대 방위(HFOV 63.9° = vision.yaml, 확정 지연 0.3 s = 3프레임, 0.7~12 m 에서 보임).
     LiDAR: 벽 레이캐스팅(0.5° 간격, 80° = 정면 규약), ship_dock 이 전방 ±15° 최소거리를 스스로 고른다.
   · 조향·추진: ship_direction 의 candidate 매핑(desired = 80 + rel)과 motor_control 분기
     (조향 차동, SPIN 제자리 선회, 후진 1590, 1.2 m 이내 감속 0.7)를 재현. 운동 상수는 tools/sim/ssf_sim.py
     와 같다(k_v 0.010 m/s/PWM, k_w 0.22 °/s/PWM → 순항 1.4 m/s, 제자리 선회 44 °/s). 1차 지연 τ 0.5 s.
   · 몬테카를로 500 런: 거리 3~10 m(표식까지 11 m 이내), 좌우 −5~5 m, 출발 헤딩 0~360° 전방향, 목표 칸 좌/중/우 무작위.
+  · 🚨 BACKOFF 의 후진(/candidate_angle 180)은 실제 ship_direction 에서 매핑 260 → '0~160 밖' 검사에 걸려 STOP_HOLD 가 된다
+    (ship_direction_map 이 그 검사를 그대로 재현). 그래서 시뮬에서도 배가 접안 자리에 멈춰 있다가 backoff_timeout(8 s)으로 DONE 이 된다.
+  · '칸 안' 판정: 접안 판정(contact) 순간 배 중심이 목표 칸 중심 ±0.5 m(칸 폭) 안, 선체 전체는 ±0.21 m(0.5 − half_width 0.29).
   · 모르는 것(도크 실제 규격·실제 추력 응답)은 가정이다 — 그림·보고서에 그렇게 적는다.
 
 재현: python3 tools/sim/dock_sim.py   → docs/전달용/배치도/dock_sim.png, tools/sim/out/dock_sim.csv
@@ -182,7 +186,7 @@ def run(x, y, psi, seed=0, t_max=120.0, marker=(0.0, 0.0)):
     node.wp_mode = node.active_wp_mode
     v = w = 0.0; vis_since = None
     log = dict(t=[], x=[], y=[], psi=[], state=[], img=[], dist=[])
-    out = dict(success=False, t_contact=None, head_err=None, lat_err=None, done=False, min_wall=math.inf, bumped=False, reached_approach=False, lost_dist=None)
+    out = dict(success=False, t_contact=None, head_err=None, lat_err=None, done=False, min_wall=math.inf, bumped=False, reached_approach=False, lost_dist=None, backed_out=False)
     steps = int(t_max / DT)
     for k in range(steps):
         t = _Clock.t
@@ -213,8 +217,9 @@ def run(x, y, psi, seed=0, t_max=120.0, marker=(0.0, 0.0)):
         if log["state"] and log["state"][-1] == "APPROACH" and st in ("ALIGN", "SEARCH") and front is not None: out["lost_dist"] = front
         if st == "CONTACT" and out["t_contact"] is None:
             out.update(success=True, t_contact=t, head_err=abs(wrap(psi - 180.0)), lat_err=x - MARKER[0])
-        if st == "DONE":
+        if st == "DONE" and not out["done"]:
             out["done"] = True
+            out["backed_out"] = front is not None and front >= _PARAMS["backoff_dist_m"]   # 후진으로 backoff 거리 도달(타임아웃 아님)
         for key, val in zip(log, (t, x, y, psi, st, node.image_angle if node.marker_ok(t) else float("nan"), front if front is not None else float("nan"))):
             log[key].append(val)
         if st == "DONE" and k > 5: break
@@ -252,7 +257,7 @@ def main():
                           "" if o["head_err"] is None else f"{o['head_err']:.1f}",
                           "" if o["lat_err"] is None else f"{o['lat_err']:.2f}", int(o["done"]), int(o["bumped"]), o["final_state"], int(o["reached_approach"]), "" if o["lost_dist"] is None else f"{o['lost_dist']:.2f}"])
     ok = [o for o in mc if o["success"]]
-    print(f"몬테카를로 {N_MC} 런: 접안 {len(ok)}/{N_MC}, 이탈 완료(DONE) {sum(o['done'] for o in mc)}/{N_MC}, 선수 벽 접촉 {sum(o['bumped'] for o in mc)}/{N_MC}")
+    print(f"몬테카를로 {N_MC} 런: 접안 {len(ok)}/{N_MC}, DONE {sum(o['done'] for o in mc)}/{N_MC} (그중 후진으로 backoff 거리 도달 {sum(o['backed_out'] for o in mc)}, 나머지는 backoff_timeout), 선수 벽 접촉 {sum(o['bumped'] for o in mc)}/{N_MC}")
     HB = [(0, 30), (30, 60), (60, 90), (90, 135), (135, 180.01)]; LB = [(0, 1), (1, 2), (2, 3), (3, 4), (4, 10.01)]
     def rate(sel): return (sum(o["success"] for o in sel), len(sel))
     print("  출발 헤딩 오차별 접안:", ", ".join(f"{a:.0f}~{b:.0f}° {rate([o for o in mc if a <= o['herr0'] < b])[0]}/{rate([o for o in mc if a <= o['herr0'] < b])[1]}" for a, b in HB))
@@ -269,28 +274,56 @@ def main():
     for (log, o), lab in reps:
         print(f"  [{lab}] 접안 {o['success']} t={o['t_contact']} 헤딩오차={None if o['head_err'] is None else round(o['head_err'],1)} 좌우={None if o['lat_err'] is None else round(o['lat_err'],2)} 종료={o['final_state']}")
 
+    # ── 목표 칸별 대표 궤적: 같은 출발점에서 표식(목표 칸)만 바꾼다 ──
+    BAYS = [(-1.0, "왼쪽 칸"), (0.0, "가운데 칸"), (1.0, "오른쪽 칸")]
+    REPR_BAY = [REPR[0], REPR[1], REPR[2], REPR[3], REPR[5]]
+    reps_bay = {bx: [(run(x, y, p, seed=i, marker=(bx, 0.0)), lab) for i, (x, y, p, lab) in enumerate(REPR_BAY)] for bx, _ in BAYS}
+    IN_BAY = BAY / 2.0                                   # 배 중심이 목표 칸 폭 안
+    HULL_IN = BAY / 2.0 - 0.29                           # 선체 폭(half_width 0.29)까지 칸 안
+    def inb(o, lim): return o["success"] and abs(o["lat_err"]) <= lim
+    print("  목표 칸별(무작위 500 런 중):")
+    bay_stats = []
+    for bx, bn in BAYS:
+        S = [o for o in mc if o["bay"] == bx]; okb = [o for o in S if o["success"]]
+        he = sorted(o["head_err"] for o in okb); le = sorted(abs(o["lat_err"]) for o in okb)
+        st = dict(name=bn, n=len(S), ok=len(okb), inb=sum(inb(o, IN_BAY) for o in S), hull=sum(inb(o, HULL_IN) for o in S),
+                  bump=sum(o["bumped"] for o in S), he=he[len(he) // 2] if he else float("nan"), le=le[len(le) // 2] if le else float("nan"))
+        bay_stats.append(st)
+        print(f"    [{bn}] {st['n']} 런: 접안 {st['ok']}, 배 중심 칸 안(±{IN_BAY:.1f} m) {st['inb']}, 선체 전체 칸 안(±{HULL_IN:.2f} m) {st['hull']}, 벽 접촉 {st['bump']}, 헤딩 오차 중앙값 {st['he']:.0f}°, 좌우 벗어남 중앙값 {st['le']:.2f} m")
+    print("  출발 좌우 거리별 배 중심 칸 안:", ", ".join(f"{a}~{min(b, 5):.0f} m {sum(inb(o, IN_BAY) for o in mc if a <= abs(o['lat0']) < b)}/{sum(1 for o in mc if a <= abs(o['lat0']) < b)}" for a, b in LB))
+    for bx, bn in BAYS:
+        for (log, o), lab in reps_bay[bx]:
+            print(f"    대표 [{bn}·{lab}] 접안 {o['success']} 좌우={None if o['lat_err'] is None else round(o['lat_err'], 2)} 헤딩오차={None if o['head_err'] is None else round(o['head_err'], 1)} 종료={o['final_state']}")
+
     # ── 그림 ──
-    fig = plt.figure(figsize=(13.2, 9.6))
-    gs = fig.add_gridspec(2, 3, width_ratios=[1.0, 1.0, 1.0], height_ratios=[1.0, 1.0], hspace=0.34, wspace=0.3)
-    ax = fig.add_subplot(gs[0, 0])
-    for (a, b) in SEGS: ax.plot([a[0], b[0]], [a[1], b[1]], color="#333", lw=3)
-    ax.plot(*MARKER, marker="s", ms=10, color="#d62728", zorder=5); ax.text(0.0, -0.85, "목표 표식 (가운데 칸)", ha="center", va="top", fontsize=8)
-    for (log, o), lab in reps:
-        xs, ys, ss = log["x"], log["y"], log["state"]
-        for i in range(1, len(xs)):
-            ax.plot(xs[i - 1:i + 1], ys[i - 1:i + 1], color=COL[ss[i]], lw=1.6, solid_capstyle="round")
-        for st in ("SEARCH", "ALIGN"):                     # 제자리 선회 구간은 길이가 없어 점으로
-            pts = [(xs[i], ys[i]) for i in range(len(xs)) if ss[i] == st]
-            if pts: ax.plot(*zip(*pts), ls="none", marker="o", ms=3.2, color=COL[st], alpha=0.8)
-        ax.plot(xs[0], ys[0], marker="o", ms=5, color="k"); ax.annotate(lab, (xs[0], ys[0]), xytext=(4, 4), textcoords="offset points", fontsize=7.5)
-    ax.set_aspect("equal"); ax.set_xlim(-6.5, 6.5); ax.set_ylim(-1.8, 11.0); ax.grid(alpha=0.25)
-    ax.tick_params(labelsize=8)
-    ax.set_xlabel("x [m]"); ax.set_ylabel("y [m]  (도크 벽 = 0)")
-    ax.set_title("(a) 대표 출발 6곳 — 궤적 색 = FSM 상태", fontsize=10.5)
-    ax.legend(handles=[Line2D([0], [0], color=COL[s], lw=3, label=s) for s in STATES], loc="lower left", fontsize=7, ncol=1, framealpha=0.9)
-    # (b) 한 런의 시간선
-    (log, o), lab = reps[2]
-    ax2 = fig.add_subplot(gs[0, 1:]); t = log["t"]
+    fig = plt.figure(figsize=(13.2, 13.0))
+    gs = fig.add_gridspec(3, 3, height_ratios=[0.9, 0.8, 0.95], hspace=0.34, wspace=0.34, top=0.955)
+    for col, (bx, bn) in enumerate(BAYS):
+        ax = fig.add_subplot(gs[0, col])
+        ax.axvspan(bx - IN_BAY, bx + IN_BAY, ymin=0, ymax=1, color="#2ca02c", alpha=0.06)
+        for (a_, b_) in SEGS: ax.plot([a_[0], b_[0]], [a_[1], b_[1]], color="#333", lw=3)
+        for ox in (-1.0, 0.0, 1.0):
+            if ox == bx: ax.plot(ox, 0.0, marker="s", ms=9, color="#d62728", zorder=5)
+            else: ax.plot(ox, 0.0, marker="s", ms=8, mfc="none", mec="#999", zorder=5)
+        ax.text(bx, -0.75, f"목표 표식 ({bn})", ha="center", va="top", fontsize=7.5, color="#d62728")
+        for (log, o), lab in reps_bay[bx]:
+            xs, ys, ss = log["x"], log["y"], log["state"]
+            for i in range(1, len(xs)):
+                ax.plot(xs[i - 1:i + 1], ys[i - 1:i + 1], color=COL[ss[i]], lw=1.5, solid_capstyle="round")
+            for stn in ("SEARCH", "ALIGN"):
+                pts = [(xs[i], ys[i]) for i in range(len(xs)) if ss[i] == stn]
+                if pts: ax.plot(*zip(*pts), ls="none", marker="o", ms=2.8, color=COL[stn], alpha=0.8)
+            ax.plot(xs[0], ys[0], marker="o", ms=4.5, color="k")
+            if col == 0: ax.annotate(lab, (xs[0], ys[0]), xytext=(4, 4), textcoords="offset points", fontsize=6.8)
+        ax.set_aspect("equal"); ax.set_xlim(-6.5, 6.5); ax.set_ylim(-1.8, 11.0); ax.grid(alpha=0.25); ax.tick_params(labelsize=7.5)
+        ax.set_xlabel("x [m]", fontsize=8.5)
+        if col == 0: ax.set_ylabel("y [m]  (도크 벽 = 0)", fontsize=8.5)
+        ax.set_title(f"(a-{col + 1}) 목표 = {bn}", fontsize=10)
+        if col == 2: ax.legend(handles=[Line2D([0], [0], color=COL[s_], lw=3, label=s_) for s_ in STATES] +
+                               [Line2D([0], [0], marker="s", ls="none", mfc="none", mec="#999", label="다른 칸 표식")], loc="upper right", fontsize=6.5, framealpha=0.9)
+    # (b) 한 런의 시간선 (가운데 칸, '좌측 3 m, 60° 틀어짐')
+    (log, o), lab = reps_bay[0.0][2]
+    ax2 = fig.add_subplot(gs[1, 0:2]); t = log["t"]
     ax2.plot(t, log["dist"], color="#1f77b4", lw=1.4, label="LiDAR 전방 ±15° 최소거리 [m]")
     ax2.axhline(_PARAMS["standoff_dist_m"], color="#1f77b4", ls=":", lw=1); ax2.axhline(_PARAMS["contact_dist_m"], color="#d62728", ls=":", lw=1); ax2.axhline(_PARAMS["backoff_dist_m"], color="#2ca02c", ls=":", lw=1)
     ax2.text(t[-1], _PARAMS["standoff_dist_m"], " standoff", va="bottom", ha="right", fontsize=7.5, color="#1f77b4")
@@ -298,46 +331,55 @@ def main():
     ax2.set_ylabel("거리 [m]"); ax2.set_ylim(0, 11)
     ax2b = ax2.twinx(); ax2b.plot(t, log["img"], color="#e67e22", lw=1.2, label="/image_angle [°]"); ax2b.set_ylim(-45, 45); ax2b.set_ylabel("표식 방위 [°] (양수 = 좌)")
     ax2b.axhspan(-_PARAMS["align_tol_deg"], _PARAMS["align_tol_deg"], color="#e67e22", alpha=0.08)
-    prev = None
-    for i, s in enumerate(log["state"]):
-        if s != prev:
-            ax2.axvspan(t[i], t[i], color=COL[s]); prev = s
-    # 상태 띠
-    y0 = 10.3
-    i0 = 0
+    y0 = 10.3; i0 = 0
     for i in range(1, len(t) + 1):
         if i == len(t) or log["state"][i] != log["state"][i0]:
             ax2.axvspan(t[i0], t[min(i, len(t) - 1)], ymin=0.93, ymax=1.0, color=COL[log["state"][i0]], alpha=0.9)
             if t[min(i, len(t) - 1)] - t[i0] > 2.5: ax2.text((t[i0] + t[min(i, len(t) - 1)]) / 2, y0 + 0.1, log["state"][i0], ha="center", va="bottom", fontsize=6.5, color="white", weight="bold")
             i0 = i
-    ax2.set_xlabel("시간 [s]"); ax2.set_title(f"(b) 출발 '{lab}' — 거리·표식 방위·상태", fontsize=10.5)
+    ax2.set_xlabel("시간 [s]"); ax2.set_title(f"(b) 가운데 칸, 출발 '{lab}' — 거리·표식 방위·상태", fontsize=10.5)
     h1, l1 = ax2.get_legend_handles_labels(); h2, l2 = ax2b.get_legend_handles_labels(); ax2.legend(h1 + h2, l1 + l2, fontsize=7.5, loc="center right")
-    # (c) 몬테카를로
-    ax3 = fig.add_subplot(gs[1, 0:2])
-    sc = ax3.scatter([o["lat_err"] for o in ok], [o["head_err"] for o in ok], c=[o["t_contact"] for o in ok], cmap="viridis", s=28, edgecolor="k", lw=0.4)
+    # (c) 목표 칸별 결과 막대
+    ax5 = fig.add_subplot(gs[1, 2])
+    xs_ = np.arange(len(BAYS)); wb = 0.26
+    for j, (key, lab_, colr) in enumerate((("ok", "접안(contact 도달)", "#9ecae1"), ("inb", f"배 중심 칸 안 ±{IN_BAY:.1f} m", "#2ca02c"), ("hull", f"선체 전체 칸 안 ±{HULL_IN:.2f} m", "#006d2c"))):
+        vals = [100.0 * st[key] / st["n"] for st in bay_stats]
+        bars = ax5.bar(xs_ + (j - 1) * wb, vals, width=wb, color=colr, label=lab_)
+        for xb, v in zip(xs_ + (j - 1) * wb, vals): ax5.text(xb, v + 1, f"{v:.0f}", ha="center", va="bottom", fontsize=6.8)
+    ax5.set_xticks(xs_); ax5.set_xticklabels([f"{st['name']}\nn={st['n']}" for st in bay_stats], fontsize=8)
+    ax5.set_ylim(0, 140); ax5.set_yticks(range(0, 101, 20)); ax5.legend(fontsize=6.6, loc="upper center", ncol=1, framealpha=0.9); ax5.grid(alpha=0.2, axis="y")
+    ax5.set_title("(c) 목표 칸별 결과 [%] (무작위 500 런)", fontsize=10.5)
+    # (d) 몬테카를로 산점
+    ax3 = fig.add_subplot(gs[2, 0:2])
+    mk = {-1.0: "<", 0.0: "o", 1.0: ">"}
+    for bx, bn in BAYS:
+        sel = [o for o in ok if o["bay"] == bx]
+        sc = ax3.scatter([o["lat_err"] for o in sel], [o["head_err"] for o in sel], c=[o["t_contact"] for o in sel], cmap="viridis", vmin=min(o["t_contact"] for o in ok), vmax=max(o["t_contact"] for o in ok), s=26, marker=mk[bx], edgecolor="k", lw=0.35, label=bn)
     cb = fig.colorbar(sc, ax=ax3, pad=0.02); cb.set_label("접안까지 시간 [s]", fontsize=8.5)
-    ax3.axvspan(-0.5, 0.5, color="#2ca02c", alpha=0.08); ax3.axhline(_PARAMS["align_tol_deg"], color="#e67e22", ls=":", lw=1)
+    ax3.axvspan(-IN_BAY, IN_BAY, color="#2ca02c", alpha=0.08); ax3.axhline(_PARAMS["align_tol_deg"], color="#e67e22", ls=":", lw=1)
     ax3.text(0.5, _PARAMS["align_tol_deg"], f" align_tol {_PARAMS['align_tol_deg']:.0f}°", fontsize=7.5, color="#e67e22", va="bottom")
-    ax3.set_xlabel("접안 시 목표 칸 중심 기준 좌우 벗어남 [m]  (칸 폭 ±0.5 m 음영)"); ax3.set_ylabel("접안 시 헤딩 오차 [°]")
+    ax3.set_xlabel("접안 판정 시 목표 칸 중심 기준 좌우 벗어남 [m]  (칸 폭 ±0.5 m 음영)"); ax3.set_ylabel("접안 시 헤딩 오차 [°]")
     ax3.set_xlim(-1.6, 1.6); ax3.set_ylim(0, max(20, max([o["head_err"] for o in ok] + [0]) * 1.15))
-    ax3.set_title(f"(c) 무작위 출발 {N_MC} 런(거리 3~10 m · 좌우 ±5 m · 헤딩 전방향 · 칸 3개): 접안 {len(ok)}, 이탈 완료 {sum(o['done'] for o in mc)}, 벽 접촉 {sum(o['bumped'] for o in mc)}", fontsize=10)
+    leg = ax3.legend(title="목표 칸(모양)", fontsize=7, title_fontsize=7.5, loc="upper left")
+    for h in leg.legend_handles if hasattr(leg, "legend_handles") else leg.legendHandles: h.set_color("#bbb")
+    ax3.set_title(f"(d) 무작위 출발 {N_MC} 런(거리 3~10 m · 좌우 ±5 m · 헤딩 전방향 · 목표 칸 3개 무작위): 접안 {len(ok)}, 후진 이탈 {sum(o['backed_out'] for o in mc)}, 벽 접촉 {sum(o['bumped'] for o in mc)}", fontsize=9.5)
     ax3.grid(alpha=0.25)
-    # (d) 출발 조건별 접안 성공률
-    ax4 = fig.add_subplot(gs[1, 2])
+    # (e) 출발 조건별 배 중심 칸 안 비율
+    ax4 = fig.add_subplot(gs[2, 2])
     M = np.zeros((len(LB), len(HB))); Ncnt = np.zeros_like(M, dtype=int)
     for i, (la, lb) in enumerate(LB):
         for j, (ha, hb) in enumerate(HB):
             sel = [o for o in mc if la <= abs(o["lat0"]) < lb and ha <= o["herr0"] < hb]
-            Ncnt[i, j] = len(sel); M[i, j] = (sum(o["success"] for o in sel) / len(sel)) if sel else np.nan
-    im = ax4.imshow(M, origin="lower", cmap="RdYlGn", vmin=0.5, vmax=1.0, aspect="auto")
+            Ncnt[i, j] = len(sel); M[i, j] = (sum(inb(o, IN_BAY) for o in sel) / len(sel)) if sel else np.nan
+    ax4.imshow(M, origin="lower", cmap="RdYlGn", vmin=0.0, vmax=1.0, aspect="auto")
     for i in range(len(LB)):
         for j in range(len(HB)):
-            if Ncnt[i, j]: ax4.text(j, i, f"{M[i, j] * 100:.0f}%\n n={Ncnt[i, j]}", ha="center", va="center", fontsize=7.5)
-    ax4.set_xticks(range(len(HB))); ax4.set_xticklabels([f"{a:.0f}~{min(b, 180):.0f}°" for a, b in HB], fontsize=7.5)
+            if Ncnt[i, j]: ax4.text(j, i, f"{M[i, j] * 100:.0f}%\n n={Ncnt[i, j]}", ha="center", va="center", fontsize=7.2)
+    ax4.set_xticks(range(len(HB))); ax4.set_xticklabels([f"{a:.0f}~{min(b, 180):.0f}°" for a, b in HB], fontsize=7.2)
     ax4.set_yticks(range(len(LB))); ax4.set_yticklabels([f"{a}~{min(b, 5):.0f} m" for a, b in LB], fontsize=7.5)
-    ax4.set_xlabel("출발 헤딩 오차 (도크 정면 기준)"); ax4.set_ylabel("출발 시 표식 기준 좌우 거리")
-    ax4.set_title("(d) 출발 조건별 접안 성공률", fontsize=10.5)
-    fig.suptitle("도킹 접안 FSM 2D 시뮬레이션 — 실제 ship_dock 코드 실행, 도크 규격·추력 응답은 가정 (tools/sim/dock_sim.py)", fontsize=11, y=0.995)
+    ax4.set_xlabel("출발 헤딩 오차 (도크 정면 기준)"); ax4.set_ylabel("출발 시 목표 칸 기준 좌우 거리")
+    ax4.set_title("(e) 출발 조건별 '배 중심 칸 안' 비율", fontsize=10.5)
+    fig.suptitle("도킹 접안 FSM 2D 시뮬레이션 — 실제 ship_dock 코드 실행, 목표 칸 3개, 도크 규격·추력 응답·표식 판별은 가정 (tools/sim/dock_sim.py)", fontsize=11, y=0.985)
     fig.savefig(OUT_PNG, dpi=160, bbox_inches="tight"); print("저장:", OUT_PNG)
 
 if __name__ == "__main__":
