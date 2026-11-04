@@ -1053,7 +1053,7 @@ def plot(r, path):
         if i == len(T) or M[i] != M[i0]:
             ax2.axvspan(T[i0], T[min(i, len(T) - 1)], ymin=0.0, ymax=0.06, color=MODE_COL.get(M[i0], "k"))
             i0 = i
-    SKC = {"INIT": "#9e9e9e", "SEARCH": "#8e44ad", "ALIGN": "#e67e22", "APPROACH": "#1f77b4", "CONTACT": "#d62728", "BACKOFF": "#2ca02c", "DONE": "#555555"}
+    SKC = {"TRANSIT": "#d0d0d0", "INIT": "#9e9e9e", "SEARCH": "#8e44ad", "ALIGN": "#e67e22", "APPROACH": "#1f77b4", "CONTACT": "#d62728", "BACKOFF": "#2ca02c", "DONE": "#555555"}
     i0 = None
     for i in range(len(T) + 1):
         act = i < len(T) and M[i] == 7
