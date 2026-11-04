@@ -86,7 +86,7 @@ def node_graph():
     box(ax, 1.2, 6.3, 2.0, 0.6, "rplidar_ros\n(RPLIDAR A3)", fc=S)
     box(ax, 1.2, 5.3, 2.0, 0.6, "iahrs_driver\n(IMU)", fc=S)
     box(ax, 1.2, 4.3, 2.0, 0.6, "ublox + ntrip\n(GPS RTK)", fc=S)
-    box(ax, 1.2, 3.3, 2.0, 0.6, "OAK / D455\n(카메라)", fc=S)
+    box(ax, 1.2, 3.3, 2.0, 0.6, "OAK-1 PoE\n(카메라, depthai)", fc=S)
     # 처리
     box(ax, 4.2, 5.3, 2.2, 0.6, "yaw_mux\n(헤딩 단일 발행)", fc=N)
     box(ax, 4.2, 4.3, 2.2, 0.6, "north_goal_angle\n(GPS 목표·지오펜스)", fc=N)
