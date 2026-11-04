@@ -19,6 +19,7 @@
   [6] APPROACH 재정렬(→ALIGN) 전이에 거리 하한 realign_min_dist_m. 그 안에서는 제자리 선회 없이
       표식 방위로 조향하며 접근한다 (dock_sim 실패 3/500 이 전부 접안 직전 선회→관성→표식 유실).
       판단은 dock_fsm_logic.approach_decision (순수 함수, ROS 없이 테스트).
+  [7] APPROACH 조향 발행만 ±STEER_LIMIT_DEG(80) 클램프 — 180.0(후진 신호)이 우연히 나가지 않게.
 
 ⚠️ 이 노드는 mode 7 에서 /candidate_angle 의 **유일한 발행자**다.
    (6a 에서 north_goal_angle 의 mode-7 폴백을 제거했다 — 안 그러면 발행자가 둘이라 조향이 튄다.)
@@ -56,6 +57,10 @@ REVERSE_REL = 180.0          # 상대 180° = 후진 (→ desired 260 → motor_
 IMAGE_INVALID = 10000.0      # /image_angle 의 '표식 없음' 센티널 (작년 규약 유지)
 
 LIDAR_FORWARD_DEG = 80.0     # LiDAR 프레임에서 정면에 해당하는 각도
+# ship_direction (B) 매핑: mapped = 80 + raw, 정상 범위 0~160 → 상대 조향 |steer| ≤ 80 만 조향이 된다.
+# 180.0 정확 일치는 후진(260) 예외라, APPROACH 조향이 우연히 180 이면 후진한다 → 발행 직전 클램프.
+# 튜닝값이 아니라 하류 프로토콜 상수(LIDAR_FORWARD_DEG 와 같은 성격) — 파라미터로 두지 않는다.
+STEER_LIMIT_DEG = 80.0
 
 
 # QoS-B: /scan 표준 sensor-data QoS. 작년은 depth=10 기본 RELIABLE 이었다.
@@ -238,6 +243,17 @@ class ShipDock(Node):
     def publish(self, value):
         self.pub_candidate.publish(Float32(data=float(value)))
 
+    def publish_steer(self, rel_deg):
+        """[7] 상대 조향(부호 그대로, rel_to_raw 없음)을 ±STEER_LIMIT_DEG 로 잘라 발행.
+
+        NaN 은 +80 이 되므로 상류(marker_ok)에서 걸러야 한다 — 가드 지우지 말 것.
+        """
+        if not (-STEER_LIMIT_DEG <= rel_deg <= STEER_LIMIT_DEG):
+            self.get_logger().warn(
+                f"도킹 조향 {rel_deg:.1f}° 가 ±{STEER_LIMIT_DEG:.0f}° 밖 → 잘라서 발행",
+                throttle_duration_sec=1.0)
+        self.publish(max(-STEER_LIMIT_DEG, min(STEER_LIMIT_DEG, rel_deg)))
+
     # ───────────────────────── FSM ─────────────────────────
     def timer_cb(self):
         with self.lock:
@@ -316,7 +332,7 @@ class ShipDock(Node):
                     self.set_state("ALIGN")     # 제자리 선회로 다시 정면에 놓는다 (비스듬히 밀고 들어가지 않는다)
                     return
 
-                self.publish(angle)          # 표식 방위로 조향하며 전진 (하한 안 경로도 여기 — 매 틱 발행 유지)
+                self.publish_steer(angle)    # 표식 방위로 조향하며 전진 (하한 안 경로도 여기 — 매 틱 발행 유지)
                 return
 
             # ---- CONTACT: 접안 완료. 유지. ----
