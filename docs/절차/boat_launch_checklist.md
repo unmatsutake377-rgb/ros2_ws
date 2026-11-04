@@ -66,7 +66,7 @@ FS-i6 는 켤 때 아래가 안 맞으면 **송신을 시작하지 않는다.** 
 **자율 운용 순서 (대회)**
 ```
 ① 노트북: sudo tools/boat_boot.sh → ros2 launch launch_files launch_files.launch.py boat:=A|B (🚨 boat 필수 — 10-29. 브릿지 포트 여는 리셋을 배터리 전에 끝낸다 — §1)
-   탐색(wp_mode 3)을 선회 대신 위치유지로 할 때만 뒤에 search_behavior:=hold (기본 orbit, 대회장 확인 뒤)
+   탐색(wp_mode 3)은 기본 위치유지(search_behavior 기본 hold, 2026 안내문·팀장 11-04 확정). 선회로 돌릴 때만 뒤에 search_behavior:=orbit
 ② 아두이노는 노트북 직결 (§2)
 ③ 조종기 ON — 스위치 전부 [위] + 왼쪽 스틱 맨 아래 → 수동 상태로 켜진다. 스틱에서 손 뗀다
 ④ 배터리 1·2번 → 5·6번 (접촉기 붙는 소리)

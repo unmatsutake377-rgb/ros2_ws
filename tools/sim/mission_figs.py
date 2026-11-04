@@ -6,7 +6,8 @@
 
   gate  → node_gate.png   ship_gate + ship_direction + motor_control (gate_sim.run)
   back  → node_back.png   ship_back + ship_direction + motor_control, 부표 1개, 조류 0.3 m/s 가정
-  turn  → node_turn.png   ship_turn + ship_direction + motor_control, 빨강 부표 1개(시계 선회)
+  search→ node_search.png ship_back(모드 3, hold) + ship_direction + motor_control, 빨강 부표 앞 위치유지 (2026 안내문 기준 탐색)
+  turn  → node_turn.png   ship_turn + ship_direction + motor_control, 빨강 부표 1개(시계 선회 — 2025 규정, orbit 옵션)
   avoid → node_avoid.png  ship_direction + motor_control, 장애물 구간 (avoid_sim.run_real)
   dock  → node_dock.png   ship_dock, 도크 벽 + 표식 (dock_sim.run)
 운동 모델·카메라·LiDAR 모델은 각 *_sim.py 와 같다(순항 1.2 m/s, HFOV 80.32°, 좌 양수). 전부 가정값 — 경향용.
@@ -107,7 +108,7 @@ def fig_dock():
 
 
 # ───────────────────────── back / turn (공용 루프) ─────────────────────────
-def _single_buoy_run(node_kind, t_max=60.0, current=(0.0, 0.0), color="red"):
+def _single_buoy_run(node_kind, t_max=60.0, current=(0.0, 0.0), color="red", mode_override=None, param_override=None):
     import avoid_sim as A                      # rosstub 설치 + 실제 ship_direction·motor_control 로드
     from rosstub import Clock
     import rosstub
@@ -118,8 +119,9 @@ def _single_buoy_run(node_kind, t_max=60.0, current=(0.0, 0.0), color="red"):
     buoy = (0.0, 0.0); world = FastWorld([(0.0, 0.0, K.BUOY_R)])
     if node_kind == "back":
         P = rosstub.load_params(os.path.join(ROOT, "src/ship_back/config/ship_back.yaml"), "/ship_back")
+        if param_override: rosstub.PARAMS["ship_back"] = dict(P, **param_override)
         M = rosstub.load_node(os.path.join(ROOT, "src/ship_back/ship_back/ship_back.py"), "ship_back_real", extra_path=os.path.join(ROOT, "src/ship_back"))
-        node = M.ShipBack(); mode = P["active_wp_modes"][0]
+        node = M.ShipBack(); mode = mode_override if mode_override is not None else P["active_wp_modes"][0]
     else:
         P = rosstub.load_params(os.path.join(ROOT, "src/ship_turn/config/ship_turn.yaml"), "/ship_turn")
         M = rosstub.load_node(os.path.join(ROOT, "src/ship_turn/ship_turn/ship_turn.py"), "ship_turn_real", extra_path=os.path.join(ROOT, "src/ship_turn"))
@@ -203,7 +205,27 @@ def fig_turn():
     return r
 
 
-FIGS = {"gate": fig_gate, "back": fig_back, "turn": fig_turn, "avoid": fig_avoid, "dock": fig_dock}
+def fig_search():
+    """탐색 = 2026 안내문: 특정 색 부표 탐지 후 그 앞 위치유지. launch 기본 search_behavior=hold → ship_back 이 모드 3 담당([2,3])."""
+    import numpy as np
+    r = _single_buoy_run("back", t_max=60.0, current=(0.2, 0.0), color="red", mode_override=3, param_override={"active_wp_modes": [2, 3]})
+    tr = np.array(r["traj"]); P = r["P"]
+    fig, ax = plt.subplots(figsize=(7.5, 6.2))
+    ax.add_patch(plt.Circle((0, 0), P["keep_radius_m"], color="gold", alpha=0.15)); ax.text(0, P["keep_radius_m"] + 0.3, "5 m 이내 5 s 유지", ha="center", fontsize=8.5, color="#8a6d00")
+    ax.add_patch(plt.Circle((0, 0), P["hold_dist_m"] + P["dist_tol_m"], fill=False, ec="#1f77b4", ls=":", lw=1))
+    ax.add_patch(plt.Circle((0, 0), max(0.05, P["hold_dist_m"] - P["dist_tol_m"]), fill=False, ec="#1f77b4", ls=":", lw=1))
+    ax.text(0, -(P["hold_dist_m"] + P["dist_tol_m"]) - 0.5, f"유지 목표 {P['hold_dist_m']} ± {P['dist_tol_m']} m (LiDAR 거리)", ha="center", fontsize=8.5, color="#1f77b4")
+    ax.add_patch(plt.Circle((0, 0), 0.3, color="crimson")); ax.text(0.5, 0.2, "탐색 대상 빨강 부표", fontsize=9)
+    ax.plot(tr[:, 0], tr[:, 1], color="#1f77b4", lw=2.0)
+    ax.plot(tr[0, 0], tr[0, 1], "o", color="k", ms=7); ax.text(tr[0, 0] + 0.3, tr[0, 1], "출발 (8 m 남쪽, 모드 3)", fontsize=9)
+    ax.plot(tr[-1, 0], tr[-1, 1], "s", color="#d62728", ms=7); ax.text(tr[-1, 0] + 0.3, tr[-1, 1] - 0.4, f"완료 t = {r['done_t']:.0f} s" if r["done_t"] else "미완료", fontsize=9, color="#d62728")
+    ax.annotate("", xy=(4.5, -7.0), xytext=(2.5, -7.0), arrowprops=dict(arrowstyle="->", lw=1.5, color="#555")); ax.text(3.5, -6.6, "조류 0.2 m/s (가정)", ha="center", fontsize=8.5, color="#555")
+    ax.set_xlim(-6, 6); ax.set_ylim(-9, 6.5)
+    finish(fig, ax, "search", f"탐색 (ship_back, search_behavior=hold) — 빨강 부표 탐지 후 그 앞 위치유지, {'규정 달성' if r['done_t'] else '미달성'} {r['done_t'] or r['t']:.0f} s, 상태 {r['node'].state}")
+    return r
+
+
+FIGS = {"gate": fig_gate, "back": fig_back, "search": fig_search, "turn": fig_turn, "avoid": fig_avoid, "dock": fig_dock}
 
 if __name__ == "__main__":
     names = sys.argv[1:] or list(FIGS)

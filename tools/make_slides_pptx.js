@@ -366,7 +366,7 @@ pres.addSection({ title: '소프트웨어' });
     ['wp_mode', '임무', '노드 · 검출기', 'dwell / 시간초과'],
     ['0, 1', '게이트 (항로추종)', 'ship_gate · 빨강/초록', '3 s / 120 s'],
     ['2', '위치유지', 'ship_back · 흰색', '3 s / 120 s'],
-    ['3', '탐색 (부표 선회)', 'ship_turn · 빨강', '3 s / 90 s'],
+    ['3', '탐색 (부표 앞 위치유지)', 'ship_back · 빨강', '3 s / 90 s'],
     ['5', '장애물 회피', 'ship_direction (LiDAR)', '50 s / 120 s'],
     ['7', '도킹', 'ship_dock · 지정 색·형상', '60 s / 150 s'],
     ['8', '토너먼트 자율 회피', 'ship_direction', '60 s / —'],
@@ -375,7 +375,7 @@ pres.addSection({ title: '소프트웨어' });
     '웨이포인트 도착(반경 안 dwell 초) 또는 시간초과면 north_goal_angle 이 다음 임무로. 순서·dwell 은 waypoints.yaml 한 파일',
     '검출기는 담당 모드에서만 발행, /wp_mode 2 s 끊기면 발행 정지',
     '특수 코드: 5000 우선회 · 6000 좌선회 · 20000 미션 없음(LiDAR 회피) · 50000 정지',
-    '현장 스위치: 탐색이 "정지"로 확정되면 search_behavior:=hold 로 ship_back 이 모드 3 담당',
+    '탐색은 2026 안내문대로 부표 앞 위치유지(search_behavior 기본 hold, ship_back 이 모드 2·3 담당). 선회(ship_turn)는 orbit 옵션',
   ], M, 4.75, 9, 2.1, { fontSize: 11.5 });
 }
 

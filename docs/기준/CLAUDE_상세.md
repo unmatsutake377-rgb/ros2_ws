@@ -526,8 +526,7 @@ heading = imu_yaw_raw + offset   (정지 중에도 IMU 가 유지 — 작년 ove
 
 실제 `/wp_mode` 로 나오는 값은 **`{0,1,2,3,5,7,8}`** 뿐이다.
 
-> 2026-11-02 `search_behavior` launch 인자(계약서_탐색hold스위치): 기본 `orbit` = 위 표(3→`ship_turn`).
-> `hold` 면 3→`ship_back`(`active_wp_modes [2,3]`)·`ship_turn enabled false`. 현행 표는 CLAUDE.md §3.
+> 2026-11-02 `search_behavior` launch 인자(계약서_탐색hold스위치). **2026-11-04 팀장 확정: 기본 `hold`** — 2026 안내문 코스도 "탐색 = 특정 색 부표 탐지 후 그 위치에서 위치유지" → 3→`ship_back`(`active_wp_modes [2,3]`)·`ship_turn enabled false`. 위 표의 3→`ship_turn` 은 `search_behavior:=orbit`(2025 규정 선회) 옵션일 때만. CLAUDE.md §3 표도 같은 정정 필요(팀장).
 
 #### ⚠️ `mode 5`, `mode 8` 은 담당 노드가 없는 것이 **정상**이다
 

@@ -47,7 +47,7 @@ def flowchart():
     items = [
         ("mode 0·1\n항로추종\nship_gate", "gate 검출기\n/red_angle /green_angle", "#e6f4ea"),
         ("mode 2\n위치유지 ×2\nship_back", "turn(white)\n/image_angle", "#e6f4ea"),
-        ("mode 3\n탐색(선회)\nship_turn", "turn(red)\n/image_angle /image_color", "#e6f4ea"),
+        ("mode 3\n탐색(부표 앞 위치유지)\nship_back", "turn(red)\n/image_angle", "#e6f4ea"),
         ("mode 5\n장애물 회피 50 s\n(미션 노드 없음)", "검출기 없음\n20000 → 전진 폴백", "#fff4e0"),
         ("mode 7\n도킹 60 s\nship_dock", "dock\n/image_angle", "#e6f4ea"),
         ("종료\nSTOP_HOLD 50000", "", "#f3e6e6"),
