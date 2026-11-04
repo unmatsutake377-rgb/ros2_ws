@@ -32,7 +32,8 @@ FSM: WAIT → SEARCH → APPROACH → ORBIT → COOLDOWN → (다음 부표 위�
 프레임 규약: /image_angle=상대각(0=정면, **좌 양수**). orbit 조향각을 상대(좌 양수)로 구해 rel_to_raw 로
   /candidate_angle(0~360) 규약에 맞춰 발행 → ship_direction (B)에서 80+raw 로 매핑. LiDAR 80°=정면, a−80 좌 양수.
   CW(빨강·초록) = 부표를 우현(rel −90)에 둔다. 부표 월드 방위 = yaw − rel (yaw 는 CW 양수).
-  발행 전 조향을 ±STEER_LIMIT_DEG(80) 로 클램프 — ship_direction 매핑 범위(0~160) 밖은 STOP_HOLD 가 된다.
+  발행 전 조향을 ±STEER_LIMIT_DEG(80) 로 클램프 — ship_direction 매핑 범위(0~160) 밖은 STOP_HOLD 가 된다
+  (180 정확값 제외 — 그건 후진 260. 클램프 ±80 이라 여기선 안 나온다).
 
 색 토픽 = /image_color (String: "red"/"green"/"white"). 발행자는 basic_image_subscriberturn.
    🚨 [2026-09-23 정정] 종전엔 /buoy_color 를 구독했는데 그 이름을 발행하는 노드가 없었다.

@@ -19,7 +19,10 @@ SPIN_LEFT = 6000.0           # 좌선회
 CANDIDATE_INVALID = 20000.0  # 미션 없음 → yaw_error 기반 자율 회피
 STOP_HOLD = 50000.0          # 정지/대기
 
-REVERSE_ANGLE = 260.0        # 회피 경로 없음 → 후진
+REVERSE_ANGLE = 260.0        # 후진 (motor_control 분기 5). 두 곳에서 나온다:
+                             #   (C) 회피 경로 없음 → [L] 상태기계, (B) /candidate_angle 180.0 정확 일치(아래)
+REVERSE_REL = 180.0          # /candidate_angle 180.0 = 후진 요청 (ship_dock BACKOFF·ship_back).
+                             #   (B) 에서 범위 검사 앞 정확 일치로만 260 으로 통과 (계약서_후진통과_20261104).
 LIDAR_FORWARD_DEG = 80.0     # LiDAR 프레임에서 정면 (상대방위 0 에 대응)
 
 
@@ -153,6 +156,8 @@ class ShipDirection(Node):
           '전진하려는 방향 ±geofence_stop_cone_deg(60°)' 와 겹치면 → candidate/SPIN 무시하고 STOP_HOLD.
         **미션보다 실격 방지가 우선.** 경계를 등지고 멈춘다.
         ⚠️ north 광선은 전방 ±80° 만 → 후진 중 뒤쪽 경계는 못 본다(접안=전방 방어용).
+        ⚠️ 후진(/candidate_angle 180)에는 구조상 가드가 걸리지 않음: 광선 rel −80~+80 과 180 의 차가
+           ≥ 100° 라 cone 60° 안에 들 수 없다. 뒤쪽 경계는 아무도 안 본다 (계약서_후진통과_20261104 §4).
 
     [J] 감속 신호용 공간 median 필터 (obst_median_kernel, **기본 ON**).
         _closest_obstacle 이 필터 없는 raw min 이라 **물보라 반사 한 점(0.3m)이 그대로
@@ -237,7 +242,20 @@ class ShipDirection(Node):
         self.reverse_cooldown = float(
             self.declare_parameter('reverse_cooldown_sec', 3.0).value)
 
+        # ---- (B) candidate 후진(180.0) 신선도 (계약서_후진통과_20261104 §10-4) ----
+        # 180 을 낸 미션 노드(ship_dock·ship_back)가 후진 도중 죽으면 마지막 180 을 붙들고
+        # 모드가 바뀔 때까지 후진한다. 그래서 180 은 수신 후 이 시간 안일 때만 260 으로 통과시키고,
+        # 넘으면 STOP_HOLD. 발행 노드는 10 Hz 매 틱 발행 → 0.5 s = 5 틱 누락. 다른 candidate 값엔 안 건다.
+        self.candidate_reverse_stale_sec = float(
+            self.declare_parameter('candidate_reverse_stale_sec', 0.5).value)
+
         # 잘못된 파라미터 방어
+        if not math.isfinite(self.candidate_reverse_stale_sec) or \
+                self.candidate_reverse_stale_sec <= 0.0:
+            self.get_logger().warn(
+                f"candidate_reverse_stale_sec={self.candidate_reverse_stale_sec} 이상 "
+                f"→ 기본값 0.5초 사용")
+            self.candidate_reverse_stale_sec = 0.5
         if not math.isfinite(self.reverse_duration) or self.reverse_duration <= 0.0:
             self.get_logger().warn(
                 f"reverse_duration_sec={self.reverse_duration} 이상 → 기본값 0.5초 사용")
@@ -285,6 +303,7 @@ class ShipDirection(Node):
         self.wp4_enter_time = None
         self.yaw_error = 0.0
         self.candidate_angle = CANDIDATE_INVALID
+        self.candidate_t = None       # candidate 마지막 수신 시각(monotonic). None = 아직 못 받음
 
         self.latest_scan = None       # scan_cb 는 저장만 한다
 
@@ -379,6 +398,8 @@ class ShipDirection(Node):
                 self.candidate_angle = val
             else:
                 self.candidate_angle = (val % 360.0)
+            # 수신 시각 — (B) 후진(180) 신선도 판정용 ([D] monotonic)
+            self.candidate_t = time.monotonic()
 
     def wp_mode_cb(self, msg):
         with self.lock:
@@ -524,6 +545,7 @@ class ShipDirection(Node):
             bad = self.watch.fault
             wp4_enter_time = self.wp4_enter_time
             candidate_angle = self.candidate_angle
+            candidate_t = self.candidate_t
             yaw_error = self.yaw_error
             detection_distance = self.detection_distance
 
@@ -544,7 +566,7 @@ class ShipDirection(Node):
         # 레벨 1(경고)에서도 각도는 안 건드린다. 속도만 줄인다
         # → motor_control 이 /failsafe_level 을 보고 상한(70%)을 건다.
         angle, obst = self._compute(scan, wp4_enter_time, candidate_angle,
-                                    yaw_error, detection_distance)
+                                    yaw_error, detection_distance, candidate_t)
         angle = self._apply_rate_limit(angle)   # [K] 0~160° 안일 때만 실제로 제한됨
 
         self.pub_obstacle_distance.publish(obst)
@@ -686,8 +708,13 @@ class ShipDirection(Node):
             return True
         return False
 
-    def _compute(self, msg, wp4_enter_time, candidate_angle, yaw_error, detection_distance):
-        """(desired_angle, obstacle_array) 를 만든다. 작년 scan_callback 의 로직 그대로."""
+    def _compute(self, msg, wp4_enter_time, candidate_angle, yaw_error, detection_distance,
+                 candidate_t=None):
+        """(desired_angle, obstacle_array) 를 만든다. 작년 scan_callback 의 로직 그대로.
+
+        candidate_t: candidate 수신 시각(monotonic) 스냅샷. (B) 후진(180) 신선도에만 쓴다.
+        None(못 받음)이면 180 은 묵은 것으로 보고 STOP_HOLD — 모르면 입을 다문다.
+        """
         now = time.monotonic()
 
         obst = self._closest_obstacle(msg)
@@ -717,10 +744,25 @@ class ShipDirection(Node):
         if candidate_angle != CANDIDATE_INVALID:
             self._reset_reverse_sequence()
             c_raw = candidate_angle % 360.0
+
+            # 후진 요청: 180.0 **정확 일치**만 260(motor_control 분기 5)으로 통과 (계약서_후진통과_20261104).
+            # ed31dda 의 범위 검사가 260 을 STOP_HOLD 로 바꿔 ship_dock BACKOFF·ship_back 후진이
+            # 조용히 정지가 됐었다. 수신 후 candidate_reverse_stale_sec 넘게 갱신이 없으면 발행 노드가
+            # 죽은 것으로 보고 정지(묵은 180 으로 무한 후진 방지). 다른 값엔 신선도를 안 건다.
+            if c_raw == REVERSE_REL:
+                if candidate_t is not None and \
+                        (now - candidate_t) <= self.candidate_reverse_stale_sec:
+                    return REVERSE_ANGLE, obst
+                self.get_logger().warn(
+                    f"candidate 후진(180) {self.candidate_reverse_stale_sec:.2f}s 넘게 갱신 없음 "
+                    f"→ STOP_HOLD (발행 노드 사망 의심)",
+                    throttle_duration_sec=1.0)
+                return STOP_HOLD, obst
+
             c_mapped = 80.0 + c_raw if c_raw <= 180.0 else 80.0 - (360.0 - c_raw)
 
             # 정상 조향값은 0~160°여야 한다. 범위를 벗어나면 motor_control이 후진으로
-            # 해석할 수 있으므로 안전하게 정지한다.
+            # 해석할 수 있으므로 안전하게 정지한다. (예외: 바로 위 180.0 정확 일치 = 의도된 후진)
             if not math.isfinite(c_mapped) or not (0.0 <= c_mapped <= 160.0):
                 self.get_logger().warn(
                     f"candidate 매핑 범위 초과: raw={c_raw:.1f}°, "

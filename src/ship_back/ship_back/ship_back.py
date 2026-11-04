@@ -40,6 +40,7 @@ IMAGE_ANGLE_INVALID = 10000.0
 CANDIDATE_INVALID = 20000.0
 STOP_HOLD = 50000.0
 REVERSE_REL = 180.0          # 상대 180° = 후진 (→ ship_direction 260 → motor_control 분기 5)
+                             #   근거: ship_direction (B) 정확 일치 예외(test_candidate_reverse)
 LIDAR_FORWARD_DEG = 80.0     # LiDAR 프레임 정면
 
 

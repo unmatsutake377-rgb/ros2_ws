@@ -28,6 +28,7 @@
    /candidate_angle = 상대 방위(도). 0 = 정면. ship_direction 이 desired = 80 + rel 로 매핑한다.
    LiDAR 프레임도 80° = 정면 (ship_direction 이 두 프레임을 같게 다룬다).
    후진 = 상대 180 → desired 260 → motor_control 분기 (5).
+     (근거: ship_direction (B) 정확 일치 예외 — test_candidate_reverse. 수신 0.5 s 넘게 끊기면 ship_direction 이 정지)
 """
 
 import math
@@ -51,6 +52,7 @@ CANDIDATE_INVALID = 20000.0  # 미션 없음
 STOP_HOLD = 50000.0          # 정지/대기
 
 REVERSE_REL = 180.0          # 상대 180° = 후진 (→ desired 260 → motor_control 분기 5)
+                             #   근거: ship_direction (B) 정확 일치 예외(test_candidate_reverse)
 IMAGE_INVALID = 10000.0      # /image_angle 의 '표식 없음' 센티널 (작년 규약 유지)
 
 LIDAR_FORWARD_DEG = 80.0     # LiDAR 프레임에서 정면에 해당하는 각도

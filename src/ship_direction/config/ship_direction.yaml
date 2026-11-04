@@ -78,6 +78,12 @@
     # ---- [L] 후진 후 재탐색 상태기계 (경로 없을 때) ----
     reverse_duration_sec: 0.5        # 한 번 후진하는 시간
     reverse_cooldown_sec: 3.0        # 후진 후 STOP 재탐색 시간. 뒤 못 보므로 '계속 후진' 대신 멈춰 재탐색
+    # ---- (B) candidate 후진(180.0) 신선도 (계약서_후진통과_20261104 §10-4) ----
+    # /candidate_angle 180.0(ship_dock BACKOFF·ship_back reverse) → 260(후진). 단, 수신 후 이 시간 넘게
+    # 갱신이 없으면 발행 노드 사망으로 보고 STOP_HOLD(묵은 180 으로 무한 후진 방지). 다른 값엔 안 건다.
+    # 발행 노드 10 Hz 매 틱 발행 → 0.5 s = 5 틱 누락. 비유한·≤0 이면 노드가 0.5 로 되돌린다.
+    # 🚨 대회 launch 는 parameters= 없이 띄운다 → 노드 코드 기본값이 대회값. 바꾸면 둘 다 같이.
+    candidate_reverse_stale_sec: 0.5
     # ---- [K] 조향각 변화율 제한 (0~160° 정상 조향값에만 적용) ----
     rate_limit_max_deg_per_tick: 15.0  # tick당 최대 변화폭. 실각속도=이 값/control_period(0.1s→150°/s). 실측 후 튜닝
     # ※ rear_obstacle_ignore_margin 은 '튜닝값'이 아니라 증명된 결함이라 구조 커밋에서 제거했다

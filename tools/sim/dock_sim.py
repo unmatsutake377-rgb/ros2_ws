@@ -12,8 +12,11 @@
     (조향 차동, SPIN 제자리 선회, 후진 1590, 1.2 m 이내 감속 0.7)를 재현. 운동 상수는 tools/sim/ssf_sim.py
     와 같다(k_v 0.010 m/s/PWM, k_w 0.22 °/s/PWM → 순항 1.4 m/s, 제자리 선회 44 °/s). 1차 지연 τ 0.5 s.
   · 몬테카를로 500 런: 거리 3~10 m(표식까지 11 m 이내), 좌우 −5~5 m, 출발 헤딩 0~360° 전방향, 목표 칸 좌/중/우 무작위.
-  · 🚨 BACKOFF 의 후진(/candidate_angle 180)은 실제 ship_direction 에서 매핑 260 → '0~160 밖' 검사에 걸려 STOP_HOLD 가 된다
-    (ship_direction_map 이 그 검사를 그대로 재현). 그래서 시뮬에서도 배가 접안 자리에 멈춰 있다가 backoff_timeout(8 s)으로 DONE 이 된다.
+  · BACKOFF 의 후진(/candidate_angle 180)은 ship_direction (B) 의 180.0 정확 일치 예외로 260 → motor_control 후진 1590 이 된다
+    (계약서_후진통과_20261104. 그 전에는 '0~160 밖' 검사에 걸려 STOP_HOLD 였고, 배가 접안 자리에 멈춰 있다가
+    backoff_timeout(8 s)으로 DONE 이 됐다). ship_direction_map 이 그 예외를 그대로 재현한다.
+    ship_direction 의 신선도 검사(180 이 candidate_reverse_stale_sec 0.5 s 넘게 갱신 없으면 STOP_HOLD)는 재현하지 않는다
+    — 시뮬은 ship_dock 이 매 틱 발행하므로 항상 신선하다. 실물 후방 가림·후진 속도는 ⚠️ 미확인.
   · '칸 안' 판정: 접안 판정(contact) 순간 배 중심이 목표 칸 중심 ±0.5 m(칸 폭) 안, 선체 전체는 ±0.21 m(0.5 − half_width 0.29).
   · 모르는 것(도크 실제 규격·실제 추력 응답)은 가정이다 — 그림·보고서에 그렇게 적는다.
 
@@ -170,6 +173,9 @@ def ship_direction_map(cand):
     if cand == SD.STOP_HOLD or cand == SD.CANDIDATE_INVALID: return 50000.0 if cand == SD.STOP_HOLD else 20000.0
     if cand in (SD.SPIN_RIGHT, SD.SPIN_LEFT): return cand
     c = cand % 360.0
+    # (B) 후진 예외: 180.0 정확 일치 → 260(REVERSE_ANGLE). 실제 노드는 수신 0.5 s 신선도도 보지만
+    #     시뮬은 매 틱 발행하므로 항상 충족 → 생략.
+    if c == 180.0: return 260.0
     m = 80.0 + c if c <= 180.0 else 80.0 - (360.0 - c)
     return m if 0.0 <= m <= 160.0 else 50000.0
 
@@ -250,12 +256,12 @@ def main():
         i += 1
         _, o = run(x0, y0, p0, seed=100 + i, marker=(bay, 0.0)); o.update(x0=x0, y0=y0, psi0=p0, bay=bay, herr0=abs(wrap(p0 - 180.0)), lat0=x0 - bay); mc.append(o)
     with open(OUT_CSV, "w", newline="", encoding="utf-8") as f:
-        wri = csv.writer(f); wri.writerow(["x0", "y0", "psi0", "bay", "success", "t_contact", "head_err_deg", "lat_err_m", "done", "bumped", "final_state", "reached_approach", "lost_dist"])
+        wri = csv.writer(f); wri.writerow(["x0", "y0", "psi0", "bay", "success", "t_contact", "head_err_deg", "lat_err_m", "done", "bumped", "final_state", "reached_approach", "lost_dist", "backed_out"])
         for o in mc:
             wri.writerow([f"{o['x0']:.2f}", f"{o['y0']:.2f}", f"{o['psi0']:.1f}", f"{o['bay']:.0f}", int(o["success"]),
                           "" if o["t_contact"] is None else f"{o['t_contact']:.1f}",
                           "" if o["head_err"] is None else f"{o['head_err']:.1f}",
-                          "" if o["lat_err"] is None else f"{o['lat_err']:.2f}", int(o["done"]), int(o["bumped"]), o["final_state"], int(o["reached_approach"]), "" if o["lost_dist"] is None else f"{o['lost_dist']:.2f}"])
+                          "" if o["lat_err"] is None else f"{o['lat_err']:.2f}", int(o["done"]), int(o["bumped"]), o["final_state"], int(o["reached_approach"]), "" if o["lost_dist"] is None else f"{o['lost_dist']:.2f}", int(o["backed_out"])])
     ok = [o for o in mc if o["success"]]
     print(f"몬테카를로 {N_MC} 런: 접안 {len(ok)}/{N_MC}, DONE {sum(o['done'] for o in mc)}/{N_MC} (그중 후진으로 backoff 거리 도달 {sum(o['backed_out'] for o in mc)}, 나머지는 backoff_timeout), 선수 벽 접촉 {sum(o['bumped'] for o in mc)}/{N_MC}")
     HB = [(0, 30), (30, 60), (60, 90), (90, 135), (135, 180.01)]; LB = [(0, 1), (1, 2), (2, 3), (3, 4), (4, 10.01)]
