@@ -13,7 +13,8 @@ import numpy as np
 import matplotlib; matplotlib.use("Agg"); import matplotlib.pyplot as plt
 matplotlib.rcParams["font.family"] = "Apple SD Gothic Neo"; matplotlib.rcParams["axes.unicode_minus"] = False
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."); D = os.path.join(ROOT, "docs", "전달용")
-NAME = {"A": "1번배", "B": "2번배"}
+NAME = {"A": "1번배", "B": "2번배"}   # 입력 파일 이름용
+LABEL = {"A": "배", "B": "배"}   # 그림 표시용 — 보고서 그림 안 글자는 '배' (11-04)
 
 def load(path):
     s = open(path, encoding="utf-8").read()
@@ -56,7 +57,7 @@ def analyze(key):
         ax.axhline(0, color="#888", lw=0.6); ax.set_xlabel("놓은 뒤 시간 [s]"); ax.set_title(f"{len(res)}회차 (놓음 {t0:.1f} s)", fontsize=10)
         ax.grid(alpha=.3)
     np.atleast_1d(axes)[0].set_ylabel("롤 각 편차 [°]"); np.atleast_1d(axes)[0].legend(fontsize=7.5, loc="lower right")
-    fig.suptitle(f"{NAME[key]} 롤 감쇠 — 폰 기울기계(phyphox Inclination, 0.5 s 간격), 10° 안팎 눌렀다 놓음 ×{len(rel)}", fontsize=11)
+    fig.suptitle(f"{LABEL[key]} 롤 감쇠 — 폰 기울기계(phyphox Inclination, 0.5 s 간격), 10° 안팎 눌렀다 놓음 ×{len(rel)}", fontsize=11)
     fig.tight_layout(); out = os.path.join(D, "배치도", f"roll_decay_{key}.png"); fig.savefig(out, dpi=130); plt.close(fig)
     tau = st.mean(r["tau"] for r in res)
     print(f"{NAME[key]}: 기준 {base:.2f}°, 놓은 시각 {[round(r['t0'],1) for r in res]}, 초기 진폭 {[round(r['a0'],1) for r in res]}°")

@@ -96,6 +96,7 @@ figB.savefig(os.path.join(OUTD,"thruster_layout_B.png"),dpi=110,bbox_inches="tig
 DOCS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "docs", "전달용")
 # 선체 외곽은 선도와 같은 STL 에서 (1번배 킬 제거 ×1.66, 2번배 Fusion 모델을 실측 1770×522 에 맞춤)
 # ── 실제 장착 (2026-10-31 선체 담당 원고·팀장 확인) — 보고서 그림 Ⅱ-2
+#   thruster_asbuilt_A/B.png 제목은 보고서 표기에 맞춰 '배' (11-04). 해석 그림 thruster_layout*.png 은 '1번배·2번배' 그대로.
 #   1번배: 폭 550, 전비 30 kg, 선미 좌우 ±120 (간격 240). x 실측 미기재 — 그림 위치만 220, 숫자는 표시 안 함(요권한과 무관).
 #   2번배: 폭 522, 전비 35 kg 추정, 선미 x 220 ±140 (간격 280), 선수 x 585 (전후 365) ±62.5 (간격 125).
 def plan_outline(stl, **kw):
@@ -134,12 +135,12 @@ def draw_asbuilt(ax, L, B, mass, units, title, show_x=True, poly=None):
     ax.text(L + 20, 0, msg, fontsize=9.5, va="center")
 
 figA2 = plt.figure(figsize=(14, 3.6))
-draw_asbuilt(figA2.add_subplot(111), 1660., 550., 34., [(220., 120.)], "1번배 T200×2 — 실제 장착: 선미 좌우 ±120 mm", show_x=False,
+draw_asbuilt(figA2.add_subplot(111), 1660., 550., 34., [(220., 120.)], "배 T200×2 — 실제 장착: 선미 좌우 ±120 mm", show_x=False,
              poly=plan_outline(os.path.join(DOCS, "선도_1번배", "1번배_킬제거_Fusion360.stl"), scale=1.66, flip_z=True))
 figA2.text(.5, .01, "요 모멘트 = 좌우 간격 × 추력 (CFD 아님: 강체 조종모델 + 횡류항력 요댐핑)", ha="center", fontsize=9.5, color="#555")
 figA2.savefig(os.path.join(OUTD, "thruster_asbuilt_A.png"), dpi=110, bbox_inches="tight")
 figB2 = plt.figure(figsize=(14, 3.6))
-draw_asbuilt(figB2.add_subplot(111), 1770., 522., 30., [(220., 140.), (585., 62.5)], "2번배 T200×4 — 실제 장착: 선미 ±140 · 선수 ±62.5 mm, 전후 365 mm (V자형)",
+draw_asbuilt(figB2.add_subplot(111), 1770., 522., 30., [(220., 140.), (585., 62.5)], "배 T200×4 — 실제 장착: 선미 ±140 · 선수 ±62.5 mm, 전후 365 mm (V자형)",
              poly=plan_outline(os.path.join(DOCS, "선도_2번배", "2번배_Fusion360.stl"), fit=(1770., 522.)))
 figB2.text(.5, .01, "요 모멘트 = 좌우 간격 × 추력 (CFD 아님: 강체 조종모델 + 횡류항력 요댐핑 + 작동원판 제트확산)", ha="center", fontsize=9.5, color="#555")
 figB2.savefig(os.path.join(OUTD, "thruster_asbuilt_B.png"), dpi=110, bbox_inches="tight")

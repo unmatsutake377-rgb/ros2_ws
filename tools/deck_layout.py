@@ -11,6 +11,7 @@
   마스트 베이스 168×160 (1번배 1294, 2번배 1130) · LiDAR A3 Ø76 (1번배 1470, 2번배 1420 — 2번배는 미확정)
 팀장 11-01: 마스트 가로대 없이 갑판에 직접 고정, RC 수신기·LTE 핫스팟 폰은 방수박스 안.
   폰은 GPS 안테나·RC 수신기에서 멀리 — 박스 앞쪽 좌현 모서리 (부품_추천목록 §9-2 RF 이격).
+그림 제목은 보고서 표기에 맞춰 '배' (11-04).
 재현: python3 tools/deck_layout.py   →  docs/전달용/배치도/hull_plan_A.png, hull_plan_B.png
 """
 import os, sys
@@ -48,10 +49,10 @@ def plan_outline(stl, **kw):   # tools/thruster_layout.py plan_outline 과 같�
 
 
 BOATS = {
-    "A": dict(title="1번배 갑판 배치 (LOA 1660 × B 550 mm)", L=1660., B=550.,
+    "A": dict(title="배 갑판 배치 (LOA 1660 × B 550 mm)", L=1660., B=550.,
               poly=lambda: plan_outline(os.path.join(DOCS, "선도_1번배", "1번배_킬제거_Fusion360.stl"), scale=1.66, flip_z=True),
               box=(790., 1190.), ext=80., gps=535., gps_note="", mast=1294., lidar=1470., lidar_note="", mast_note=""),
-    "B": dict(title="2번배 갑판 배치 (LOA 1770 × B 522 mm)", L=1770., B=522.,
+    "B": dict(title="배 갑판 배치 (LOA 1770 × B 522 mm)", L=1770., B=522.,
               poly=lambda: plan_outline(os.path.join(DOCS, "선도_2번배", "2번배_Fusion360.stl"), fit=(1770., 522.)),
               box=(770., 1170.), ext=135., gps=535., gps_note="", mast=1284., lidar=1460., lidar_note="", mast_note=""),
 }

@@ -22,7 +22,7 @@ const exists = (p) => { try { return fs.statSync(p).isFile(); } catch { return f
 
 // ── 배별 값 (보고서 docx 와 동일) ───────────────────────────────────────────────
 const B = isA ? {
-  team: 'S.S.F A', no: '1번배', leader: '도건윤',
+  team: 'S.S.F A', no: '배', leader: '도건윤',
   members: '김은우, 김정한, 김하은, 박주현, 황준연, 석현, 정우성',
   loa: '1.66', boa: '0.55', depth: '0.255 m (선미, 추진기 포함)',
   thr: 'T200 ×2 · 선미 좌우 대칭 (중심선 ±120 mm, 간격 240 mm)',
@@ -40,7 +40,7 @@ const B = isA ? {
   ],
   costTotal: '3,896,697 원',
 } : {
-  team: 'S.S.F B', no: '2번배', leader: '박유진',
+  team: 'S.S.F B', no: '배', leader: '박유진',
   members: '박윤서, 차준혁, 이송언, 이태훈, 김세연, 김현지, 전홍윤, 황예진',
   boxExt: '135 → 535×300', roll: '약 1 s · 10°→1° 약 7~17 s (0.5 s 샘플링 한계)', figThr: 3, figRes: 4,
   gm: '0.20 (경사시험, KG 역산 0.26)', incl: 'w 2.1 kg · d 0.26 m · θ 5.28° (좌 5.30 / 우 5.25) · W 30 kg → GM 0.20 m. 종경사 GM_L ≈ 2.9 m',
@@ -212,7 +212,7 @@ async function coverFromLastYear(file) {
     coverText('대회', tx, 4.6, tw, 0.3, [{ text: 'KABOAT 2026', pt: 13, bold: false, color: '666666' }]),
     coverText('대회명', tx, 4.9, tw, 0.5, [{ text: '자율운항보트경진대회', pt: 26, bold: true, color: '052E65' }]),
     coverText('팀명', tx, 5.45, tw, 0.35, [{ text: 'S.S.F (Symbio Ship to Future)', pt: 14, bold: false, color: '000000' }]),
-    coverText('소속', tx, 5.85, tw, 0.5, [{ text: '홍익대학교 조선해양모빌리티공학과', pt: 12, bold: true, color: '000000' }, { text: `TEAM ${B.team} (${B.no})`, pt: 12, bold: true, color: '000000' }]),
+    coverText('소속', tx, 5.85, tw, 0.5, [{ text: '홍익대학교 조선해양모빌리티공학과', pt: 12, bold: true, color: '000000' }, { text: `TEAM ${B.team}`, pt: 12, bold: true, color: '000000' }]),
     coverText('팀 명단', tx, 6.38, tw, 0.6, [{ text: `조장 ${B.leader} · 지도교수 권순범`, pt: 9.5, bold: false, color: '666666' }, { text: `조원 ${B.members}`, pt: 9.5, bold: false, color: '666666' }]),
   ].join('');
   xml = xml.replace('</p:spTree>', add + '</p:spTree>');
@@ -445,7 +445,7 @@ pres.addSection({ title: '회로' });
     ['카메라 PoE 48 V', '배터리 A 접촉기 앞단 → 2 A 퓨즈 → PoE 인젝터 → OAK', '유지'],
   ], M, 4.1, 9, [1.4, 6.0, 1.6], { fontSize: 10.5, rowH: 0.36 });
   bullets(s, [
-    '배터리 2개 (4S LiPo 14.8 V, 8400 mAh, 약 248 Wh) 가 좌·우 추진 분담. LS MD-30a 2극 접촉기: 버튼·무선이 코일 회로를 직렬로 끊어 제어기가 죽어도 동작',
+    '배터리 2개 (4S LiPo 14.8 V) 가 좌·우 추진 분담. LS MD-30a 2극 접촉기: 버튼·무선이 코일 회로를 직렬로 끊어 제어기가 죽어도 동작',
     '접촉기 보조접점 → Mega 핀 38: 노트북이 차단 상태를 알고 표시등 빨강',
   ], M, 6.15, 9, 0.85, { fontSize: 10, gap: 2 });
 }

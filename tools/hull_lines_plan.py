@@ -14,10 +14,11 @@ STL 모드 (두께 있는 선체 껍데기 메시, 예: 1번배 Fusion360 출력
   --flip-z : 갑판이 z=0, 바닥이 +z 로 뒤집혀 나온 메시.  --scale : 실제 크기 배율.
 
 재현:
-  python3 tools/hull_lines_plan.py docs/전달용/선도_2번배/2번배_Fusion360.stl --fit 1770,522 --st0 0.02 --group-aft --out docs/전달용/선도_2번배 --name 2번배
+  python3 tools/hull_lines_plan.py docs/전달용/선도_2번배/2번배_Fusion360.stl --fit 1770,522 --st0 0.02 --group-aft --out docs/전달용/선도_2번배 --name 2번배 --label 배
     (10-31: 정상선형 DXF 는 선수가 실물과 달라 Fusion360 STL 로 교체 — 팀장 확인)
   python3 tools/hull_lines_plan.py docs/전달용/선도_1번배/1번배_킬제거_Fusion360.stl --scale 1.66 --flip-z \
-      --out docs/전달용/선도_1번배 --name 1번배
+      --out docs/전달용/선도_1번배 --name 1번배 --label 배
+    (--label: 그림 안 글자에 쓸 배 이름, 기본 = --name. 보고서 그림은 '배' — 11-04)
 """
 import argparse
 import os
@@ -400,6 +401,7 @@ def main():
     ap.add_argument("dxf")
     ap.add_argument("--out", default=".")
     ap.add_argument("--name", default="hull")
+    ap.add_argument("--label", help="그림 안 글자에 쓸 배 이름 (기본 = --name, 파일 이름은 --name)")
     ap.add_argument("--scale", type=float, default=1.0, help="STL: 실제 크기 배율")
     ap.add_argument("--flip-z", action="store_true", help="STL: 갑판이 z=0·바닥이 +z 인 메시")
     ap.add_argument("--fit", help="STL: 길이,폭 [mm] 실측에 맞춰 x·y 만 늘림 (예: 1770,522)")
@@ -421,7 +423,7 @@ def main():
     else:
         dims.update(transom_station0=True, group_aft=True)
     os.makedirs(a.out, exist_ok=True)
-    sub = f"{a.name}  LOA {dims['L']:.0f} · B {dims['B']:.0f} · D {dims['D']:.0f} mm"
+    sub = f"{a.label or a.name}  LOA {dims['L']:.0f} · B {dims['B']:.0f} · D {dims['D']:.0f} mm"
     if stl and a.scale != 1.0:
         sub += f"  (STL ×{a.scale:g})"
     if stl and a.fit:

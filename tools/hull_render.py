@@ -6,9 +6,9 @@
   2번배: Fusion360 STL (10-31). DXF 입력(스테이션 단면을 이어 면 생성)도 지원
 재현:
   python3 tools/hull_render.py docs/전달용/선도_1번배/1번배_킬제거_Fusion360.stl --scale 1.66 --flip-z \
-      --out docs/전달용/선도_1번배/1번배_선형_3D.png --title "1번배 선형 (킬 제거 STL ×1.66)"
+      --out docs/전달용/선도_1번배/1번배_선형_3D.png --title "배 선형 (킬 제거 STL ×1.66)"
   python3 tools/hull_render.py docs/전달용/선도_2번배/2번배_Fusion360.stl --fit 1770,522 \
-      --out docs/전달용/선도_2번배/2번배_선형_3D.png --title "2번배 선형 (Fusion360 모델 형상, 실측 길이·폭)"
+      --out docs/전달용/선도_2번배/2번배_선형_3D.png --title "배 선형 (Fusion360 모델 형상, 실측 길이·폭)"   # 보고서 그림 글자는 '배' (11-04)
 """
 import argparse
 import io

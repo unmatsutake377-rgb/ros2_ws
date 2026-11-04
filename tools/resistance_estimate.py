@@ -114,11 +114,11 @@ def plot(key, name, S, Lwl, n_thr):
     fig.tight_layout(); out = os.path.join(D, "배치도", f"resistance_{key}.png"); fig.savefig(out, dpi=130); print(out)
 
 
-def run(name, stl, mass, n_thr, key=None, **kw):
+def run(name, stl, mass, n_thr, key=None, label=None, **kw):   # label: 그림 제목용 배 이름 (없으면 name)
     xs, secs = sections(stl, **kw)
     zw = waterline(xs, secs, mass / RHO)
     V, S, Lwl = hydro(xs, secs, zw)
-    if key: plot(key, name, S, Lwl, n_thr)
+    if key: plot(key, label or name, S, Lwl, n_thr)
     print(f"\n{name}: 배수량 {mass} kg → 수선 z {zw*1000:.1f} mm, 침수 표면적 S {S:.3f} m², L_WL {Lwl:.3f} m, 선체속도(Fn 0.40) {0.40*np.sqrt(G*Lwl):.2f} m/s")
     print("  V[m/s]  Fn     Re        C_F      R_V[N]   (가용 추력 T200×%d = %.0f N)" % (n_thr, n_thr * T200_N))
     for v in (0.5, 1.0, 1.5, 2.0):
@@ -127,5 +127,5 @@ def run(name, stl, mass, n_thr, key=None, **kw):
 
 
 if __name__ == "__main__":
-    run("1번배", os.path.join(D, "선도_1번배", "1번배_킬제거_Fusion360.stl"), 34.0, 2, key="A", scale=1.66, flip_z=True)
-    run("2번배", os.path.join(D, "선도_2번배", "2번배_Fusion360.stl"), 30.0, 4, key="B", fit=(1770.0, 522.0))
+    run("1번배", os.path.join(D, "선도_1번배", "1번배_킬제거_Fusion360.stl"), 34.0, 2, key="A", label="배", scale=1.66, flip_z=True)
+    run("2번배", os.path.join(D, "선도_2번배", "2번배_Fusion360.stl"), 30.0, 4, key="B", label="배", fit=(1770.0, 522.0))   # 그림 제목은 '배' (11-04)
