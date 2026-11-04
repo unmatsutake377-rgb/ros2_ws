@@ -290,7 +290,6 @@ pres.addSection({ title: '선형 설계 및 제작' });
   card(s, x2, 3.75, w2, 2.7, '경사 시험 (수조, 담수)', [
     '추 w 를 중심선에서 d 만큼 좌·우로 옮겨 기울기 θ 측정',
     'GM = w·d / (W·tan θ)',
-    '마스트 조립체 무게·높이로 KG 보정',
   ], { fontSize: 11, bodyH: 1.3 });
   if (B.incl) s.addText(B.incl, { x: x2 + 0.15, y: 5.7, w: w2 - 0.3, h: 0.6, fontSize: 10.5, color: C.text1, isTextBox: true, margin: 0, valign: 'top' });
   else PH(s, x2 + 0.15, 5.7, w2 - 0.3, 0.6, 'w · d · θ · GM 값 + 경사 사진', { fontSize: 11 });
@@ -374,7 +373,7 @@ pres.addSection({ title: '소프트웨어' });
   bullets(s, [
     '웨이포인트 도착(반경 안 dwell 초) 또는 시간초과면 north_goal_angle 이 다음 임무로. 순서·dwell 은 waypoints.yaml 한 파일',
     '검출기는 담당 모드에서만 발행, /wp_mode 2 s 끊기면 발행 정지',
-    '특수 코드: 5000 우선회 · 6000 좌선회 · 20000 미션 없음(LiDAR 회피) · 50000 정지',
+    '특수 코드: 5000 우선회 · 6000 좌선회 · 20000 미션 없음(GPS 방위 + LiDAR 갭 회피) · 50000 정지',
     '탐색은 2026 안내문대로 부표 앞 위치유지(search_behavior 기본 hold, ship_back 이 모드 2·3 담당). 선회(ship_turn)는 orbit 옵션',
   ], M, 4.75, 9, 2.1, { fontSize: 11.5 });
 }
