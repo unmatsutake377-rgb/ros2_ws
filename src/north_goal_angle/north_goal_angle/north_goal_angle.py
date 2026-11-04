@@ -58,7 +58,7 @@ from sensor_msgs.msg import NavSatFix
 from geopy import distance
 from ament_index_python.packages import get_package_share_directory
 
-from north_goal_angle.waypoint_loader import parse_waypoints, WaypointError
+from north_goal_angle.waypoint_loader import parse_waypoints, waypoint_labels, WaypointError
 from north_goal_angle.gps_guard import (
     DEFAULT_GPS_STALE_SEC, fix_is_fresh, fix_is_usable, sanitize_stale_sec)
 from north_goal_angle import los_logic          # LOS 유도 (순수, 테스트됨)
@@ -187,6 +187,17 @@ class NorthGoalAngle(Node):
             self.declare_parameter('wp_timeout_modes', list(DEFAULT_WP_TIMEOUT_MODES)).value,
             self.declare_parameter('wp_timeout_sec', list(DEFAULT_WP_TIMEOUT_SEC)).value)
 
+        # ---- mode 2·3 도착 반경 (계약서_전체코스_20261104 §10 추가 결정 3, los_logic.py) ----
+        # 3.5 m > ship_back hold_dist 2.5 + tol 0.4 = 2.9 → DONE(20000) 뒤 부표로 들어가지 않는다.
+        # 다른 mode 는 기존 속도·도킹 반경 그대로. 타이머 생성보다 먼저 선언한다.
+        raw_hold_r = self.declare_parameter(
+            'arrive_radius_hold_modes_m', los_logic.DEFAULT_ARRIVE_RADIUS_HOLD_MODES_M).value
+        self.arrive_radius_hold_m, hold_r_ok = los_logic.sanitize_hold_radius(raw_hold_r)
+        if not hold_r_ok:
+            self._log_hold_radius_invalid(raw_hold_r)
+        elif los_logic.hold_radius_inside_hold_dist(self.arrive_radius_hold_m):
+            self._log_hold_radius_small()
+
         # ---- dwell 대기 (계약서_전체코스_20261104 §2-2, wp_advance.py) ----
         # dwell_wait_modes 의 WP 에서는 담당 노드가 손 뗀 동안(/candidate_angle 신선한 20000 또는
         # dwell_wait_stale_sec 넘게 무수신)만 dwell 을 센다 — 위치유지 도중 WP 를 넘기던 결함.
@@ -255,7 +266,8 @@ class NorthGoalAngle(Node):
             f"(mode 7 폴백 제거 — ship_dock 과 충돌했다). geofence {gf}. "
             f"GPS stale 기준 {self.gps_stale_sec:g}s. "
             f"dwell 대기 {'ON' if self.dwell_wait_enabled else 'OFF'}"
-            f"(mode {list(self.dwell_wait_modes)}, 무수신 {self.dwell_wait_stale_sec:g}s)."
+            f"(mode {list(self.dwell_wait_modes)}, 무수신 {self.dwell_wait_stale_sec:g}s). "
+            f"mode {list(los_logic.HOLD_MODES)} 도착 반경 {self.arrive_radius_hold_m:g}m."
         )
 
     # ───────────────────────── 웨이포인트 로드 ─────────────────────────
@@ -288,7 +300,18 @@ class NorthGoalAngle(Node):
         modes = [w[2] for w in wps]
         self.get_logger().info(
             f"웨이포인트 {len(wps)}개 로드: {path}\n   미션 순서(mode): {modes}")
+        # 옛 녹화 파일(mode 2·3 dwell 3.0) 경고 — 값은 그대로 쓴다(결정 6 보충 ③).
+        stale = los_logic.stale_hold_dwells(wps, waypoint_labels(raw))
+        if stale:
+            self._log_stale_hold_dwells(stale)
         return wps
+
+    def _log_stale_hold_dwells(self, stale):
+        where = ", ".join(f"WP{i} '{label}'(mode {m}, dwell {d:g}s)" for i, label, m, d in stale)
+        self.get_logger().warn(
+            f"⚠️ mode {list(los_logic.HOLD_MODES)} dwell > {los_logic.HOLD_DWELL_WARN_SEC:g}s: "
+            f"{where} — 옛 녹화 파일일 수 있음 — DONE 뒤 dwell 동안 부표 쪽으로 감, 0.5 권장. "
+            f"값은 그대로 쓴다(waypoints 파일 확인).")
 
     def _load_wp_timeouts(self, modes, secs):
         """wp_timeout_modes/sec 를 검증해 {mode: sec} 표로. 틀리면 ERROR + 예외로 노드를 세운다.
@@ -367,6 +390,17 @@ class NorthGoalAngle(Node):
 
     def _log_fix_stale_recovered(self):
         self.get_logger().info("🛰️ GPS fix 신선도 복구 → 항법 재개")
+
+    def _log_hold_radius_invalid(self, raw):
+        self.get_logger().error(
+            f"🚨 arrive_radius_hold_modes_m={raw!r} 는 잘못된 값(0 이하·NaN·inf·숫자 아님) → "
+            f"기본값 {self.arrive_radius_hold_m:g}m 로 돈다. north_goal_angle.yaml 확인.")
+
+    def _log_hold_radius_small(self):
+        self.get_logger().warn(
+            f"⚠️ arrive_radius_hold_modes_m={self.arrive_radius_hold_m:g}m: "
+            f"반경 ≤ {los_logic.SHIP_BACK_HOLD_OUTER_M:g} m — 위치유지 거리 안이라 DONE 뒤 "
+            f"부표 쪽으로 파고들 수 있음. 값은 그대로 쓴다(north_goal_angle.yaml 확인).")
 
     def _log_dwell_wait_modes_invalid(self, raw):
         self.get_logger().error(
@@ -518,10 +552,11 @@ class NorthGoalAngle(Node):
             return
 
         wp_lat, wp_lon, wp_mode, dwell = self.waypoints[self.wp_idx]
-        # 도착 반경은 속도·모드에 따라 동적(빠르면 넓게 오버슈트 방지, 도킹은 좁게).
+        # 도착 반경: mode 2·3 은 arrive_radius_hold_modes_m 고정(3.5 m — ship_back 유지 거리
+        # 2.5±0.4 m 밖, 추가 결정 3). 그 밖은 속도·모드 동적(빠르면 넓게, 도킹 7 은 2.0 m 좁게).
         # 지나침 판정(LOS)과 도착 판정이 같은 값을 쓴다.
-        arrive_r = los_logic.get_dynamic_arrive_radius(
-            wp_mode, self.gps_filter.estimated_speed_mps)
+        arrive_r = los_logic.get_arrive_radius(
+            wp_mode, self.gps_filter.estimated_speed_mps, self.arrive_radius_hold_m)
 
         # 🚨 위치에서 나오는 값(거리·방위)은 fix 가 유효할 때만 낸다.
         #    fix 가 없으면 lat/lon 이 0 이거나 옛값이라 방위가 통째로 틀린다.

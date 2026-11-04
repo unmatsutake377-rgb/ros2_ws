@@ -2,9 +2,11 @@
 
 계약서 docs/문제와작업/계약서_전체코스_20261104.md C2(U1a) §2-2.
 
-dwell 대기 (새 결함): mode 2·3 에서 north 도착 반경(2.5 m)과 ship_back 유지 거리(2.5±0.4 m)가
-겹친다. 배가 부표 옆에서 위치유지를 하는 동안 north 의 dwell 이 다 차서 WP 를 넘기고,
-그 순간 /wp_mode 가 바뀌어 ship_back 의 위치유지가 끊겼다.
+dwell 대기 (새 결함): mode 2·3 에서 north 도착 반경(당시 속도 반경 2.5 m)과 ship_back 유지
+거리(2.5±0.4 m)가 겹쳤다. 배가 부표 옆에서 위치유지를 하는 동안 north 의 dwell 이 다 차서 WP 를
+넘기고, 그 순간 /wp_mode 가 바뀌어 ship_back 의 위치유지가 끊겼다.
+지금 mode 2·3 반경은 3.5 m 고정(arrive_radius_hold_modes_m, 추가 결정 3 — 유지 거리 밖까지)이라
+유지 위치가 항상 반경 안이다 → 이 대기가 없으면 HOLD 중 dwell 0.5 s 만에 넘긴다. 대기가 필수다.
 → dwell 은 '담당 노드가 손 뗀 동안'만 센다. 손 뗐다 = north 가 받은 마지막 /candidate_angle 이
   · 신선(≤ dwell_wait_stale_sec)한 20000(담당 노드 INIT·SEARCH·DONE = "GPS 로 가라"), 또는
   · dwell_wait_stale_sec 넘게 무수신(담당 노드 사망 — 기다려도 소용없다. 받은 적 없음도 같다).

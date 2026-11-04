@@ -2,7 +2,10 @@
 """los_logic 순수 로직 테스트. python3 src/north_goal_angle/test/test_los_logic.py"""
 
 import os
+import re
 import sys
+
+import yaml
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
@@ -10,7 +13,18 @@ from north_goal_angle.los_logic import (  # noqa: E402
     calc_dist, calc_angle, get_dynamic_lookahead,
     cross_track_error, calc_los_bearing, get_dynamic_arrive_radius,
     along_track, calc_guidance_bearing,
+    DEFAULT_ARRIVE_RADIUS_HOLD_MODES_M, HOLD_MODES, get_arrive_radius, sanitize_hold_radius,
+    SHIP_BACK_HOLD_OUTER_M, hold_radius_inside_hold_dist,
+    HOLD_DWELL_WARN_SEC, stale_hold_dwells,
 )
+from north_goal_angle.waypoint_loader import parse_waypoints, waypoint_labels  # noqa: E402
+from north_goal_angle.wp_advance import wp_step  # noqa: E402
+
+_PKG = os.path.join(os.path.dirname(__file__), '..')
+_PARAMS_YAML = os.path.join(_PKG, 'config', 'north_goal_angle.yaml')
+_NODE_SRC = os.path.join(_PKG, 'north_goal_angle', 'north_goal_angle.py')
+_SHIP_BACK_YAML = os.path.join(_PKG, '..', 'ship_back', 'config', 'ship_back.yaml')
+_WAYPOINTS_YAML = os.path.join(_PKG, 'config', 'waypoints.yaml')
 
 _p = _t = 0
 
@@ -177,6 +191,171 @@ def test_arrive_radius():
     assert get_dynamic_arrive_radius(0, 1.0) == 2.5
     assert get_dynamic_arrive_radius(0, 3.0) == 3.5
     assert get_dynamic_arrive_radius(0, 6.0) == 4.5
+
+
+# ---------------- mode 2·3 고정 도착 반경 (계약서_전체코스_20261104 §10 추가 결정 3)
+def _arrives(dist, arrive_r):
+    """반경 안 dwell 0.5 s 를 두 틱(0.5 s 주기)에 채우면 'arrive' 인가."""
+    _, ts, _ = wp_step(0.0, 0.0, 120.0, dist, arrive_r, None, 0.5, True)
+    ev, _, _ = wp_step(0.5, 0.0, 120.0, dist, arrive_r, ts, 0.5, True)
+    return ev == 'arrive'
+
+
+def test_hold_radius_default_value():
+    assert DEFAULT_ARRIVE_RADIUS_HOLD_MODES_M == 3.5
+    assert type(DEFAULT_ARRIVE_RADIUS_HOLD_MODES_M) is float
+    assert DEFAULT_ARRIVE_RADIUS_HOLD_MODES_M > 2.5 + 0.4, "ship_back 유지 거리 밖이어야 한다"
+    assert tuple(HOLD_MODES) == (2, 3)
+
+
+def test_hold_modes_fixed_radius_any_speed():
+    for m in (2, 3):
+        for v in (0.0, 1.0, 3.0, 6.0):
+            assert get_arrive_radius(m, v) == 3.5, (m, v)
+            assert get_arrive_radius(m, v, 4.0) == 4.0, (m, v)
+
+
+def test_hold_modes_boundary_349_arrive_351_not():
+    for m in (2, 3):
+        r = get_arrive_radius(m, 1.0)
+        assert _arrives(3.49, r) is True, m
+        assert _arrives(3.51, r) is False, m
+    # 옛 반경(저속 2.5 m)이면 3.49 도 미도착이었다 — 바뀐 것은 mode 2·3 뿐
+    assert _arrives(3.49, get_dynamic_arrive_radius(2, 1.0)) is False
+
+
+def test_other_modes_keep_old_radius():
+    for m in (0, 1, 5, 7, 8):
+        for v in (0.0, 1.0, 3.0, 6.0):
+            assert get_arrive_radius(m, v) == get_dynamic_arrive_radius(m, v), (m, v)
+            assert get_arrive_radius(m, v, 9.0) == get_dynamic_arrive_radius(m, v), (m, v)
+    assert get_arrive_radius(7, 1.0) == 2.0                 # 도킹 무관
+    assert get_arrive_radius(0, 1.0) == 2.5
+    assert _arrives(3.49, get_arrive_radius(0, 1.0)) is False
+
+
+def test_sanitize_hold_radius():
+    assert sanitize_hold_radius(3.5) == (3.5, True)
+    assert sanitize_hold_radius(4.0) == (4.0, True)
+    for bad in (0.0, -1.0, float('nan'), float('inf'), None, True, '3.5'):
+        v, ok = sanitize_hold_radius(bad)
+        assert ok is False and v == DEFAULT_ARRIVE_RADIUS_HOLD_MODES_M, bad
+
+
+def test_hold_radius_small_warn_threshold():
+    """리뷰 권고: 양수지만 ≤ 2.9 m(ship_back 유지 거리 바깥 끝)면 시작 WARN — 값은 그대로 쓴다."""
+    assert abs(SHIP_BACK_HOLD_OUTER_M - (2.5 + 0.4)) < 1e-9
+    for r in (0.5, 2.5, 2.9):
+        assert hold_radius_inside_hold_dist(r) is True, r
+        assert sanitize_hold_radius(r) == (r, True), "작아도 정상값 — 그대로 쓴다"
+    for r in (2.91, 3.5, 4.0):
+        assert hold_radius_inside_hold_dist(r) is False, r
+    assert hold_radius_inside_hold_dist(DEFAULT_ARRIVE_RADIUS_HOLD_MODES_M) is False
+
+
+def test_hold_outer_matches_ship_back_yaml():
+    """SHIP_BACK_HOLD_OUTER_M = ship_back.yaml hold_dist_m + dist_tol_m (읽기만 한다)."""
+    if not os.path.exists(_SHIP_BACK_YAML):
+        return
+    with open(_SHIP_BACK_YAML, encoding='utf-8') as f:
+        raw = yaml.safe_load(f)
+    p = next(iter(raw.values()))['ros__parameters']
+    outer = float(p['hold_dist_m']) + float(p['dist_tol_m'])
+    assert abs(outer - SHIP_BACK_HOLD_OUTER_M) < 1e-9, (outer, SHIP_BACK_HOLD_OUTER_M)
+
+
+def test_node_warns_small_hold_radius_once():
+    """노드: 잘못된 값이면 ERROR(기본값), 정상이지만 ≤ 2.9 면 WARN — 둘 중 하나만, 시작 때 1회."""
+    src = open(_NODE_SRC, encoding='utf-8').read()
+    i_init = src.index("'arrive_radius_hold_modes_m'")
+    seg = src[i_init:src.index("self.create_timer(self.period_sec")]
+    assert re.search(r"if not hold_r_ok:\s*\n\s*self\._log_hold_radius_invalid\(raw_hold_r\)"
+                     r"\s*\n\s*elif los_logic\.hold_radius_inside_hold_dist\("
+                     r"self\.arrive_radius_hold_m\):\s*\n\s*self\._log_hold_radius_small\(\)",
+                     seg), "선언 직후 if/elif 로 ERROR·WARN 을 나눠야 한다"
+    assert src.count("self._log_hold_radius_small()") == 1, "WARN 은 시작 때 한 곳에서만"
+    body = src[src.index("def _log_hold_radius_small"):]
+    body = body[:body.index("\n    def ", 1)]
+    assert "get_logger().warn(" in body
+    assert "위치유지 거리 안이라 DONE 뒤" in body and "부표 쪽으로 파고들 수 있음" in body
+
+
+def test_hold_radius_yaml_matches_code_default():
+    with open(_PARAMS_YAML, encoding='utf-8') as f:
+        p = yaml.safe_load(f)['/north_goal_angle']['ros__parameters']
+    v = p['arrive_radius_hold_modes_m']
+    assert type(v) is float, "arrive_radius_hold_modes_m 는 소수(.0)로"
+    assert v == DEFAULT_ARRIVE_RADIUS_HOLD_MODES_M, v
+
+
+def test_node_declares_hold_radius_before_timer():
+    src = open(_NODE_SRC, encoding='utf-8').read()
+    assert re.search(
+        r"declare_parameter\(\s*'arrive_radius_hold_modes_m',\s*"
+        r"los_logic\.DEFAULT_ARRIVE_RADIUS_HOLD_MODES_M\)", src)
+    assert src.index("'arrive_radius_hold_modes_m'") < src.index(
+        "self.create_timer(self.period_sec")
+    assert "los_logic.get_arrive_radius(" in src
+    assert "los_logic.get_dynamic_arrive_radius(" not in src, "노드는 get_arrive_radius 만 쓴다"
+
+
+# ---------------- 옛 녹화 파일 dwell 경고 (결정 6 보충 ③)
+def _wp(mode, dwell):
+    return [35.1, 128.5, mode, dwell]
+
+
+def test_stale_hold_dwell_threshold():
+    """1.0 은 경고 없음(경계 포함 안 함), 1.01 은 경고. 기본 문턱 1.0."""
+    assert HOLD_DWELL_WARN_SEC == 1.0
+    for m in (2, 3):
+        assert stale_hold_dwells([_wp(m, 1.0)]) == [], m
+        assert stale_hold_dwells([_wp(m, 0.5)]) == [], m
+        assert stale_hold_dwells([_wp(m, 1.01)]) == [(0, "", m, 1.01)], m
+        assert stale_hold_dwells([_wp(m, 3.0)]) == [(0, "", m, 3.0)], m
+
+
+def test_stale_hold_dwell_other_modes_ignored():
+    """mode 5·7·8(그리고 0·1)은 dwell 이 커도 무관."""
+    wps = [_wp(m, 60.0) for m in (0, 1, 5, 7, 8)]
+    assert stale_hold_dwells(wps) == []
+
+
+def test_stale_hold_dwell_reports_index_and_label():
+    raw = {"waypoints": [
+        {"구역": "WP0 게이트 시작", "lat": 35.1, "lon": 128.5, "mode": 0, "dwell": 3.0},
+        {"구역": "WP2 위치유지", "lat": 35.1, "lon": 128.5, "mode": 2, "dwell": 3.0},
+        {"구역": "WP3 부표(초록)", "lat": 35.1, "lon": 128.5, "mode": 3, "dwell": 0.5},
+        [35.1, 128.5, 3, 3.0],
+    ]}
+    hits = stale_hold_dwells(parse_waypoints(raw), waypoint_labels(raw))
+    assert hits == [(1, "WP2 위치유지", 2, 3.0), (3, "", 3, 3.0)], hits
+    assert stale_hold_dwells(parse_waypoints(raw)) == [(1, "", 2, 3.0), (3, "", 3, 3.0)]
+
+
+def test_default_waypoints_no_stale_dwell():
+    """기본 config/waypoints.yaml 은 경고가 나지 않는다(mode 2·3 dwell 0.5)."""
+    with open(_WAYPOINTS_YAML, encoding='utf-8') as f:
+        raw = yaml.safe_load(f)
+    assert stale_hold_dwells(parse_waypoints(raw), waypoint_labels(raw)) == []
+
+
+def test_node_warns_stale_hold_dwell_once_after_load():
+    """노드: 웨이포인트 로드(parse_waypoints) 직후 WARN 1회, 값은 그대로 반환."""
+    src = open(_NODE_SRC, encoding='utf-8').read()
+    body = src[src.index("    def _load_waypoints"):]
+    body = body[:body.index("\n    def ", 1)]
+    i_parse = body.index("wps = parse_waypoints(raw)")
+    i_stale = body.index("los_logic.stale_hold_dwells(wps, waypoint_labels(raw))")
+    assert i_parse < i_stale < body.index("return wps")
+    assert re.search(r"if stale:\s*\n\s*self\._log_stale_hold_dwells\(stale\)", body)
+    assert src.count("self._log_stale_hold_dwells(") == 1, "WARN 은 로드 때 한 곳에서만"
+    assert src.index("self.waypoints = self._load_waypoints(") < src.index(
+        "self.create_timer(self.period_sec")
+    log = src[src.index("def _log_stale_hold_dwells"):]
+    log = log[:log.index("\n    def ", 1)]
+    assert log.count("get_logger().warn(") == 1 and "for " not in log.split("warn(")[1]
+    assert "옛 녹화 파일일 수 있음" in log and "DONE 뒤 dwell 동안 부표 쪽으로 감" in log
+    assert "0.5 권장" in log
 
 
 def main():

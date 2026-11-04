@@ -254,6 +254,23 @@ def test_dwell_table_matches_source_yaml():
         assert DEFAULT_DWELL_BY_MODE.get(m) == d, (m, d, DEFAULT_DWELL_BY_MODE.get(m))
 
 
+def test_hold_modes_dwell_half_second():
+    """mode 2·3 dwell 0.5(계약서_전체코스_20261104 §10 추가 결정 3), 도킹·회피·토너먼트는 그대로."""
+    assert DEFAULT_DWELL_BY_MODE[2] == 0.5 and DEFAULT_DWELL_BY_MODE[3] == 0.5
+    assert DEFAULT_DWELL_BY_MODE[5] == 1.0 and DEFAULT_DWELL_BY_MODE[7] == 1.0
+    assert DEFAULT_DWELL_BY_MODE[8] == 3.0
+    if not _has_yaml():
+        return
+    import yaml
+    with open(_WAYPOINTS_YAML, encoding="utf-8") as f:
+        raw = yaml.safe_load(f)
+    want = {2: 0.5, 3: 0.5, 5: 1.0, 7: 1.0, 8: 3.0}
+    for it in raw["waypoints"]:
+        m = int(it["mode"])
+        if m in want:
+            assert float(it["dwell"]) == want[m], (it.get("구역"), m, it["dwell"])
+
+
 def test_next_expected_line():
     t = _fixture()
     if t is None:

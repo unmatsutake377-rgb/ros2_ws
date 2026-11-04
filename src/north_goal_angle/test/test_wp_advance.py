@@ -112,7 +112,7 @@ def test_step_wait_resets_t_start():
 
 
 # ---------------- 시나리오: mode 2 위치유지 중 north 가 넘기지 않음
-def _run(cands, t_end, timeout=120.0, dwell=3.0, mode=2, period=0.5, dist=2.4):
+def _run(cands, t_end, timeout=120.0, dwell=3.0, mode=2, period=0.5, dist=2.4, arrive_r=2.5):
     """cands: [(t_from, value or None)] — 그 시각부터 10 Hz 로 그 값 수신(None=발행 정지).
     north 틱(period)마다 판정. → (event, t) 또는 (None, t_end)."""
     last, last_t, ts = None, None, None
@@ -129,10 +129,57 @@ def _run(cands, t_end, timeout=120.0, dwell=3.0, mode=2, period=0.5, dist=2.4):
             last, last_t = cur, now
         if k % int(round(period / 0.1)) == 0:
             may = _may(mode, last, last_t, now)
-            ev, ts, _ = wp_step(now, 0.0, timeout, dist, 2.5, ts, dwell, may)
+            ev, ts, _ = wp_step(now, 0.0, timeout, dist, arrive_r, ts, dwell, may)
             if ev is not None:
                 return ev, round(now, 1)
         k += 1
+
+
+def test_scenario_hold_radius_done_advances_fast():
+    """추가 결정 3: 유지 거리(≈2.9 m)에서 HOLD → DONE. 반경 3.5·dwell 0.5 → HOLD 중엔 안 넘기고
+    DONE 직후(한 틱 + dwell) 넘긴다 — 부표 좌표로 들어가지 않는다."""
+    ev, t = _run([(0.0, 50000.0), (40.0, 20000.0)], 200.0, dwell=0.5, dist=2.9, arrive_r=3.5)
+    assert ev == 'arrive' and 40.0 < t <= 41.0, (ev, t)
+
+
+def test_scenario_search_inside_hold_radius_advances():
+    """카메라 실패(SEARCH 20000 계속)면 반경 3.5 안에서 dwell 0.5 만에 진행(부표 접촉 전).
+    🚨 거꾸로, ship_back 이 HOLD(비-20000)를 내기 전에 3.5 m 안에 0.5 s 머물면 WP 를 넘긴다."""
+    ev, t = _run([(0.0, 20000.0)], 200.0, dwell=0.5, dist=3.4, arrive_r=3.5)
+    assert ev == 'arrive' and t <= 1.0, (ev, t)
+
+
+# ---------------- 추가 결정 6: HOLD 중 놓침 → ship_back 재획득 정지 5 s (north 쪽 고정)
+# ship_back 은 HOLD 에서 부표를 lost_sec(2 s) 놓치면 SEARCH 로 가면서 reacquire_stop_sec(5 s) 동안
+# STOP_HOLD(50000) 를 낸다. north 는 반경 3.5·dwell 0.5 라 이미 반경 안(유지 거리 ≈2.9 m)이다.
+_T_LOST = 30.0        # HOLD → SEARCH 전환 시각(놓친 지 lost_sec 뒤)
+_REACQ_STOP = 5.0     # ship_back reacquire_stop_sec
+
+
+def test_scenario_lost_reacquire_stop_then_release():
+    """HOLD(50000 대용) → 놓침·재획득 정지 50000 5 s → 못 잡아 20000: 정지 5 s 동안 진행 안 하고,
+    20000 이 들어온 뒤 ~1 s 안에(한 틱 + dwell 0.5) 진행한다."""
+    t_rel = _T_LOST + _REACQ_STOP
+    ev, t = _run([(0.0, 50000.0), (_T_LOST, 50000.0), (t_rel, 20000.0)], 200.0,
+                 dwell=0.5, dist=2.9, arrive_r=3.5)
+    assert ev == 'arrive', ev
+    assert t_rel < t <= t_rel + 1.0, f"정지 5 s 동안(<{t_rel}) 진행 금지, 20000 뒤 ~1 s 안: {t}"
+
+
+def test_scenario_lost_reacquired_then_done():
+    """재획득 정지 중 비전 재획득 → HOLD(비-20000) 이어짐 → DONE 20000: 그 사이 진행 안 하고
+    DONE 직후 바로(~1 s 안) 진행."""
+    t_done = 50.0
+    ev, t = _run([(0.0, 50000.0), (_T_LOST, 50000.0), (_T_LOST + 2.0, 25.0),
+                  (t_done, 20000.0)], 200.0, dwell=0.5, dist=2.9, arrive_r=3.5)
+    assert ev == 'arrive', ev
+    assert t_done < t <= t_done + 1.0, f"재획득 뒤 HOLD 중 진행 금지, DONE 뒤 ~1 s 안: {t}"
+
+
+def test_scenario_lost_without_stop_would_cut():
+    """대조(결정 6 이전): 놓치자마자 SEARCH 20000 이면 반경 3.5 안이라 ~1 s 만에 진행 — 과제 끊김."""
+    ev, t = _run([(0.0, 50000.0), (_T_LOST, 20000.0)], 200.0, dwell=0.5, dist=2.9, arrive_r=3.5)
+    assert ev == 'arrive' and _T_LOST < t <= _T_LOST + 1.0, (ev, t)
 
 
 def test_scenario_hold_then_done():

@@ -99,7 +99,7 @@ def calc_guidance_bearing(p_lat, p_lon, wp_lat, wp_lon, boat_lat, boat_lon,
       · s ≥ L 이고 WP 거리 ≥ 도착 반경 → 지나쳤다 → 현위치→WP 직접 방위, XTE 0
       · 그 밖(지나치기 전, 또는 반경 안) → 기존 calc_los_bearing 그대로
     XTE 0 을 돌려주므로 노드의 ILOS 적분은 직접 방위 동안 그대로 멈춘다(동결).
-    도착 반경은 노드가 get_dynamic_arrive_radius 로 구해 넘긴다(도착 판정과 같은 값).
+    도착 반경은 노드가 get_arrive_radius 로 구해 넘긴다(도착 판정과 같은 값).
     """
     s, path_len = along_track(p_lat, p_lon, wp_lat, wp_lon, boat_lat, boat_lon)
     if path_len < PATH_MIN_LEN_M:
@@ -109,6 +109,67 @@ def calc_guidance_bearing(p_lat, p_lon, wp_lat, wp_lon, boat_lat, boat_lon,
     bearing, xte = calc_los_bearing(p_lat, p_lon, wp_lat, wp_lon, boat_lat, boat_lon,
                                     lookahead_m, integral_xte, ki)
     return bearing, xte, False
+
+
+# ---- 위치유지·탐색(mode 2·3) 도착 반경 (계약서_전체코스_20261104 §10 추가 결정 3) ----
+# 속도 반경(2.5 m)은 ship_back 유지 거리 안이라, ship_back 이 손 뗀(20000) 뒤 north 가 dwell 을
+# 채우려 부표 좌표로 들어가 접촉했다 → mode 2·3 은 유지 거리 밖까지 넓힌 고정 반경을 쓴다.
+# 노드 파라미터 arrive_radius_hold_modes_m (north_goal_angle.yaml 과 같은 값 — 테스트가 잡는다).
+# 3.5 > ship_back hold_dist 2.5 + tol 0.4 = 2.9 (유지 위치에서 이미 도착 반경 안이어야 한다).
+DEFAULT_ARRIVE_RADIUS_HOLD_MODES_M = 3.5
+HOLD_MODES = (2, 3)
+# ship_back 유지 거리 바깥 끝 = hold_dist_m 2.5 + dist_tol_m 0.4 (ship_back.yaml). 반경이 이 이하면
+# 유지 위치가 반경 밖이라 DONE(20000) 뒤 north 가 부표 쪽으로 파고든다 → 시작 WARN(값은 그대로 쓴다).
+# ship_back.yaml 의 두 값을 바꾸면 여기도 같이 바꾼다(테스트가 묶어 둔다).
+SHIP_BACK_HOLD_OUTER_M = 2.9
+
+
+def sanitize_hold_radius(value, default=DEFAULT_ARRIVE_RADIUS_HOLD_MODES_M):
+    """arrive_radius_hold_modes_m 검증 → (쓸 값, 정상 여부). 유한한 양수 실수만 정상.
+
+    bool·문자열·NaN·inf·0 이하는 잘못된 값 → (default, False). 노드가 시작 ERROR 를 낸다.
+    """
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return float(default), False
+    v = float(value)
+    if not math.isfinite(v) or v <= 0.0:
+        return float(default), False
+    return v, True
+
+
+def hold_radius_inside_hold_dist(radius_m, hold_outer_m=SHIP_BACK_HOLD_OUTER_M):
+    """정상(양수) 반경이 ship_back 유지 거리 바깥 끝 이하인가 → 노드가 시작 WARN 1회."""
+    return radius_m <= hold_outer_m
+
+
+# ---- 옛 녹화 파일 dwell 경고 (계약서_전체코스_20261104 §10 결정 6 보충 ③) ----
+# mode 2·3 dwell 은 0.5 s 로 줄였다(결정 3). 재빌드 전 녹화 도구 템플릿·옛 녹화 파일은 3.0 이라
+# DONE(20000) 뒤 dwell 동안 north 가 WP(부표) 쪽으로 간다 → 시작 때 WARN 1회. 값은 그대로 쓴다.
+HOLD_DWELL_WARN_SEC = 1.0
+
+
+def stale_hold_dwells(waypoints, labels=(), hold_modes=HOLD_MODES,
+                      limit_sec=HOLD_DWELL_WARN_SEC):
+    """mode 2·3 이면서 dwell > limit_sec 인 WP → [(순번, 구역, mode, dwell), ...].
+
+    waypoints 는 parse_waypoints 결과 [[lat, lon, mode, dwell], ...]. labels 는 같은 순서의
+    구역 이름(waypoint_labels) — 모자라면 ''. limit_sec 와 같으면 경고 대상이 아니다.
+    """
+    out = []
+    for i, wp in enumerate(waypoints):
+        mode, dwell = wp[2], wp[3]
+        if mode in hold_modes and dwell > limit_sec:
+            label = labels[i] if i < len(labels) else ""
+            out.append((i, label, mode, dwell))
+    return out
+
+
+def get_arrive_radius(wp_mode, speed_mps, hold_radius_m=DEFAULT_ARRIVE_RADIUS_HOLD_MODES_M,
+                      hold_modes=HOLD_MODES, dock_mode=7):
+    """노드가 쓰는 도착 반경(m). mode 2·3 은 hold_radius_m 고정, 그 밖은 get_dynamic_arrive_radius."""
+    if wp_mode in hold_modes:
+        return hold_radius_m
+    return get_dynamic_arrive_radius(wp_mode, speed_mps, dock_mode)
 
 
 def get_dynamic_arrive_radius(wp_mode, speed_mps, dock_mode=7):

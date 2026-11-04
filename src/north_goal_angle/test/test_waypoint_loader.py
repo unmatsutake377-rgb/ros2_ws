@@ -7,7 +7,7 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from north_goal_angle.waypoint_loader import (  # noqa: E402
-    parse_waypoints, WaypointError, VALID_MODES,
+    parse_waypoints, WaypointError, VALID_MODES, waypoint_labels,
 )
 
 _p = _t = 0
@@ -134,6 +134,15 @@ def test_error_message_has_index():
         assert False, "예외가 났어야 한다"
     except WaypointError as e:
         assert "1번째" in str(e), f"몇 번째인지 안 알려줌: {e}"
+
+
+def test_waypoint_labels():
+    """구역 이름은 같은 순서로. 리스트 형식·이름 없는 항목은 ''."""
+    assert waypoint_labels(GOOD_DICT) == ["게이트", "도킹"]
+    assert waypoint_labels(GOOD_LIST) == ["", ""]
+    raw = {"waypoints": [{"lat": 35.1, "lon": 128.5, "mode": 0, "dwell": 3.0},
+                         {"label": "x", "lat": 35.1, "lon": 128.5, "mode": 2, "dwell": 0.5}]}
+    assert waypoint_labels(raw) == ["", "x"]
 
 
 def main():

@@ -95,6 +95,20 @@ def parse_waypoints(raw, *, lat_min=LAT_MIN, lat_max=LAT_MAX,
     return out
 
 
+def waypoint_labels(raw):
+    """parse_waypoints 를 통과한 raw → 각 WP 의 구역 이름 리스트(같은 순서).
+
+    dict 형식은 '구역'(없으면 'label'), 리스트 형식은 ''. 로그에 어느 WP 인지 적는 데만 쓴다.
+    """
+    out = []
+    for it in raw["waypoints"]:
+        if isinstance(it, dict):
+            out.append(str(it.get("구역", it.get("label", ""))))
+        else:
+            out.append("")
+    return out
+
+
 def _as_float(v, where, name):
     try:
         return float(v)
