@@ -123,8 +123,8 @@ class Probe(Node):
     def __init__(self, colors, seconds, min_area, log_csv=None, log_every=5.0):
         super().__init__('vision_probe')
         params, path = load_vision_yaml()
-        self.hfov = float(params.get('hfov_deg', 80.32))
-        topic = params.get('image_topic', '/camera/camera/color/image_raw')
+        self.hfov = float(params.get('hfov_deg', 63.9))   # 폴백 = OAK 640×360 (vision.yaml 과 같게)
+        topic = params.get('image_topic', '/oak/rgb/image_raw')
         self.ranges = hsv_ranges.load(
             lambda n, d: params.get(n, d), hsv_ranges.VALID_COLORS,
             on_error=lambda m: print(m))
