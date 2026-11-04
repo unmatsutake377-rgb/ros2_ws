@@ -7,7 +7,7 @@
 계약서 docs/문제와작업/계약서_각도클램프_20261104.md §1 B1 · §6 · §10.
 규약: /candidate_angle 180.0 정확 일치 = 후진(ship_direction (B) 예외). APPROACH 조향이 우연히 180.0 이
   되지 않도록 발행 직전에만 ±STEER_LIMIT_DEG(80) 로 자른다(부호 그대로, rel_to_raw 없음).
-  BACKOFF 180.0·SPIN 5000/6000·STOP 50000 은 그대로. ALIGN 판정·approach_decision 은 클램프 전 값.
+  BACKOFF 180.0·SPIN 5000/6000·STOP 50000·DONE(원인별) 은 그대로. ALIGN 판정·approach_decision 은 클램프 전 값.
 
 ship_dock.py 는 rclpy 를 import 하므로 Mac(ROS 없음)에선 그대로 못 읽는다.
 → tools/sim/dock_sim.py 와 같은 rclpy 스텁 노드로 **실제 노드 코드**를 import 한다.
@@ -253,10 +253,17 @@ def test_align_spin_unchanged_regression():
     assert out == [SD.SPIN_LEFT], f"out={out}"
 
 
-def test_contact_and_done_stop():
-    for st in ('CONTACT', 'DONE'):
-        _, out = tick(st, 0.0, 1.2)
-        assert out == [50000.0], f"{st} → {out}"
+def test_contact_stop_and_done_gps():
+    """CONTACT 는 정지 50000. DONE 은 원인별(계약서_전체코스_20261104 C4 · §10-추가):
+    후진 이탈 완료 20000(GPS 가 다음 WP 로), SEARCH 타임아웃·후진 타임아웃·원인 모름 50000."""
+    _, out = tick('CONTACT', 0.0, 1.2)
+    assert out == [50000.0], f"CONTACT → {out}"
+    for reason, want in (('backoff', 20000.0), ('search_timeout', 50000.0),
+                         ('backoff_timeout', 50000.0), (None, 50000.0)):
+        n = make_node('DONE', 0.0, 1.2)
+        n.done_reason = reason
+        n.timer_cb()
+        assert n.pub_candidate.values == [want], f"DONE({reason}) → {n.pub_candidate.values}"
 
 
 def test_nan_not_published():

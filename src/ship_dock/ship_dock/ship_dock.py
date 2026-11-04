@@ -12,7 +12,7 @@
         "그 표식까지 얼마"가 아니라 "전방에 뭔가 얼마나 가까운가"만 알면 된다.
         도크에 접근 중이면 전방 최소거리 = 도크까지 거리다. 각도 정합 문제가 통째로 사라진다.
   [4] 정면 접근(head-on) FSM. 비스듬한 접근이 모든 문제의 근원이다(도형 면적 감소, 정합 오차).
-      INIT → SEARCH → ALIGN → APPROACH → CONTACT → BACKOFF → DONE
+      (TRANSIT →) INIT → SEARCH → ALIGN → APPROACH → CONTACT → BACKOFF → DONE
       ALIGN 은 **제자리 선회**로 표식을 정면에 놓는다 (2단계에서 spin_forward_pwm=1500 로
       진짜 제자리 선회가 됐기 때문에 가능해졌다. 작년 SPIN 은 순항속도 원이라 도크에 부딪혔다).
   [5] SPIN 규약: 5000=우선회, 6000=좌선회 (CLAUDE.md 3-9 상수표)
@@ -20,6 +20,16 @@
       표식 방위로 조향하며 접근한다 (dock_sim 실패 3/500 이 전부 접안 직전 선회→관성→표식 유실).
       판단은 dock_fsm_logic.approach_decision (순수 함수, ROS 없이 테스트).
   [7] APPROACH 조향 발행만 ±STEER_LIMIT_DEG(80) 클램프 — 180.0(후진 신호)이 우연히 나가지 않게.
+  [8] TRANSIT (계약서_전체코스_20261104 C4): mode 7 진입 첫 상태. 20000 을 내 GPS 주행에 맡긴다.
+      /goal_distance 가 신선(goal_dist_stale_sec)하고 dock_engage_dist_m 미만이면 INIT.
+      진입 후 GOAL_DIST_ENTRY_GUARD_SEC 지나 받은 값만 쓴다(직전 WP 거리 배제). 모르면 TRANSIT 유지.
+      DONE 은 원인별(계약서 §10-추가·추가 결정 2):
+        · 후진 이탈 완료(backoff_dist 도달) → 20000 → GPS 가 다음 WP(이탈점)로.
+        · SEARCH 타임아웃 → WP8(칸 입구) 동안 STOP_HOLD, north 가 WP9(이탈점)로 넘어간 뒤 20000.
+          (WP8 동안 20000 이면 칸 안으로 몰고 들어간다 — 카메라 끈 시뮬 20/20 칸막이 접촉)
+        · 후진 타임아웃·원인 모름 → STOP_HOLD (이탈 거리 미확인 = 아직 도크 앞일 수 있다).
+      WP8→WP9 는 7→7 이라 /wp_mode 로 안 보인다 → /wp_remaining_time 리셋으로 감지한다(wp_reset_detected).
+      7→7(WP8→WP9)은 리셋하지 않는다 — 이탈점으로 가는 동안 도킹 상태 유지.
 
 ⚠️ 이 노드는 mode 7 에서 /candidate_angle 의 **유일한 발행자**다.
    (6a 에서 north_goal_angle 의 mode-7 폴백을 제거했다 — 안 그러면 발행자가 둘이라 조향이 튄다.)
@@ -61,6 +71,52 @@ LIDAR_FORWARD_DEG = 80.0     # LiDAR 프레임에서 정면에 해당하는 각�
 # 180.0 정확 일치는 후진(260) 예외라, APPROACH 조향이 우연히 180 이면 후진한다 → 발행 직전 클램프.
 # 튜닝값이 아니라 하류 프로토콜 상수(LIDAR_FORWARD_DEG 와 같은 성격) — 파라미터로 두지 않는다.
 STEER_LIMIT_DEG = 80.0
+# [8] mode 7 진입 후 이 시간 이상 지나서 받은 /goal_distance 만 쓴다. north 는 한 틱 안에서
+# 거리(현재 WP) → /wp_mode 순으로 내므로 첫 mode 7 직전 거리는 이미 WP8 거리다. 이 guard 는
+# 토픽 간 순서 뒤바뀜·지연(0.5~1.0 s)으로 직전 WP(도착해 ~0 m) 거리가 늦게 오는 경우를 막는 보수적 장치.
+# 한계: Float32 에 시각이 없어 1.0 s 넘게 밀려 도착한 옛 메시지는 못 거른다(수신 시각 기준).
+# 계약서 §2-3 고정값(north 주기 0.5 s × 2) — 파라미터 목록(§4)에 없어 상수로 둔다.
+GOAL_DIST_ENTRY_GUARD_SEC = 1.0
+# [8] north /wp_remaining_time(= 시간 초과 − WP 안 경과)은 한 WP 안에서 줄기만 한다(시계 기준, GPS 무관).
+# 이 값보다 크게 늘면 north 가 다음 WP 로 넘어간 것(wp_enter 리셋). mode 7 안 최소 실제 증가 ≈ dwell 1.0 s
+# (도착 틱 ≤ 150 − 1.0 → 다음 WP 150), 시간 초과면 0 → 150. Float32 반올림(150 근처 ~1e-5)보다 훨씬 크다.
+WP_RESET_EPS_SEC = 0.25
+# 수신 간격이 이보다 길면(north 주기 0.5 s 한 틱이라도 빠짐 — MANUAL→AUTO 복귀·north 정지 등) 기준을 버린다.
+# north 는 AUTO 가 아니면 /wp_remaining_time 을 안 내고 WP 진입 시각을 지운다 → 복귀 때 150 이 다시 온다.
+# 그걸 리셋으로 보면 WP8(칸 입구)인데 20000 이 나간다. AUTO 중 실제 전환은 0.5 s 간격이라 그대로 잡힌다.
+WP_REMAIN_GAP_SEC = 0.8
+
+
+def wp_reset_detected(prev_remain, new_remain, eps=WP_RESET_EPS_SEC):
+    """[8] north 가 다음 WP 로 넘어갔나 — /wp_remaining_time 이 eps 보다 크게 늘었나. 순수 함수.
+
+    prev_remain 이 None(기준 없음)이거나 값이 비유한이면 False(모르면 넘어간 걸로 안 본다).
+    """
+    if prev_remain is None or new_remain is None:
+        return False
+    if not (math.isfinite(prev_remain) and math.isfinite(new_remain)):
+        return False
+    return new_remain > prev_remain + eps
+
+
+def transit_engage(goal_dist, goal_dist_t, mode_enter_t, now,
+                   engage_dist, stale_sec, entry_guard_sec):
+    """[8] TRANSIT 한 틱: 도킹 FSM(INIT)으로 넘어가도 되는가. 순수 함수(ROS 안 씀). → bool.
+
+    goal_dist·goal_dist_t : 마지막 /goal_distance 값(m)·받은 시각. 없으면 None.
+    mode_enter_t          : mode 7 에 들어온 시각. 없으면 None.
+    모르면 False(TRANSIT 유지): 값·시각 없음, 비유한·음수, 진입 후 guard 전 수신, stale.
+    경계: 수신 − 진입 == guard 는 사용, 지금 − 수신 == stale 은 신선, 거리 == engage 는 진입 안 함.
+    """
+    if goal_dist is None or goal_dist_t is None or mode_enter_t is None:
+        return False
+    if not math.isfinite(goal_dist) or goal_dist < 0.0:
+        return False
+    if (goal_dist_t - mode_enter_t) < entry_guard_sec:
+        return False
+    if (now - goal_dist_t) > stale_sec:
+        return False
+    return goal_dist < engage_dist
 
 
 # QoS-B: /scan 표준 sensor-data QoS. 작년은 depth=10 기본 RELIABLE 이었다.
@@ -125,7 +181,8 @@ class ShipDock(Node):
 
         # 시간
         self.init_wait_sec = float(self.declare_parameter("init_wait_sec", 3.0).value)
-        self.search_timeout_sec = float(self.declare_parameter("search_timeout_sec", 25.0).value)
+        # 60 s: 일시적 놓침도 재탐색할 여유, mode 7 WP 시간 초과(150 s) 안 (계약서 §10-추가, 이전 25)
+        self.search_timeout_sec = float(self.declare_parameter("search_timeout_sec", 60.0).value)
         self.align_timeout_sec = float(self.declare_parameter("align_timeout_sec", 15.0).value)
         self.approach_timeout_sec = float(self.declare_parameter("approach_timeout_sec", 30.0).value)
         self.contact_hold_sec = float(self.declare_parameter("contact_hold_sec", 3.0).value)  # ⚠️ 규정 확인
@@ -135,12 +192,31 @@ class ShipDock(Node):
         self.image_stale_sec = float(self.declare_parameter("image_stale_sec", 1.0).value)
         self.scan_stale_sec = float(self.declare_parameter("scan_stale_sec", 1.0).value)
 
+        # [8] TRANSIT → INIT 진입 (GPS 거리 /goal_distance 기준). 대회 launch 는 yaml 을 안 넘긴다
+        #     → 이 코드 기본값이 대회값. config/ship_dock.yaml 과 같게 유지.
+        self.dock_engage_dist_m = float(
+            self.declare_parameter("dock_engage_dist_m", 12.0).value)   # ⚠️ 실측 필요
+        self.goal_dist_stale_sec = float(
+            self.declare_parameter("goal_dist_stale_sec", 2.0).value)
+        if not math.isfinite(self.dock_engage_dist_m) or self.dock_engage_dist_m <= 0.0:
+            self.get_logger().warn(
+                f"dock_engage_dist_m={self.dock_engage_dist_m} 이상 → 기본값 12.0 m 사용")
+            self.dock_engage_dist_m = 12.0
+        if not math.isfinite(self.goal_dist_stale_sec) or self.goal_dist_stale_sec <= 0.0:
+            self.get_logger().warn(
+                f"goal_dist_stale_sec={self.goal_dist_stale_sec} 이상 → 기본값 2.0초 사용")
+            self.goal_dist_stale_sec = 2.0
+
         # ---- 구독/발행 (토픽 이름 불변, CLAUDE.md 1-3) ----
         self.pub_candidate = self.create_publisher(Float32, "/candidate_angle", qos)
 
         self.create_subscription(Int32, "/wp_mode", self.wp_mode_cb, qos)
         self.create_subscription(Float32, "/image_angle", self.image_angle_cb, qos)
         self.create_subscription(LaserScan, "/scan", self.scan_cb, SCAN_QOS)
+        # [8] north_goal_angle 의 현재 WP 까지 거리(m). TRANSIT → INIT 판단에만 쓴다.
+        self.create_subscription(Float32, "/goal_distance", self.goal_distance_cb, qos)
+        # [8] north 의 현재 WP 남은 시간. 리셋(증가) = WP8→WP9 전환 감지에만 쓴다(7→7 이라 /wp_mode 로 안 보임).
+        self.create_subscription(Float32, "/wp_remaining_time", self.wp_remaining_cb, qos)
         # ※ /image_distance 는 **구독하지 않는다**. 카메라 뎁스라 OAK-1 에서 죽는다. [2]
 
         # ---- 상태 ----
@@ -150,9 +226,18 @@ class ShipDock(Node):
         self.latest_scan = None
         self.last_scan_t = None
 
-        self.state = "INIT"
+        self.goal_dist = None
+        self.goal_dist_t = None
+        self.mode_enter_t = None        # mode 7 에 들어온 시각 [8]
+
+        self.state = "TRANSIT"
         self.state_t = None
         self.standoff_aligned = False   # standoff 에서 정밀 재정렬을 이미 했는가 (1회만)
+        self.done_reason = None         # DONE 원인: 'backoff' | 'search_timeout' | 'backoff_timeout'
+        self.remain_prev = None         # 진입 guard 뒤 마지막 /wp_remaining_time (WP 전환 감지 기준)
+        self.remain_t = None            # 그 값을 받은 시각 (간격 > WP_REMAIN_GAP_SEC 면 기준 버림)
+        self.wp_resets = 0              # mode 7 진입 뒤 감지한 WP 전환 수 (1 이상 = WP8 지남)
+        self.wp_reset_logged = False
 
         self.create_timer(self.period_sec, self.timer_cb)
 
@@ -160,7 +245,9 @@ class ShipDock(Node):
             f"ship_dock 시작: active_wp_mode={self.active_wp_mode} (작년엔 9 라 1년간 침묵했다).\n"
             f"   거리는 LiDAR 전방 ±{self.front_sector_half_deg}° 최소거리만 사용 (카메라 뎁스 안 씀).\n"
             f"   standoff={self.standoff_dist_m}m contact={self.contact_dist_m}m "
-            f"realign_min={self.realign_min_dist_m}m (이 안에서는 재정렬 선회 없음)"
+            f"realign_min={self.realign_min_dist_m}m (이 안에서는 재정렬 선회 없음)\n"
+            f"   mode 7 진입 = TRANSIT(20000, GPS 주행) → /goal_distance < "
+            f"{self.dock_engage_dist_m}m(신선 {self.goal_dist_stale_sec}s) 이면 INIT"
         )
 
     # ───────────────────────── 콜백 ─────────────────────────
@@ -168,10 +255,17 @@ class ShipDock(Node):
         with self.lock:
             mode = int(msg.data)
             if mode != self.wp_mode and mode != self.active_wp_mode:
-                # 내 차례가 아니다 → FSM 초기화
-                self.state = "INIT"
+                # 내 차례가 아니다 → FSM 초기화 (다음 진입은 TRANSIT 부터)
+                self.state = "TRANSIT"
                 self.state_t = None
                 self.standoff_aligned = False
+                self.mode_enter_t = None
+                self.done_reason = None
+                self._reset_wp_track()
+            elif mode == self.active_wp_mode and self.wp_mode != self.active_wp_mode:
+                # 다른 모드 → 7 진입. 7→7(WP8→WP9)은 여기 안 온다 = 리셋 안 함 [8]
+                self.mode_enter_t = time.monotonic()
+                self._reset_wp_track()
             self.wp_mode = mode
 
     def image_angle_cb(self, msg):
@@ -183,6 +277,40 @@ class ShipDock(Node):
         with self.lock:
             self.latest_scan = msg
             self.last_scan_t = time.monotonic()
+
+    def _reset_wp_track(self):
+        self.remain_prev = None
+        self.remain_t = None
+        self.wp_resets = 0
+        self.wp_reset_logged = False
+
+    def wp_remaining_cb(self, msg):
+        """[8] mode 7 진입 guard 뒤 값만 본다 — 직전 모드 WP 의 늦게 온 값이 기준이 되지 않게."""
+        with self.lock:
+            now = time.monotonic()
+            if self.wp_mode != self.active_wp_mode or self.mode_enter_t is None:
+                return
+            if (now - self.mode_enter_t) < GOAL_DIST_ENTRY_GUARD_SEC:
+                return
+            remain = float(msg.data)
+            if not math.isfinite(remain):
+                return
+            if self.remain_t is not None and (now - self.remain_t) > WP_REMAIN_GAP_SEC:
+                self.get_logger().warn(
+                    f"/wp_remaining_time {now - self.remain_t:.1f}s 끊김 → WP 전환 기준 버림 "
+                    f"(복귀 첫 값 {remain:.1f} 은 전환으로 안 봄)")
+                self.remain_prev = None
+            if wp_reset_detected(self.remain_prev, remain):
+                self.get_logger().info(
+                    f"north WP 전환 감지: /wp_remaining_time {self.remain_prev:.1f} → {remain:.1f}")
+                self.wp_resets += 1
+            self.remain_prev = remain
+            self.remain_t = now
+
+    def goal_distance_cb(self, msg):
+        with self.lock:
+            self.goal_dist = float(msg.data)
+            self.goal_dist_t = time.monotonic()
 
     # ───────────────────────── 보조 ─────────────────────────
     def set_state(self, new_state):
@@ -263,6 +391,8 @@ class ShipDock(Node):
             now = time.monotonic()
             if self.state_t is None:
                 self.state_t = now
+            if self.mode_enter_t is None:
+                self.mode_enter_t = now      # 진입 콜백을 못 거친 경우(첫 틱 = 진입)
 
             dist = self.front_min_dist(now)
             has_marker = self.marker_ok(now)
@@ -274,6 +404,28 @@ class ShipDock(Node):
                     "LiDAR 거리 없음 → 도킹 접근 중단(정지)", throttle_duration_sec=2.0)
                 self.publish(STOP_HOLD)
                 return
+
+            # ---- TRANSIT [8]: GPS 주행(20000)으로 WP8 쪽으로. 가까워지면 INIT. 모르면 유지 ----
+            if self.state == "TRANSIT":
+                if not transit_engage(
+                        self.goal_dist, self.goal_dist_t, self.mode_enter_t, now,
+                        self.dock_engage_dist_m, self.goal_dist_stale_sec,
+                        GOAL_DIST_ENTRY_GUARD_SEC):
+                    if (now - self.mode_enter_t) > (
+                            GOAL_DIST_ENTRY_GUARD_SEC + self.goal_dist_stale_sec) and (
+                            self.goal_dist_t is None
+                            or (now - self.goal_dist_t) > self.goal_dist_stale_sec
+                            or not math.isfinite(self.goal_dist) or self.goal_dist < 0.0):
+                        self.get_logger().warn(
+                            f"/goal_distance 없음·stale·비정상({self.goal_dist}) → "
+                            "TRANSIT 유지(20000, GPS 주행)",
+                            throttle_duration_sec=5.0)
+                    self.publish(CANDIDATE_INVALID)
+                    return
+                self.get_logger().info(
+                    f"🛳 /goal_distance {self.goal_dist:.1f} m < "
+                    f"{self.dock_engage_dist_m} m → 도킹 시작")
+                self.set_state("INIT")           # 아래 INIT 이 이 틱에 STOP_HOLD 를 낸다
 
             # ---- INIT: 잠깐 멈춰 안정화 ----
             if self.state == "INIT":
@@ -288,7 +440,10 @@ class ShipDock(Node):
                     self.set_state("ALIGN")
                     return
                 if self.elapsed() > self.search_timeout_sec:
-                    self.get_logger().error("도킹 표식을 못 찾음(SEARCH 타임아웃) → 정지")
+                    self.get_logger().error(
+                        "도킹 표식을 못 찾음(SEARCH 타임아웃) → DONE — WP8(칸 입구) 동안 정지, "
+                        "WP9 전환 감지 시 20000")
+                    self.done_reason = "search_timeout"
                     self.set_state("DONE")
                     return
                 self.publish(SPIN_RIGHT if self.sweep_right else SPIN_LEFT)
@@ -345,16 +500,41 @@ class ShipDock(Node):
             # ---- BACKOFF: 후진으로 빠져나온다 ----
             if self.state == "BACKOFF":
                 if dist is not None and dist >= self.backoff_dist_m:
+                    self.get_logger().info(
+                        f"후진 이탈 완료(전방 {dist:.1f} m) → DONE(20000, GPS 가 다음 WP 로)")
+                    self.done_reason = "backoff"
                     self.set_state("DONE")
                     return
                 if self.elapsed() > self.backoff_timeout_sec:
+                    # 이탈 거리를 확인 못 함 → 아직 도크 앞일 수 있다. 모르면 GPS 에 넘기지 않는다.
+                    self.get_logger().error(
+                        f"후진 타임아웃({self.backoff_timeout_sec}s, 전방 "
+                        f"{'없음' if dist is None else f'{dist:.1f} m'}) → DONE(정지 50000 유지)")
+                    self.done_reason = "backoff_timeout"
                     self.set_state("DONE")
                     return
                 self.publish(REVERSE_REL)    # 상대 180° = 후진
                 return
 
-            # ---- DONE: 정지 유지 (mode 7 동안 계속 발행해야 한다) ----
-            self.publish(STOP_HOLD)
+            # ---- DONE [8]: 원인별. mode 7 동안 매 틱 발행. 7→7 은 리셋 안 함 ----
+            if self.done_reason == "backoff":
+                self.publish(CANDIDATE_INVALID)          # 후진 이탈 완료 → GPS 로 이탈점
+                return
+            if self.done_reason == "search_timeout" and self.wp_resets > 0:
+                if not self.wp_reset_logged:
+                    self.get_logger().info(
+                        "north WP 전환 감지(/wp_remaining_time 리셋) → 칸 입구 지남, "
+                        "DONE 20000(GPS 로 이탈점)")
+                    self.wp_reset_logged = True
+                self.publish(CANDIDATE_INVALID)
+                return
+            if self.done_reason == "search_timeout" and self.remain_prev is None and (
+                    now - self.mode_enter_t) > (
+                    GOAL_DIST_ENTRY_GUARD_SEC + self.goal_dist_stale_sec):
+                self.get_logger().warn(
+                    "/wp_remaining_time 없음 → WP 전환 감지 불가, DONE 정지 유지",
+                    throttle_duration_sec=5.0)
+            self.publish(STOP_HOLD)                      # WP8 동안·후진 타임아웃·원인 모름
 
 
 def main(args=None):

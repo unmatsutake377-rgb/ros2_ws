@@ -19,6 +19,11 @@
     — 시뮬은 ship_dock 이 매 틱 발행하므로 항상 신선하다. 실물 후방 가림·후진 속도는 ⚠️ 미확인.
   · '칸 안' 판정: 접안 판정(contact) 순간 배 중심이 목표 칸 중심 ±0.5 m(칸 폭) 안, 선체 전체는 ±0.21 m(0.5 − half_width 0.29).
   · 모르는 것(도크 실제 규격·실제 추력 응답)은 가정이다 — 그림·보고서에 그렇게 적는다.
+  · mode 7 진입은 /wp_mode 콜백(t=0)으로, /goal_distance 는 north 처럼 0.5 s 마다 목표 칸 입구
+    (WP8 = 표식 앞 0.5 m)까지 거리를 넣는다. 출발 거리 3~10 m < dock_engage_dist_m 12 m 라
+    TRANSIT 은 진입 후 1.0 s(직전 WP 거리 배제 대기)에 INIT 으로 넘어간다(계약서_전체코스_20261104 C4).
+    20000(TRANSIT·DONE)은 ship_direction (C) GPS 주행을 '입구 방위로 비례 조향(±80°, 회피 없음)'으로
+    근사한다(gps_steer). DONE 에서 런이 끝나므로 이 근사는 TRANSIT 1 s 에만 쓰인다.
 
 재현: python3 tools/sim/dock_sim.py   → docs/전달용/배치도/dock_sim.png, tools/sim/out/dock_sim.csv
 """
@@ -170,6 +175,11 @@ def motor(desired, front_d):
         r, l = NEUTRAL - (NEUTRAL - r) * k, NEUTRAL - (NEUTRAL - l) * k
     return r, l
 
+def gps_steer(x, y, psi, goal_xy):
+    """20000 → ship_direction (C) GPS 주행 근사: 목표 방위로 비례 조향(desired = 80 + 좌현 오차)."""
+    brg = math.degrees(math.atan2(goal_xy[0] - x, goal_xy[1] - y))
+    return 80.0 + max(-80.0, min(80.0, -wrap(brg - psi)))
+
 def ship_direction_map(cand):
     if cand == SD.STOP_HOLD or cand == SD.CANDIDATE_INVALID: return 50000.0 if cand == SD.STOP_HOLD else 20000.0
     if cand in (SD.SPIN_RIGHT, SD.SPIN_LEFT): return cand
@@ -184,13 +194,15 @@ def ship_direction_map(cand):
 STATES = ["INIT", "SEARCH", "ALIGN", "APPROACH", "CONTACT", "BACKOFF", "DONE"]
 COL = {"INIT": "#9e9e9e", "SEARCH": "#8e44ad", "ALIGN": "#e67e22", "APPROACH": "#1f77b4",
        "CONTACT": "#d62728", "BACKOFF": "#2ca02c", "DONE": "#555555"}
+COL["TRANSIT"] = "#cccccc"   # 진입 직후 GPS 주행. STATES(범례)엔 안 넣음 — mission_figs 범례 표
 
 def run(x, y, psi, seed=0, t_max=120.0, marker=(0.0, 0.0)):
     MARKER = marker
     rng = random.Random(seed)
     _Clock.t = 0.0
     node = SD.ShipDock(); pub = node.pubs[0]
-    node.wp_mode = node.active_wp_mode
+    node.wp_mode_cb(_Msg(node.active_wp_mode))         # mode 7 진입(t=0) — TRANSIT 부터
+    goal_xy = (MARKER[0], MARKER[1] + 0.5)              # WP8 = 목표 칸 입구(벽에서 0.5 m)
     v = w = 0.0; vis_since = None
     log = dict(t=[], x=[], y=[], psi=[], state=[], img=[], dist=[])
     out = dict(success=False, t_contact=None, head_err=None, lat_err=None, done=False, min_wall=math.inf, bumped=False, reached_approach=False, lost_dist=None, backed_out=False)
@@ -207,11 +219,17 @@ def run(x, y, psi, seed=0, t_max=120.0, marker=(0.0, 0.0)):
             node.image_angle = -rel + rng.gauss(0.0, 0.5); node.last_image_t = t   # 방위 잡음 0.5°
         # LiDAR
         node.latest_scan = lidar(x, y, psi); node.last_scan_t = t
+        # /goal_distance: north 처럼 0.5 s 마다(진입 후 1.0 s 전 수신분은 ship_dock 이 버린다)
+        if k % 5 == 0:
+            node.goal_distance_cb(_Msg(math.hypot(goal_xy[0] - x, goal_xy[1] - y)))
         # 실제 FSM 한 틱
         node.timer_cb()
         cand = pub.last if pub.last is not None else SD.STOP_HOLD
         front = node.front_min_dist(t)
-        pr, pl = motor(ship_direction_map(cand), front)
+        des = ship_direction_map(cand)
+        if des == SD.CANDIDATE_INVALID:
+            des = gps_steer(x, y, psi, goal_xy)
+        pr, pl = motor(des, front)
         TR, TL = NEUTRAL - pr, NEUTRAL - pl
         v_cmd, w_cmd = K_V * (TR + TL) / 2.0, K_W * (TL - TR)
         v += (v_cmd - v) * DT / TAU; w += (w_cmd - w) * DT / TAU

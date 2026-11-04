@@ -23,7 +23,7 @@
 
     # ---- 시간 ----
     init_wait_sec: 3.0
-    search_timeout_sec: 25.0
+    search_timeout_sec: 60.0       # 일시적 놓침 재탐색 여유, mode 7 시간 초과 150 s 안 (이전 25)
     align_timeout_sec: 15.0
     approach_timeout_sec: 30.0
     contact_hold_sec: 3.0         # ⚠️ 규정 확인 — 접안 유지 시간
@@ -32,3 +32,10 @@
     # ---- 신선도 (묵은 데이터로 도킹하지 않는다) ----
     image_stale_sec: 1.0
     scan_stale_sec: 1.0
+
+    # ---- TRANSIT → INIT (mode 7 진입 = TRANSIT: 20000 으로 GPS 주행에 맡김) ----
+    #   /goal_distance(north 현재 WP 까지 거리)가 신선하고 이 거리 미만이면 도킹 FSM(INIT) 시작.
+    #   진입 후 1.0 s 지나 받은 값만 쓴다(직전 WP 거리 배제, 코드 상수). 모르면 TRANSIT 유지.
+    #   코드 기본값(ship_dock.py)과 같게 유지 — 대회 launch 는 이 yaml 을 안 넘긴다
+    dock_engage_dist_m: 12.0      # ⚠️ 실측 필요 — 표식 인식 거리(12 m) 안에서 시작
+    goal_dist_stale_sec: 2.0      # north 발행 주기 0.5 s × 4

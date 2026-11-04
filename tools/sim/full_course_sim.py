@@ -35,6 +35,8 @@
   /boat_mode = 2(AUTO) → north_goal_angle (t=0 부터 AUTO 가정)
   north_goal_angle(0.5 s) → /wp_mode → ship_direction·ship_gate·ship_back·ship_turn·ship_dock·검출기 3종
                           → /north_goal_angle_tp → ship_goal_angle, /geofence_state → ship_direction,
+                          → /goal_distance → ship_dock (C4 TRANSIT→INIT, north 순서대로 /wp_mode 보다 먼저)
+                          → /wp_remaining_time → ship_dock (C4 WP8→WP9 전환 감지, /wp_mode 뒤)
                           → /candidate_angle(20000, mode 5·8) → ship_direction
   검출기 gate → /red_angle·/green_angle → ship_gate;  turn → /image_angle·/image_color → ship_back·ship_turn;
   검출기 dock → /image_angle → ship_back·ship_turn·ship_dock
@@ -478,8 +480,12 @@ def run(seed, variant="A", wp_file=None, world_wp_file=WP_DEFAULT, gps_sigma=0.0
             tick_cand = []
             # ---- north_goal_angle 0.5 s ----
             if k % 5 == 0 and silent != "north_goal_angle":
-                c0 = {p: nga.pubs[p].count for p in ("/wp_mode", "/north_goal_angle_tp", "/geofence_state", "/candidate_angle")}
+                c0 = {p: nga.pubs[p].count for p in ("/wp_mode", "/north_goal_angle_tp",
+                                                     "/geofence_state", "/candidate_angle",
+                                                     "/goal_distance", "/wp_remaining_time")}
                 nga.timer_cb()
+                if nga.pubs["/goal_distance"].count > c0["/goal_distance"]:
+                    sk.goal_distance_cb(nga.pubs["/goal_distance"].last)   # 거리 → /wp_mode 순서
                 if nga.pubs["/wp_mode"].count > c0["/wp_mode"]:
                     m = nga.pubs["/wp_mode"].last
                     sd.wp_mode_cb(m); sg.wp_mode_cb(m); sb.wp_cb(m); st.wp_cb(m); sk.wp_mode_cb(m)
@@ -487,6 +493,8 @@ def run(seed, variant="A", wp_file=None, world_wp_file=WP_DEFAULT, gps_sigma=0.0
                         d.gate.update(m.data, Clock.t)
                     det_turn.wp_mode = m.data
                     pub_mode = m.data
+                if nga.pubs["/wp_remaining_time"].count > c0["/wp_remaining_time"]:
+                    sk.wp_remaining_cb(nga.pubs["/wp_remaining_time"].last)   # /wp_mode 뒤
                 if nga.pubs["/north_goal_angle_tp"].count > c0["/north_goal_angle_tp"]:
                     sga.goal_angle_callback(nga.pubs["/north_goal_angle_tp"].last)
                 if nga.pubs["/geofence_state"].count > c0["/geofence_state"]:
