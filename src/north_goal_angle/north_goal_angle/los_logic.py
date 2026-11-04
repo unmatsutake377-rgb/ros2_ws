@@ -72,6 +72,45 @@ def calc_los_bearing(p_lat, p_lon, wp_lat, wp_lon, boat_lat, boat_lon,
     return desired, xte
 
 
+# 경로 길이가 이보다 짧으면 '경로선'이 정의되지 않는다(예: WP8·WP9 같은 좌표) → 직접 방위.
+PATH_MIN_LEN_M = 0.01
+
+
+def along_track(p_lat, p_lon, wp_lat, wp_lon, boat_lat, boat_lon):
+    """경로선(p→wp) 위로 투영한 배의 진행 거리 s(m) 와 경로 길이 L(m) 반환.
+
+    s = |p→배| · cos(경로 방위와 p→배 방위의 각차). s ≥ L 이면 배가 WP 를 진행 방향으로 지나쳤다.
+    """
+    path_len = calc_dist(p_lat, p_lon, wp_lat, wp_lon)
+    path_bearing = calc_angle(p_lat, p_lon, wp_lat, wp_lon)
+    boat_bearing = calc_angle(p_lat, p_lon, boat_lat, boat_lon)
+    boat_dist = calc_dist(p_lat, p_lon, boat_lat, boat_lon)
+    ang = (boat_bearing - path_bearing + 540.0) % 360.0 - 180.0
+    return boat_dist * math.cos(math.radians(ang)), path_len
+
+
+def calc_guidance_bearing(p_lat, p_lon, wp_lat, wp_lon, boat_lat, boat_lon,
+                          lookahead_m, arrive_radius_m, integral_xte=0.0, ki=0.0):
+    """LOS + 지나침 복귀. (목표 방위°, 이번 XTE m, 직접 방위 여부) 반환.
+
+    LOS 는 경로선을 따라가게 하므로 WP 를 반경 밖으로 지나치면(dwell 대기·오버슈트) 경로
+    연장선을 따라 계속 멀어진다(전체 코스 시뮬 150 m 이탈, 계약서_전체코스_20261104 §2-1).
+      · 경로 길이 < PATH_MIN_LEN_M  → 경로선이 없다 → 현위치→WP 직접 방위, XTE 0
+      · s ≥ L 이고 WP 거리 ≥ 도착 반경 → 지나쳤다 → 현위치→WP 직접 방위, XTE 0
+      · 그 밖(지나치기 전, 또는 반경 안) → 기존 calc_los_bearing 그대로
+    XTE 0 을 돌려주므로 노드의 ILOS 적분은 직접 방위 동안 그대로 멈춘다(동결).
+    도착 반경은 노드가 get_dynamic_arrive_radius 로 구해 넘긴다(도착 판정과 같은 값).
+    """
+    s, path_len = along_track(p_lat, p_lon, wp_lat, wp_lon, boat_lat, boat_lon)
+    if path_len < PATH_MIN_LEN_M:
+        return calc_angle(boat_lat, boat_lon, wp_lat, wp_lon), 0.0, True
+    if s >= path_len and calc_dist(boat_lat, boat_lon, wp_lat, wp_lon) >= arrive_radius_m:
+        return calc_angle(boat_lat, boat_lon, wp_lat, wp_lon), 0.0, True
+    bearing, xte = calc_los_bearing(p_lat, p_lon, wp_lat, wp_lon, boat_lat, boat_lon,
+                                    lookahead_m, integral_xte, ki)
+    return bearing, xte, False
+
+
 def get_dynamic_arrive_radius(wp_mode, speed_mps, dock_mode=7):
     """도착 판정 반경(m) — 도킹은 좁게, 그 외는 속도에 비례해(빠르면 넓게 오버슈트 방지)."""
     if wp_mode == dock_mode:

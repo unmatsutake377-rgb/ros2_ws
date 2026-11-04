@@ -70,6 +70,10 @@ from north_goal_angle.wp_timeout import (            # WP 타임아웃 표 (순�
     DEFAULT_WP_TIMEOUT_MODES, DEFAULT_WP_TIMEOUT_SEC, WpTimeoutError,
     build_timeout_table, dwell_conflicts, per_wp_timeouts, timeout_for_mode,
 )
+from north_goal_angle.wp_advance import (            # dwell 대기·전진 판정 (순수, 테스트됨)
+    DEFAULT_DWELL_WAIT_ENABLED, DEFAULT_DWELL_WAIT_MODES, DEFAULT_DWELL_WAIT_STALE_SEC,
+    candidate_after_course, dwell_may_count, sanitize_wait_modes, wp_step,
+)
 
 # 🚨 대회 좌표는 코드가 아니라 config/waypoints.yaml 에서 읽는다 (비전공자도 편집 가능).
 #    대회장에서 GPS 좌표를 바꿀 사람은 그 파일의 lat/lon 만 고치면 된다 — 이 파일은 안 건드린다.
@@ -183,6 +187,25 @@ class NorthGoalAngle(Node):
             self.declare_parameter('wp_timeout_modes', list(DEFAULT_WP_TIMEOUT_MODES)).value,
             self.declare_parameter('wp_timeout_sec', list(DEFAULT_WP_TIMEOUT_SEC)).value)
 
+        # ---- dwell 대기 (계약서_전체코스_20261104 §2-2, wp_advance.py) ----
+        # dwell_wait_modes 의 WP 에서는 담당 노드가 손 뗀 동안(/candidate_angle 신선한 20000 또는
+        # dwell_wait_stale_sec 넘게 무수신)만 dwell 을 센다 — 위치유지 도중 WP 를 넘기던 결함.
+        # 시간 초과 진행은 그대로. 🚨 dwell_wait_modes 빈 리스트 금지 → 끄려면 enabled false.
+        # 구독 생성보다 먼저 선언한다.
+        self.dwell_wait_enabled = bool(
+            self.declare_parameter('dwell_wait_enabled', DEFAULT_DWELL_WAIT_ENABLED).value)
+        raw_modes = self.declare_parameter(
+            'dwell_wait_modes', list(DEFAULT_DWELL_WAIT_MODES)).value
+        self.dwell_wait_modes, modes_ok = sanitize_wait_modes(raw_modes)
+        if not modes_ok:
+            self._log_dwell_wait_modes_invalid(raw_modes)
+        raw_wait_stale = self.declare_parameter(
+            'dwell_wait_stale_sec', DEFAULT_DWELL_WAIT_STALE_SEC).value
+        self.dwell_wait_stale_sec, wait_stale_ok = sanitize_stale_sec(
+            raw_wait_stale, DEFAULT_DWELL_WAIT_STALE_SEC)
+        if not wait_stale_ok:
+            self._log_dwell_wait_stale_invalid(raw_wait_stale)
+
         # ---- 발행 (토픽 이름 불변 + /geofence_state 신규, CLAUDE.md 3-9) ----
         self.pub_dist = self.create_publisher(Float32, '/goal_distance', qos)
         self.pub_mode = self.create_publisher(Int32, '/wp_mode', qos)
@@ -196,6 +219,9 @@ class NorthGoalAngle(Node):
         self.create_subscription(Float64, '/imu/yaw', self.yaw_cb, qos)   # 경계 상대방위 계산용
         # 🚀 아두이노 모드(ssf_bridge 발행). AUTO 일 때만 미션 전진. RELIABLE 발행이라 qos 호환.
         self.create_subscription(Int32, '/boat_mode', self.boat_mode_cb, qos)
+        # dwell 대기: 담당 노드(ship_back 등)가 손 뗐는지 본다. 자기 발행분(mode 5·8 의 20000)도
+        # 들어오지만 그 모드는 대기 대상이 아니라 무관하다.
+        self.create_subscription(Float32, '/candidate_angle', self.candidate_cb, qos)
 
         # ---- 상태 ----
         self.lat, self.lon = 0.0, 0.0
@@ -217,6 +243,8 @@ class NorthGoalAngle(Node):
         self.prev_lat = None             # 경로선 시작점(이전 WP). None=첫 구간
         self.prev_lon = None
         self.boat_mode = None            # ssf_bridge /boat_mode (0 WAIT/1 MANUAL/2 AUTO). None=아직 모름
+        self.last_cand = None            # 마지막 /candidate_angle 값. None=받은 적 없음
+        self.last_cand_t = None          # 그 수신 시각 (monotonic)
 
         self.create_timer(self.period_sec, self.timer_cb)
 
@@ -225,7 +253,9 @@ class NorthGoalAngle(Node):
         self.get_logger().info(
             f"north_goal_angle 시작: 폴백은 mode {FALLBACK_MODES} 에만 발행"
             f"(mode 7 폴백 제거 — ship_dock 과 충돌했다). geofence {gf}. "
-            f"GPS stale 기준 {self.gps_stale_sec:g}s."
+            f"GPS stale 기준 {self.gps_stale_sec:g}s. "
+            f"dwell 대기 {'ON' if self.dwell_wait_enabled else 'OFF'}"
+            f"(mode {list(self.dwell_wait_modes)}, 무수신 {self.dwell_wait_stale_sec:g}s)."
         )
 
     # ───────────────────────── 웨이포인트 로드 ─────────────────────────
@@ -337,6 +367,36 @@ class NorthGoalAngle(Node):
 
     def _log_fix_stale_recovered(self):
         self.get_logger().info("🛰️ GPS fix 신선도 복구 → 항법 재개")
+
+    def _log_dwell_wait_modes_invalid(self, raw):
+        self.get_logger().error(
+            f"🚨 dwell_wait_modes={raw!r} 는 잘못된 값(빈 리스트·정수 아님·없는 모드) → "
+            f"기본값 {list(self.dwell_wait_modes)} 로 돈다. 끄려면 dwell_wait_enabled: false.")
+
+    def _log_dwell_wait_stale_invalid(self, raw):
+        self.get_logger().error(
+            f"🚨 dwell_wait_stale_sec={raw!r} 는 잘못된 값(inf·0 이하·NaN·숫자 아님) → "
+            f"기본값 {self.dwell_wait_stale_sec:g}s 로 돈다. north_goal_angle.yaml 확인.")
+
+    def _log_dwell_wait(self, wp_mode):
+        self.get_logger().info(
+            f"⏸ WP{self.wp_idx}(mode {wp_mode}) 반경 안 — 담당 노드 작업 중"
+            f"(candidate {self.last_cand:.0f}) → dwell 대기 (타임아웃 진행은 유지)",
+            throttle_duration_sec=5.0)
+
+    # 🚨 아래 두 문구는 full_course_sim 이 WP 진행 방식(시간초과/도착) 분류에 쓴다 — 바꾸면 같이.
+    #    다른 로그에 '시간 초과 …s → 다음 WP 이동'·'✔ WP… 완료' 를 쓰지 않는다.
+    def _log_wp_timeout(self, wp_mode, timeout):
+        self.get_logger().warn(
+            f"🕒 WP{self.wp_idx}(mode {wp_mode}) 시간 초과 {timeout:g}s → 다음 WP 이동")
+
+    def _log_wp_arrive(self, arrive_r):
+        self.get_logger().info(
+            f"✔ WP{self.wp_idx} 완료 (반경 {arrive_r:.1f}m) → 다음 WP 이동")
+
+    def candidate_cb(self, msg):
+        self.last_cand = float(msg.data)
+        self.last_cand_t = time.monotonic()
 
     def yaw_cb(self, msg):
         self.yaw = float(msg.data)
@@ -450,9 +510,18 @@ class NorthGoalAngle(Node):
         self._publish_geofence(gps_ok)       # 웨이포인트가 끝나도 경계 감시는 계속한다
 
         if self.wp_idx >= len(self.waypoints):
+            # 코스 끝 — 마지막 WP 가 north 담당(5·8)이면 그 20000 을 계속 낸다(wp_advance 참고).
+            # /wp_mode·tp 는 계속 멈춘다 → yaw_error stale → ship_direction L2 정지는 그대로.
+            after = candidate_after_course(self.waypoints[-1][2], FALLBACK_MODES)
+            if after is not None:
+                self.pub_candidate.publish(Float32(data=after))
             return
 
         wp_lat, wp_lon, wp_mode, dwell = self.waypoints[self.wp_idx]
+        # 도착 반경은 속도·모드에 따라 동적(빠르면 넓게 오버슈트 방지, 도킹은 좁게).
+        # 지나침 판정(LOS)과 도착 판정이 같은 값을 쓴다.
+        arrive_r = los_logic.get_dynamic_arrive_radius(
+            wp_mode, self.gps_filter.estimated_speed_mps)
 
         # 🚨 위치에서 나오는 값(거리·방위)은 fix 가 유효할 때만 낸다.
         #    fix 가 없으면 lat/lon 이 0 이거나 옛값이라 방위가 통째로 틀린다.
@@ -472,12 +541,13 @@ class NorthGoalAngle(Node):
             self.pub_dist.publish(Float32(data=dist))
 
             # LOS: 경로선(prev→wp)에서 벗어난 만큼 전방주시거리 안에서 되돌아오는 방위.
+            # WP 를 반경 밖으로 지나쳤으면(경로 길이 0 포함) 현위치→WP 직접 방위, xte 0(적분 동결).
             lookahead = los_logic.get_dynamic_lookahead(
                 self.gps_filter.estimated_speed_mps, self.los_speed_gain,
                 self.los_min_lookahead_m, self.los_max_lookahead_m)
-            bearing, xte = los_logic.calc_los_bearing(
+            bearing, xte, _direct = los_logic.calc_guidance_bearing(
                 self.prev_lat, self.prev_lon, wp_lat, wp_lon, self.lat, self.lon,
-                lookahead, self.integral_xte, self.ilos_ki)
+                lookahead, arrive_r, self.integral_xte, self.ilos_ki)
             # ILOS 적분 + anti-windup 클램프
             self.integral_xte += xte * self.period_sec
             self.integral_xte = max(-self.ilos_max, min(self.ilos_max, self.integral_xte))
@@ -520,40 +590,33 @@ class NorthGoalAngle(Node):
         # WP 하나당 타임아웃 — wp_mode 기준. 표에 없는 모드(기본: 8)는 None = 타임아웃 없음.
         timeout = timeout_for_mode(self.wp_timeout_table, wp_mode)
 
-        if timeout is not None:
-            remain = max(timeout - (now - self.wp_enter_time), 0.0)
+        # dwell 대기: 대상 모드에서 담당 노드가 일하는 중(신선한 비-20000)이면 dwell 을 세지 않는다.
+        may_count = dwell_may_count(
+            self.dwell_wait_enabled, wp_mode, self.dwell_wait_modes,
+            self.last_cand, self.last_cand_t, now, self.dwell_wait_stale_sec)
+        if dist is not None and dist < arrive_r and not may_count:
+            self._log_dwell_wait(wp_mode)
+
+        # 전진 판정(wp_advance.wp_step): 시간 초과를 먼저 본다 — 위치·dwell 대기와 무관한 안전장치.
+        # fix 가 없거나 stale(dist None)이면 '도착했는지' 를 판단할 근거가 없다 → 반경 도착 안 함.
+        event, self.t_start, remain = wp_step(
+            now, self.wp_enter_time, timeout, dist, arrive_r, self.t_start, dwell, may_count)
+        if remain is not None:
             self.pub_remain.publish(Float32(data=remain))
+        if event == 'timeout':
+            self._log_wp_timeout(wp_mode, timeout)
+            self._advance_wp(wp_lat, wp_lon)
+        elif event == 'arrive':
+            self._log_wp_arrive(arrive_r)
+            self._advance_wp(wp_lat, wp_lon)
 
-            if remain <= 0:
-                self.get_logger().warn(
-                    f"🕒 WP{self.wp_idx}(mode {wp_mode}) 시간 초과 {timeout:g}s → 다음 WP 이동")
-                self.prev_lat, self.prev_lon = wp_lat, wp_lon   # 새 경로선 시작점
-                self.integral_xte = 0.0                          # ILOS 적분 리셋
-                self.wp_idx += 1
-                self.t_start = None
-                self.wp_enter_time = None
-                return
-
-        # fix 가 없거나 stale 이면 '도착했는지' 를 판단할 근거가 없다 → wp_idx 를 전진시키지 않는다.
-        # (시간 초과 전진은 위에서 이미 처리한다 — 그건 위치와 무관한 안전장치라 유지)
-        # 도착 반경은 속도·모드에 따라 동적(빠르면 넓게 오버슈트 방지, 도킹은 좁게).
-        arrive_r = los_logic.get_dynamic_arrive_radius(
-            wp_mode, self.gps_filter.estimated_speed_mps)
-        if dist is None:
-            self.t_start = None
-        elif dist < arrive_r:
-            if self.t_start is None:
-                self.t_start = now
-            elif (now - self.t_start) >= dwell:
-                self.get_logger().info(
-                    f"✔ WP{self.wp_idx} 완료 (반경 {arrive_r:.1f}m) → 다음 WP 이동")
-                self.prev_lat, self.prev_lon = wp_lat, wp_lon   # 새 경로선 시작점
-                self.integral_xte = 0.0                          # ILOS 적분 리셋
-                self.wp_idx += 1
-                self.t_start = None
-                self.wp_enter_time = None
-        else:
-            self.t_start = None
+    def _advance_wp(self, wp_lat, wp_lon):
+        """다음 WP 로. 새 경로선 시작점 = 방금 WP, ILOS 적분·dwell·타임아웃 시계 리셋."""
+        self.prev_lat, self.prev_lon = wp_lat, wp_lon
+        self.integral_xte = 0.0
+        self.wp_idx += 1
+        self.t_start = None
+        self.wp_enter_time = None
 
 
 def calc_angle(lat1, lon1, lat2, lon2):

@@ -173,6 +173,9 @@ gps_vel(RTK) 로 기록. ★ RTK fix 품질 확인 필수(아래).</pre>
 근접 도킹 이탈: 접안(CONTACT) 뒤 BACKOFF 에서 실제로 <b>뒤로 빠져</b> 2.5 m 에서 DONE 되는지. 예전 코드는 여기서 8 s 멈춰 있다 DONE(시뮬 확인).
   후진은 뒤를 안 본다 → 수조 벽이 선미 쪽 3 m 안이면 하지 말 것. 후진 중 선수 흔들림·속도 기록.
 위치유지 후진: 부표 2.1 m 안으로 밀어 넣으면 후진, 2.1~2.9 m 면 정지(50000) 나오는지.
+<b>웨이포인트 지나침 복귀·dwell 대기 (11-04, 계약서_전체코스 C2)</b> — 벤치: ros2 param get /north_goal_angle dwell_wait_modes → [2, 3], dwell_wait_stale_sec 1.0.
+  mode 2 WP 반경 안 + /candidate_angle 50000 10 Hz → WP 안 넘김(INFO '… dwell 대기 (타임아웃 진행은 유지)'), 120 s 시간 초과로는 넘어감. 20000 이면 dwell 뒤 넘어감.
+  수조/야외: WP 를 지나친 뒤 경로 연장선으로 달아나지 않고 WP 쪽으로 돌아오는지(블랙박스 tp).
 <b>미션 명령 신선도 (11-04, 계약서_전체코스 C1)</b> — 벤치: ros2 param get /ship_direction candidate_stale_sec → 1.0.
   /wp_mode 7 + /candidate_angle 5000 10 Hz pub → SPIN(16001400) → pub 끊으면 약 1.0 s 뒤 /desired_angle 이 (C) 값으로, ERROR 1회(이후 5 s 마다),
   다시 pub 하면 INFO 1회·노드 생존. /wp_mode 를 다른 값으로 바꾸면 즉시 20000 기준으로 초기화.

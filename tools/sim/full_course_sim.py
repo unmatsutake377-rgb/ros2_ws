@@ -38,9 +38,12 @@
   검출기 dock → /image_angle → ship_back·ship_turn·ship_dock
   ship_goal_angle → /yaw_error → ship_direction
   ship_gate·ship_back·ship_turn·ship_dock → /candidate_angle → ship_direction (발행자를 틱마다 기록)
+  /candidate_angle(모든 발행자, north 자기 발행 포함) → north_goal_angle.candidate_cb
+                          (C2 dwell 대기: mode 2·3 은 담당 노드가 손 뗀 동안만 dwell)
   ship_direction → /desired_angle·/obstacle_distance_array·/failsafe_level → motor_control → Motor_run → 운동 모델
   한 틱 안의 순서: 센서 → north(주기 도래 시) → 검출기 → ship_goal_angle → 미션 노드 4개 → ship_direction → motor_control.
-  /candidate_angle 은 '마지막으로 받은 값'이 남는다(ship_direction 이 그렇게 구현돼 있다) — 발행이 없으면 직전 값 유지.
+  /candidate_angle: ship_direction 은 마지막 값을 들고 있되, 1.0 s(candidate_stale_sec) 넘게 갱신이 없으면
+  20000 으로 대체하고, /wp_mode 가 바뀌면 20000·수신 시각 없음으로 초기화한다(C1, e0b1a06).
 
 모델로 바꾼 것 (전부 가정)
   · 운동: gate_sim 과 같은 K_V(1.2 m/s ÷ 140 PWM), K_W 0.22 °/s/PWM, 1차 지연 τ 0.5 s, 조류는 옵션(기본 0).
@@ -488,8 +491,12 @@ def run(seed, variant="A", wp_file=None, world_wp_file=WP_DEFAULT, gps_sigma=0.0
                 if nga.pubs["/candidate_angle"].count > c0["/candidate_angle"]:
                     tick_cand.append(("north_goal_angle", nga.pubs["/candidate_angle"].last))
                 if nga.wp_idx != wp_idx:
-                    new = [ln for lv, ln in nga.get_logger().lines[-6:] if f"WP{wp_idx}" in ln]
-                    how = "시간초과" if any("시간 초과" in ln for ln in new) else ("도착" if any("완료" in ln for ln in new) else "?")
+                    # north 의 _log_wp_timeout / _log_wp_arrive 문구에만 맞춘다(dwell 대기 등 다른 로그 배제)
+                    new = [ln for lv, ln in nga.get_logger().lines[-6:]]
+                    re_to = re.compile(rf"WP{wp_idx}\(mode \d+\) 시간 초과 [0-9.]+s → 다음 WP 이동")
+                    re_ar = re.compile(rf"✔ WP{wp_idx} 완료 \(반경 [0-9.]+m\) → 다음 WP 이동")
+                    how = "시간초과" if any(re_to.search(ln) for ln in new) else (
+                        "도착" if any(re_ar.search(ln) for ln in new) else "?")
                     wp_how[wp_idx] = how
                     wp_idx = nga.wp_idx; wp_enter[wp_idx] = t
                 cur_mode = pub_mode
@@ -548,7 +555,7 @@ def run(seed, variant="A", wp_file=None, world_wp_file=WP_DEFAULT, gps_sigma=0.0
             if len(names) > 1:
                 multi_pub_ticks[cur_mode] = multi_pub_ticks.get(cur_mode, 0) + 1
             for nm, m in tick_cand:
-                sd.candidate_callback(m); last_cand = m.data
+                sd.candidate_callback(m); nga.candidate_cb(m); last_cand = m.data
             # ---- ship_direction → motor_control ----
             sd.watchdog_cb(); sd.control_cb()
             if sd.pubs["/desired_angle"].last is not None:

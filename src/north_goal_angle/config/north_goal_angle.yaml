@@ -35,6 +35,20 @@
     wp_timeout_modes: [0, 1, 2, 3, 5, 7]
     wp_timeout_sec: [120.0, 120.0, 120.0, 90.0, 120.0, 150.0]   # 3=부표 90 s, 7=도킹 150 s(dwell 60 보다 커야)
 
+    # ---- dwell 대기 (계약서_전체코스_20261104 §2-2, wp_advance.py) ----
+    # 아래 모드의 WP 는 '담당 노드가 손 뗀 동안'만 dwell 을 센다: north 가 받은 마지막 /candidate_angle 이
+    # 신선(≤ dwell_wait_stale_sec)한 20000 이거나, 그 시간 넘게 무수신(노드 사망)일 때.
+    # 신선한 비-20000(ship_back HOLD 조향·STOP_HOLD) 동안은 반경 안이어도 dwell 을 세지 않는다
+    # → 위치유지 도중 WP 를 넘겨 ship_back 을 끊던 결함(도착 반경 2.5 m 와 유지 거리 2.5 m 가 겹침).
+    # 시간 초과 진행(wp_timeout)은 그대로다. mode 7 은 대상 아님(ship_dock).
+    # 🚨 dwell_wait_modes 를 빈 리스트 [] 로 두지 마라(rclpy 가 타입을 못 정한다) — 끄려면 enabled false.
+    #    잘못된 값(빈·정수 아님·없는 모드, stale ≤0·NaN·inf)이면 시작 ERROR + 기본값.
+    # 🚨 dwell_wait_stale_sec 는 반드시 소수(1.0). 코드 기본값(wp_advance.py)과 똑같이 둔다.
+    dwell_wait_enabled: true
+    # search_behavior:=orbit 이면 mode 3 담당은 ship_turn — 같은 규칙(20000 = 손 뗌)이 적용된다.
+    dwell_wait_modes: [2, 3]
+    dwell_wait_stale_sec: 1.0      # north 발행 주기 0.5 s × 2 (= ship_direction candidate_stale_sec)
+
     # ---- Geofence (경계 이탈 = 실격) ----
     # 경기장 폴리곤: [lat1, lon1, lat2, lon2, ...] 평탄 배열. 최소 3점(=6개 수).
     # ⚠️ 실측 필요 — 대회장 경계 좌표를 아직 모른다. 비어 있으면 geofence 는 꺼진다(=빈 배열).

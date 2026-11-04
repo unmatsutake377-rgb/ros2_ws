@@ -9,6 +9,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from north_goal_angle.los_logic import (  # noqa: E402
     calc_dist, calc_angle, get_dynamic_lookahead,
     cross_track_error, calc_los_bearing, get_dynamic_arrive_radius,
+    along_track, calc_guidance_bearing,
 )
 
 _p = _t = 0
@@ -96,6 +97,78 @@ def test_ilos_adds_correction():
     d0, _ = calc_los_bearing(0.0, 0.0, 0.002, 0.0, 0.001, 0.0005, 3.0, integral_xte=0.0, ki=0.02)
     d1, _ = calc_los_bearing(0.0, 0.0, 0.002, 0.0, 0.001, 0.0005, 3.0, integral_xte=100.0, ki=0.02)
     assert abs(sdiff(d1, 0.0)) > abs(sdiff(d0, 0.0)), "적분항이 보정을 안 키움"
+
+
+# ---------------- 지나침 복귀 (계약서_전체코스_20261104 §2-1)
+# 경로: p(0,0) → wp(0.002,0) 북향, 길이 ≈ 221 m. 위도 0.0001° ≈ 11 m.
+def test_along_track_before_and_after():
+    s0, L = along_track(0.0, 0.0, 0.002, 0.0, 0.001, 0.0)
+    assert abs(L - 222.4) < 1.0, L
+    assert abs(s0 - L / 2) < 1.0, s0
+    s1, _ = along_track(0.0, 0.0, 0.002, 0.0, 0.0022, 0.0001)   # WP 를 22 m 지나침
+    assert s1 > L, (s1, L)
+    s2, _ = along_track(0.0, 0.0, 0.002, 0.0, -0.0001, 0.0)     # 출발점 뒤
+    assert s2 < 0, s2
+
+
+def test_passed_outside_radius_direct_bearing():
+    """WP 를 북쪽으로 지나쳐 동쪽에 있으면 → 직접 방위(남서쪽), xte 0."""
+    boat = (0.0022, 0.0002)
+    des, xte, direct = calc_guidance_bearing(0.0, 0.0, 0.002, 0.0, *boat, 3.0, 2.5,
+                                             integral_xte=40.0, ki=0.02)
+    assert direct is True
+    assert xte == 0.0, f"지나친 뒤 xte 가 0 이 아님(ILOS 적분이 쌓인다): {xte}"
+    assert abs(sdiff(des, calc_angle(*boat, 0.002, 0.0))) < 1e-6, des
+    assert 180.0 < des < 270.0, f"WP 쪽(남서)으로 안 돎: {des}"
+
+
+def test_passed_old_los_runs_away():
+    """기존 LOS 는 같은 위치에서 경로 연장선(북)을 따라 멀어진다 — 고친 이유."""
+    des, _ = calc_los_bearing(0.0, 0.0, 0.002, 0.0, 0.0022, 0.0002, lookahead_m=3.0)
+    assert abs(sdiff(des, 0.0)) < 90.0, f"옛 LOS 가 북쪽(WP 반대)이 아님: {des}"
+    des_new, _, _ = calc_guidance_bearing(0.0, 0.0, 0.002, 0.0, 0.0022, 0.0002, 3.0, 2.5)
+    assert abs(sdiff(des_new, 180.0)) < 90.0, f"새 방위가 남쪽(WP)으로 안 돎: {des_new}"
+
+
+def test_passed_inside_radius_keeps_los():
+    """지나쳤어도 반경 안이면 기존 LOS 그대로(dwell 중 방위가 튀지 않게)."""
+    boat = (0.002 + 0.00001, 0.000005)     # WP 북쪽 1.1 m, 동쪽 0.6 m
+    args = (0.0, 0.0, 0.002, 0.0, *boat, 3.0)
+    des, xte, direct = calc_guidance_bearing(*args, 2.5, integral_xte=5.0, ki=0.02)
+    los, los_xte = calc_los_bearing(*args, integral_xte=5.0, ki=0.02)
+    assert direct is False
+    assert des == los and xte == los_xte, (des, los, xte, los_xte)
+
+
+def test_not_passed_keeps_los():
+    """지나치기 전(s < L)이면 반경 밖이라도 기존 LOS 와 같다."""
+    args = (0.0, 0.0, 0.002, 0.0, 0.001, 0.0005, 3.0)
+    des, xte, direct = calc_guidance_bearing(*args, 2.5, integral_xte=10.0, ki=0.02)
+    los, los_xte = calc_los_bearing(*args, integral_xte=10.0, ki=0.02)
+    assert direct is False
+    assert des == los and xte == los_xte
+
+
+def test_radius_boundary():
+    """WP 거리 ≥ 반경이면 직접, < 반경이면 LOS — 반경 인자를 그대로 쓴다."""
+    boat = (0.002 + 0.00003, 0.0)          # WP 북쪽 ≈ 3.3 m
+    d = calc_dist(*boat, 0.002, 0.0)
+    _, _, direct_small = calc_guidance_bearing(0.0, 0.0, 0.002, 0.0, *boat, 3.0, d - 0.01)
+    _, _, direct_big = calc_guidance_bearing(0.0, 0.0, 0.002, 0.0, *boat, 3.0, d + 0.01)
+    assert direct_small is True and direct_big is False
+
+
+def test_zero_length_path_direct():
+    """경로 길이 0(WP8·WP9 같은 좌표처럼 prev == wp) → 직접 방위, xte 0."""
+    boat = (-0.0001, 0.0001)               # WP 남동쪽
+    des, xte, direct = calc_guidance_bearing(0.002, 0.0, 0.002, 0.0, *boat, 3.0, 2.5,
+                                             integral_xte=10.0, ki=0.02)
+    assert direct is True and xte == 0.0
+    assert abs(sdiff(des, calc_angle(*boat, 0.002, 0.0))) < 1e-6
+    # 반경 안이어도 경로선이 없으니 직접(옛 코드는 경로 방위를 북 0° 로 잘못 잡았다)
+    near = (0.002 - 0.00001, 0.0)
+    _, xte2, direct2 = calc_guidance_bearing(0.002, 0.0, 0.002, 0.0, *near, 3.0, 2.5)
+    assert direct2 is True and xte2 == 0.0
 
 
 # ---------------- 동적 도착반경
