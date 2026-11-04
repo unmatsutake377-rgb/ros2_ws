@@ -6,7 +6,10 @@
 노드에서 떼어내 단위 테스트한다. 활성 판정(is_active)도 여기 — 부팅 센티널 -1 과
 enabled 스위치가 얽히는 자리라 노드 밖에서 표로 검증한다.
 
-각도 규약: 상대각(0 = 정면, + = 우현/오른쪽). 시계방향(CW) = 위에서 볼 때 시계.
+각도 규약: 상대각(0 = 정면, **+ = 좌현/왼쪽 양수**). /image_angle·/candidate_angle·LiDAR a−80 과 같다.
+  🚨 [2026-11-04 정정] 종전엔 "+ = 우현" 으로 쓰여 있었다. 입력(/image_angle)·출력(/candidate_angle)은
+  둘 다 좌 양수라서 CW(빨강·초록) 요청에 CCW 로 돌았다(계약서_ship_turn선회_20261104 §0-3).
+시계방향(CW) = 위에서 볼 때 시계. 나침반 yaw 는 CW 양수(북 0, 동 90).
 """
 
 
@@ -45,28 +48,43 @@ def orbit_direction_cw(color):
     return None
 
 
-def orbit_steer(buoy_rel, dist, orbit_radius, direction_cw, k_radial, radial_limit):
-    """orbit 조향각(상대, 0=정면)을 낸다. 순수 함수.
+def orbit_expected_rel(direction_cw):
+    """설계상 orbit 자세에서 부표가 있어야 할 상대각(좌 양수). CW → 우현 −90, CCW → 좌현 +90."""
+    return -90.0 if direction_cw else 90.0
 
-    buoy_rel     : 부표 상대각(deg, 0=정면, +=우현)
+
+def orbit_steer(buoy_rel, dist, orbit_radius, direction_cw, k_radial, radial_limit):
+    """orbit 조향각(상대, 0=정면, +=좌현)을 낸다. 순수 함수.
+
+    buoy_rel     : 부표 상대각(deg, 0=정면, **+=좌현**)
     dist         : 부표까지 거리(m, LiDAR)
     direction_cw : True=시계, False=반시계
 
-    ★ orbit 원리:
-      · 시계(CW)로 돌려면 부표(원 중심)를 **오른쪽(+90°)**에 둔다. 진행 방향(접선) = buoy_rel - 90.
-        (반시계는 부표를 왼쪽 -90°, 접선 = buoy_rel + 90)
+    ★ orbit 원리 (좌 양수 프레임):
+      · 시계(CW)로 돌려면 부표(원 중심)를 **우현(−90°)**에 둔다. 진행 방향(접선) = buoy_rel + 90.
+        (반시계는 부표를 좌현 +90°, 접선 = buoy_rel − 90)   → tangent = buoy_rel + 90·s, s=+1 CW
       · 반경 보정: 너무 멀면(dist>radius) 부표 쪽으로, 너무 가까우면 반대로 튼다.
-        접선에 s*gain 을 더한다 (s=+1 CW). gain>0 이면 부표 쪽(원 안쪽)으로 향한다.
+        접선에서 s·gain 을 **뺀다** — CW 면 부표가 우현(음수 쪽)이라 gain>0 이면 음수(우) 쪽 = 원 안쪽.
+    수치: rel 0·dist 4·R 3·CW → +60(좌조향 → 부표가 우현으로 → CW). rel −90·dist 3·CW → 0(접선).
     """
     s = 1.0 if direction_cw else -1.0
-    tangent = clamp_pm180(buoy_rel - 90.0 * s)
+    tangent = clamp_pm180(buoy_rel + 90.0 * s)
     err = dist - orbit_radius                      # >0 너무 멀다 → 안쪽으로
     gain = clamp(k_radial * err, -radial_limit, radial_limit)
-    return clamp_pm180(tangent + s * gain)
+    return clamp_pm180(tangent - s * gain)
+
+
+def buoy_world_bearing(yaw_deg, rel_deg):
+    """부표의 월드(나침반) 방위 = yaw − rel. yaw 는 CW 양수, rel 은 좌(CCW) 양수라 부호가 반대다.
+
+    🚨 [2026-11-04 정정] 종전 노드는 yaw + rel 로 합성했다. 정상 선회(rel≈일정)에선 Δ가 같아 티가 안 났지만
+    제자리 요잉(부표 고정, rel = yaw)에선 진행각이 2배로 잡혀 조기 COOLDOWN 이 났다.
+    """
+    return wrap360(yaw_deg - rel_deg)
 
 
 class OrbitProgress:
-    """부표의 **월드 방위**(yaw + 상대각) 변화를 누적해 orbit 진행각(deg)을 잰다.
+    """부표의 **월드 방위**(buoy_world_bearing = yaw − rel) 변화를 누적해 orbit 진행각(deg)을 잰다.
 
     배가 부표를 CW 로 돌면 '부표를 향한 월드 방위'가 증가하고, CCW 면 감소한다.
     누적 절대값이 orbit_target_deg 에 닿으면 한 바퀴 완료.

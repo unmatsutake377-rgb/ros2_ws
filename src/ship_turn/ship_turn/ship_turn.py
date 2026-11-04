@@ -8,6 +8,14 @@
       엉뚱했다(red→left 등). → /image_color 로 색을 받아 회전 방향을 정한다.
   [3] 거리는 LiDAR 에서. /image_distance(카메라 뎁스, OAK-1 에서 죽음) 구독 폐기, /scan 사용.
       부표는 '점 물체'라 방위 매칭이 통한다(도크와 다르다).
+  [4] 🚨 [2026-11-04] ORBIT 진입 직후 노드가 죽었다(계약서_ship_turn선회_20261104). 세 가지가 겹쳤다:
+      (C) orbit_logic 이 "+ = 우현" 으로 쓰여 좌 양수 입·출력과 반대 → CW 요청에 CCW. 좌 양수로 정정.
+      (A) orbit 자세(부표 ±90°)는 카메라 HFOV(±40°) 밖이라 /image_angle 이 10000 → rel None →
+          orbit_steer(None) TypeError → 프로세스 종료(respawn 없음) → ship_direction 이 마지막 조향 영구 고정.
+          → ORBIT 에서 방위가 없으면 직전 유효 조향을 유지(없으면 접선 0), lost_sec 뒤 SEARCH(기존 규약).
+      (B) 카메라 밖에서도 선회를 이어가려면 LiDAR 로 방위를 추적해야 한다(lidar_track.py).
+          ORBIT 과 APPROACH 에서도 켜지며 실질 게이트는 lidar_track_max_m(5 m) 뿐 — 카메라가 한 틱 끊기면
+          5 m 안 다른 반사(수조 벽·게이트 부표)를 잡을 수 있다. 카메라 방위가 돌아오면 그것이 덮어쓴다.
 
 파라미터(6c-[4]): orbit_radius_m(⚠️실측), radius_tol_m, approach_dist_m, k_radial_deg_per_m,
                   orbit_target_deg(360). SPIN 규약(6c-[5]): 5000=우선회, 6000=좌선회.
@@ -20,8 +28,10 @@ FSM: WAIT → SEARCH → APPROACH → ORBIT → COOLDOWN → (다음 부표 위�
   WP3,4,5(부표 3개)는 모두 /wp_mode==3 으로 온다. 한 부표를 돌고 COOLDOWN 동안 손 떼면
   autonomous(GPS)가 다음 부표로 데려가고, 다시 SEARCH 로 잡는다.
 
-프레임 규약: /image_angle=상대각(0=정면). orbit 조향각을 상대로 구해 rel_to_raw_0_360 으로
-  /candidate_angle(0~360) 규약에 맞춰 발행 → ship_direction (B)에서 매핑. LiDAR 80°=정면.
+프레임 규약: /image_angle=상대각(0=정면, **좌 양수**). orbit 조향각을 상대(좌 양수)로 구해 rel_to_raw 로
+  /candidate_angle(0~360) 규약에 맞춰 발행 → ship_direction (B)에서 80+raw 로 매핑. LiDAR 80°=정면, a−80 좌 양수.
+  CW(빨강·초록) = 부표를 우현(rel −90)에 둔다. 부표 월드 방위 = yaw − rel (yaw 는 CW 양수).
+  발행 전 조향을 ±STEER_LIMIT_DEG(80) 로 클램프 — ship_direction 매핑 범위(0~160) 밖은 STOP_HOLD 가 된다.
 
 색 토픽 = /image_color (String: "red"/"green"/"white"). 발행자는 basic_image_subscriberturn.
    🚨 [2026-09-23 정정] 종전엔 /buoy_color 를 구독했는데 그 이름을 발행하는 노드가 없었다.
@@ -41,13 +51,19 @@ from std_msgs.msg import Float32, Int32, String, Float64
 from sensor_msgs.msg import LaserScan
 
 from ship_turn.orbit_logic import (
-    orbit_steer, OrbitProgress, orbit_direction_cw, clamp_pm180, wrap360, is_active)
+    orbit_steer, orbit_expected_rel, buoy_world_bearing, OrbitProgress, orbit_direction_cw,
+    clamp, clamp_pm180, is_active)
+from ship_turn.lidar_track import lidar_track
 
 IMAGE_ANGLE_INVALID = 10000.0
 CANDIDATE_INVALID = 20000.0
 SPIN_RIGHT = 5000.0          # 우선회 (CLAUDE.md 3-9)
 SPIN_LEFT = 6000.0           # 좌선회
 LIDAR_FORWARD_DEG = 80.0     # LiDAR 프레임 정면
+# ship_direction (B) 매핑: mapped = 80 + raw, 정상 범위 0~160 → 상대 조향 |steer| ≤ 80 만 통과하고
+# 그 밖은 STOP_HOLD(1 s 스로틀 warn 뿐). orbit 진입(rel≈0, 90−gain)은 80 을 쉽게 넘으므로 발행 전 클램프.
+# 튜닝값이 아니라 하류 프로토콜 상수(LIDAR_FORWARD_DEG 와 같은 성격) — 파라미터로 두지 않는다.
+STEER_LIMIT_DEG = 80.0
 
 
 # QoS-B: /scan 표준 sensor-data QoS. 작년은 depth=10 기본 RELIABLE 이었다.
@@ -96,6 +112,11 @@ class ShipTurn(Node):
         self.color_stale_sec = float(self.declare_parameter('color_stale_sec', 2.0).value)
         self.scan_stale_sec = float(self.declare_parameter('scan_stale_sec', 1.0).value)
         self.lidar_match_half_deg = float(self.declare_parameter('lidar_match_half_deg', 3.0).value)
+        # (B) LiDAR 방위 추적 — 카메라 밖(ORBIT·APPROACH 말기)에서 직전 유효 방위 ±창의 최근접 빔을 부표로.
+        #   🚨 대회 launch 는 yaml 을 안 넘긴다(launch_files.launch.py 는 enabled 만) → 이 기본값이 대회값.
+        #   ⚠️ 실측 필요: LiDAR 높이 ≠ 부표 높이면 못 본다 / 수조(6×6)에선 벽이 창 안 최근접이 될 수 있다.
+        self.lidar_track_window_deg = float(self.declare_parameter('lidar_track_window_deg', 25.0).value)
+        self.lidar_track_max_m = float(self.declare_parameter('lidar_track_max_m', 5.0).value)  # = orbit_radius 3 + 2
 
         # ---- 발행/구독 (토픽 이름 불변, /image_distance 는 버림) ----
         self.pub_candidate = self.create_publisher(Float32, '/candidate_angle', qos)
@@ -124,6 +145,9 @@ class ShipTurn(Node):
         self.dir_cw = None
         self.progress = OrbitProgress()
         self.last_seen_t = None
+        self.last_rel = None        # (B) 마지막 유효 부표 방위(카메라든 LiDAR 든) — LiDAR 추적의 예상 방위
+        self.last_steer = None      # (A) ORBIT 마지막 유효 조향 — 방위 없을 때 유지
+        self.rel_src = None         # "cam" / "lidar" — 소스 전환 로그용
 
         self.create_timer(self.period_sec, self.timer_cb)
         self.get_logger().info(
@@ -174,7 +198,14 @@ class ShipTurn(Node):
         self.state_t = time.monotonic()
         self.dir_cw = None
         self.progress.reset()
+        self._forget_buoy()
+
+    def _forget_buoy(self):
+        """부표를 놓았을 때(SEARCH/COOLDOWN 진입) 추적 상태를 지운다 — 묵은 방위로 LiDAR 를 매칭하지 않게."""
         self.last_seen_t = None
+        self.last_rel = None
+        self.last_steer = None
+        self.rel_src = None
 
     def set_state(self, s):
         if s != self.state:
@@ -217,8 +248,22 @@ class ShipTurn(Node):
                 best = r
         return best if math.isfinite(best) else None
 
+    def _lidar_track(self, expected_rel, now):
+        """(B) 카메라 방위가 없을 때: 예상 방위 ±lidar_track_window_deg, 거리 ≤ lidar_track_max_m 의
+        최근접 빔을 부표로 → (rel, dist). 스캔이 묵었거나 창 안에 없으면 None."""
+        scan = self.latest_scan
+        if scan is None or self.t_scan is None or (now - self.t_scan) > self.scan_stale_sec:
+            return None
+        return lidar_track(scan.ranges, math.degrees(scan.angle_min), math.degrees(scan.angle_increment),
+                           expected_rel, self.lidar_track_window_deg, self.lidar_track_max_m,
+                           LIDAR_FORWARD_DEG)
+
     def publish(self, value):
         self.pub_candidate.publish(Float32(data=float(value)))
+
+    def publish_steer(self, rel_deg):
+        """상대 조향(좌 양수)을 ±STEER_LIMIT_DEG 로 잘라 /candidate_angle 0~360 으로 발행."""
+        self.publish(rel_to_raw(clamp(rel_deg, -STEER_LIMIT_DEG, STEER_LIMIT_DEG)))
 
     # ---------------------- FSM ----------------------
     def timer_cb(self):
@@ -231,9 +276,28 @@ class ShipTurn(Node):
             rel, col = self._buoy(now)
             yaw = self.yaw if (self.t_yaw and (now - self.t_yaw) <= self.angle_stale_sec) else None
 
-        dist = self._lidar_dist_at(rel, now) if rel is not None else None
+        # ---- 부표 (rel, dist): 카메라 방위 우선, 없으면 (B) LiDAR 추적 ----
+        dist = None
+        src = None
+        if rel is not None:
+            src = "cam"
+            dist = self._lidar_dist_at(rel, now)
+        elif self.state in ("APPROACH", "ORBIT"):
+            # 예상 방위 = 직전 유효 방위. 없으면(이론상 ORBIT 진입엔 항상 있다) 설계 자세(CW 우현 −90).
+            expected = self.last_rel
+            if expected is None and self.dir_cw is not None:
+                expected = orbit_expected_rel(self.dir_cw)
+            tracked = self._lidar_track(expected, now) if expected is not None else None
+            if tracked is not None:
+                rel, dist = tracked
+                src = "lidar"
         if rel is not None:
             self.last_seen_t = now
+            self.last_rel = rel
+            if src != self.rel_src:
+                self.get_logger().info(f"부표 방위 소스 {self.rel_src} → {src} (rel={rel:.0f}°)",
+                                       throttle_duration_sec=1.0)
+                self.rel_src = src
         lost = self.last_seen_t is None or (now - self.last_seen_t) > self.lost_sec
 
         # ---- INIT: 진입 직후 잠깐 정지(autonomous 가 부표로 접근) ----
@@ -263,18 +327,28 @@ class ShipTurn(Node):
         # ---- APPROACH: 부표를 향해 접근, orbit 반경 부근에서 ORBIT ----
         if self.state == "APPROACH":
             if lost:
+                self._forget_buoy()
                 self.set_state("SEARCH")
                 return
             if dist is not None and dist <= self.approach_dist_m:
                 self.progress.reset()
+                self.last_steer = None
                 self.set_state("ORBIT")
                 return
-            self.publish(rel_to_raw(rel))              # 부표 방향으로 직진(거리 미상이어도)
+            if rel is None:
+                # (A) lost_sec 안의 순간 끊김: 직전 유효 방위로 계속 접근(카메라·LiDAR 둘 다 없을 때)
+                rel = self.last_rel
+            if rel is None:
+                # 정상 흐름엔 없는 상태(SEARCH→APPROACH 는 rel 이 있어야 넘어온다)지만 크래시 경로는 0 이어야 한다.
+                self.publish(CANDIDATE_INVALID)
+                return
+            self.publish_steer(rel)                    # 부표 방향으로 직진(거리 미상이어도)
             return
 
         # ---- ORBIT: 반경 유지하며 한 바퀴 ----
         if self.state == "ORBIT":
             if lost:
+                self._forget_buoy()
                 self.set_state("SEARCH")
                 return
             if self.elapsed() > self.orbit_max_sec:
@@ -282,25 +356,33 @@ class ShipTurn(Node):
                 self.set_state("COOLDOWN")
                 return
 
-            d = dist if dist is not None else self.orbit_radius_m   # 거리 미상이면 접선만
-            steer = orbit_steer(rel, d, self.orbit_radius_m, self.dir_cw,
-                                self.k_radial, self.radial_limit_deg)
+            if rel is None:
+                # (A) 카메라·LiDAR 둘 다 방위 없음(lost_sec 안): orbit_steer(None) 으로 죽지 않는다.
+                #     직전 유효 조향을 유지, 그것도 없으면 접선 가정(원 위·접선 자세 = 조향 0).
+                #     진행각은 방위 없이는 못 재니 갱신하지 않는다.
+                steer = self.last_steer if self.last_steer is not None else 0.0
+            else:
+                d = dist if dist is not None else self.orbit_radius_m   # 거리 미상이면 접선만
+                steer = orbit_steer(rel, d, self.orbit_radius_m, self.dir_cw,
+                                    self.k_radial, self.radial_limit_deg)
+                self.last_steer = steer
 
-            # 진행각 누적 (yaw 있을 때만). 목표 도달 → 완료.
-            if yaw is not None:
-                prog = self.progress.update(wrap360(yaw + rel))
-                if prog >= self.orbit_target_deg:
-                    self.get_logger().info(f"✅ 선회 {prog:.0f}° 완료")
-                    self.set_state("COOLDOWN")
-                    return
+                # 진행각 누적 (yaw 있을 때만). 월드 방위 = yaw − rel (좌 양수 rel). 목표 도달 → 완료.
+                if yaw is not None:
+                    prog = self.progress.update(buoy_world_bearing(yaw, rel))
+                    if prog >= self.orbit_target_deg:
+                        self.get_logger().info(f"✅ 선회 {prog:.0f}° 완료")
+                        self.set_state("COOLDOWN")
+                        return
 
-            self.publish(rel_to_raw(steer))
+            self.publish_steer(steer)
             return
 
         # ---- COOLDOWN: 손 떼고(autonomous 로) 다음 부표로 이동 ----
         if self.state == "COOLDOWN":
             self.publish(CANDIDATE_INVALID)
             if self.elapsed() >= self.cooldown_sec:
+                self._forget_buoy()
                 self.set_state("SEARCH")               # 다음 부표 탐색
             return
 

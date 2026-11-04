@@ -9,7 +9,8 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from ship_turn.orbit_logic import (  # noqa: E402
-    orbit_steer, OrbitProgress, orbit_direction_cw, is_active)
+    orbit_steer, orbit_expected_rel, buoy_world_bearing, OrbitProgress, orbit_direction_cw,
+    is_active, clamp)
 
 fails = 0
 
@@ -51,42 +52,105 @@ def test_color_direction():
     check("빈 문자열 → None", orbit_direction_cw("") is None)
 
 
-# ─────────────── orbit_steer: 반경 유지 시 접선 ───────────────
+# ─────────────── orbit_steer: 좌 양수(/image_angle·/candidate_angle 규약) ───────────────
+# 🚨 2026-11-04 전엔 "우 양수"(CW·부표 +90 → 접선 0)를 고정하고 있었다. 입·출력이 좌 양수라 CW 요청에
+#    CCW 로 돌았다(계약서_ship_turn선회_20261104 §0-3). 아래는 전부 **부호 비대칭** 케이스라 되돌리면 깨진다.
 def test_steer_on_circle_cw():
-    """CW, 부표 우현(+90°), 반경 정확 → 접선(정면 0°)."""
-    s = orbit_steer(90.0, 3.0, 3.0, True, 30.0, 45.0)
-    check("CW 반경 정확 → 정면(접선)", abs(s) < 1e-6, f"steer={s}")
+    """CW, 부표 우현(−90°, 좌 양수), 반경 정확 → 접선(정면 0°)."""
+    s = orbit_steer(-90.0, 3.0, 3.0, True, 30.0, 45.0)
+    check("CW 반경 정확(부표 우현 −90) → 정면(접선)", abs(s) < 1e-6, f"steer={s}")
 
 
 def test_steer_on_circle_ccw():
-    """CCW, 부표 좌현(-90°), 반경 정확 → 접선(정면 0°)."""
-    s = orbit_steer(-90.0, 3.0, 3.0, False, 30.0, 45.0)
-    check("CCW 반경 정확 → 정면(접선)", abs(s) < 1e-6, f"steer={s}")
+    """CCW, 부표 좌현(+90°), 반경 정확 → 접선(정면 0°)."""
+    s = orbit_steer(90.0, 3.0, 3.0, False, 30.0, 45.0)
+    check("CCW 반경 정확(부표 좌현 +90) → 정면(접선)", abs(s) < 1e-6, f"steer={s}")
+
+
+def test_steer_orbit_entry_cw_turns_left():
+    """ORBIT 진입 틱: 부표 정면(rel 0)·dist 4·R 3·CW → **+60(좌조향)** 이어야 부표가 우현으로 가 CW 가 된다.
+    옛 코드는 −60(우조향 → 부표가 좌현 → CCW)을 냈다. 되돌림 방어."""
+    s = orbit_steer(0.0, 4.0, 3.0, True, 30.0, 45.0)
+    check("CW 진입(rel 0, dist 4) → +60 좌조향", abs(s - 60.0) < 1e-6, f"steer={s}")
+    check("되돌림 방어: 음수(우조향)면 CCW 로 돈다", s > 0, f"steer={s}")
+
+
+def test_steer_orbit_entry_ccw_turns_right():
+    """CCW 진입(rel 0, dist 4) → −60(우조향 → 부표가 좌현으로)."""
+    s = orbit_steer(0.0, 4.0, 3.0, False, 30.0, 45.0)
+    check("CCW 진입(rel 0, dist 4) → −60 우조향", abs(s + 60.0) < 1e-6, f"steer={s}")
 
 
 def test_steer_too_far_turns_inward():
-    """CW, 너무 멀다(dist>radius) → 부표(우현) 쪽으로(+) 튼다."""
-    s = orbit_steer(90.0, 5.0, 3.0, True, 30.0, 45.0)
-    check("CW 너무 멀다 → 안쪽(우)로", s > 0, f"steer={s}")
+    """CW, 부표 우현(−90), 너무 멀다(dist>radius) → 부표 쪽 = 우(−)로 튼다."""
+    s = orbit_steer(-90.0, 5.0, 3.0, True, 30.0, 45.0)
+    check("CW 너무 멀다 → 안쪽(우, −)로", s < 0, f"steer={s}")
 
 
 def test_steer_too_close_turns_outward():
-    """CW, 너무 가깝다(dist<radius) → 바깥(좌)으로 튼다."""
-    s = orbit_steer(90.0, 1.0, 3.0, True, 30.0, 45.0)
-    check("CW 너무 가깝다 → 바깥(좌)으로", s < 0, f"steer={s}")
+    """CW, 부표 우현(−90), 너무 가깝다(dist<radius) → 바깥 = 좌(+)로 튼다."""
+    s = orbit_steer(-90.0, 1.0, 3.0, True, 30.0, 45.0)
+    check("CW 너무 가깝다 → 바깥(좌, +)으로", s > 0, f"steer={s}")
 
 
 def test_steer_radial_clamped():
     """반경 오차가 커도 gain 은 radial_limit 로 제한된다."""
-    s = orbit_steer(90.0, 100.0, 3.0, True, 30.0, 45.0)   # err=97, k*err 큼
-    # 접선 0 + gain(<=45) → 45 이하
+    s = orbit_steer(-90.0, 100.0, 3.0, True, 30.0, 45.0)   # err=97, k*err 큼
+    # 접선 0 − gain(<=45) → |s| 45 이하
     check("반경 보정 clamp", abs(s) <= 45.0 + 1e-6, f"steer={s}")
 
 
 def test_steer_ccw_far_turns_inward_left():
-    """CCW, 부표 좌현(-90°), 너무 멀다 → 부표(좌) 쪽으로(-) 튼다."""
-    s = orbit_steer(-90.0, 5.0, 3.0, False, 30.0, 45.0)
-    check("CCW 너무 멀다 → 안쪽(좌)로", s < 0, f"steer={s}")
+    """CCW, 부표 좌현(+90°), 너무 멀다 → 부표(좌) 쪽으로(+) 튼다."""
+    s = orbit_steer(90.0, 5.0, 3.0, False, 30.0, 45.0)
+    check("CCW 너무 멀다 → 안쪽(좌, +)로", s > 0, f"steer={s}")
+
+
+def test_steer_mirror_symmetry():
+    """좌우 대칭: steer_ccw(rel, d) == −steer_cw(−rel, d). 부호 규약을 한쪽만 고치면 깨진다."""
+    for rel, d in ((0.0, 4.0), (-90.0, 3.0), (-60.0, 2.0), (30.0, 5.0)):
+        a = orbit_steer(rel, d, 3.0, True, 30.0, 45.0)
+        b = orbit_steer(-rel, d, 3.0, False, 30.0, 45.0)
+        check(f"대칭 rel={rel} d={d}", abs(a + b) < 1e-6, f"cw={a} ccw={b}")
+
+
+def test_expected_rel():
+    """설계 자세: CW → 부표 우현 −90, CCW → 좌현 +90 (LiDAR 추적의 초기 예상 방위)."""
+    check("CW 예상 −90", orbit_expected_rel(True) == -90.0)
+    check("CCW 예상 +90", orbit_expected_rel(False) == 90.0)
+
+
+# ─────────────── 월드 방위 합성 = yaw − rel ───────────────
+def test_world_bearing_sign():
+    """yaw(CW+) 와 rel(좌+)은 부호가 반대: 북향(0)에서 부표가 좌현 90 → 서쪽(270)."""
+    check("yaw 0, rel +90(좌) → 270(서)", abs(buoy_world_bearing(0.0, 90.0) - 270.0) < 1e-6)
+    check("yaw 0, rel −90(우) → 90(동)", abs(buoy_world_bearing(0.0, -90.0) - 90.0) < 1e-6)
+    check("yaw 350, rel −20 → 10", abs(buoy_world_bearing(350.0, -20.0) - 10.0) < 1e-6)
+
+
+def test_world_bearing_yaw_in_place_no_progress():
+    """제자리 요잉: 부표는 북(0)에 고정, 배만 우(CW)로 40° 돌면 부표는 좌현으로 가 rel = +yaw(좌 양수).
+    월드 방위 yaw − rel 은 0 그대로 → 진행각 0. 옛 합성 yaw + rel 은 80° 를 찍어 조기 COOLDOWN(계약서 §0-3 b)."""
+    p = OrbitProgress()
+    prog = 0.0
+    old = OrbitProgress()
+    old_prog = 0.0
+    for yaw in range(0, 41, 5):
+        prog = p.update(buoy_world_bearing(float(yaw), float(yaw)))
+        old_prog = old.update((float(yaw) + float(yaw)) % 360.0)     # 옛 식 yaw + rel
+    check("제자리 요잉 40° → 진행 0", abs(prog) < 1e-6, f"progress={prog:.1f}")
+    check("옛 식 yaw+rel 은 80 (2배 과계수, 되돌림 방어 근거)", abs(old_prog - 80.0) < 1e-6, f"old={old_prog:.1f}")
+
+
+# ─────────────── 발행 전 클램프 ±80 (ship_direction 매핑 0~160) ───────────────
+def test_steer_clamp_80():
+    """|steer|>80 은 ship_direction 에서 STOP_HOLD 가 된다 → 노드가 ±80 으로 자른다(clamp 로)."""
+    check("+95 → +80", clamp(95.0, -80.0, 80.0) == 80.0)
+    check("−95 → −80", clamp(-95.0, -80.0, 80.0) == -80.0)
+    check("+60 그대로", clamp(60.0, -80.0, 80.0) == 60.0)
+    # 진입 직후 rel 0·dist 3.2(err 0.2 → gain 6) → 84 → 클램프 필요한 실제 케이스
+    s = orbit_steer(0.0, 3.2, 3.0, True, 30.0, 45.0)
+    check("진입 rel 0·dist 3.2 → 84 (>80, 클램프 대상)", s > 80.0, f"steer={s}")
 
 
 # ─────────────── OrbitProgress: 한 바퀴 누적 ───────────────
