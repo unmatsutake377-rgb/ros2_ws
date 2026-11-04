@@ -346,8 +346,8 @@ pres.addSection({ title: '선형 설계 및 제작' });
     s.addText(d, { x, y: 4.65, w: 2.1, h: 0.8, fontSize: 11, lineSpacing: LS(11), color: C.text1, valign: 'top', isTextBox: true, margin: 0 });
   });
   card(s, M, 5.6, 9, 1.2, '재료', isA
-    ? 'PLA+ 필라멘트(몰드) · FRP 촙 매트/얀 크로스 · 방수 실리콘(TYTAN FIX2)·실란트 · 방수제(노루페인트) · Six10 에폭시 · 방수박스 400×300×200 mm'
-    : 'PLA+ 필라멘트(몰드) · 카본섬유 · 방수 실리콘(TYTAN FIX2) · 방수제(노루페인트) · Six10 에폭시 · 방수박스 400×300×200 mm', { fontSize: 11.5 });
+    ? 'PLA+ 필라멘트(몰드) · FRP 촙 매트/얀 크로스 · 방수 실리콘(TYTAN FIX2)·실란트 · 방수제(노루페인트) · Six10 에폭시 · 방수박스 400×300×200 mm (연장 후 480×300×200 mm)'
+    : 'PLA+ 필라멘트(몰드) · 카본섬유 · 방수 실리콘(TYTAN FIX2) · 방수제(노루페인트) · Six10 에폭시 · 방수박스 400×300×200 mm (연장 후 535×300×200 mm)', { fontSize: 11.5 });
 }
 
 // ── 6. 시스템 구성·센서 (Ⅲ-1, 7) ────────────────────────────────────────────
@@ -494,7 +494,7 @@ pres.addSection({ title: '시험·비용' });
   s.addText(B.costTotal, { x: 6.5, y: 1.7, w: 3.0, h: 0.6, fontSize: 18, bold: true, color: C.text1, isTextBox: true, margin: 0, valign: 'top', objectName: '총액' });
   bullets(s, [
     isA ? '센서 4종(LiDAR·GPS·IMU·OAK)이 전체의 약 58 %, 선체 재료(공용 1/2) 약 7 %' : '추진기 4기 + ESC 가 전체의 약 43 %, 선체 재료(카본 + 공용 1/2) 약 24 %',
-    isA ? '학과 보유(합계 제외): 노트북·D455·접촉기·무선 릴레이·LED·EC5 커넥터' : '학과 보유(합계 제외): 노트북·GPS·IMU·조종기·D455·박스·접촉기·5 V 모듈',
+    isA ? '학과 보유(합계 제외): 노트북·D455·접촉기·무선 릴레이·LED·EC5 커넥터' : '학과 보유(합계 제외): 노트북·GPS·IMU·조종기·D455·박스·접촉기·5 V 모듈·LED·EC5 커넥터',
     '이 배에 단 수량 × 구매 단가. 선체 공용 재료 571,740 원은 두 배 1/2 씩',
   ], 6.5, 3.5, 3.0, 2.5, { fontSize: 10.5 });
 }
