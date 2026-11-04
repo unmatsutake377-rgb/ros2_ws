@@ -12,8 +12,9 @@ if (!DECK || !TEMPLATE || !OUT || !['A', 'B'].includes(BOAT)) {
   process.exit(1);
 }
 const TEAM = BOAT === 'A'
-  ? { name: 'S.S.F A', members: '도건윤, 김은우, 김정한, 김하은, 박주현, 황준연, 석현, 정우성' }
-  : { name: 'S.S.F B', members: '박유진, 박윤서, 차준혁, 이송언, 이태훈, 김세연, 김현지, 전홍윤, 황예진' };
+  ? { name: 'S.S.F A', leader: '도건윤', members: '김은우, 김정한, 김하은, 박주현, 황준연, 석현, 정우성' }
+  : { name: 'S.S.F B', leader: '박유진', members: '박윤서, 차준혁, 이송언, 이태훈, 김세연, 김현지, 전홍윤, 황예진' };
+const ADVISOR = '권순범';
 const SCHOOL = '홍익대학교 조선해양모빌리티공학과';
 
 // 발표자료 테마 색 (tools/make_slides_pptx.js THEME 와 같아야 한다) — 포스터 테마가 다르므로 복사하면서 고정색으로 바꾼다
@@ -233,10 +234,15 @@ async function main() {
   posterXml = posterXml.replace('<a:t>팀 명</a:t>', `<a:t>${xmlEsc(TEAM.name)}</a:t>`);
   posterXml = posterXml.replace(/<a:t>\s*학교<\/a:t>/, `<a:t> ${xmlEsc(SCHOOL)}</a:t>`);
   posterXml = posterXml.replace(/(<p:sp>(?:(?!<\/p:sp>)[\s\S])*?name="TextBox 25"[\s\S]*?<p:txBody>)([\s\S]*?)(<\/p:txBody>)/, (m, head, body, tail) => {
-    const firstRun = body.match(/<a:rPr[^>]*>[\s\S]*?<\/a:rPr>/)[0];
+    // bodyPr·lstStyle 은 그대로 둔다(txBody 필수 요소 — 지우면 PowerPoint 가 '내용에 문제' 로 복구를 요구하고
+    // Keynote 는 글상자를 버린다). 단락만 조장·지도교수 / 팀원 두 줄로 바꾼다. 양식 54 pt 는 세 줄을 넘쳐 40 pt.
+    const keep = (body.match(/^[\s\S]*?(?=<a:p>)/) || [''])[0];
+    const firstRun = body.match(/<a:rPr[^>]*>[\s\S]*?<\/a:rPr>/)[0].replace(/sz="\d+"/, 'sz="4000"');
     const pPr = (body.match(/<a:pPr>[\s\S]*?<\/a:pPr>/) || [''])[0];
     const run = (t) => `<a:r>${firstRun}<a:t>${xmlEsc(t)}</a:t></a:r>`;
-    return head + `<a:p>${pPr}${run('팀  원 : ' + TEAM.members)}</a:p>` + tail;
+    return head + keep
+      + `<a:p>${pPr}${run(`조  장 : ${TEAM.leader}     지도교수 : ${ADVISOR}`)}</a:p>`
+      + `<a:p>${pPr}${run('팀  원 : ' + TEAM.members)}</a:p>` + tail;
   });
   posterXml = fixTemplateFonts(posterXml);
   posterXml = posterXml.replace('</p:spTree>', groups.join('') + '</p:spTree>');
