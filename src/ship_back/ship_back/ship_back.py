@@ -11,7 +11,7 @@
   [3] 거리는 LiDAR 에서. /image_distance(카메라 뎁스, OAK-1 에서 죽음) 폐기, /scan 사용.
       부표는 점 물체라 방위 매칭이 통한다. 부표 방위는 /image_angle, 없으면 LiDAR 전방 최근접.
 
-파라미터(6d-[4]): active_wp_modes([2]; launch 가 search_behavior:=hold 면 [2, 3]),
+파라미터(6d-[4]): active_wp_modes([2, 3] = search_behavior 기본 hold; orbit 옵션이면 launch 가 [2]),
                   keep_radius_m(5.0 규정), hold_time_sec(5.0 규정), hold_dist_m(2.5 ⚠️실측), dist_tol_m.
 
 FSM: INIT → SEARCH → HOLD → DONE.
@@ -66,10 +66,11 @@ class ShipBack(Node):     # 🚨 작년엔 ShipTurn 이었다(복붙). 이름을
         qos = QoSProfile(depth=5, reliability=ReliabilityPolicy.RELIABLE)
 
         # ---- 파라미터 (config/ship_back.yaml, CLAUDE.md 1-4) ----
-        # 담당 모드 목록. 기본 [2](위치유지). launch 가 search_behavior:=hold 면 [2, 3] 을 넘겨
-        # 탐색(3)도 이 노드가 맡는다(그때 ship_turn 은 enabled:=false 로 침묵). 🚨 빈 리스트 금지.
+        # 담당 모드 목록. 기본 [2, 3] = launch search_behavior 기본 hold(2026 안내문: 탐색 = 부표 앞
+        # 위치유지) — 그때 ship_turn 은 enabled=false 로 침묵. orbit 옵션이면 launch 가 [2] 를 넘긴다.
+        # 코드 기본값 = yaml(config/ship_back.yaml). 🚨 빈 리스트 금지.
         self.active_wp_modes = [
-            int(m) for m in self.declare_parameter('active_wp_modes', [2]).value]
+            int(m) for m in self.declare_parameter('active_wp_modes', [2, 3]).value]
         self.period_sec = float(self.declare_parameter('period_sec', 0.1).value)
 
         self.keep_radius_m = float(self.declare_parameter('keep_radius_m', 5.0).value)   # 규정

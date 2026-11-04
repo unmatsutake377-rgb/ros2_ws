@@ -112,7 +112,7 @@
 #   권위 출처는 미션 노드의 active_wp_mode 다 — 바꿀 땐 양쪽을 함께 바꿔라.
 #     mode 0,1 → ship_gate  (active_wp_modes=[0,1])
 #     mode 2   → ship_back  (active_wp_modes=[2])
-#     mode 3   → ship_turn  (active_wp_mode=3) — launch search_behavior:=hold 면 ship_back [2,3]
+#     mode 3   → ship_back [2,3] (search_behavior 기본 hold) — orbit 옵션이면 ship_turn(active_wp_mode=3)
 #                 ⚠️ 검출기 turn 의 active_wp_modes [2, 3] 은 두 행동 모두 그대로. 3 의 미션 노드만 바뀐다.
 #     mode 7   → ship_dock  (active_wp_mode=7)
 #     mode 5,8 → 순수 회피(담당 없음) → 검출기 전부 비활성

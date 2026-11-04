@@ -19,8 +19,9 @@
 
 파라미터(6c-[4]): orbit_radius_m(⚠️실측), radius_tol_m, approach_dist_m, k_radial_deg_per_m,
                   orbit_target_deg(360). SPIN 규약(6c-[5]): 5000=우선회, 6000=좌선회.
-  enabled(bool, 기본 true): false 면 이 노드는 **어떤 모드에서도** /candidate_angle 을 안 낸다.
-    launch 가 search_behavior:=hold 면 false 로 띄운다(탐색 = 부표 앞 위치유지, ship_back 담당).
+  enabled(bool, 기본 false): false 면 이 노드는 **어떤 모드에서도** /candidate_angle 을 안 낸다.
+    기본 false = launch search_behavior 기본 hold(탐색 = 부표 앞 위치유지, ship_back 담당).
+    orbit 옵션(2025 규정 선회)이면 launch 가 true 를 넘긴다. 코드 기본값 = yaml.
     🚨 끄려고 active_wp_mode 를 -1 로 두지 마라 — 부팅 초기값(self.wp_mode=-1)과 일치해
     /wp_mode 첫 수신 전에 게이트를 통과, SPIN 5000 을 낸다.
 
@@ -89,9 +90,10 @@ class ShipTurn(Node):
         qos = QoSProfile(depth=5, reliability=ReliabilityPolicy.RELIABLE)
 
         # ---- 파라미터 (config/ship_turn.yaml, CLAUDE.md 1-4) ----
-        # enabled=False: 어떤 모드에서도 발행 안 함 (launch search_behavior:=hold).
+        # enabled=False(기본 = launch search_behavior 기본 hold): 어떤 모드에서도 발행 안 함.
+        #   orbit 옵션이면 launch 가 True 를 넘긴다.
         #   active_wp_mode 는 그대로 3 — -1 센티널은 부팅 초기값과 겹쳐 금지(상단 docstring).
-        self.enabled = bool(self.declare_parameter('enabled', True).value)
+        self.enabled = bool(self.declare_parameter('enabled', False).value)
         self.active_wp_mode = int(self.declare_parameter('active_wp_mode', 3).value)
         self.period_sec = float(self.declare_parameter('period_sec', 0.1).value)
 
@@ -157,7 +159,7 @@ class ShipTurn(Node):
         )
         if not self.enabled:
             self.get_logger().warn(
-                "search_behavior=hold: ship_turn 침묵, 탐색은 ship_back 담당")
+                "enabled=false(search_behavior 기본 hold): ship_turn 침묵, 탐색은 ship_back 담당")
 
     # ---------------------- 콜백 ----------------------
     def wp_cb(self, msg):

@@ -94,7 +94,7 @@ def test_mode_reset_enter_from_other():
 
 def test_mode_reset_leaving_inactive():
     check("[2,3] 3→5 비활성(리셋 없음)", not should_reset_on_mode(3, 5, [2, 3]))
-    check("[2] 2→3 비활성(orbit 기본: 3 은 ship_turn)", not should_reset_on_mode(2, 3, [2]))
+    check("[2] 2→3 비활성(orbit 옵션: 3 은 ship_turn)", not should_reset_on_mode(2, 3, [2]))
 
 
 if __name__ == '__main__':

@@ -1,7 +1,9 @@
 # ship_back 파라미터 (하드코딩 금지, CLAUDE.md 1-4)
 /ship_back:
   ros__parameters:
-    active_wp_modes: [2]     # 위치유지 구간. launch 가 search_behavior:=hold 면 [2, 3] 을 넘긴다
+    # search_behavior 기본 hold(2026 안내문): 위치유지(2)에 더해 탐색(3)도 담당.
+    #   orbit 옵션이면 launch 가 [2] 를 넘긴다(3 은 ship_turn). 🚨 빈 리스트 금지.
+    active_wp_modes: [2, 3]
     period_sec: 0.1
 
     # ---- 위치유지 (규정: 부표 5m 이내 5초) ----
