@@ -25,6 +25,9 @@ PKG = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..')
 sys.path.insert(0, PKG)    # ship_back.py 의 `from ship_back.hold_logic import …` 용
 
 
+DECLARED = {}    # 마지막 노드가 선언한 (이름 → 코드 기본값)
+
+
 # ---- rclpy 스텁 노드 (dock_sim.py:43-96 방식) ----
 class _Param:
     def __init__(self, v):
@@ -61,6 +64,7 @@ class _Node:
         self.pubs = []
 
     def declare_parameter(self, name, default):
+        DECLARED[name] = default
         return _Param(default)
 
     def create_publisher(self, typ, topic, qos):
@@ -262,10 +266,31 @@ def test_deadband_stop():
 
 
 def test_lidar_fallback_pm30_unchanged():
-    """비전 방위 없음 → LiDAR 전방 ±30 최근접. +30(LiDAR 110°) → 30, −30(LiDAR 50°) → 330."""
+    """HOLD 중 비전이 1.5 s 전에 끊김(< lost_sec 2.0) → LiDAR 전방 ±30 최근접 보조.
+
+    +30(LiDAR 110°) → 30, −30(LiDAR 50°) → 330 — 클램프·매핑 기대값은 그대로.
+    계약 전체코스 §2-5 로 바뀐 점: LiDAR 는 'HOLD 유지 중 직전 비전이 lost_sec 안'일 때만 보조하고,
+    last_seen_t 를 갱신하지 않는다(갱신하면 전방에 무엇이든 있는 한 HOLD 가 안 끝난다).
+    수정 전에는 비전과 무관하게 LiDAR 가 last_seen_t 를 now 로 당겼다.
+    """
     for obj, want in ((110.0, 30.0), (50.0, 330.0)):
-        _, out = tick(None, dist=3.5, obj=obj)
+        n = make_hold(None, dist=3.5, obj=obj)
+        n.last_seen_t = CLOCK.t - 1.5
+        n.timer_cb()
+        out = n.pub_candidate.values
         assert abs(_one(out) - want) < 1e-6, f"LiDAR {obj}° → {out} (기대 {want})"
+        assert n.state == 'HOLD' and n.last_seen_t == CLOCK.t - 1.5, (n.state, n.last_seen_t)
+
+
+def test_lidar_aid_ends_after_lost_sec():
+    """직전 비전이 lost_sec 넘게 지났으면 LiDAR 가 앞에 있어도 HOLD → SEARCH(이 틱 발행 없음).
+
+    수정 전에는 LiDAR 최근접이 last_seen_t 를 갱신해 HOLD 가 유지되고 30 을 발행했다.
+    """
+    n = make_hold(None, dist=3.5, obj=110.0)
+    n.last_seen_t = CLOCK.t - 2.1
+    n.timer_cb()
+    assert n.state == 'SEARCH' and n.pub_candidate.values == [], (n.state, n.pub_candidate.values)
 
 
 def test_lidar_match_uses_unclamped_bearing():
@@ -278,12 +303,314 @@ def test_lidar_match_uses_unclamped_bearing():
 
 
 def test_nan_guard_kept():
-    """NaN 은 angle_cb 에서 걸러져 buoy_rel=None → LiDAR 대체(전 방위 3.5 → 전방 최근접 −30)."""
+    """NaN 은 angle_cb 에서 걸러져 buoy_rel=None → LiDAR 보조(전 방위 3.5 → 전방 최근접 −30).
+
+    make_hold 는 last_seen_t = now(방금 비전으로 봄)라 §2-5 보조 창 안 — 기대값 330 그대로.
+    """
     n = make_hold(float('nan'))
     assert n.buoy_rel is None
     n.timer_cb()
     p = _one(n.pub_candidate.values)
     assert abs(p - 330.0) < 1e-6, f"out={p} (NaN 이 조향으로 새면 80.0)"
+
+
+# ---------------- 계약 전체코스 §2-4·§2-5 (C5): 획득은 비전 색 확인으로만, SEARCH 타임아웃 비래치
+def make_search(elapsed=1.5, scan_dist=3.0):
+    """SEARCH 에 elapsed 초 머문 노드. 비전 없음, LiDAR 전 방위에 scan_dist(벽·다른 색 부표)."""
+    n = SB.ShipBack()
+    n.wp_mode = n.active_wp_modes[-1]          # 3 = 탐색
+    n.state = 'SEARCH'
+    n.state_t = CLOCK.t - elapsed
+    n.latest_scan = _Scan(scan_dist)
+    n.t_scan = CLOCK.t
+    return n
+
+
+def test_switch_defaults():
+    n = SB.ShipBack()
+    assert n.search_timeout_ends is False and n.lidar_acquire is False
+    assert n.search_timeout_sec == 20.0
+
+
+def test_code_defaults_equal_yaml():
+    """코드 기본값 = config/ship_back.yaml (대회 launch 는 ship_back 에 active_wp_modes 만 넘긴다)."""
+    import yaml
+    SB.ShipBack()
+    with open(os.path.join(PKG, 'config', 'ship_back.yaml'), encoding='utf-8') as f:
+        y = yaml.safe_load(f)['/ship_back']['ros__parameters']
+    assert y['search_timeout_ends'] is False and y['lidar_acquire'] is False
+    assert set(DECLARED) == set(y), (set(DECLARED) ^ set(y))
+    diff = {k: (DECLARED[k], y[k]) for k in y if DECLARED[k] != y[k]}
+    assert not diff, diff
+
+
+def test_search_no_vision_lidar_wall_stays_search():
+    """비전 없이 전방 벽(LiDAR 3 m) → SEARCH 유지·20000. 수정 전에는 LiDAR 최근접으로 HOLD 획득."""
+    n = make_search()
+    n.timer_cb()
+    assert n.state == 'SEARCH' and _one(n.pub_candidate.values) == 20000.0, \
+        (n.state, n.pub_candidate.values)
+    assert n.last_seen_t is None
+
+
+def test_search_vision_acquires_hold():
+    n = make_search()
+    n.angle_cb(_Float32(10.0))
+    n.timer_cb()
+    assert n.state == 'HOLD' and n.last_seen_t == CLOCK.t, (n.state, n.last_seen_t)
+
+
+def test_search_timeout_not_done_by_default():
+    """SEARCH 25 s(> 20) → DONE 래치하지 않고 SEARCH·20000. 수정 전에는 DONE."""
+    n = make_search(elapsed=25.0)
+    n.timer_cb()
+    assert n.state == 'SEARCH' and _one(n.pub_candidate.values) == 20000.0, \
+        (n.state, n.pub_candidate.values)
+    n2 = make_search(elapsed=25.0)
+    n2.angle_cb(_Float32(0.0))                 # 늦게라도 보이면 획득
+    n2.timer_cb()
+    assert n2.state == 'HOLD', n2.state
+
+
+def test_search_timeout_warn_once_per_entry_no_latch():
+    """search_timeout_ends=false: 20 s 넘으면 WARN 1회, 상태·발행 유지. 다시 SEARCH 진입하면 또 1회."""
+    n = make_search(elapsed=19.9)
+    n.timer_cb()
+    assert warns(n) == []
+    t0 = CLOCK.t
+    try:
+        for k in range(1, 6):                     # 20.0 ~ 24 s 지점
+            CLOCK.t = t0 + k
+            n.t_scan = CLOCK.t
+            n.timer_cb()
+        w = [ln for ln in warns(n) if '부표 못 찾음' in ln[1]]
+        assert len(w) == 1 and '계속 탐색(20000)' in w[0][1], warns(n)
+        assert n.state == 'SEARCH' and set(n.pub_candidate.values) == {20000.0}
+        CLOCK.t = t0 + 30.0
+        n.set_state('HOLD')
+        n.set_state('SEARCH')                     # 재진입 → 다시 셈
+        n.t_scan = CLOCK.t
+        n.timer_cb()
+        assert len([ln for ln in warns(n) if '부표 못 찾음' in ln[1]]) == 1   # 0 s 경과
+        CLOCK.t = t0 + 50.1
+        n.t_scan = CLOCK.t
+        n.timer_cb()
+        assert len([ln for ln in warns(n) if '부표 못 찾음' in ln[1]]) == 2
+    finally:
+        CLOCK.t = t0
+
+
+def test_search_same_mode_3_to_3_keeps_search_then_vision_holds():
+    """WP3 실패 → WP4(같은 mode 3) 계속을 노드 단위로 고정.
+
+    /wp_mode 3 재수신은 리셋 없이 SEARCH·20000 유지, 그 뒤 비전(빨강)이 오면 HOLD.
+    """
+    n = make_search(elapsed=25.0)
+    n.timer_cb()
+    n.wp_cb(_Float32(3))
+    assert n.state == 'SEARCH'
+    n.timer_cb()
+    assert n.state == 'SEARCH' and n.pub_candidate.values[-1] == 20000.0
+    n.angle_cb(_Float32(5.0))
+    n.timer_cb()
+    assert n.state == 'HOLD', n.state
+
+
+def test_search_timeout_switch_true_old_done():
+    n = make_search(elapsed=25.0)
+    n.search_timeout_ends = True
+    n.timer_cb()
+    assert n.state == 'DONE', n.state
+    assert any('SEARCH 타임아웃' in ln[1] for ln in warns(n)), warns(n)
+
+
+def test_lidar_acquire_true_old_behavior():
+    """lidar_acquire=true: 비전 없이 LiDAR 최근접으로 SEARCH→HOLD, HOLD 에서 last_seen 갱신."""
+    n = make_search()
+    n.lidar_acquire = True
+    n.timer_cb()
+    assert n.state == 'HOLD' and n.last_seen_t == CLOCK.t, (n.state, n.last_seen_t)
+    h = make_hold(None, dist=3.5, obj=110.0)
+    h.lidar_acquire = True
+    h.last_seen_t = CLOCK.t - 5.0
+    h.timer_cb()
+    assert h.state == 'HOLD' and _one(h.pub_candidate.values) == 30.0 \
+        and h.last_seen_t == CLOCK.t, (h.state, h.pub_candidate.values)
+
+
+def test_hold_vision_refreshes_last_seen():
+    n = make_hold(0.0, dist=3.5)
+    n.last_seen_t = CLOCK.t - 1.9
+    n.timer_cb()
+    assert n.last_seen_t == CLOCK.t and _one(n.pub_candidate.values) == 0.0
+
+
+def test_done_only_from_hold_and_3_to_3_keeps_latch():
+    """HOLD 성공(5 m 안 5 s) → DONE. 같은 모드 3→3 재수신은 리셋 안 함(DONE·20000 유지)."""
+    n = make_hold(0.0, dist=2.5)
+    n.wp_mode = 3
+    n.hold_timer.update(2.5, CLOCK.t - 5.0)
+    n.timer_cb()
+    assert n.state == 'DONE', n.state
+    n.wp_cb(_Float32(3))
+    n.timer_cb()
+    assert n.state == 'DONE' and n.pub_candidate.values[-1] == 20000.0
+
+
+# ---------------- 계약 전체코스 §10-추가 결정 4: HOLD 거리 unknown 이 unknown_giveup_sec 이면 포기
+def errors(n):
+    return [ln for ln in n.get_logger().lines if ln[0] == 'ERROR']
+
+
+def _step(n, t, lidar_sees):
+    """시각 t 로 옮겨 비전(정면 0°)을 주고 한 틱. lidar_sees=False 면 비전 방위 ±3° 에 LiDAR 없음."""
+    CLOCK.t = t
+    n.angle_cb(_Float32(0.0))
+    n.latest_scan = _Scan(3.5, obj=80.0 if lidar_sees else 170.0)   # 80 = 정면, 170 = 좌 90°
+    n.t_scan = t
+    n.timer_cb()
+    return n.pub_candidate.values[-1] if n.pub_candidate.values else None
+
+
+def _unknown_hold():
+    n = make_hold(0.0, dist=3.5, obj=170.0)
+    n.wp_mode = 3
+    return n, CLOCK.t
+
+
+def test_unknown_giveup_default_and_yaml():
+    assert SB.ShipBack().unknown_giveup_sec == 10.0
+
+
+def test_unknown_giveup_boundary_9_9_vs_10_0():
+    n, t0 = _unknown_hold()
+    try:
+        assert _step(n, t0, False) == 50000.0 and n.state == 'HOLD'
+        assert _step(n, t0 + 9.9, False) == 50000.0 and n.state == 'HOLD', n.state
+        assert errors(n) == []
+        _step(n, t0 + 10.0, False)
+        assert n.state == 'DONE', n.state
+        e = errors(n)
+        assert len(e) == 1 and 'LiDAR 거리 없음' in e[0][1] and '포기' in e[0][1], e
+    finally:
+        CLOCK.t = t0
+
+
+def test_unknown_giveup_done_persists_20000_and_3_to_3_latch():
+    n, t0 = _unknown_hold()
+    try:
+        _step(n, t0, False)
+        _step(n, t0 + 10.0, False)
+        assert n.state == 'DONE'
+        for k in range(1, 4):
+            assert _step(n, t0 + 10.0 + k, True) == 20000.0 and n.state == 'DONE'
+        n.wp_cb(_Float32(3))                      # 같은 모드 3→3 재수신 → 리셋 안 함
+        assert _step(n, t0 + 15.0, True) == 20000.0 and n.state == 'DONE'
+        assert len(errors(n)) == 1, errors(n)     # ERROR 는 포기 전이에서 1회
+    finally:
+        CLOCK.t = t0
+
+
+def test_unknown_timer_resets_when_distance_returns():
+    n, t0 = _unknown_hold()
+    try:
+        _step(n, t0, False)
+        _step(n, t0 + 6.0, False)
+        assert _step(n, t0 + 6.1, True) == 0.0    # 거리 3.5 m 잡힘 → 전진, 타이머 리셋
+        assert n.unknown_t0 is None
+        _step(n, t0 + 6.2, False)                 # unknown 다시 시작
+        assert _step(n, t0 + 16.1, False) == 50000.0 and n.state == 'HOLD', n.state   # 9.9 s
+        _step(n, t0 + 16.3, False)                # 10.1 s (부동소수 경계 피함 — 경계는 위 테스트)
+        assert n.state == 'DONE' and len(errors(n)) == 1
+    finally:
+        CLOCK.t = t0
+
+
+# ---------------- 계약 전체코스 §10-추가 결정 5: 한 WP 의 HOLD 총시간 hold_max_sec 이면 포기
+def _hstep(n, t, dist):
+    """시각 t, 비전 정면 0°, LiDAR 전 방위 dist 로 한 틱. 마지막 발행값."""
+    CLOCK.t = t
+    n.angle_cb(_Float32(0.0))
+    n.latest_scan = _Scan(dist)
+    n.t_scan = t
+    n.timer_cb()
+    return n.pub_candidate.values[-1] if n.pub_candidate.values else None
+
+
+def _hold_node(mode=3):
+    """담당 모드 진입(wp_cb) → set_state('HOLD') 로 HOLD 구간 시작. (노드, 시작 시각)."""
+    n = SB.ShipBack()
+    n.wp_cb(_Float32(mode))
+    n.set_state('HOLD')
+    return n, CLOCK.t
+
+
+def _max_errors(n):
+    return [ln for ln in errors(n) if 'HOLD 총' in ln[1]]
+
+
+def test_hold_max_default():
+    assert SB.ShipBack().hold_max_sec == 60.0
+
+
+def test_hold_max_boundary_and_done_persists():
+    """6 m(5 m 밖 → 성공 못 함, 거리 있음 → unknown 아님): 59.9 s HOLD, 60.0 s DONE·ERROR 1회."""
+    n, t0 = _hold_node()
+    try:
+        assert _hstep(n, t0 + 59.9, 6.0) == 0.0 and n.state == 'HOLD'
+        assert _max_errors(n) == []
+        _hstep(n, t0 + 60.0, 6.0)
+        assert n.state == 'DONE', n.state
+        e = _max_errors(n)
+        assert len(e) == 1 and '60 s 넘음' in e[0][1] and '포기' in e[0][1], e
+        for k in range(1, 4):
+            assert _hstep(n, t0 + 60.0 + k, 2.5) == 20000.0 and n.state == 'DONE'
+        n.wp_cb(_Float32(3))                      # 3→3 래치 유지
+        assert _hstep(n, t0 + 70.0, 2.5) == 20000.0 and n.state == 'DONE'
+        assert len(errors(n)) == 1, errors(n)
+    finally:
+        CLOCK.t = t0
+
+
+def test_hold_max_sums_hold_search_hold():
+    n, t0 = _hold_node()
+    try:
+        CLOCK.t = t0 + 30.0
+        n.set_state('SEARCH')                     # 30 s HOLD 끝
+        CLOCK.t = t0 + 40.0
+        n.set_state('HOLD')                       # 다시 HOLD (SEARCH 10 s 는 안 셈)
+        assert _hstep(n, t0 + 69.9, 6.0) == 0.0 and n.state == 'HOLD'   # 30 + 29.9
+        _hstep(n, t0 + 70.0, 6.0)                 # 30 + 30
+        assert n.state == 'DONE' and len(_max_errors(n)) == 1
+    finally:
+        CLOCK.t = t0
+
+
+def test_hold_max_reset_only_on_mode_entry():
+    n, t0 = _hold_node(mode=2)
+    try:
+        CLOCK.t = t0 + 50.0
+        n.set_state('SEARCH')                     # 이번 WP HOLD 합 50 s
+        n.wp_cb(_Float32(3))                      # 담당 모드 진입(2→3) → 0
+        assert n.hold_total == 0.0 and n.hold_enter_t is None
+        n.set_state('HOLD')
+        assert _hstep(n, t0 + 109.9, 6.0) == 0.0 and n.state == 'HOLD'  # 새 WP 59.9 s
+        assert _max_errors(n) == []
+    finally:
+        CLOCK.t = t0
+
+
+def test_hold_max_normal_success_unaffected():
+    """정상 성공(5 m 안 5 s) — 상한과 같은 틱(앞서 55 s + 5 s)이어도 성공이 우선, ERROR 0."""
+    n, t0 = _hold_node()
+    try:
+        n.hold_total = 55.0
+        _hstep(n, t0, 2.5)
+        assert n.state == 'HOLD'
+        _hstep(n, t0 + 5.0, 2.5)
+        assert n.state == 'DONE' and errors(n) == [], (n.state, errors(n))
+    finally:
+        CLOCK.t = t0
 
 
 if __name__ == '__main__':

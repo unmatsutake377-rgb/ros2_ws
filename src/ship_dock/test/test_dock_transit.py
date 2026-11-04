@@ -489,7 +489,6 @@ def test_subscribes_goal_distance():
                       '/wp_remaining_time'], topics
 
 
-
 # ---------------- SEARCH 타임아웃 DONE: WP8 동안 50000, WP9 전환(/wp_remaining_time 리셋) 뒤 20000
 def remain(n, v, t):
     CLOCK.t = t
@@ -612,7 +611,6 @@ def test_wp_track_kept_on_7_to_7_and_reset_on_leave():
     assert n.wp_resets == 0 and n.remain_prev is None
     remain(n, 10.0, T0 + 3.0)               # mode 7 밖 값은 무시
     assert n.remain_prev is None
-
 
 
 def test_remain_gap_then_150_is_not_reset():

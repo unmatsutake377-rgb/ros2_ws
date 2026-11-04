@@ -9,6 +9,9 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from ship_back.hold_logic import station_keep_action, HoldTimer, should_reset_on_mode  # noqa: E402
+from ship_back.hold_logic import target_source, counts_as_seen, search_timed_out  # noqa: E402
+from ship_back.hold_logic import unknown_giveup, search_timeout_warn  # noqa: E402
+from ship_back.hold_logic import hold_total_exceeded  # noqa: E402
 
 fails = 0
 
@@ -95,6 +98,89 @@ def test_mode_reset_enter_from_other():
 def test_mode_reset_leaving_inactive():
     check("[2,3] 3→5 비활성(리셋 없음)", not should_reset_on_mode(3, 5, [2, 3]))
     check("[2] 2→3 비활성(orbit 옵션: 3 은 ship_turn)", not should_reset_on_mode(2, 3, [2]))
+
+
+# ─────────────── target_source / counts_as_seen (계약 전체코스 §2-5) ───────────────
+def test_source_vision_fresh_wins():
+    for st in ('SEARCH', 'HOLD'):
+        for la in (False, True):
+            check(f"{st} lidar_acquire={la}: 비전 신선 → vision",
+                  target_source(st, True, None, 2.0, la) == 'vision')
+
+
+def test_source_search_no_vision_no_lidar():
+    # 수정 전: SEARCH 에서 비전이 없으면 LiDAR 전방 최근접을 부표로 보고 HOLD 했다(색 무관)
+    check("SEARCH 비전 없음 → None(획득 안 함)", target_source('SEARCH', False, None, 2.0, False) is None)
+    check("SEARCH 비전 없음, 방금 봤어도 → None", target_source('SEARCH', False, 0.0, 2.0, False) is None)
+
+
+def test_source_hold_lidar_aid_window():
+    check("HOLD 직전 비전 1.5 s 전 → lidar 보조",
+          target_source('HOLD', False, 1.5, 2.0, False) == 'lidar')
+    check("HOLD 경계 2.0 s(포함) → lidar", target_source('HOLD', False, 2.0, 2.0, False) == 'lidar')
+    check("HOLD 2.01 s → None(lost 와 맞물림)", target_source('HOLD', False, 2.01, 2.0, False) is None)
+    check("HOLD 본 적 없음 → None", target_source('HOLD', False, None, 2.0, False) is None)
+
+
+def test_source_other_states_none():
+    for st in ('INIT', 'DONE'):
+        check(f"{st} 비전 없음 → None", target_source(st, False, 0.5, 2.0, False) is None)
+
+
+def test_source_lidar_acquire_old_behavior():
+    check("lidar_acquire=true SEARCH 비전 없음 → lidar(옛 동작)",
+          target_source('SEARCH', False, None, 2.0, True) == 'lidar')
+    check("lidar_acquire=true HOLD lost 뒤에도 → lidar",
+          target_source('HOLD', False, 9.0, 2.0, True) == 'lidar')
+
+
+def test_counts_as_seen():
+    check("vision 은 봤다", counts_as_seen('vision', False) and counts_as_seen('vision', True))
+    check("lidar 보조는 안 셈(기본)", not counts_as_seen('lidar', False))
+    check("lidar_acquire=true 면 lidar 도 셈", counts_as_seen('lidar', True))
+    check("None 은 안 셈", not counts_as_seen(None, False) and not counts_as_seen(None, True))
+
+
+# ─────────────── search_timed_out (계약 전체코스 §2-4) ───────────────
+def test_search_timeout_default_never_latches():
+    check("기본(false) 25 s > 20 s → 래치 안 함", not search_timed_out(25.0, 20.0, False))
+    check("기본(false) 1e6 s → 래치 안 함", not search_timed_out(1e6, 20.0, False))
+
+
+def test_search_timeout_warn_once():
+    check("false 20.1 s 미발행 → WARN", search_timeout_warn(20.1, 20.0, False, False))
+    check("false 20.0 s → 아직(초과만)", not search_timeout_warn(20.0, 20.0, False, False))
+    check("이미 냄 → 안 냄", not search_timeout_warn(30.0, 20.0, False, True))
+    check("true(옛 동작) → 이 WARN 안 냄", not search_timeout_warn(30.0, 20.0, True, False))
+
+
+def test_search_timeout_switch_old_behavior():
+    check("true 25 s > 20 s → DONE", search_timed_out(25.0, 20.0, True))
+    check("true 정확히 20 s → 아직(초과만)", not search_timed_out(20.0, 20.0, True))
+
+
+# ─────────────── unknown_giveup (계약 전체코스 §10-추가 결정 4) ───────────────
+def test_unknown_giveup_boundary():
+    check("unknown 9.9 s → 아직", not unknown_giveup(100.0, 109.9, 10.0))
+    check("unknown 10.0 s(포함) → 포기", unknown_giveup(100.0, 110.0, 10.0))
+    check("unknown 30 s → 포기", unknown_giveup(100.0, 130.0, 10.0))
+
+
+def test_unknown_giveup_not_unknown():
+    check("unknown 아님(t0 None) → 포기 안 함", not unknown_giveup(None, 1e6, 10.0))
+
+
+# ─────────────── hold_total_exceeded (계약 전체코스 §10-추가 결정 5) ───────────────
+def test_hold_total_boundary():
+    check("HOLD 59.9 s → 아직", not hold_total_exceeded(0.0, 100.0, 159.9, 60.0))
+    check("HOLD 60.0 s(포함) → 포기", hold_total_exceeded(0.0, 100.0, 160.0, 60.0))
+
+
+def test_hold_total_sums_segments():
+    check("끝난 30 s + 지금 29.9 s → 아직", not hold_total_exceeded(30.0, 100.0, 129.9, 60.0))
+    check("끝난 30 s + 지금 30 s → 포기", hold_total_exceeded(30.0, 100.0, 130.0, 60.0))
+    check("HOLD 아님, 합 59.9 → 아직", not hold_total_exceeded(59.9, None, 1e6, 60.0))
+    check("HOLD 아님, 합 60.0 → 포기", hold_total_exceeded(60.0, None, 1e6, 60.0))
 
 
 if __name__ == '__main__':

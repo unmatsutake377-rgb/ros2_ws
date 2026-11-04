@@ -9,7 +9,13 @@
       클래스명도 ShipTurn 이었다. 노드 두 개가 같은 이름으로 떠서, 올해 yaml 파라미터를
       노드 이름으로 찾을 때 ship_back 이 ship_turn 의 값을 받아버린다. → super().__init__('ship_back').
   [3] 거리는 LiDAR 에서. /image_distance(카메라 뎁스, OAK-1 에서 죽음) 폐기, /scan 사용.
-      부표는 점 물체라 방위 매칭이 통한다. 부표 방위는 /image_angle, 없으면 LiDAR 전방 최근접.
+      부표는 점 물체라 방위 매칭이 통한다. 부표 방위는 /image_angle(검출기 turn 의 모드별 색).
+  [4] (계약 전체코스 §2-4·§2-5) 획득(SEARCH→HOLD)은 비전 색 확인으로만. LiDAR 전방 최근접은
+      HOLD 유지 중 직전 비전 방위가 lost_sec 안일 때 보조로만(lidar_acquire=true 면 옛 동작).
+      SEARCH 시간 초과로 DONE 래치하지 않는다(search_timeout_ends=true 면 옛 동작).
+      DONE 은 HOLD 에서만(성공, 또는 포기: 거리 unknown 이 unknown_giveup_sec 이어짐 §10-추가 4,
+      한 WP 의 HOLD 합이 hold_max_sec §10-추가 5)
+      → 3→3 미리셋(래치 유지) 그대로.
 
 파라미터(6d-[4]): active_wp_modes([2, 3] = search_behavior 기본 hold; orbit 옵션이면 launch 가 [2]),
                   keep_radius_m(5.0 규정), hold_time_sec(5.0 규정), hold_dist_m(2.5 ⚠️실측), dist_tol_m.
@@ -36,6 +42,8 @@ from std_msgs.msg import Float32, Int32
 from sensor_msgs.msg import LaserScan
 
 from ship_back.hold_logic import station_keep_action, HoldTimer, should_reset_on_mode
+from ship_back.hold_logic import target_source, counts_as_seen, search_timed_out, unknown_giveup
+from ship_back.hold_logic import search_timeout_warn, hold_total_exceeded
 
 IMAGE_ANGLE_INVALID = 10000.0
 CANDIDATE_INVALID = 20000.0
@@ -84,13 +92,27 @@ class ShipBack(Node):     # 🚨 작년엔 ShipTurn 이었다(복붙). 이름을
         self.hold_dist_m = float(self.declare_parameter('hold_dist_m', 2.5).value)       # ⚠️ 실측
         self.dist_tol_m = float(self.declare_parameter('dist_tol_m', 0.4).value)
 
+        # SEARCH 시간 초과로 DONE 래치할지(§2-4). 기본 false = 계속 SEARCH(20000), 진행은 north 의
+        #   WP 시간 초과. true 면 옛 동작 — search_timeout_sec 는 그때만 쓴다.
+        self.search_timeout_ends = bool(
+            self.declare_parameter('search_timeout_ends', False).value)
         self.search_timeout_sec = float(self.declare_parameter('search_timeout_sec', 20.0).value)
         self.lost_sec = float(self.declare_parameter('lost_sec', 2.0).value)
+        # LiDAR 전방 최근접으로 획득(SEARCH→HOLD)할지(§2-5). 기본 false = 비전 색 확인으로만 획득,
+        #   LiDAR 는 HOLD 중 직전 비전 방위가 lost_sec 안일 때 보조. true 면 옛 동작.
+        self.lidar_acquire = bool(self.declare_parameter('lidar_acquire', False).value)
+        # HOLD 에서 거리 'unknown'(LiDAR 가 부표를 못 봄)이 이 시간 이어지면 포기 → DONE(20000),
+        #   ERROR 1회. 거리가 다시 잡히면 리셋. (계약 전체코스 §10-추가 결정 4)
+        self.unknown_giveup_sec = float(
+            self.declare_parameter('unknown_giveup_sec', 10.0).value)
+        # 한 WP(담당 모드 진입)에서 HOLD 에 머문 시간 합이 이 값에 닿으면 포기 → DONE(20000),
+        #   ERROR 1회. HOLD↔SEARCH 를 오가도 합산, 모드 진입 때만 0. (§10-추가 결정 5)
+        self.hold_max_sec = float(self.declare_parameter('hold_max_sec', 60.0).value)
 
         self.angle_stale_sec = float(self.declare_parameter('angle_stale_sec', 1.0).value)
         self.scan_stale_sec = float(self.declare_parameter('scan_stale_sec', 1.0).value)
         self.lidar_match_half_deg = float(self.declare_parameter('lidar_match_half_deg', 3.0).value)
-        # 부표 방위를 못 받을 때 LiDAR 전방 섹터에서 최근접을 부표로 본다
+        # HOLD 중 비전 방위가 잠깐 끊길 때 LiDAR 전방 섹터 최근접을 부표로 본다(lidar_acquire 참조)
         self.front_sector_half_deg = float(self.declare_parameter('front_sector_half_deg', 30.0).value)
 
         # ---- 발행/구독 (토픽 이름 불변, /image_distance 는 버림) ----
@@ -109,13 +131,19 @@ class ShipBack(Node):     # 🚨 작년엔 ShipTurn 이었다(복붙). 이름을
         self.state = "INIT"
         self.state_t = None
         self.last_seen_t = None
+        self.unknown_t0 = None         # HOLD 'unknown' 연속 시작 시각(None = 아님)
+        self.search_warned = False     # 이번 SEARCH 에서 '못 찾음' WARN 을 냈나(진입마다 1회)
+        self.hold_total = 0.0          # 이번 모드 진입 뒤 끝난 HOLD 구간 합(s)
+        self.hold_enter_t = None       # 지금 HOLD 구간 시작 시각(None = HOLD 아님)
         self.hold_timer = HoldTimer(self.keep_radius_m, self.hold_time_sec)
 
         self.create_timer(self.period_sec, self.timer_cb)
         self.get_logger().info(
             f"ship_back 시작(이름 수정: 작년 'ship_turn' → 'ship_back'). 담당 모드 {self.active_wp_modes}. "
             f"위치유지: hold_dist={self.hold_dist_m}m(⚠️실측)/tol {self.dist_tol_m}, "
-            f"규정 {self.keep_radius_m}m 이내 {self.hold_time_sec}s."
+            f"규정 {self.keep_radius_m}m 이내 {self.hold_time_sec}s. "
+            f"search_timeout_ends={self.search_timeout_ends}, lidar_acquire={self.lidar_acquire}, "
+            f"unknown_giveup={self.unknown_giveup_sec}s, hold_max={self.hold_max_sec}s."
         )
 
     # ---------------------- 콜백 ----------------------
@@ -128,6 +156,10 @@ class ShipBack(Node):     # 🚨 작년엔 ShipTurn 이었다(복붙). 이름을
                 self.state = "INIT"
                 self.state_t = time.monotonic()
                 self.last_seen_t = None
+                self.unknown_t0 = None
+                self.search_warned = False
+                self.hold_total = 0.0          # HOLD 총시간은 담당 모드 진입 때만 0
+                self.hold_enter_t = None
                 self.hold_timer.reset()
 
     def angle_cb(self, msg):
@@ -146,10 +178,16 @@ class ShipBack(Node):     # 🚨 작년엔 ShipTurn 이었다(복붙). 이름을
 
     # ---------------------- 보조 ----------------------
     def set_state(self, s):
+        now = time.monotonic()
         if s != self.state:
             self.get_logger().info(f"⚓ 위치유지 {self.state} → {s}")
+            if self.state == "HOLD" and self.hold_enter_t is not None:
+                self.hold_total += max(0.0, now - self.hold_enter_t)   # HOLD 구간 합산
+            self.hold_enter_t = now if s == "HOLD" else None
         self.state = s
-        self.state_t = time.monotonic()
+        self.state_t = now
+        self.unknown_t0 = None        # unknown 연속은 HOLD 한 번 안에서만 센다
+        self.search_warned = False    # '못 찾음' WARN 은 SEARCH 진입마다 1회
 
     def elapsed(self):
         return 0.0 if self.state_t is None else time.monotonic() - self.state_t
@@ -193,13 +231,23 @@ class ShipBack(Node):     # 🚨 작년엔 ShipTurn 이었다(복붙). 이름을
         return best_d, rel
 
     def _target(self, now):
-        """부표 (거리, 상대방위). 비전 방위 우선, 없으면 LiDAR 전방 최근접."""
+        """부표 (거리, 상대방위, 출처). 출처는 hold_logic.target_source(§2-5) — 모르면 전부 None.
+
+        비전 = 그 방위의 LiDAR 거리. LiDAR 보조 = 전방 섹터 최근접(거리·방위).
+        """
         with self.lock:
-            rel = self.buoy_rel if (self.buoy_rel is not None and self.t_angle is not None
-                                    and (now - self.t_angle) <= self.angle_stale_sec) else None
-        if rel is not None:
-            return self._dist_at(rel, now), rel
-        return self._front_nearest(now)
+            fresh = (self.buoy_rel is not None and self.t_angle is not None
+                     and (now - self.t_angle) <= self.angle_stale_sec)
+            rel = self.buoy_rel if fresh else None
+            since_seen = None if self.last_seen_t is None else now - self.last_seen_t
+            state = self.state
+        src = target_source(state, fresh, since_seen, self.lost_sec, self.lidar_acquire)
+        if src == 'vision':
+            return self._dist_at(rel, now), rel, src
+        if src == 'lidar':
+            d, r = self._front_nearest(now)
+            return d, r, src
+        return None, None, None
 
     def publish(self, value):
         self.pub_candidate.publish(Float32(data=float(value)))
@@ -225,8 +273,10 @@ class ShipBack(Node):     # 🚨 작년엔 ShipTurn 이었다(복붙). 이름을
             if self.state_t is None:
                 self.state_t = now
 
-        dist, rel = self._target(now)
-        if rel is not None:
+        dist, rel, src = self._target(now)
+        # '봤다' = 비전 색 확인(lidar_acquire=false). LiDAR 보조는 last_seen 을 늘리지 않는다.
+        seen = rel is not None and counts_as_seen(src, self.lidar_acquire)
+        if seen:
             self.last_seen_t = now
         lost = self.last_seen_t is None or (now - self.last_seen_t) > self.lost_sec
 
@@ -237,16 +287,23 @@ class ShipBack(Node):     # 🚨 작년엔 ShipTurn 이었다(복붙). 이름을
                 self.set_state("SEARCH")
             return
 
-        # ---- SEARCH: 부표 잡힐 때까지 (autonomous 가 접근 중) ----
+        # ---- SEARCH: 부표(모드별 색) 비전으로 잡힐 때까지 (autonomous 가 접근 중) ----
         if self.state == "SEARCH":
-            if rel is not None:
+            if seen:
                 self.hold_timer.reset()
                 self.set_state("HOLD")
                 return
-            if self.elapsed() > self.search_timeout_sec:
-                self.get_logger().warn("부표 못 찾음(SEARCH 타임아웃) → 종료")
+            # 기본(search_timeout_ends=false)은 래치 안 함 — 계속 20000, 진행은 north WP 시간 초과
+            if search_timed_out(self.elapsed(), self.search_timeout_sec, self.search_timeout_ends):
+                self.get_logger().warn("부표 못 찾음(SEARCH 타임아웃, search_timeout_ends) → 종료")
                 self.set_state("DONE")
                 return
+            if search_timeout_warn(self.elapsed(), self.search_timeout_sec,
+                                   self.search_timeout_ends, self.search_warned):
+                self.get_logger().warn(
+                    f"부표 못 찾음 {self.search_timeout_sec:g} s — 계속 탐색(20000), "
+                    f"WP 시간 초과로 진행")
+                self.search_warned = True
             self.publish(CANDIDATE_INVALID)      # 못 찾는 동안 autonomous 유지
             return
 
@@ -262,8 +319,24 @@ class ShipBack(Node):     # 🚨 작년엔 ShipTurn 이었다(복붙). 이름을
                 self.set_state("DONE")
                 return
 
+            # HOLD 총시간 상한(§10-추가 5): 성공 판정 뒤에 본다 — 같은 틱이면 성공이 우선
+            if hold_total_exceeded(self.hold_total, self.hold_enter_t, now, self.hold_max_sec):
+                self.get_logger().error(
+                    f"HOLD 총 {self.hold_max_sec:g} s 넘음(성공 못 함) → 포기, DONE")
+                self.set_state("DONE")           # DONE 은 래치 — ERROR 는 이 전이에서 1회
+                return
+
             # bang-bang + 데드밴드. 부표를 향해 조향하며 전/후진.
             action = station_keep_action(dist, self.hold_dist_m, self.dist_tol_m)
+            if action != 'unknown':
+                self.unknown_t0 = None           # 거리가 다시 잡힘 → 리셋
+            elif self.unknown_t0 is None:
+                self.unknown_t0 = now
+            if unknown_giveup(self.unknown_t0, now, self.unknown_giveup_sec):
+                self.get_logger().error(
+                    f"LiDAR 거리 없음 {now - self.unknown_t0:.1f}s → 포기, DONE")
+                self.set_state("DONE")           # DONE 은 래치 — ERROR 는 이 전이에서 1회
+                return
             if action == 'forward':
                 self.publish_steer(rel)          # 부표 방향으로 전진 (±80 클램프)
             elif action == 'reverse':
@@ -271,6 +344,7 @@ class ShipBack(Node):     # 🚨 작년엔 ShipTurn 이었다(복붙). 이름을
             elif action == 'hold':
                 self.publish(STOP_HOLD)          # 데드밴드 안 → 중립 (벗어나면 위에서 되돌림)
             else:  # unknown: 거리를 모른다 → 부표를 향하되 함부로 전진하지 않음
+                # (계약 위험 4) LiDAR 가 부표를 못 보면 여기서 정지 — unknown_giveup_sec 뒤 위에서 포기
                 self.publish(STOP_HOLD)
             return
 

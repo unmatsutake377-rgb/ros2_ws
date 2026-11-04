@@ -13,9 +13,21 @@
     dist_tol_m: 0.4          # 데드밴드(±). 벗어나면 전/후진으로 되돌린다(표류를 ~tol 로 제한)
 
     # ---- 탐색/신선도 ----
-    search_timeout_sec: 20.0
+    # SEARCH 시간 초과로 DONE 래치할지(계약 전체코스 §2-4). false(기본) = 계속 SEARCH(20000),
+    #   다음 WP 진행은 north 의 WP 시간 초과. true 면 옛 동작(search_timeout_sec 뒤 DONE).
+    search_timeout_ends: false
+    search_timeout_sec: 20.0 # search_timeout_ends: true 일 때만 쓴다
     lost_sec: 2.0            # 부표를 이 시간 넘게 놓치면 SEARCH 로
+    # LiDAR 전방 최근접으로 획득(SEARCH→HOLD)할지(§2-5). false(기본) = 비전 색 확인으로만 획득,
+    #   LiDAR 최근접은 HOLD 중 직전 비전 방위가 lost_sec 안일 때 보조. true 면 옛 동작.
+    lidar_acquire: false
+    # HOLD 에서 거리 'unknown'(LiDAR 가 부표를 못 봄)이 이 시간 이어지면 포기 → DONE(20000), ERROR 1회.
+    #   거리가 다시 잡히면 리셋. (계약 전체코스 §10-추가 결정 4)
+    unknown_giveup_sec: 10.0
+    # 한 WP(담당 모드 진입)에서 HOLD 시간 합이 이 값에 닿으면 포기 → DONE(20000), ERROR 1회.
+    #   HOLD↔SEARCH 를 오가도 합산, 모드 진입 때만 0. (계약 전체코스 §10-추가 결정 5)
+    hold_max_sec: 60.0
     angle_stale_sec: 1.0
     scan_stale_sec: 1.0
     lidar_match_half_deg: 3.0   # 부표 방위 ±이 각도의 LiDAR 최소거리
-    front_sector_half_deg: 30.0 # 비전 방위를 못 받을 때 LiDAR 전방 ±이 각도 최근접을 부표로
+    front_sector_half_deg: 30.0 # HOLD 보조(위 lidar_acquire): LiDAR 전방 ±이 각도 최근접을 부표로
