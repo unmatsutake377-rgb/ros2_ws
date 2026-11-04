@@ -17,5 +17,6 @@
 ## 동기화 상태 (09-23 기준, yaml 과 일치)
 `HALF_WIDTH 0.29` · `CLEARANCE 0.25` · `MIN_OBSTACLE_CELLS 1` · `REAR_OBSTACLE_IGNORE_MARGIN None`(노드에서 제거된 결함).
 `BASE_DETECTION_DISTANCE 1.8` 은 기본값일 뿐 — 스윕은 `dd` 인자로 yaml 의 2.0/3.0 을 넘긴다.
+`candidate_stale_sec`(11-04, candidate 신선도)는 동기화 대상 아님 — `ssf_sim.py` 는 (C) 경로 사본.
 
 의존: `numpy`, `matplotlib`. ROS 불필요.

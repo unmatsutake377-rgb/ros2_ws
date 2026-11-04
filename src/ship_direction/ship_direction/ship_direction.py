@@ -12,6 +12,7 @@ from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 # 판정 로직은 ROS 비의존 모듈에 있다 (ROS 없이 단위 테스트 가능).
 # 재수출: from ship_direction.ship_direction import SensorWatch 로도 접근 가능.
 from ship_direction.failsafe import SensorWatch, TemporalVote, median_min
+from ship_direction.failsafe import effective_candidate, candidate_is_stale, CandidateStaleLog
 
 # 특수 신호 상수 (CLAUDE.md 3-9 상수표)
 SPIN_RIGHT = 5000.0          # 우선회
@@ -24,6 +25,9 @@ REVERSE_ANGLE = 260.0        # 후진 (motor_control 분기 5). 두 곳에서 �
 REVERSE_REL = 180.0          # /candidate_angle 180.0 = 후진 요청 (ship_dock BACKOFF·ship_back).
                              #   (B) 에서 범위 검사 앞 정확 일치로만 260 으로 통과 (계약서_후진통과_20261104).
 LIDAR_FORWARD_DEG = 80.0     # LiDAR 프레임에서 정면 (상대방위 0 에 대응)
+CANDIDATE_STALE_LOG_PERIOD_SEC = 5.0  # candidate stale 지속 중 ERROR 반복 주기(로그 전용, 제어 무관)
+CANDIDATE_SLOWEST_PUB_SEC = 0.5  # 가장 느린 정상 /candidate_angle 발행 주기(north period_sec).
+                                 # candidate_stale_sec 가 이보다 작으면 거짓 stale 경고만(값은 그대로)
 
 
 def edge_range(distance_array, i, detection_distance):
@@ -169,6 +173,12 @@ class ShipDirection(Node):
         ⚠️ 시뮬 물보라는 '단일점' 모델이다. 실제 물보라가 작은 군집이면 커널5로 부족할 수 있다
            → 배 뜬 뒤 블랙박스의 obstacle_min_dist 로 실측 확인하고 커널을 7/9 로 올릴 것.
 
+    [M] candidate 신선도 (계약서_전체코스_20261104 §2-6). /candidate_angle 이 수신 후
+        candidate_stale_sec(1.0) 넘게 갱신이 없으면 control_cb 가 _compute 전에 20000 으로 바꾼다
+        (발행 노드가 죽으면 묵은 조향각·SPIN·STOP_HOLD 를 모드가 바뀔 때까지 붙들던 결함).
+        wp_mode 가 바뀌면 candidate 를 20000·수신 기록 없음으로 초기화. 진입 ERROR 1회 + 5 s 주기 ERROR,
+        복구 INFO 1회. 180(후진)은 0.5 s 규칙 유지(0.5~1.0 s STOP_HOLD, 그 뒤 20000).
+
     ※ 판정 로직(SensorWatch, TemporalVote, median_min)은 **ROS 비의존 모듈** ship_direction/failsafe.py 에 있다.
       워치독을 노드 안에 인라인하면 단위 테스트가 불가능해진다. rclpy 없이 임포트 가능:
           from ship_direction.failsafe import SensorWatch, TemporalVote   # ← ROS 불필요(권장)
@@ -248,6 +258,13 @@ class ShipDirection(Node):
         # 넘으면 STOP_HOLD. 발행 노드는 10 Hz 매 틱 발행 → 0.5 s = 5 틱 누락. 다른 candidate 값엔 안 건다.
         self.candidate_reverse_stale_sec = float(
             self.declare_parameter('candidate_reverse_stale_sec', 0.5).value)
+        # ---- candidate 전체 신선도 (계약서_전체코스_20261104 §2-6·§10-3) ----
+        # 수신 후 이 시간 넘게 갱신이 없으면 발행 노드 사망으로 보고 candidate 를 20000 으로 바꾼다
+        # (GPS 주행 + LiDAR 회피). 발행 주기 0.1 s(미션 노드)·0.5 s(north) → 1.0 = north 주기 × 2.
+        # 180(후진)은 위 0.5 s 규칙 유지: 0.5~1.0 s 는 _compute 가 STOP_HOLD, 1.0 s 넘으면 20000.
+        # 🚨 대회 launch 는 parameters= 없이 띄운다 → 코드 기본값이 대회값. yaml 과 같이 바꿀 것.
+        self.candidate_stale_sec = float(
+            self.declare_parameter('candidate_stale_sec', 1.0).value)
 
         # 잘못된 파라미터 방어
         if not math.isfinite(self.candidate_reverse_stale_sec) or \
@@ -256,6 +273,14 @@ class ShipDirection(Node):
                 f"candidate_reverse_stale_sec={self.candidate_reverse_stale_sec} 이상 "
                 f"→ 기본값 0.5초 사용")
             self.candidate_reverse_stale_sec = 0.5
+        if not math.isfinite(self.candidate_stale_sec) or self.candidate_stale_sec <= 0.0:
+            self.get_logger().warn(
+                f"candidate_stale_sec={self.candidate_stale_sec} 이상 → 기본값 1.0초 사용")
+            self.candidate_stale_sec = 1.0
+        elif self.candidate_stale_sec < CANDIDATE_SLOWEST_PUB_SEC:
+            self.get_logger().warn(
+                f"candidate_stale_sec={self.candidate_stale_sec} < north 발행 주기 "
+                f"{CANDIDATE_SLOWEST_PUB_SEC}초 → 거짓 stale 위험(정상 발행 사이에 20000). 값은 그대로 사용")
         if not math.isfinite(self.reverse_duration) or self.reverse_duration <= 0.0:
             self.get_logger().warn(
                 f"reverse_duration_sec={self.reverse_duration} 이상 → 기본값 0.5초 사용")
@@ -304,6 +329,8 @@ class ShipDirection(Node):
         self.yaw_error = 0.0
         self.candidate_angle = CANDIDATE_INVALID
         self.candidate_t = None       # candidate 마지막 수신 시각(monotonic). None = 아직 못 받음
+        # candidate stale 로그 시점(진입 ERROR 1회·5 s 주기 ERROR·복구 INFO). control_cb 에서만 쓴다.
+        self.candidate_stale_log = CandidateStaleLog(CANDIDATE_STALE_LOG_PERIOD_SEC)
 
         self.latest_scan = None       # scan_cb 는 저장만 한다
 
@@ -398,13 +425,20 @@ class ShipDirection(Node):
                 self.candidate_angle = val
             else:
                 self.candidate_angle = (val % 360.0)
-            # 수신 시각 — (B) 후진(180) 신선도 판정용 ([D] monotonic)
+            # 수신 시각 — 신선도 판정용([D] monotonic): 전체 candidate_stale_sec(control_cb)
+            #   + (B) 후진(180) candidate_reverse_stale_sec(_compute)
             self.candidate_t = time.monotonic()
 
     def wp_mode_cb(self, msg):
         with self.lock:
             prev = self.wp_mode
             self.wp_mode = msg.data
+
+            # 모드가 바뀌면 이전 모드 발행자의 candidate 를 버린다 (계약서_전체코스_20261104 §2-6).
+            # 새 모드 발행자가 낼 때까지 20000(GPS 주행+회피) = 부팅 초기값과 같은 상태.
+            if prev != self.wp_mode:
+                self.candidate_angle = CANDIDATE_INVALID
+                self.candidate_t = None
 
             # 게이트 구간(mode 0,1)은 좁아서 detection 을 짧게 (3.0 이면 오히려 접촉 증가, §6)
             new_dd = (self.detection_distance_gate
@@ -548,6 +582,11 @@ class ShipDirection(Node):
             candidate_t = self.candidate_t
             yaw_error = self.yaw_error
             detection_distance = self.detection_distance
+            wp_mode = self.wp_mode
+
+        # ---- candidate 신선도: candidate_stale_sec 넘게 갱신 없으면 20000 (_compute 전) ----
+        candidate_angle = self._effective_candidate(
+            candidate_angle, candidate_t, time.monotonic(), wp_mode)
 
         # ---- 레벨 2(정지) 또는 이상 스캔: STOP_HOLD 로 override. 각도를 덮어쓰는 건 여기뿐. ----
         # bad 를 여기서도 보는 이유: 워치독 틱(0.1s)을 기다리지 않고 즉시 멈추기 위해서다.
@@ -571,6 +610,30 @@ class ShipDirection(Node):
 
         self.pub_obstacle_distance.publish(obst)
         self.pub_desired_angle.publish(Float32(data=angle))
+
+    def _effective_candidate(self, candidate_angle, candidate_t, now, wp_mode):
+        """effective_candidate()(failsafe.py, 순수) + stale 로그. → _compute 에 넘길 candidate.
+
+        수신 후 candidate_stale_sec 넘게 갱신 없음 → 20000. 수신 기록 없음(None) → 20000(로그 없음).
+        로그(CLAUDE.md §1-7): 심각도마다 호출 줄을 따로 둔다 — 진입 ERROR 1회, 지속 중
+        CANDIDATE_STALE_LOG_PERIOD_SEC 주기 ERROR, 복구(새 수신·wp_mode 변경 초기화) INFO 1회.
+        """
+        stale = candidate_is_stale(candidate_t, now, self.candidate_stale_sec)
+        ev = self.candidate_stale_log.update(stale, now)
+        age = None if candidate_t is None else now - candidate_t
+        if ev == 'enter':
+            self.get_logger().error(
+                f"candidate {age:.1f}s 갱신 없음(> {self.candidate_stale_sec:.1f}s, "
+                f"마지막 값 {candidate_angle:.1f}, wp_mode {wp_mode}) → 20000(GPS 주행+회피). "
+                f"발행 노드 사망 의심")
+        elif ev == 'repeat':
+            self.get_logger().error(
+                f"candidate stale 지속 {age:.1f}s (wp_mode {wp_mode}) → 20000 유지")
+        elif ev == 'recover':
+            how = "새 수신" if candidate_t is not None else "wp_mode 변경 초기화"
+            self.get_logger().info(f"candidate stale 해제({how}, wp_mode {wp_mode})")
+        return effective_candidate(candidate_angle, candidate_t, now,
+                                   self.candidate_stale_sec, CANDIDATE_INVALID)
 
     # =====================================================
     # 계산 (회피 알고리즘 — 작년 로직 보존)

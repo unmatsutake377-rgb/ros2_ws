@@ -264,7 +264,10 @@ def test_stale_reverse_via_callback():
 
 
 def test_other_values_ignore_staleness():
-    """다른 candidate 값은 수신 시각과 무관(수정 전과 같음)."""
+    """_compute 단독은 180 밖의 candidate 값에 수신 시각을 안 본다(수정 전과 같음).
+    전체 신선도는 control_cb 가 _compute **앞에서** 건다(계약서_전체코스_20261104 §2-6):
+    수신 후 candidate_stale_sec(1.0 s) 넘게 갱신 없음·수신 기록 없음 → effective_candidate() 가
+    20000 으로 바꿔 넘긴다 → test_candidate_fresh.py. 아래 age 10.0·None 은 그 대체 전 _compute 동작."""
     for c, want in [(30.0, 110.0), (280.0, 0.0), (179.9, STOP_HOLD),
                     (SPIN_RIGHT, SPIN_RIGHT), (STOP_HOLD, STOP_HOLD)]:
         for age in (0.0, 10.0, None):

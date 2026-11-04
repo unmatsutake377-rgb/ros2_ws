@@ -3,6 +3,7 @@
 여기엔 rclpy 를 임포트하지 않는다. 그래야 ROS 없이도 단위 테스트할 수 있다:
 
     from ship_direction.failsafe import SensorWatch, TemporalVote, median_min
+    from ship_direction.failsafe import effective_candidate, candidate_is_stale, CandidateStaleLog
 
 시각(now)은 호출자가 주입한다 → 테스트에서 시간을 마음대로 돌릴 수 있다.
 """
@@ -191,3 +192,57 @@ class TemporalVote:
             if v >= self.votes:
                 out[i] = 1
         return out
+
+
+def candidate_is_stale(candidate_t, now, stale_sec):
+    """수신 후 stale_sec **초과**로 갱신 없음이면 True. 수신 기록 없음(None)은 stale 이 아니다(모름).
+    로그 판정(노드)과 값 대체(effective_candidate)가 같은 기준을 쓰게 한 곳에 둔다."""
+    return candidate_t is not None and (now - candidate_t) > stale_sec
+
+
+def effective_candidate(candidate, candidate_t, now, stale_sec, invalid):
+    """control_cb 가 _compute 에 넘길 candidate (계약서_전체코스_20261104 §2-6·§10-3).
+
+    · 수신 기록 없음(candidate_t None) → invalid(20000). 부팅 초기값·wp_mode 변경 초기화와 같다.
+    · 수신 후 stale_sec 넘게 갱신 없음 → invalid(20000) = GPS 주행 + LiDAR 회피.
+      발행 노드가 죽으면 묵은 값(조향각·SPIN·STOP_HOLD)을 모드가 바뀔 때까지 붙들고 있던 결함.
+      발행 주기 0.1 s(미션 노드)·0.5 s(north) → 1.0 s 임계면 정상 발행에선 안 걸린다.
+    · 그 밖엔 받은 값 그대로. 180(후진)의 0.5 s 규칙은 _compute 가 따로 본다
+      → 0.5~stale_sec 는 _compute 가 STOP_HOLD, stale_sec 를 넘으면 여기서 invalid.
+    경계: age == stale_sec 는 신선(초과일 때만 stale). invalid 는 호출자가 넘긴다(상수 공유 안 함).
+    """
+    if candidate_t is None or candidate_is_stale(candidate_t, now, stale_sec):
+        return invalid
+    return candidate
+
+
+class CandidateStaleLog:
+    """candidate stale 로그 시점 판정 — ROS 비의존. update() 가 낼 로그 종류를 돌려준다.
+
+      'enter'  : 신선 → stale 로 바뀐 틱 (ERROR 1회)
+      'repeat' : stale 지속 중 마지막 ERROR 뒤 period_sec 이상 지남 (주기 ERROR)
+      'recover': stale → 신선/기록 없음(새 수신 또는 wp_mode 변경 초기화) (INFO 1회)
+      None     : 로그 없음
+    호출 지점은 노드에서 심각도별로 나눈다(CLAUDE.md §1-7, 같은 줄 다른 심각도 금지).
+    """
+
+    def __init__(self, period_sec=5.0):
+        self.period_sec = float(period_sec)
+        self.stale = False
+        self._last_log_t = None
+
+    def update(self, stale, now):
+        if stale and not self.stale:
+            self.stale = True
+            self._last_log_t = now
+            return 'enter'
+        if stale:
+            if now - self._last_log_t >= self.period_sec:
+                self._last_log_t = now
+                return 'repeat'
+            return None
+        if self.stale:
+            self.stale = False
+            self._last_log_t = None
+            return 'recover'
+        return None
