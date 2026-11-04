@@ -1,0 +1,22 @@
+# OAK-1 PoE 드라이버(depthai_ros_driver) 파라미터 — 대회 launch(launch_files.launch.py 7) 가 넘긴다.
+#
+# 🚨 tools/oak/oak_640x360_full.yaml 과 **키·값이 같아야 한다**(런북 10-31 실측 설정).
+#    test_oak_camera.py 가 두 파일의 키·값 일치를 검사한다. 값을 바꿀 땐 둘 다.
+# 🚨 i_isp_num 1 / i_isp_den 3 = 1080P 전체를 1/3 로 축소해 640×360 → HFOV 63.9°(fx 513.5).
+#    빠지면 드라이버 기본(ISP 2/3 → 1280×720)에서 가운데 640×360 만 잘라 **화각 40.3°** 가 되는데
+#    camera_info 는 fx 513.5 를 그대로 내서 숫자로는 안 드러난다(런북 "오진 정정").
+# 노드 이름이 oak(네임스페이스 없음)라야 /oak 블록이 닿고 토픽이 /oak/rgb/image_raw 가 된다.
+/oak:
+  ros__parameters:
+    camera:
+      i_ip: "169.254.1.222"
+      i_pipeline_type: RGB
+      i_nn_type: none
+    rgb:
+      i_resolution: "1080P"
+      i_fps: 30.0
+      i_width: 640
+      i_height: 360
+      i_low_bandwidth: true
+      i_isp_num: 1
+      i_isp_den: 3

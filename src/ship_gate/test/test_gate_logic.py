@@ -114,9 +114,28 @@ def _yaml_value(path, key):
     return float(m.group(1)) if m else None
 
 
-# 전제: 카메라 HFOV 80.32° → 부표 |각| 은 40.16° 를 못 넘는다(밖이면 10000 = 안 보임).
-# 임계 T 는 그 안이어야 하고, 입력 각도 전부 ≤ 40 으로 둔다.
-T = 35.0
+# 전제: 카메라 HFOV 63.9°(OAK-1 PoE 640×360 ISP 1/3, 11-04 전환) → 부표 |각| 은 반화각 31.95° 를 못 넘는다
+# (밖이면 10000 = 안 보임). 임계 T 는 그 안이어야 하고, 아래 입력 각도는 전부 ≤ HALF 로 둔다.
+#   T   = 대회 기본 임계(세 곳 일치 검사와 같은 값이어야 뜻이 있다 → test_fov_constants 가 검사)
+#   OUT = 임계는 넘었지만 아직 화면 안(T < OUT < HALF) — "통과" 틱의 입력
+#   IN  = 전방(≤ T) 틱의 입력 중 가장 큰 값
+# 숫자를 바꿀 땐 이 세 개만. (D455 시절: HALF 40.16, T 35, OUT 36~39)
+HALF = 31.95
+T = 28.0
+OUT = 29.0
+OUT2 = 30.0     # OUT 보다 더 바깥(여전히 < HALF) — 정체·두 번째 게이트용
+IN = 25.0
+
+
+def test_fov_constants():
+    """테스트 상수가 실제 설정과 어긋나면 아래 시나리오가 '통과' 해도 뜻이 없다."""
+    hfov_vision = _yaml_value(_VISION_YAML, "hfov_deg")
+    check("HALF == vision.yaml hfov/2", hfov_vision is not None and abs(HALF - hfov_vision / 2.0) < 1e-6,
+          f"{HALF} vs {hfov_vision}")
+    check("T == 대회 기본 pass_behind", T == GateCounter().pass_behind, f"{T} vs {GateCounter().pass_behind}")
+    check("T < OUT < OUT2 < HALF", T < OUT < OUT2 < HALF)
+    check("IN ≤ T", IN <= T)
+    check("여유 HALF−T ≥ 3°", HALF - T >= 3.0, f"{HALF - T:.2f}")
 
 
 def test_count_within_fov():
@@ -125,7 +144,7 @@ def test_count_within_fov():
     for _ in range(5):
         c.update(gate_ahead=True, buoy_abs_angles=[10.0, 12.0])   # 전방 접근
     check("접근 중엔 카운트 0", c.count == 0)
-    c.update(gate_ahead=False, buoy_abs_angles=[36.0, 8.0])       # 한쪽이 임계 밖으로
+    c.update(gate_ahead=False, buoy_abs_angles=[OUT, 8.0])       # 한쪽이 임계 밖으로
     check("부표가 임계 넘음 → 1 카운트", c.count == 1)
 
 
@@ -147,8 +166,8 @@ def test_default_threshold_inside_fov():
 
 
 def test_realistic_sequence_never_exceeds_fov():
-    """실제 접근 시퀀스(10→20→30→38→사라짐): 75 임계는 영원히 0(11-04 발견 재현), T 는 1."""
-    seq = [[10.0, 11.0], [20.0, 19.0], [30.0, 28.0], [38.0, 33.0], []]
+    """실제 접근 시퀀스(10→20→IN→OUT2→사라짐): 75 임계는 영원히 0(11-04 발견 재현), T 는 1."""
+    seq = [[10.0, 11.0], [20.0, 19.0], [IN, 23.0], [OUT2, 26.0], []]
     old = GateCounter(75.0)
     new = GateCounter(T)
     for i, angles in enumerate(seq):
@@ -163,9 +182,9 @@ def test_no_double_count_plateau():
     """같은 게이트로 여러 틱 임계 밖에 있어도 두 번 세지 않는다."""
     c = GateCounter(T)
     c.update(True, [10.0, 12.0])
-    c.update(False, [36.0])       # 통과 → 1
+    c.update(False, [OUT])       # 통과 → 1
     for _ in range(10):
-        c.update(False, [39.0])   # 계속 임계 밖
+        c.update(False, [OUT2])   # 계속 임계 밖
     check("이중 카운트 없음", c.count == 1, f"count={c.count}")
 
 
@@ -175,14 +194,14 @@ def test_no_double_count_yaw_oscillation():
     c = GateCounter(T, 1.0)
     c.update(True, [10.0, 12.0], 5.0)
     c.update(True, [20.0, 10.0], 4.0)           # d_ref 가 될 마지막 전방 쌍 거리
-    c.update(False, [36.0, 5.0])                # 1
+    c.update(False, [OUT, 5.0])                # 1
     check("첫 카운트", c.count == 1, f"count={c.count}")
-    c.update(True, [25.0, 5.0], 3.5)            # 요잉 복귀 — 노드는 both_ahead 를 매 틱 재평가해 True 를 준다
-    c.update(False, [36.0, 5.0])                # 다시 임계 밖
+    c.update(True, [IN, 5.0], 3.5)            # 요잉 복귀 — 노드는 both_ahead 를 매 틱 재평가해 True 를 준다
+    c.update(False, [OUT, 5.0])                # 다시 임계 밖
     check("같은 거리면 재카운트 없음", c.count == 1, f"count={c.count}")
     for d in (4.9, 5.0, 3.0, 4.5):              # d_ref+margin = 5.0 까지(경계 포함)는 같은 게이트
-        c.update(True, [25.0, 5.0], d)
-        c.update(False, [36.0, 5.0])
+        c.update(True, [IN, 5.0], d)
+        c.update(False, [OUT, 5.0])
     check("반복 요잉에도 1 유지", c.count == 1, f"count={c.count}")
 
 
@@ -190,11 +209,11 @@ def test_rearm_after_gap():
     """(i) 둘 다 안 보이는 틱(빈 리스트)을 한 번 지나면 다음 게이트로 재-arming → 2 (거리 없어도)."""
     c = GateCounter(T)
     c.update(True, [10.0, 12.0], 4.0)
-    c.update(False, [36.0, 5.0])       # 1
-    c.update(True, [25.0, 5.0], 3.5)   # 요잉 복귀(gap 전) — 무시돼야 함
+    c.update(False, [OUT, 5.0])       # 1
+    c.update(True, [IN, 5.0], 3.5)   # 요잉 복귀(gap 전) — 무시돼야 함
     c.update(False, [])                # gap: 둘 다 안 보임
     c.update(True, [8.0, 9.0])         # 다음 게이트 전방
-    c.update(False, [36.0])
+    c.update(False, [OUT])
     check("gap 뒤 재-arming → 2", c.count == 2, f"count={c.count}")
 
 
@@ -203,12 +222,12 @@ def test_rearm_after_farther_new_pair():
     다음 게이트가 카메라 거리 안이라 '둘 다 안 보임' 틱이 안 생기는 경우(11-04 시뮬 누락 1/40)."""
     c = GateCounter(T, 1.0)
     c.update(True, [10.0, 12.0], 4.0)           # d_ref = 4.0
-    c.update(False, [36.0, 5.0])                # 1
-    c.update(True, [25.0, 5.0], 3.0)            # 요잉 복귀 — 아님
-    c.update(False, [36.0, 5.0])
+    c.update(False, [OUT, 5.0])                # 1
+    c.update(True, [IN, 5.0], 3.0)            # 요잉 복귀 — 아님
+    c.update(False, [OUT, 5.0])
     check("요잉 복귀로는 재카운트 없음", c.count == 1, f"count={c.count}")
     c.update(True, [12.0, 10.0], 9.0)           # 다음 게이트 9 m > 4+1 → 재-arming
-    c.update(False, [36.0])
+    c.update(False, [OUT])
     check("더 먼 새 쌍 → 2", c.count == 2, f"count={c.count}")
 
 
@@ -217,9 +236,9 @@ def test_rearm_margin_boundary():
     for d, expect in ((5.0, 1), (5.01, 2)):
         c = GateCounter(T, 1.0)
         c.update(True, [10.0, 12.0], 4.0)
-        c.update(False, [36.0, 5.0])            # 1, d_ref 4.0
+        c.update(False, [OUT, 5.0])            # 1, d_ref 4.0
         c.update(True, [12.0, 10.0], d)
-        c.update(False, [36.0])
+        c.update(False, [OUT])
         check(f"pair_dist={d} → count {expect}", c.count == expect, f"count={c.count}")
 
 
@@ -229,19 +248,19 @@ def test_d_ref_is_min_not_last():
     c = GateCounter(T, 1.0)
     c.update(True, [10.0, 12.0], 8.0)
     c.update(True, [20.0, 10.0], 3.0)
-    c.update(True, [30.0, 12.0], None)          # 근접에서 LiDAR 가 놓침 — 최소값 3 은 유지
-    c.update(False, [36.0, 5.0])                # 1, d_ref = 3
+    c.update(True, [IN, 12.0], None)          # 근접에서 LiDAR 가 놓침 — 최소값 3 은 유지
+    c.update(False, [OUT, 5.0])                # 1, d_ref = 3
     c.update(True, [12.0, 10.0], 4.5)           # 다음 쌍 4.5 > 3 + 1 → 재-arming
-    c.update(False, [36.0])
+    c.update(False, [OUT])
     check("d_ref 최소값 → 4.5 쌍에 재-arming → 2", c.count == 2, f"count={c.count}")
     # min 과 '마지막 값' 이 갈리는 케이스: [3, 8] — 근접 부표를 놓치고 먼 반사(8)가 마지막에 오면
     # 마지막 값 기준(d_ref 8)은 다음 쌍 4.5 를 '같은 게이트' 로 묶어 누락, 최소값 기준(d_ref 3)은 재-arming.
     c2 = GateCounter(T, 1.0)
     c2.update(True, [10.0, 12.0], 3.0)
     c2.update(True, [20.0, 10.0], 8.0)
-    c2.update(False, [36.0, 5.0])               # 1, d_ref = min(3, 8) = 3
+    c2.update(False, [OUT, 5.0])               # 1, d_ref = min(3, 8) = 3
     c2.update(True, [12.0, 10.0], 4.5)          # 4.5 > 3 + 1 → 재-arming (마지막 값이면 4.5 ≤ 9 → 차단)
-    c2.update(False, [36.0])
+    c2.update(False, [OUT])
     check("[3, 8] 뒤 4.5 쌍 → 최소값 기준으로 2", c2.count == 2, f"count={c2.count}")
 
 
@@ -250,15 +269,15 @@ def test_unknown_distance_rearms():
     재-arming. (이 경우 요잉 복귀 이중 카운트는 못 막는다 — 설계상 '카운트를 죽이지 않는' 쪽을 택함)"""
     c = GateCounter(T, 1.0)
     c.update(True, [10.0, 12.0])                # 거리 없음 → d_ref None
-    c.update(False, [36.0, 5.0])                # 1
+    c.update(False, [OUT, 5.0])                # 1
     c.update(True, [8.0, 9.0], 3.0)
-    c.update(False, [36.0])
+    c.update(False, [OUT])
     check("d_ref 미상 → 재-arming → 2", c.count == 2, f"count={c.count}")
     c2 = GateCounter(T, 1.0)
     c2.update(True, [10.0, 12.0], 4.0)
-    c2.update(False, [36.0, 5.0])               # 1, d_ref 4.0
+    c2.update(False, [OUT, 5.0])               # 1, d_ref 4.0
     c2.update(True, [8.0, 9.0])                 # 새 쌍인데 LiDAR 가 못 봄
-    c2.update(False, [36.0])
+    c2.update(False, [OUT])
     check("pair_dist 미상 → 재-arming → 2", c2.count == 2, f"count={c2.count}")
 
 
@@ -266,8 +285,8 @@ def test_arming_has_no_distance_condition():
     """넓은 게이트: 전방 유효 쌍이 멀리(12 m) 보여도 거리 조건 없이 armed → 통과 때 카운트.
     (옛 gate_arm_dist_m 6 m 조건은 폭 7 m 이상에서 arming 창이 아예 안 생겼다)"""
     c = GateCounter(T)
-    c.update(True, [30.0, 30.0], 12.0)          # 폭 넓어 둘 다 30° 근처, 멀다
-    c.update(False, [36.0, 34.0], None)
+    c.update(True, [IN, IN], 12.0)          # 폭 넓어 둘 다 IN 근처(≤ T), 멀다
+    c.update(False, [OUT, OUT], None)
     check("거리 조건 없이 arming → 1", c.count == 1, f"count={c.count}")
 
 
@@ -288,10 +307,10 @@ def test_two_gates_sequential():
     """두 게이트를 순차 통과(사이에 둘 다 안 보임) → 2."""
     c = GateCounter(T)
     c.update(True, [8.0, 9.0])
-    c.update(False, [36.0])          # 1
+    c.update(False, [OUT])          # 1
     c.update(False, [])              # 지나감
     c.update(True, [7.0, 6.0])
-    c.update(False, [37.0])          # 2
+    c.update(False, [OUT2])          # 2
     check("두 게이트 순차 → 2", c.count == 2, f"count={c.count}")
 
 
@@ -300,7 +319,7 @@ def test_grace_plateau_counts_once():
     c = GateCounter(T)
     c.update(True, [10.0, 12.0])
     for _ in range(20):
-        c.update(False, [38.0])
+        c.update(False, [OUT2])
     check("폴백 반복 → 1", c.count == 1, f"count={c.count}")
 
 
@@ -309,7 +328,7 @@ def test_no_count_without_arming():
     (먼 부표가 잠깐 크게 잡힌 오탐 등)"""
     c = GateCounter(T)
     for _ in range(5):
-        c.update(gate_ahead=False, buoy_abs_angles=[38.0])
+        c.update(gate_ahead=False, buoy_abs_angles=[OUT2])
     check("arming 없이는 카운트 0", c.count == 0)
 
 
@@ -318,7 +337,7 @@ def test_gap_before_first_count_is_harmless():
     c = GateCounter(T)
     c.update(True, [10.0, 12.0])
     c.update(False, [])
-    c.update(False, [36.0])
+    c.update(False, [OUT])
     check("첫 게이트는 gap 없이도 카운트", c.count == 1, f"count={c.count}")
 
 

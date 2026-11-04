@@ -5,15 +5,18 @@ vision_geom 순수 로직 테스트. ROS/OpenCV 없이 그냥 실행된다:
 """
 
 import os
+import re
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from color_shape_detector.vision_geom import (  # noqa: E402
-    DEFAULT_HFOV_DEG, EXACT_LEGACY_HFOV_DEG, LEGACY_HFOV_DEG,
-    LEGACY_PIXEL_TO_ANGLE_K, MEASURED_D455_640x480,
+    D455_HFOV_DEG, DEFAULT_HFOV_DEG, EXACT_LEGACY_HFOV_DEG, LEGACY_HFOV_DEG,
+    LEGACY_PIXEL_TO_ANGLE_K, MEASURED_D455_640x480, MEASURED_OAK_640x360,
     angle_from_pixel, fx_from_hfov, legacy_angle_from_pixel, solidity,
 )
+
+_VISION_YAML = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'config', 'vision.yaml')
 
 _passed = 0
 _total = 0
@@ -135,33 +138,57 @@ def test_legacy_constant_rounding_within_pixel_noise():
     assert worst < 0.005, f"{worst:.6f}°"
 
 
+def _vision_yaml_hfov():
+    """vision.yaml 의 `hfov_deg: <숫자>` (pyyaml 없이)."""
+    m = re.search(r'^\s*hfov_deg:\s*([-0-9.]+)', open(_VISION_YAML, encoding='utf-8').read(), re.M)
+    assert m, "vision.yaml 에 hfov_deg 가 없다"
+    return float(m.group(1))
+
+
 def test_default_hfov_matches_measured_camera_info():
     """
     🚨 기본 화각이 **카메라가 스스로 보고한 값**과 맞는지 못 박는다.
 
-    근거는 벤치 캘리브레이션이 아니라 `camera_info`(공장 캘리브레이션)다.
-    D455 S/N 117122250518, 640x480 에서 fx=379.189 → HFOV 80.32°.
-    누가 이 값을 옛날 71.5 로 되돌리면 여기서 걸린다.
+    근거는 `camera_info`(공장 캘리브레이션)다. OAK-1 PoE 640×360(ISP 1/3)에서 fx=513.5 → HFOV 63.87°,
+    원 간격 실측 63.9°(런북 10-31 저녁). 누가 이 값을 D455 의 80.32 나 옛날 71.5 로 되돌리면 여기서 걸린다.
     """
-    fx_measured = MEASURED_D455_640x480["fx"]
+    fx_measured = MEASURED_OAK_640x360["fx"]
     fx_default = fx_from_hfov(640, DEFAULT_HFOV_DEG)
-    # 80.32° 는 소수 둘째 자리 반올림값이라 fx 가 정확히 일치하진 않는다.
-    # 0.1px 이내면 각도로는 1e-3° 수준이라 무해하다.
-    assert abs(fx_default - fx_measured) < 0.1, \
-        f"기본 화각 fx={fx_default:.3f} vs 실측 {fx_measured:.3f}"
+    # 63.9 는 원 간격 실측(소수 첫째 자리)이라 camera_info fx 와 0.4 px 차 — 각도로 0.03°, 벤치 오차(0.9°) 안.
+    assert abs(fx_default - fx_measured) < 1.0, \
+        f"기본 화각 fx={fx_default:.3f} vs camera_info 실측 {fx_measured:.3f}"
+    assert near(DEFAULT_HFOV_DEG, MEASURED_OAK_640x360["hfov_deg_measured"])
 
 
-def test_default_is_not_the_old_wrong_value():
+def test_default_hfov_equals_vision_yaml():
     """
-    🚨 71.5 로 되돌아가는 것을 막는다.
+    🚨 코드 기본값(yaml 이 안 닿을 때)과 운용값(vision.yaml) 이 같아야 한다 — 계약서_OAK전환 결정 3.
+    한쪽만 바꾸면 `ros2 run` 단독 실행과 launch 실행의 각도가 조용히 달라진다.
+    """
+    assert near(DEFAULT_HFOV_DEG, _vision_yaml_hfov(), 1e-9), \
+        f"DEFAULT_HFOV_DEG={DEFAULT_HFOV_DEG} vs vision.yaml {_vision_yaml_hfov()}"
 
-    그 값이면 화면 가장자리에서 각도가 4.4° 틀린다 — align_tol_deg(5°)의 88%다.
+
+def test_default_is_not_the_old_values():
+    """
+    🚨 D455 값(80.32)·작년 값(71.5)으로 되돌아가는 것을 막는다.
+
+    OAK 영상에 80.32 를 쓰면 화면 가장자리에서 8.2° 틀린다(40.16 vs 31.95) — align_tol_deg(5°)를 넘는다.
     에러가 안 나고 조용히 틀리는 종류라 테스트로 박아둔다.
     """
     assert DEFAULT_HFOV_DEG != LEGACY_HFOV_DEG
-    edge_err = abs(angle_from_pixel(0, 640, DEFAULT_HFOV_DEG)
-                   - angle_from_pixel(0, 640, LEGACY_HFOV_DEG))
-    assert edge_err > 4.0, f"가장자리 차이가 {edge_err:.2f}° 밖에 안 된다 — 상수를 확인할 것"
+    assert DEFAULT_HFOV_DEG != D455_HFOV_DEG
+    edge_err_d455 = abs(angle_from_pixel(0, 640, DEFAULT_HFOV_DEG)
+                        - angle_from_pixel(0, 640, D455_HFOV_DEG))
+    assert edge_err_d455 > 5.0, f"D455 값과 가장자리 차이가 {edge_err_d455:.2f}° 밖에 안 된다 — 상수를 확인할 것"
+    edge_err_legacy = abs(angle_from_pixel(0, 640, DEFAULT_HFOV_DEG)
+                          - angle_from_pixel(0, 640, LEGACY_HFOV_DEG))
+    assert edge_err_legacy > 3.0, f"작년 값과 가장자리 차이가 {edge_err_legacy:.2f}° 밖에 안 된다"
+
+
+def test_d455_history_constant_still_matches_its_camera_info():
+    """D455 기록값(80.32 ↔ fx 379.189)은 역사 기록으로 남긴다 — 회귀 비교 기준이 흔들리지 않게."""
+    assert abs(fx_from_hfov(640, D455_HFOV_DEG) - MEASURED_D455_640x480["fx"]) < 0.1
 
 
 def test_legacy_was_broken_at_other_resolutions():

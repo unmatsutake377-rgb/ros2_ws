@@ -83,7 +83,7 @@ class GateCounter:
     통과 판정: 유효 게이트를 전방에서 봤고(armed), 그 부표의 |상대각| 이 pass_behind_deg 를 넘으면
               1 증가. armed 는 한 게이트당 한 번만 카운트되게 막는다.
 
-    🚨 pass_behind_deg 는 카메라 반화각(hfov 80.32/2 = 40.16°, vision.yaml) **안**이어야 한다.
+    🚨 pass_behind_deg 는 카메라 반화각(OAK hfov 63.9/2 = 31.95°, vision.yaml; 11-04 전환 전 D455 40.16°) **안**이어야 한다.
        부표는 그 밖으로 나가면 검출기가 10000(안 보임)을 내서 각이 아예 안 들어온다 — 옛 기본값 75 는
        물리적으로 도달 불가라 /gates_passed 가 영원히 0 이었다(2026-11-04 시뮬). 그래서 "뒤로 갔다" 가
        아니라 "통과 직전(게이트 선 ~2~6 m 앞)" 에 센다. 대회 launch 는 yaml 을 안 넘기므로 이 기본 인자와
@@ -112,7 +112,7 @@ class GateCounter:
        LiDAR 부표 추적은 대회 후 과제.
     """
 
-    def __init__(self, pass_behind_deg=35.0, rearm_far_margin_m=1.0):
+    def __init__(self, pass_behind_deg=28.0, rearm_far_margin_m=1.0):
         self.pass_behind = float(pass_behind_deg)
         self.rearm_far_margin = float(rearm_far_margin_m)   # ⚠️ 실측 필요 (요잉 복귀 때 거리 흔들림 폭)
         self.count = 0

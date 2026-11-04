@@ -3,7 +3,7 @@ from launch.actions import (IncludeLaunchDescription, TimerAction, DeclareLaunch
                             LogInfo, OpaqueFunction)
 from launch.substitutions import LaunchConfiguration
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from ament_index_python.packages import get_package_share_directory
+from ament_index_python.packages import get_package_share_directory, PackageNotFoundError
 import os
 from launch_ros.actions import Node
 
@@ -79,6 +79,43 @@ def _search_nodes(context):
     return actions
 
 
+# OAK 드라이버 respawn 간격[s]. 🚨 런북 10-31: 드라이버를 끄면 카메라가 재부팅(링크 끊김 2 s → 복귀 14 s)하고
+#   그 안에 다시 띄우면 연결 실패(23·59 회 재시도 후 실패). "다시 띄울 땐 20 s 기다린다" → 20 s 이상.
+#   강제 종료 뒤엔 ~90 s 재연결 불가라 respawn 을 켜도 그만큼 비전 공백이 있다(계약 위험 5).
+OAK_RESPAWN_DELAY_S = 20.0
+
+
+def _oak_camera(context):
+    """7) OAK-1 PoE 카메라(depthai_ros_driver). 패키지가 없으면 **건너뛴다** — launch 전체를 세우지 않는다.
+
+    ssf_bridge.launch.py 의 포트 존재 검사와 같은 뜻: 2번배 노트북에 depthai 가 아직 없어도(⚠️ 미확인)
+    라이다·GPS·IMU·모터 체인은 떠야 한다. 검출기는 영상 없이 침묵하고 healthcheck 가 CAM ✗ 로 알린다.
+    """
+    try:
+        get_package_share_directory('depthai_ros_driver')
+    except PackageNotFoundError:
+        return [LogInfo(msg='⏭️ depthai_ros_driver 없음 — 카메라 노드 건너뜀 '
+                            '(sudo apt install ros-humble-depthai-ros). 검출기 3종은 영상 없이 침묵한다.')]
+    oak_cfg = os.path.join(get_package_share_directory('launch_files'), 'config', 'oak_640x360_full.yaml')
+    return [
+        LogInfo(msg=f'OAK-1 PoE: depthai_ros_driver camera_node name=oak, 파일={oak_cfg} '
+                    f'(i_ip 169.254.1.222, 640x360 ISP 1/3 → /oak/rgb/image_raw, HFOV 63.9°)'),
+        Node(
+            package='depthai_ros_driver',
+            # ⚠️ 실측 필요(Mac 작성): depthai_ros_driver 의 단독 실행파일명. 런북은 camera.launch.py 로 띄웠다
+            #    (컴포넌트 컨테이너). 없으면 `ros2 pkg executables depthai_ros_driver` 로 확인.
+            executable='camera_node',
+            # 🚨 name=oak + 네임스페이스 없음 → 노드 /oak → 토픽 /oak/rgb/image_raw, /oak/rgb/camera_info
+            #    (런북 10-31 실측 이름 = vision.yaml·ssf_tools.yaml 의 image_topic). yaml 의 /oak 블록도 이 이름.
+            name='oak',
+            output='screen',
+            parameters=[oak_cfg],
+            respawn=True,
+            respawn_delay=OAK_RESPAWN_DELAY_S,
+        ),
+    ]
+
+
 def generate_launch_description():
 
     # 패키지 경로
@@ -86,8 +123,8 @@ def generate_launch_description():
     dir_north = get_package_share_directory('north_goal_angle')
     dir_ntrip = get_package_share_directory('ntrip_client')
     dir_gps = get_package_share_directory('ublox_gps')
-    # ship_direction·realsense2_camera 는 Node(package=...) 가, ship_goal_angle 은
-    # 119행이 다시 조회한다. 여기 대입은 쓰이지 않아 제거했다(2026-09-23).
+    # ship_direction 은 Node(package=...) 가, ship_goal_angle 은 아래 Include 가 다시 조회한다.
+    # 여기 대입은 쓰이지 않아 제거했다(2026-09-23). 카메라(depthai)는 _oak_camera 가 조회한다.
     dir_bridge = get_package_share_directory('ssf_bridge')
 
     # 비전 공통 설정 (image_topic, hfov_deg, debug_view).
@@ -202,82 +239,21 @@ def generate_launch_description():
         ),
 
         # ============================================================
-        # 7) RealSense Camera
+        # 7) 카메라 — OAK-1 PoE (depthai_ros_driver). 2026-11-04 D455 → OAK 전환(계약서_OAK전환_20261104 §10)
         # ============================================================
-        # 🚨 [2026-08-12 정정] 이 절 제목이 "Auto Exposure/WhiteBalance OFF" 였는데
-        #    **둘 다 켜져 있었다.** 실측으로 확인:
-        #      rgb_camera.enable_auto_white_balance = True   (아래 줄이 True 로 주고 있었다)
-        #      rgb_camera.enable_auto_exposure      = True   (설정 자체가 없어 드라이버 기본값)
-        #    제목만 보고 "고정돼 있구나" 로 읽으면 색 캘리브레이션의 전제가 통째로 틀린다.
-        #    → 제목을 지우고, 실제 값을 **명시**한다. 기본값에 기대지 않는다.
-        Node(
-            package='realsense2_camera',
-            executable='realsense2_camera_node',
-            name='camera',
-            namespace='camera',
-            output='screen',
-            parameters=[
-                # ── 색 안정성에 직결되는 값. 현재는 **자동** 이고, 그 상태로 검증했다 ──
-                # ⚠️ 색 기반 검출에서 자동 WB 는 원리상 위험하다 — 화면에 뭐가 들어오냐에
-                #    따라 같은 부표의 H 가 밀린다(흰 배가 지나가면 색조가 변한다).
-                #    그래서 끄려고 했는데, **실측이 그 주장을 뒷받침하지 않았다**:
-                #      정지 장면 A/B (auto ON vs OFF 4600K) → ΔH 0.0, ΔS 0.2, ΔV 0.2
-                #    자동 WB 가 고정값과 거의 같은 곳에 수렴했다. 측정 근거 없이 바꾸지 않는다.
-                # 🚨 **실외에서 다시 판정할 것.** 해가 움직이고 큰 물체가 드나드는 환경이
-                #    진짜 시험이다. 절차: 부표를 고정해 두고 화면에 밝은 물체를 넣었다 뺐다
-                #    하며 `tools/vision_probe.py --log-csv` 로 H 가 밀리는지 본다.
-                #    밀리면 auto_white_balance:=False + white_balance 고정(주간 5500~6500K).
-                {"rgb_camera.enable_auto_white_balance": True},
-                {"rgb_camera.enable_auto_exposure": True},
-
-                {"enable_infra1": False},
-                {"enable_infra2": False},
-
-                # 🚨 카메라 내장 IMU(자이로·가속도)를 끈다 — 안 끄면 노드가 예외로 죽는다.
-                #    librealsense 가 D455 의 HID/IIO 센서를 열려고 하는데 udev 규칙이 없어
-                #    Permission denied 가 나고, 그 예외가 rs_node_setup 의 센서 설정을 통째로
-                #    중단시킨다 (2026-08-07 실기 확인):
-                #      Failed to open .../iio:device1/scan_elements/in_anglvel_x_en
-                #      → Error updating the sensors
-                #    ⚠️ udev 규칙을 까는 방법도 있지만 **우리는 이 IMU 를 쓰지 않는다** —
-                #      헤딩은 iAHRS(/imu/yaw_raw → yaw_mux)가 담당한다(CLAUDE.md 3-5).
-                #      안 쓰는 센서 때문에 시스템에 규칙을 남기는 대신 명시적으로 끈다.
-                #    ※ OAK(PoE=이더넷)로 바꾸면 USB HID 자체가 없어져 이 줄은 불필요해진다.
-                {"enable_gyro": False},
-                {"enable_accel": False},
-
-                # 🚨 [2026-08-12] 여기 `rgb_camera.controls.saturation: 120` 이 있었는데
-                #    **그런 파라미터는 존재하지 않는다.** 실물로 확인:
-                #      ros2 param set … rgb_camera.controls.saturation
-                #        → "cannot be set because it was not declared"
-                #      실제 이름은 `rgb_camera.saturation` 이고, 값은 계속 기본값 **64** 였다.
-                #    즉 **120 은 한 번도 먹은 적이 없다.** 에러도 안 났다(조용히 무시).
-                #    → 지금 120 으로 고치면 '검증된 적 없는 값' 으로 동작이 바뀐다.
-                #      오늘 검출 검증(빨강·초록 100%)은 전부 **64 에서** 나온 결과다.
-                #      그래서 실제로 돌던 값 64 를 **명시**만 한다. 120 이 나은지는 측정 후에.
-                {"rgb_camera.saturation": 64},
-
-
-                # 🚨 [2026-09-10 실측] 뎁스 스트림을 끈다. **켜면 카메라가 USB 에서 떨어진다.**
-                #    D455 를 노트북 USB3 포트에 직결(SuperSpeed 5000M)한 상태에서 측정:
-                #      컬러+뎁스 : 컬러 10.8fps · 뎁스 0.6fps · 최대공백 1.75s
-                #                  2분간 USB 끊김 13회 · 드라이버 오류 583,090 줄
-                #                  (xioctl(VIDIOC_QBUF) failed ... error: No such device 무한 재시도)
-                #      컬러 전용 : **30.0fps · 최대공백 0.03s · 오류 0 줄**
-                #    허브·USB2.0 문제가 아니었다. 직결·SuperSpeed 에서도 같았고,
-                #    USB autosuspend 를 꺼도(boat_boot.sh 적용) 그대로였다. **뎁스 부하 자체가 원인이다.**
-                #
-                #    ⚠️ 끄는 게 안전한 근거: **뎁스를 구독하는 코드가 하나도 없다.**
-                #       V1(2026-07-23)에서 비전 3종의 depth 의존을 전부 제거했고
-                #       거리는 LiDAR `/scan` 에서 얻는다(CLAUDE.md 3-3). 전수 검색으로 재확인함.
-                #    ⚠️ 되살릴 일이 생기면 **먼저 USB 케이블을 바꿔서** 재측정할 것.
-                #       마지막까지 남은 의심은 케이블 품질이다(오늘 아두이노·라이다도 같은 증상이었다).
-                {"enable_depth": False},
-
-                # 🎥 30FPS, 640x480
-                {"rgb_camera.color_profile": "640x480x30"},
-            ]
-        ),
+        # 파라미터는 config/oak_640x360_full.yaml (= tools/oak/oak_640x360_full.yaml, 런북 10-31 실측):
+        #   i_ip 169.254.1.222 고정 연결(자동탐색 실패), RGB 단독(뎁스·NN 없음 — OAK-1 은 모노 카메라),
+        #   1080P 센서 30 fps, i_low_bandwidth(MJPEG, 100 Mb 링크에서도 26 fps),
+        #   🚨 i_isp_num 1 / i_isp_den 3 — 1080P 전체 → 640×360 축소 = HFOV 63.9°(vision.yaml hfov_deg).
+        #      빠지면 가운데만 잘려 40.3° 인데 camera_info fx 는 같아 숫자로 안 드러난다. 시야 육안 확인 필수.
+        #   test_oak_camera.py 가 이 값들을 정적으로 검사한다.
+        # 발행 QoS 는 RELIABLE — 검출기·healthcheck 는 BEST_EFFORT 구독이라 호환(CLAUDE.md §3).
+        # 연결에 13~17 s 걸린다. 그동안 검출기는 침묵, healthcheck 는 CAM 대기(image_wait_grace_s 안).
+        # 패키지가 없으면 _oak_camera 가 LogInfo 만 찍고 건너뛴다(launch 전체를 세우지 않는다).
+        #
+        # D455 시절 기록(auto WB 실측, saturation 64, HID udev 로 IMU OFF, 뎁스 ON 시 USB 끊김)은
+        # camera.launch.py 와 git 이력 참고 — RealSense 경로는 CLAUDE.md §1-8 대로 유지, 대회 launch 에서만 뺐다.
+        OpaqueFunction(function=_oak_camera),
 
         # ============================================================
         # 8) 비전 검출기 — **상주**. 각자 /wp_mode 를 보고 자기 차례일 때만 일한다

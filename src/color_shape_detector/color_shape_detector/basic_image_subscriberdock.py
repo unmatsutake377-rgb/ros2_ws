@@ -45,12 +45,12 @@ class ImageSubscriber(Node):
     def __init__(self):
         super().__init__('image_subscriber_dock')
 
-        # V5(T2-2): 이미지 토픽 파라미터화. 기본값은 현 RealSense 토픽 그대로다.
+        # V5(T2-2): 이미지 토픽 파라미터화. 기본값은 OAK-1 PoE 토픽(2026-11-04 전환, 그 전 D455 /camera/camera/color/image_raw).
         #   OAK 로 바꾸는 날 코드를 고치지 않고 **yaml 한 줄**로 끝내려는 것이다.
         #   ⚠️ 구독보다 반드시 먼저 선언해야 한다 — 뒤에 두면 부팅 즉시 AttributeError 다.
         #   3-4 이후 launch 가 이 노드를 직접 띄우므로 yaml 파라미터가 그대로 닿는다.
         self.image_topic = str(self.declare_parameter(
-            'image_topic', '/camera/camera/color/image_raw').value)
+            'image_topic', '/oak/rgb/image_raw').value)
 
         # 3-4: 상주 + 모드 게이팅. subprocess 로 죽였다 살리는 방식을 폐기했다.
         #   담당 모드는 **각 노드가 소유**한다 (미션 노드 ship_gate/dock/turn/back 과 같은 패턴).
@@ -92,7 +92,7 @@ class ImageSubscriber(Node):
         #   try/except 로 덮지 않고 파라미터로 원천 차단. false 면 frame.copy() 와 그리기도 생략.
         self.debug_view = bool(self.declare_parameter('debug_view', False).value)
 
-        # V3(T2-4): 카메라 수평 화각. 기본값은 현 RealSense 를 역산한 값이다.
+        # V3(T2-4): 카메라 수평 화각. 기본값은 OAK-1 PoE 640×360 ISP 1/3 실측(63.9°, vision_geom).
         #   OAK-1 W(광각)로 바꾸면 **이 값만 yaml 에서 고치면 된다.**
         #   하드코딩이었을 땐 카메라 교체일에 모든 각도 출력과 상위 튜닝
         #   (align_tol_deg, pair_min/max_sep_deg …)이 통째로 무효가 됐다.

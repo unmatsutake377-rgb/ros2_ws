@@ -51,7 +51,7 @@ class HSVSubscriber(Node):
 
         # ⚠️ 구독보다 먼저 선언해야 한다 — 뒤에 두면 부팅 즉시 AttributeError 다.
         self.image_topic = str(self.declare_parameter(
-            'image_topic', '/camera/camera/color/image_raw').value)
+            'image_topic', '/oak/rgb/image_raw').value)
 
         # 이 노드만 debug_view 기본 true — 창이 없으면 존재 이유가 없다.
         # 그래도 게이트는 둔다: namedWindow 가 __init__ 에 있어 헤드리스면 여기서 터진다.

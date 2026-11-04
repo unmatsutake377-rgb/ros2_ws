@@ -44,8 +44,14 @@
     # T2-7: 카메라 침묵 감지. 카메라는 조용히 죽는다 — USB 가 빠져도 에러 토픽은 안 나온다.
     #   V1 에서 depth 가드를 없앴으니 비전 노드는 이미지가 안 와도 예외 없이 그냥 침묵한다
     #   → 여기서 안 잡으면 아무도 모른다.
-    #   ⚠️ 카메라를 바꾸면 vision.yaml 의 image_topic 과 **여기를 같이** 바꿔야 한다.
-    image_topic: "/camera/camera/color/image_raw"
+    #   ⚠️ 카메라를 바꾸면 vision.yaml 의 image_topic 과 **여기를 같이** 바꿔야 한다(test_config_consistency 가 검사).
+    #   2026-11-04 OAK-1 PoE 전환: /oak/rgb/image_raw (그 전 D455 /camera/camera/color/image_raw).
+    image_topic: "/oak/rgb/image_raw"
+    # 기동 후 이 시간[s] 안에 영상을 **한 번도** 못 받으면 CAM ✗(/health_ok=false). 그 전까지는 WAIT(…).
+    #   OAK 는 PoE 연결에 13~17 s 걸린다(런북 10-31) → 30 s. 예전엔 '한 번도 못 받음' 이 영원히 WAIT 라
+    #   depthai 연결 실패(IP·nmcli 프로파일·패키지 미설치)에도 /health_ok 가 true 였다(계약 위험 2).
+    #   ⚠️ 다른 센서의 WAIT 는 그대로 '부팅 중' 이다 — 영상만 이렇게 본다.
+    image_wait_grace_s: 30.0
     # ---- 매핑표 검사 ----
     wp_mode_topic: "/wp_mode"
     candidate_topic: "/candidate_angle"

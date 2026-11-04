@@ -22,6 +22,7 @@ from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy, HistoryPolicy
 
 from ssf_tools import thermal
+from ssf_tools.health_logic import IMAGE_FAIL_STATES, STATE_NEVER, image_state
 
 from std_msgs.msg import Int32, Float32, Float64, Bool, String
 from sensor_msgs.msg import Image, LaserScan, NavSatFix
@@ -61,11 +62,18 @@ class HealthCheck(Node):
         #   멈춰도 에러 토픽은 안 나온다. V1 에서 depth 가드를 없앴으니 비전 노드는 이제
         #   이미지가 안 와도 예외 없이 그냥 침묵한다 → 여기서 잡지 않으면 아무도 모른다.
         #   ⚠️ image_topic 은 V5 에서 파라미터가 됐다. 카메라를 바꾸면 여기도 같이 바꿀 것.
+        #   2026-11-04 OAK-1 PoE 전환(결정 3): 코드 기본값도 /oak/rgb/image_raw — yaml 이 안 닿는 단독 실행에서
+        #   D455 토픽을 보며 조용히 어긋나지 않게. 운용값은 ssf_tools.yaml(test_config_consistency 가 일치 검사).
         image_topic = self.declare_parameter(
-            "image_topic", "/camera/camera/color/image_raw").value
+            "image_topic", "/oak/rgb/image_raw").value
         # 이미지는 센서 중 가장 느릴 수 있다(30fps 여도 처리 지연). 별도 타임아웃.
         self.image_timeout = float(
             self.declare_parameter("image_timeout_sec", 3.0).value)
+        # 2026-11-04(OAK 전환 결정 4): 영상을 **한 번도** 못 받은 WAIT 가 기동 후 이 유예[s]를 넘기면 실패(NEVER).
+        #   예전엔 영원히 WAIT = /health_ok true 라 depthai 연결 실패(IP·nmcli·미설치)를 아무도 몰랐다.
+        #   OAK PoE 연결 13~17 s(런북) → 기본 30. ⚠️ 다른 센서 WAIT 는 그대로(부팅 중). 판정은 health_logic.image_state.
+        self.image_wait_grace = float(
+            self.declare_parameter("image_wait_grace_s", 30.0).value)
         wp_mode_topic = self.declare_parameter("wp_mode_topic", "/wp_mode").value
         candidate_topic = self.declare_parameter("candidate_topic", "/candidate_angle").value
 
@@ -93,6 +101,7 @@ class HealthCheck(Node):
         # ---- 마지막 수신 시각(단조시계). None = 아직 한 번도 못 받음(비ARMED) ----
         self._last = {"scan": None, "imu": None, "gps": None, "candidate": None,
                       "imu_raw": None, "image": None}
+        self._t_boot = time.monotonic()   # 영상 WAIT 유예의 기준(단조시계, CLAUDE.md 1-5)
         self._cur_wp_mode = None
         self._heading_status = None
         self._gps_fix_ok = False      # /fix 가 와도 fix 가 유효한가 (NOFIX 구분용)
@@ -122,7 +131,8 @@ class HealthCheck(Node):
         self.timer = self.create_timer(self.period, self._on_timer)
 
         self.get_logger().info(
-            f"🩺 healthcheck 시작: {self.period:.0f}s 주기, 센서 타임아웃 {self.timeout:.0f}s\n"
+            f"🩺 healthcheck 시작: {self.period:.0f}s 주기, 센서 타임아웃 {self.timeout:.0f}s, "
+            f"영상 타임아웃 {self.image_timeout:.0f}s / 첫 영상 유예 {self.image_wait_grace:.0f}s\n"
             f"   매핑표: {self.wp_map}\n"
             f"   /health_ok 발행 (그 외 기존 토픽엔 발행 안 함)"
         )
@@ -185,7 +195,9 @@ class HealthCheck(Node):
         scan = self._sensor_state("scan")
         imu = self._sensor_state("imu")
         gps = self._sensor_state("gps")
-        image = self._sensor_state("image", self.image_timeout)
+        # 영상만 '한 번도 못 받음' 을 유예 뒤 실패(NEVER)로 본다 — 다른 센서는 WAIT 그대로.
+        image = image_state(self._last["image"], self._now(), self._t_boot,
+                            self.image_timeout, self.image_wait_grace)
 
         # 메시지는 오는데 fix 가 없는 상태를 'NOFIX' 로 구분한다.
         # '안 옴(DEAD)' 과 '와도 못 쓰는 값(NOFIX)' 은 원인도 조치도 다르다
@@ -201,9 +213,15 @@ class HealthCheck(Node):
         alive_nodes = set(self.get_node_names())
 
         lines = ["🩺 healthcheck"]
-        icon = {"OK": "✅", "DEAD": "❌", "WAIT": "…", "NOFIX": "⚠️"}
+        icon = {"OK": "✅", "DEAD": "❌", "WAIT": "…", "NOFIX": "⚠️", STATE_NEVER: "❌"}
         lines.append("   센서: " + "  ".join(
             f"{name} {icon[st]}" for name, st in sensors.items()))
+
+        if image == STATE_NEVER:
+            lines.append(
+                f"   ❌ CAM 영상을 기동 후 {self.image_wait_grace:.0f}s 동안 한 번도 못 받음 → "
+                f"카메라 드라이버 미기동/연결 실패(OAK: ping 169.254.1.222, nmcli oak-poe, depthai 설치) "
+                f"또는 image_topic 불일치. 검출기 3종은 지금 침묵 중")
 
         # --- 헤딩 경로 원인 분리 (진단만, /health_ok 엔 반영 안 함) ---
         # /imu/yaw 는 이제 yaw_mux 가 낸다. 끊겼을 때 원인이 IMU 냐 mux 냐를 여기서 가른다.
@@ -281,7 +299,8 @@ class HealthCheck(Node):
 
         # --- /health_ok 판정 ---
         # 센서는 WAIT(부팅 중)을 죽음으로 치지 않는다(오탐 방지). DEAD 만 실패.
-        # 카메라도 sensors 에 포함된다 = DEAD 면 /health_ok=false.
+        #   단 영상은 '한 번도 못 받음' 이 유예(image_wait_grace_s)를 넘기면 NEVER = 실패(11-04 결정 4).
+        # 카메라도 sensors 에 포함된다 = DEAD/NEVER 면 /health_ok=false.
         #   근거: 출발 전에 카메라가 죽어 있으면 게이트·도킹이 **조용히** 실패한다.
         #        이 프로젝트가 반복해 당한 침묵 실패라 출발 전 진단에서 잡는 게 맞다.
         #   ⚠️ 단 /health_ok 는 현재 **구독자 0개(진단 전용)** 이라 거짓 정지 위험이 없어서
@@ -290,7 +309,7 @@ class HealthCheck(Node):
         # NOFIX 도 실패로 친다: fix 없이 출발하면 항법이 통째로 무의미하다.
         # 설계 문서(docs/문제와작업/추가개선_판단과결과.md §2)가 "GPS fix 없음" 을
         # 출발 차단 사유로 명시했는데 구현이 도착 시각만 보고 있었다 → 여기서 맞춘다.
-        sensors_ok = all(st not in ("DEAD", "NOFIX") for st in sensors.values())
+        sensors_ok = all(st not in ("DEAD", "NOFIX") + tuple(IMAGE_FAIL_STATES) for st in sensors.values())
         health_ok = sensors_ok and map_ok and cur_owner_ok and geofence_ok and gate_ok
 
         self.pub_health.publish(Bool(data=bool(health_ok)))

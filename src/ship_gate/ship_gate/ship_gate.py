@@ -12,7 +12,7 @@
       가까운 쪽 하나만. (판정은 gate_logic.gate_candidate — 순수 함수, 테스트됨)
   [4] 순차 통과 카운트 → /gates_passed (Int32) 발행. 부표 |상대각| 이 pass_behind_deg 를 넘으면
       1 증가. ★ 이름 주의: /gate_pass_count 아니라 /gates_passed (0단계 blackbox 가 구독 중).
-      🚨 pass_behind_deg 는 카메라 반화각(hfov 80.32/2 = 40.16°) 안이어야 한다 — 밖이면 검출기가
+      🚨 pass_behind_deg 는 카메라 반화각(OAK hfov 63.9/2 = 31.95°, 11-04 전환) 안이어야 한다 — 밖이면 검출기가
       10000 을 내서 각이 아예 안 오고, 옛 기본값 75 는 영원히 0 이었다(11-04). 게이트 선 ~2~6 m 앞에서 센다.
       arming 은 유효 쌍이 전방(두 |각| ≤ pass_behind_deg)이면 거리 조건 없이(⑥). 재-arming 은 카운트 뒤
       (i) 두 부표 모두 안 보임 또는 (ii) 전방 쌍의 LiDAR 거리가 카운트 시점 거리 + rearm_far_margin_m 보다
@@ -88,13 +88,14 @@ class ShipGate(Node):
         self.red_on_port = bool(self.declare_parameter("red_on_port", True).value)
 
         # 통과 카운트 [4]
-        # 🚨 카메라 HFOV 80.32° 의 반값 40.16° 안이어야 한다. 75 는 물리적으로 도달 불가해 /gates_passed 가
+        # 🚨 카메라 HFOV 63.9°(OAK) 의 반값 31.95° 안이어야 한다. 75 는 물리적으로 도달 불가해 /gates_passed 가
         #    영원히 0 이었다(2026-11-04 시뮬). 대회 launch 는 yaml 을 안 넘기므로 이 코드 기본값이 대회값 —
         #    gate_logic.GateCounter 기본 인자·ship_gate.yaml 과 세 곳 동시에 바꾼다(test_gate_logic 이 검사).
-        self.pass_behind_deg = float(self.declare_parameter("pass_behind_deg", 35.0).value)
+        #    11-04 OAK 전환: 35(D455 반화각 40.16) → 28(여유 3.95°). ⚠️ 실측 필요: 벤치 최대 |각| 이 28 에 못 미치면 27.
+        self.pass_behind_deg = float(self.declare_parameter("pass_behind_deg", 28.0).value)
         # 카메라 수평 화각 — 부팅 시 pass_behind_deg 가 반화각 안인지 검사하는 데만 쓴다.
-        # ⚠️ vision.yaml hfov_deg(80.32) 와 같아야 한다(카메라를 바꾸면 둘 다). test_gate_logic 이 일치를 검사.
-        self.cam_hfov_deg = float(self.declare_parameter("cam_hfov_deg", 80.32).value)
+        # ⚠️ vision.yaml hfov_deg(63.9, OAK 640×360 ISP 1/3) 와 같아야 한다(카메라를 바꾸면 둘 다). test_gate_logic 이 일치를 검사.
+        self.cam_hfov_deg = float(self.declare_parameter("cam_hfov_deg", 63.9).value)
         # 카운트 뒤 재-arming: 전방 쌍의 LiDAR 거리가 '카운트 시점 거리 + 이 여유' 보다 멀어야 새 게이트로 본다.
         # ⚠️ 실측 필요 — 요잉 복귀 때 같은 부표의 거리 흔들림 폭보다 커야 한다(시뮬 1.0 으로 이중 0).
         self.rearm_far_margin_m = float(self.declare_parameter("rearm_far_margin_m", 1.0).value)

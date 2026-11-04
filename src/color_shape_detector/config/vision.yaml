@@ -1,6 +1,6 @@
 # 비전 노드 공통 파라미터 (color_shape_detector)
 #
-# 🚨 카메라를 바꾸는 날 고칠 곳은 여기 hfov_deg 하나다.
+# 🚨 카메라를 바꾸는 날 고칠 곳은 여기 hfov_deg·image_topic 과 ship_gate cam_hfov_deg(+pass_behind), ssf_tools image_topic.
 #    작년엔 화각이 매직넘버 3개(80.0, 0.09, 0.5)에 흩어져 하드코딩돼 있어서,
 #    카메라를 갈면 모든 각도 출력과 상위 튜닝(align_tol_deg, pair_min/max_sep_deg …)이
 #    통째로 무효가 되는 구조였다.
@@ -9,40 +9,39 @@
   ros__parameters:
     # 카메라 수평 화각[deg].
     #
-    # ✅ **[2026-08-12 실측 정정 — 71.5 는 틀린 값이었다]**
-    #    USB3 케이블이 와서 카메라가 처음으로 스트리밍됐고, `camera_info` 의 **공장
-    #    캘리브레이션**을 직접 읽었다(640x480, D455 S/N 117122250518, FW 5.17.0.10):
-    #        fx = 379.189  fy = 378.751  cx = 319.374  cy = 238.604
-    #        → HFOV = 2·atan(320/379.189) = **80.32°**   (VFOV 64.72°)
+    # ✅ **[2026-11-04 OAK-1 PoE 전환 — 63.9°]** (계약서_OAK전환_20261104, 런북 10-31 저녁 실측)
+    #    설정: 1080P 센서 → i_isp_num 1 / i_isp_den 3 로 전체 축소 → 640×360 (tools/oak/oak_640x360_full.yaml
+    #    = launch_files/config 설치본). 원 2개 간격 60장 실측 213.8 px → 63.9°,
+    #    camera_info fx 513.5 · cx 326.8 → 2·atan(320/513.5) = 63.87° (0.03° 차). 반화각 31.95°.
+    #    🚨 **i_isp_num/den 이 빠지면 드라이버 기본(ISP 2/3 → 1280×720)에서 가운데 640×360 만 잘라
+    #       화각이 40.3° 가 되는데 camera_info 는 fx 513.5 를 그대로 낸다** — 숫자로 안 드러난다.
+    #       launch_files/test/test_oak_camera.py 가 설정을 정적 검사하고, 시야는 육안(좌측 끝 ≈ +32°)으로.
+    #    ⚠️ 화각이 좁아졌다(80.32 → 63.9): ship_gate pass_behind_deg 35 → 28 로 같이 내렸다(반화각 31.95 안).
+    #       VFOV 도 64.7 → 38.6° 라 y_zone 띠는 마스트 틸트(CAD 11°)에 달렸다 — 실물 각도 확인 후 vision_probe.
     #
-    #    기존 71.5 는 "0.5m 에서 80px = 9cm" 벤치 역산치였고 **8.82° 틀렸다**(fx 로는 +17.2%).
-    #    그 결과 화면 가장자리에서 각도가 **최대 4.4° 어긋나 있었다** —
-    #    `align_tol_deg=5°` 의 88%, LiDAR 각분해능(0.225°)의 20배다.
-    #    (왜곡까지 포함하면 4.85°. 계산 근거는 docs/결과분석/ 카메라 절)
-    #    🚨 아직 물 위 튜닝을 시작하기 **전**이라 지금 고치는 게 맞다. 튜닝 뒤였으면
-    #       그 튜닝이 통째로 무효가 됐을 값이다.
+    # 📜 D455 시절(2026-08-12~11-04): 640x480 camera_info fx 379.189 → **80.32°** (VFOV 64.72°).
+    #    그 전 71.5 는 벤치 역산치로 8.82° 틀려 가장자리 4.4° 오차였다. 기록은 vision_geom.py 참고.
     #
-    # 🚨 **이 값은 해상도에 딸려 있다.** RealSense 는 해상도마다 센서 크롭이 달라
-    #    HFOV 가 바뀐다(640x480=4:3 은 80.32°, 16:9 는 더 넓다).
-    #    `rgb_camera.color_profile` 을 바꾸면 **여기도 같이 바꿔야 한다** —
+    # 🚨 **이 값은 해상도·ISP 설정에 딸려 있다.** OAK 는 i_width/i_height·i_isp_num/den 을 바꾸면 크롭이
+    #    달라져 HFOV 가 바뀐다(RealSense 도 프로파일마다 달랐다). 설정을 바꾸면 **여기도 같이** —
     #    안 바꾸면 에러 없이 각도만 틀어진다.
     #    ⇒ 근본 해법은 `camera_info` 의 fx 를 런타임에 읽는 것이다(미적용, 아래 참고).
     #
-    # ⚠️ 핀홀 모델이다. 광각에서는 **가장자리 오차가 커진다**.
-    #    광각 카메라를 붙이면 rectified 토픽을 구독하거나 camera_info 의 왜곡계수 D 를
-    #    cv2.undistortPoints 로 적용해야 한다. hfov_deg 만 바꾸는 걸로는 부족하다.
-    #    실측 D455 왜곡 기여분은 가장자리에서 **0.4°** 로 작다(전체 4.85° 중).
-    hfov_deg: 80.32
+    # ⚠️ 핀홀 모델이다. 광각에서는 **가장자리 오차가 커진다**. OAK-1 표준 화각(W 아님)이라 10-31 벤치
+    #    가장자리(+29°)에서 0.9° 안. 광각 카메라를 붙이면 rectified 토픽 구독 또는 camera_info 의
+    #    왜곡계수 D 를 cv2.undistortPoints 로 적용해야 한다. hfov_deg 만 바꾸는 걸로는 부족하다.
+    hfov_deg: 63.9
 
     # 해상도는 파라미터가 아니다 — **매 프레임 실제 이미지에서 읽는다.**
     #   fx = (width/2)/tan(hfov/2) 라 해상도가 바뀌면 fx 도 바뀌어야 한다.
     #   파라미터로 뒀다면 yaml 을 안 고친 채 해상도만 바꿨을 때 조용히 각도가 틀어진다.
     #   (작년 식이 정확히 그 상태였다: fx 가 444.44px 로 고정 → 640x480 에서만 맞았다)
 
-    # 카메라 이미지 토픽. OAK 전환 시 여기만 바꾼다.
-    #   RealSense : /camera/camera/color/image_raw   (현재)
-    #   OAK        : depthai_ros_driver 의 컬러 토픽 (도착일에 `ros2 topic list` 로 확인)
-    image_topic: "/camera/camera/color/image_raw"
+    # 카메라 이미지 토픽. ⚠️ ssf_tools.yaml 의 healthcheck image_topic 과 같아야 한다(정적 테스트가 검사).
+    #   OAK-1 PoE  : /oak/rgb/image_raw   (현재, 2026-11-04. depthai name=oak, bgr8, 발행 RELIABLE —
+    #                구독은 BEST_EFFORT 라 호환. camera_info 는 /oak/rgb/camera_info)
+    #   RealSense  : /camera/camera/color/image_raw   (D455 벤치 camera.launch.py — 대회 launch 에서 제거)
+    image_topic: "/oak/rgb/image_raw"
 
     # 디버그 창. 배는 SSH 로 띄운다 = 헤드리스 → 기본 false.
     debug_view: false
