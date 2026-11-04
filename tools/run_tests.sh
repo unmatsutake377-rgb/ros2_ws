@@ -41,6 +41,12 @@ else
   for p in "${PKGS[@]}"; do [ -d "src/$p" ] && PATHS+=("src/$p"); done
 fi
 
+# 각 패키지 폴더를 import 경로에 넣는다. ssf_bridge 테스트는 `from ssf_bridge...` 로 설치된 패키지를
+# 바로 부르는데(Ubuntu 는 colcon 설치본이 잡힘), 빌드가 없는 Mac 에선 수집부터 실패했다(11-04).
+PP=""
+for p in "${PKGS[@]}"; do [ -d "src/$p" ] && PP="${PP:+$PP:}$PWD/src/$p"; done
+export PYTHONPATH="$PP${PYTHONPATH:+:$PYTHONPATH}"
+
 exec python3 -m pytest "${PATHS[@]}" \
   --import-mode=importlib \
   --ignore-glob='*/test_copyright.py' \
