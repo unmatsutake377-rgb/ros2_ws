@@ -613,6 +613,262 @@ def test_hold_max_normal_success_unaffected():
         CLOCK.t = t0
 
 
+# ---------------- 계약 전체코스 §10-추가 결정 6: HOLD 에서 놓치면 reacquire_stop_sec 동안 정지
+def _nstep(n, t, scan=None):
+    """시각 t 로 옮겨 비전 없음(10000)·LiDAR scan(기본 전 방위 6 m)으로 한 틱. 마지막 발행값."""
+    CLOCK.t = t
+    n.angle_cb(_Float32(10000.0))
+    n.latest_scan = scan if scan is not None else _Scan(6.0)
+    n.t_scan = t
+    n.timer_cb()
+    return n.pub_candidate.values[-1] if n.pub_candidate.values else None
+
+
+def _lost_warns(n):
+    return [ln for ln in warns(n) if '부표 놓침' in ln[1]]
+
+
+def _fail_warns(n):
+    return [ln for ln in warns(n) if '재획득 실패' in ln[1]]
+
+
+def _hold_then_lost(t0):
+    """t0 HOLD 시작, t0+10 마지막 비전(6 m → 전진), t0+12.5 lost → SEARCH(창 시작). 노드."""
+    n, _ = _hold_node()
+    assert _hstep(n, t0 + 10.0, 6.0) == 0.0 and n.state == 'HOLD'
+    k = len(n.pub_candidate.values)
+    _nstep(n, t0 + 12.5)
+    assert n.state == 'SEARCH' and len(n.pub_candidate.values) == k   # 전이 틱은 발행 없음
+    assert n.reacquire_t0 == t0 + 12.5
+    return n
+
+
+def test_reacquire_stop_default_and_yaml():
+    import yaml
+    assert SB.ShipBack().reacquire_stop_sec == 5.0
+    with open(os.path.join(PKG, 'config', 'ship_back.yaml'), encoding='utf-8') as f:
+        y = yaml.safe_load(f)['/ship_back']['ros__parameters']
+    assert y['reacquire_stop_sec'] == 5.0 and isinstance(y['reacquire_stop_sec'], float)
+    assert isinstance(DECLARED['reacquire_stop_sec'], float)
+    n = SB.ShipBack()
+    assert any('reacquire_stop=5.0s' in ln[1] for ln in n.get_logger().lines
+               if ln[0] == 'INFO'), n.get_logger().lines
+
+
+def test_reacquire_window_stop_then_vision_holds_sum_continues():
+    """HOLD 12.5 s → lost → 창 4 s 50000 → 재획득 HOLD(합 12.5 + 창 4 = 16.5) → 이어서 60 s 에 포기."""
+    t0 = CLOCK.t
+    try:
+        n = _hold_then_lost(t0)
+        assert len(_lost_warns(n)) == 1 and '5s 정지 후 재탐색' in _lost_warns(n)[0][1]
+        assert abs(n.hold_total - 12.5) < 1e-9 and n.hold_enter_t is None
+        assert _nstep(n, t0 + 13.0) == 50000.0 and n.state == 'SEARCH'
+        assert _nstep(n, t0 + 16.0) == 50000.0 and n.state == 'SEARCH'
+        assert abs(n.hold_total - 12.5) < 1e-9          # 창 중엔 HOLD 아님 → 합 그대로
+        _hstep(n, t0 + 16.5, 6.0)                       # 창 안 재획득
+        assert n.state == 'HOLD' and n.reacquire_t0 is None
+        assert abs(n.hold_total - 16.5) < 1e-9          # 0 으로 안 돌아감 + 창 4 s 합산(보충 ①)
+        assert _hstep(n, t0 + 16.5 + 43.4, 6.0) == 0.0 and n.state == 'HOLD'   # 59.9 s
+        _hstep(n, t0 + 16.5 + 43.6, 6.0)                                        # 60.1 s
+        assert n.state == 'DONE' and len(_max_errors(n)) == 1
+        assert len(_lost_warns(n)) == 1 and _fail_warns(n) == []
+    finally:
+        CLOCK.t = t0
+
+
+def test_reacquire_window_end_20000_and_warn_once():
+    """창 4.9 s 정지, 5.0 s 부터 20000(SEARCH 유지)·WARN 1회."""
+    t0 = CLOCK.t
+    try:
+        n = _hold_then_lost(t0)
+        assert _nstep(n, t0 + 17.4) == 50000.0 and _fail_warns(n) == []    # 4.9 s
+        assert _nstep(n, t0 + 17.5) == 20000.0 and n.state == 'SEARCH'      # 5.0 s
+        w = _fail_warns(n)
+        assert len(w) == 1 and '탐색 계속(20000)' in w[0][1], warns(n)
+        assert n.reacquire_t0 is None
+        for k in range(1, 4):
+            assert _nstep(n, t0 + 17.5 + k) == 20000.0 and n.state == 'SEARCH'
+        assert len(_fail_warns(n)) == 1 and len(_lost_warns(n)) == 1
+    finally:
+        CLOCK.t = t0
+
+
+def test_reacquire_search_timeout_warn_counts_window():
+    """SEARCH 20 s WARN 은 SEARCH 진입(lost)부터 — 창 5 s 포함. 상태·발행은 안 바뀜."""
+    t0 = CLOCK.t
+    try:
+        n = _hold_then_lost(t0)
+        assert _nstep(n, t0 + 32.4) == 20000.0                  # SEARCH 19.9 s
+        assert [ln for ln in warns(n) if '부표 못 찾음' in ln[1]] == []
+        assert _nstep(n, t0 + 32.6) == 20000.0                  # 20.1 s (창 끝 뒤 15.1 s)
+        assert len([ln for ln in warns(n) if '부표 못 찾음' in ln[1]]) == 1
+        assert n.state == 'SEARCH'
+    finally:
+        CLOCK.t = t0
+
+
+def test_reacquire_first_search_from_init_is_20000():
+    """INIT → SEARCH(모드 진입 뒤 첫 SEARCH)는 창 없음 — 처음부터 20000, 놓침 WARN 없음."""
+    t0 = CLOCK.t
+    try:
+        n = SB.ShipBack()
+        n.wp_cb(_Float32(3))
+        assert _nstep(n, t0) == 20000.0 and n.state == 'INIT'
+        _nstep(n, t0 + 1.0)
+        assert n.state == 'SEARCH' and n.reacquire_t0 is None
+        for k in (1.1, 2.0, 5.0):
+            assert _nstep(n, t0 + k) == 20000.0 and n.state == 'SEARCH'
+        assert set(n.pub_candidate.values) == {20000.0}
+        assert _lost_warns(n) == [] and _fail_warns(n) == []
+    finally:
+        CLOCK.t = t0
+
+
+def test_reacquire_window_closed_by_new_mode():
+    """창 중 새 담당 모드(3→2) → 리셋: 창 닫힘, INIT → 첫 SEARCH 20000."""
+    t0 = CLOCK.t
+    try:
+        n = _hold_then_lost(t0)
+        assert _nstep(n, t0 + 13.0) == 50000.0
+        n.wp_cb(_Float32(2))
+        assert n.state == 'INIT' and n.reacquire_t0 is None and n.hold_total == 0.0
+        assert _nstep(n, t0 + 13.5) == 20000.0
+        _nstep(n, t0 + 14.0)                            # INIT 1 s → SEARCH
+        assert n.state == 'SEARCH'
+        assert _nstep(n, t0 + 14.1) == 20000.0          # 옛 창(→ t0+17.5)이 살았다면 50000
+        assert _fail_warns(n) == []
+    finally:
+        CLOCK.t = t0
+
+
+def test_reacquire_window_kept_on_same_mode_3_to_3():
+    """창 중 /wp_mode 3 재수신(리셋 없음) → 창 유지, 끝나면 20000."""
+    t0 = CLOCK.t
+    try:
+        n = _hold_then_lost(t0)
+        n.wp_cb(_Float32(3))
+        assert n.state == 'SEARCH' and n.reacquire_t0 == t0 + 12.5
+        assert _nstep(n, t0 + 14.0) == 50000.0
+        assert _nstep(n, t0 + 17.5) == 20000.0 and len(_fail_warns(n)) == 1
+    finally:
+        CLOCK.t = t0
+
+
+def _win_max_errors(n):
+    return [ln for ln in _max_errors(n) if '재획득 정지 창 포함' in ln[1]]
+
+
+def test_reacquire_window_counts_toward_hold_max():
+    """결정 6 보충 ①: HOLD 합 57.5 s 에서 lost → 창 2.4 s(합 59.9) SEARCH 50000,
+    2.5 s(합 60.0) DONE·ERROR 1회(창 포함 표시) → 20000 래치. 창 중 3→3 은 합 이어짐."""
+    t0 = CLOCK.t
+    try:
+        n, _ = _hold_node()
+        n.hold_total = 50.0
+        assert _hstep(n, t0 + 5.0, 6.0) == 0.0
+        _nstep(n, t0 + 7.5)                             # lost → 합 57.5, 창 시작
+        assert n.state == 'SEARCH' and abs(n.hold_total - 57.5) < 1e-9
+        n.wp_cb(_Float32(3))                            # 3→3: 리셋 없음 → 창·합 그대로
+        assert n.reacquire_t0 == t0 + 7.5 and abs(n.hold_total - 57.5) < 1e-9
+        assert _nstep(n, t0 + 9.9) == 50000.0 and n.state == 'SEARCH'    # 창 2.4 s
+        assert errors(n) == []
+        _nstep(n, t0 + 10.0)                                              # 창 2.5 s → 60.0
+        assert n.state == 'DONE', n.state
+        e = _win_max_errors(n)
+        assert len(e) == 1 and '60 s 넘음' in e[0][1] and '포기' in e[0][1], errors(n)
+        for k in range(1, 4):
+            assert _nstep(n, t0 + 10.0 + k) == 20000.0 and n.state == 'DONE'
+        n.wp_cb(_Float32(3))                            # 3→3 래치 유지
+        assert _hstep(n, t0 + 15.0, 2.5) == 20000.0 and n.state == 'DONE'
+        assert len(errors(n)) == 1 and _fail_warns(n) == [], errors(n)
+    finally:
+        CLOCK.t = t0
+
+
+def test_reacquire_window_end_tick_counts_full_window():
+    """합 55 s 에서 lost → 창 4.9 s(59.9) 50000, 창 끝 틱 5.05 s 는 창 길이 5 s 로 잘라 60.0 → DONE."""
+    t0 = CLOCK.t
+    try:
+        n, _ = _hold_node()
+        n.hold_total = 47.5
+        assert _hstep(n, t0 + 5.0, 6.0) == 0.0
+        _nstep(n, t0 + 7.5)                             # lost → 합 55.0
+        assert abs(n.hold_total - 55.0) < 1e-9
+        assert _nstep(n, t0 + 12.4) == 50000.0 and n.state == 'SEARCH'
+        _nstep(n, t0 + 12.55)
+        assert n.state == 'DONE' and len(_win_max_errors(n)) == 1, errors(n)
+        assert _fail_warns(n) == []
+    finally:
+        CLOCK.t = t0
+
+
+def test_reacquire_window_after_end_not_counted_then_sum_continues():
+    """합 50 s 에서 lost → 창 5 s 만 합산(55), 창 끝 뒤 20000 구간은 안 늚 → 재획득 HOLD 5 s 에 포기."""
+    t0 = CLOCK.t
+    try:
+        n, _ = _hold_node()
+        n.hold_total = 42.5
+        assert _hstep(n, t0 + 5.0, 6.0) == 0.0
+        _nstep(n, t0 + 7.5)                             # lost → 합 50.0
+        assert abs(n.hold_total - 50.0) < 1e-9
+        assert _nstep(n, t0 + 12.4) == 50000.0
+        assert _nstep(n, t0 + 12.5) == 20000.0 and n.state == 'SEARCH'   # 창 끝
+        assert abs(n.hold_total - 55.0) < 1e-9 and n.reacquire_t0 is None
+        for t in (13.5, 20.0, 30.0):                    # 20000 구간 17.5 s — 합 그대로
+            assert _nstep(n, t0 + t) == 20000.0 and n.state == 'SEARCH'
+            assert abs(n.hold_total - 55.0) < 1e-9
+        assert errors(n) == []
+        _hstep(n, t0 + 31.0, 6.0)                       # 재획득 → HOLD, 합 이어짐
+        assert n.state == 'HOLD' and abs(n.hold_total - 55.0) < 1e-9
+        assert _hstep(n, t0 + 35.9, 6.0) == 0.0 and n.state == 'HOLD'    # 59.9
+        _hstep(n, t0 + 36.0, 6.0)                                         # 60.0
+        assert n.state == 'DONE' and len(_max_errors(n)) == 1
+        assert _win_max_errors(n) == []                 # HOLD 쪽 상한(창 아님)
+    finally:
+        CLOCK.t = t0
+
+
+def test_reacquire_window_unknown_giveup_not_counted():
+    """거리 unknown 이 HOLD 에서 이어지다 lost → 창 중엔 unknown 포기 없음(SEARCH, ERROR 0).
+
+    재획득 뒤 unknown 은 새로 센다(set_state 리셋, 결정 4 그대로) → 그로부터 10 s 에 포기.
+    """
+    t0 = CLOCK.t
+    no_dist = _Scan(3.5, obj=170.0)                    # 비전 0° ±3 에도 전방 ±30 에도 없음
+    try:
+        n, _ = _hold_node()
+        assert _step(n, t0, False) == 50000.0 and n.state == 'HOLD'
+        assert _step(n, t0 + 7.0, False) == 50000.0 and n.state == 'HOLD'
+        assert n.unknown_t0 == t0
+        _nstep(n, t0 + 9.5, no_dist)                   # lost
+        assert n.state == 'SEARCH' and n.unknown_t0 is None
+        assert _nstep(n, t0 + 11.0, no_dist) == 50000.0 and n.state == 'SEARCH'   # 11 s
+        assert errors(n) == []
+        _step(n, t0 + 12.0, False)                     # 재획득 → HOLD
+        assert n.state == 'HOLD'
+        assert _step(n, t0 + 12.5, False) == 50000.0 and n.unknown_t0 == t0 + 12.5
+        assert _step(n, t0 + 22.4, False) == 50000.0 and n.state == 'HOLD'   # 9.9 s
+        _step(n, t0 + 22.6, False)
+        assert n.state == 'DONE' and len(errors(n)) == 1
+    finally:
+        CLOCK.t = t0
+
+
+def test_reacquire_stop_zero_old_behavior():
+    """reacquire_stop_sec=0 → 옛 동작: lost 다음 틱부터 20000, 놓침/실패 WARN 없음."""
+    t0 = CLOCK.t
+    try:
+        n, _ = _hold_node()
+        n.reacquire_stop_sec = 0.0
+        assert _hstep(n, t0 + 10.0, 6.0) == 0.0
+        _nstep(n, t0 + 12.5)
+        assert n.state == 'SEARCH' and n.reacquire_t0 is None
+        assert _nstep(n, t0 + 12.6) == 20000.0 and _nstep(n, t0 + 14.0) == 20000.0
+        assert _lost_warns(n) == [] and _fail_warns(n) == []
+    finally:
+        CLOCK.t = t0
+
+
 if __name__ == '__main__':
     tests = [(k, v) for k, v in sorted(globals().items()) if k.startswith('test_') and callable(v)]
     fails = 0

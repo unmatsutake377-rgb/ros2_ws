@@ -3,6 +3,7 @@
     from ship_back.hold_logic import station_keep_action, HoldTimer, should_reset_on_mode
     from ship_back.hold_logic import target_source, counts_as_seen, search_timed_out
     from ship_back.hold_logic import unknown_giveup, search_timeout_warn, hold_total_exceeded
+    from ship_back.hold_logic import reacquire_stop_active, reacquire_window_elapsed
 
 규정: '부표 5m 이내 5초 유지'. 작년 코드는 그냥 5초간 PWM 중립이라 조류에 밀려 실패했다.
 → LiDAR 로 잰 거리로 전진/후진을 결정해 능동적으로 위치를 유지한다(bang-bang + 데드밴드).
@@ -76,18 +77,52 @@ def search_timeout_warn(elapsed, timeout_sec, timeout_ends, warned):
     return (not timeout_ends) and (not warned) and elapsed > timeout_sec
 
 
-def hold_total_exceeded(total_before, hold_enter_t, now, max_sec):
+def hold_total_exceeded(total_before, hold_enter_t, now, max_sec, window_sec=0.0):
     """한 WP(담당 모드 진입)에서 HOLD 에 머문 시간의 합이 max_sec 에 닿았는지. 순수 함수.
 
-    total_before : 이번 모드 진입 뒤 이미 끝난 HOLD 구간들의 합(s). HOLD→SEARCH→HOLD 도 이어 합산.
+    total_before : 이번 모드 진입 뒤 이미 끝난 HOLD 구간·재획득 정지 창들의 합(s).
+                   HOLD→SEARCH→HOLD 도 이어 합산.
     hold_enter_t : 지금 HOLD 구간의 시작 시각. None = 지금 HOLD 아님.
     max_sec      : 파라미터 hold_max_sec.
+    window_sec   : 지금 열린 재획득 정지 창의 경과(s, reacquire_window_elapsed). 창 없으면 0.
 
     계약 전체코스 §10-추가 결정 5: 성공(5 m 안 5 s) 못 하고 HOLD 를 오가며 WP 시간 초과까지
       붙잡는 것을 막는다 → 포기 DONE(20000). 경계 포함(합 ≥ max_sec).
+    결정 6 보충 ①: 재획득 정지 창(STOP_HOLD) 시간도 합에 넣는다 — 놓침→정지→재획득 반복이
+      WP 시간 초과까지 이어지지 않게. 창이 끝나 20000(SEARCH)으로 간 뒤 시간은 넣지 않는다.
     """
     cur = 0.0 if hold_enter_t is None else max(0.0, now - hold_enter_t)
-    return (total_before + cur) >= max_sec
+    return (total_before + cur + max(0.0, window_sec)) >= max_sec
+
+
+def reacquire_window_elapsed(t_lost, now, stop_sec):
+    """재획득 정지 창이 HOLD 총시간 합에 보탤 시간(s). 순수 함수.
+
+    t_lost   : 창 시작 시각(reacquire_stop_active 와 같음). None = 창 없음 → 0.
+    stop_sec : 파라미터 reacquire_stop_sec. 0 이하면 창 없음 → 0.
+
+    → clamp(now − t_lost, 0, stop_sec). 창 끝(stop_sec) 뒤 20000 구간은 넣지 않는다 —
+      창이 끝나는 틱이 stop_sec 를 조금 넘겨도 stop_sec 만 더한다(결정 6 보충 ①).
+    """
+    if t_lost is None or stop_sec <= 0.0:
+        return 0.0
+    return min(max(0.0, now - t_lost), stop_sec)
+
+
+def reacquire_stop_active(t_lost, now, stop_sec):
+    """HOLD 에서 부표를 놓친 뒤 '재획득 정지 창' 안인지(SEARCH 가 STOP_HOLD 를 낼지). 순수 함수.
+
+    t_lost   : HOLD → SEARCH(lost) 전이 시각 = 창 시작. None = 창 없음
+               (첫 SEARCH·모드 진입 리셋 뒤·창 끝남).
+    now      : 현재 시각(monotonic).
+    stop_sec : 파라미터 reacquire_stop_sec. 0 이하면 기능 끔(옛 동작: 바로 20000).
+
+    계약 전체코스 §10-추가 결정 6: 결정 3(north 도착 반경 3.5 m·dwell 0.5 s) 뒤에는 HOLD 중
+      놓쳐 SEARCH 20000 을 내면 배가 이미 3.5 m 안이라 north 가 ~1 s 만에 다음 WP 로 간다.
+      → 창 안에서는 그 자리 정지(STOP_HOLD)로 다시 찾는다. 경계 미포함(now − t_lost < stop_sec):
+      4.9 s 는 정지, 5.0 s 부터 20000. 창 시간은 HOLD 총시간 합에 든다(reacquire_window_elapsed).
+    """
+    return t_lost is not None and stop_sec > 0.0 and (now - t_lost) < stop_sec
 
 
 def unknown_giveup(unknown_t0, now, giveup_sec):

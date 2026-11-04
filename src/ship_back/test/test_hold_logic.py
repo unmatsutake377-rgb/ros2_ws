@@ -12,6 +12,8 @@ from ship_back.hold_logic import station_keep_action, HoldTimer, should_reset_on
 from ship_back.hold_logic import target_source, counts_as_seen, search_timed_out  # noqa: E402
 from ship_back.hold_logic import unknown_giveup, search_timeout_warn  # noqa: E402
 from ship_back.hold_logic import hold_total_exceeded  # noqa: E402
+from ship_back.hold_logic import reacquire_stop_active  # noqa: E402
+from ship_back.hold_logic import reacquire_window_elapsed  # noqa: E402
 
 fails = 0
 
@@ -181,6 +183,36 @@ def test_hold_total_sums_segments():
     check("끝난 30 s + 지금 30 s → 포기", hold_total_exceeded(30.0, 100.0, 130.0, 60.0))
     check("HOLD 아님, 합 59.9 → 아직", not hold_total_exceeded(59.9, None, 1e6, 60.0))
     check("HOLD 아님, 합 60.0 → 포기", hold_total_exceeded(60.0, None, 1e6, 60.0))
+
+
+# ─────────────── reacquire_stop_active (계약 전체코스 §10-추가 결정 6) ───────────────
+def test_reacquire_stop_boundary():
+    check("놓친 직후 0 s → 정지", reacquire_stop_active(100.0, 100.0, 5.0))
+    check("4.9 s → 정지", reacquire_stop_active(100.0, 104.9, 5.0))
+    check("5.0 s(미포함) → 20000", not reacquire_stop_active(100.0, 105.0, 5.0))
+    check("30 s → 20000", not reacquire_stop_active(100.0, 130.0, 5.0))
+
+
+def test_reacquire_stop_no_window_or_off():
+    check("창 없음(None, 첫 SEARCH) → 20000", not reacquire_stop_active(None, 100.0, 5.0))
+    check("reacquire_stop_sec=0 → 끔", not reacquire_stop_active(100.0, 100.0, 0.0))
+    check("음수 → 끔", not reacquire_stop_active(100.0, 100.0, -1.0))
+
+
+# ─────────────── 결정 6 보충 ①: 재획득 정지 창 시간도 HOLD 총시간 합 ───────────────
+def test_hold_total_with_window():
+    check("합 57.5 + 창 2.4 → 아직", not hold_total_exceeded(57.5, None, 0.0, 60.0, 2.4))
+    check("합 57.5 + 창 2.5 → 포기", hold_total_exceeded(57.5, None, 0.0, 60.0, 2.5))
+    check("window 기본 0 → 옛 동작", not hold_total_exceeded(59.9, None, 0.0, 60.0))
+    check("음수 창은 0 취급", not hold_total_exceeded(59.9, None, 0.0, 60.0, -5.0))
+
+
+def test_reacquire_window_elapsed():
+    check("창 없음 → 0", reacquire_window_elapsed(None, 100.0, 5.0) == 0.0)
+    check("기능 끔 → 0", reacquire_window_elapsed(100.0, 103.0, 0.0) == 0.0)
+    check("2.5 s → 2.5", reacquire_window_elapsed(100.0, 102.5, 5.0) == 2.5)
+    check("창 끝 뒤 → stop_sec 로 자름", reacquire_window_elapsed(100.0, 130.0, 5.0) == 5.0)
+    check("시계 역행 → 0", reacquire_window_elapsed(100.0, 99.0, 5.0) == 0.0)
 
 
 if __name__ == '__main__':

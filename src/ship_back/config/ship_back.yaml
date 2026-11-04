@@ -26,7 +26,14 @@
     unknown_giveup_sec: 10.0
     # 한 WP(담당 모드 진입)에서 HOLD 시간 합이 이 값에 닿으면 포기 → DONE(20000), ERROR 1회.
     #   HOLD↔SEARCH 를 오가도 합산, 모드 진입 때만 0. (계약 전체코스 §10-추가 결정 5)
+    #   아래 재획득 정지 창(STOP_HOLD) 시간도 합에 든다 — 창 중에도 판정해 넘으면 DONE.
+    #   창이 끝나 20000(SEARCH)으로 간 뒤 시간은 안 듦. (결정 6 보충 ①)
     hold_max_sec: 60.0
+    # HOLD 에서 놓쳐(lost_sec) SEARCH 로 갈 때 이 시간 동안 20000 대신 STOP_HOLD — 제자리에서 다시 찾음.
+    #   그 안에 비전 재획득 → HOLD(합 이어 셈, 창 시간도 hold_max_sec 합에 듦), 못 잡으면 20000
+    #   → north 진행. 0 이면 끔(옛 동작).
+    #   첫 SEARCH(INIT·모드 진입 뒤)는 해당 없음(20000). (계약 전체코스 §10-추가 결정 6)
+    reacquire_stop_sec: 5.0
     angle_stale_sec: 1.0
     scan_stale_sec: 1.0
     lidar_match_half_deg: 3.0   # 부표 방위 ±이 각도의 LiDAR 최소거리

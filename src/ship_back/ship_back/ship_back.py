@@ -14,14 +14,23 @@
       HOLD 유지 중 직전 비전 방위가 lost_sec 안일 때 보조로만(lidar_acquire=true 면 옛 동작).
       SEARCH 시간 초과로 DONE 래치하지 않는다(search_timeout_ends=true 면 옛 동작).
       DONE 은 HOLD 에서만(성공, 또는 포기: 거리 unknown 이 unknown_giveup_sec 이어짐 §10-추가 4,
-      한 WP 의 HOLD 합이 hold_max_sec §10-추가 5)
+      한 WP 의 HOLD 합이 hold_max_sec §10-추가 5) — 예외: 재획득 정지 창 중 합 상한(아래 [5])
       → 3→3 미리셋(래치 유지) 그대로.
+  [5] (§10-추가 결정 6) HOLD 에서 놓쳐(lost_sec) SEARCH 로 갈 때만 reacquire_stop_sec 동안
+      SEARCH 가 20000 대신 STOP_HOLD — 그 자리에 멈춰 다시 찾는다. 그 안에 비전 재획득 → HOLD
+      (HOLD 합 이어 셈), 못 잡으면 20000(SEARCH 그대로) → north 진행. 첫 SEARCH(INIT 뒤)는 20000.
+      결정 6 보충 ①: 창(STOP_HOLD) 시간도 HOLD 총시간 합(hold_max_sec)에 든다 — 창 중에도 상한을
+      판정해 넘으면 포기 DONE(20000). 창이 끝난 뒤 20000(SEARCH) 시간은 넣지 않는다.
 
 파라미터(6d-[4]): active_wp_modes([2, 3] = search_behavior 기본 hold; orbit 옵션이면 launch 가 [2]),
                   keep_radius_m(5.0 규정), hold_time_sec(5.0 규정), hold_dist_m(2.5 ⚠️실측), dist_tol_m.
 
 FSM: INIT → SEARCH → HOLD → DONE.
   keep_radius(5m) 이내에 hold_time(5s) '연속' 머물면 완료(규정 만족) → autonomous 로 다음 WP.
+  INIT 20000(1 s) → SEARCH 20000(비전 색 확인까지) → HOLD 전/후진·STOP_HOLD.
+  HOLD 에서 lost → SEARCH: 재획득 정지 창(reacquire_stop_sec) 동안 STOP_HOLD, 지나면 20000.
+  HOLD 총시간 합(hold_max_sec) = HOLD 구간 + 재획득 정지 창(창 중에도 판정 → 넘으면 DONE).
+  SEARCH 경과(search_timeout_sec WARN 기준)는 SEARCH 진입부터 — 창 시간 포함.
 
 프레임 규약: /image_angle=상대각(0=정면). 전진은 부표 방위로 조향, 후진은 상대 180°.
   /candidate_angle 은 0~360(0=정면) 규약. LiDAR 80°=정면.
@@ -44,6 +53,7 @@ from sensor_msgs.msg import LaserScan
 from ship_back.hold_logic import station_keep_action, HoldTimer, should_reset_on_mode
 from ship_back.hold_logic import target_source, counts_as_seen, search_timed_out, unknown_giveup
 from ship_back.hold_logic import search_timeout_warn, hold_total_exceeded
+from ship_back.hold_logic import reacquire_stop_active, reacquire_window_elapsed
 
 IMAGE_ANGLE_INVALID = 10000.0
 CANDIDATE_INVALID = 20000.0
@@ -107,7 +117,12 @@ class ShipBack(Node):     # 🚨 작년엔 ShipTurn 이었다(복붙). 이름을
             self.declare_parameter('unknown_giveup_sec', 10.0).value)
         # 한 WP(담당 모드 진입)에서 HOLD 에 머문 시간 합이 이 값에 닿으면 포기 → DONE(20000),
         #   ERROR 1회. HOLD↔SEARCH 를 오가도 합산, 모드 진입 때만 0. (§10-추가 결정 5)
+        #   재획득 정지 창(아래) 시간도 합에 든다, 창 끝 뒤 20000 구간은 안 듦. (결정 6 보충 ①)
         self.hold_max_sec = float(self.declare_parameter('hold_max_sec', 60.0).value)
+        # HOLD 에서 놓쳐(lost_sec) SEARCH 로 갈 때 이 시간 동안 20000 대신 STOP_HOLD(제자리 재탐색).
+        #   0 이면 끔(옛 동작). 첫 SEARCH(INIT·모드 진입 뒤)는 해당 없음. (§10-추가 결정 6)
+        self.reacquire_stop_sec = float(
+            self.declare_parameter('reacquire_stop_sec', 5.0).value)
 
         self.angle_stale_sec = float(self.declare_parameter('angle_stale_sec', 1.0).value)
         self.scan_stale_sec = float(self.declare_parameter('scan_stale_sec', 1.0).value)
@@ -133,8 +148,9 @@ class ShipBack(Node):     # 🚨 작년엔 ShipTurn 이었다(복붙). 이름을
         self.last_seen_t = None
         self.unknown_t0 = None         # HOLD 'unknown' 연속 시작 시각(None = 아님)
         self.search_warned = False     # 이번 SEARCH 에서 '못 찾음' WARN 을 냈나(진입마다 1회)
-        self.hold_total = 0.0          # 이번 모드 진입 뒤 끝난 HOLD 구간 합(s)
+        self.hold_total = 0.0          # 이번 모드 진입 뒤 끝난 HOLD 구간·재획득 정지 창 합(s)
         self.hold_enter_t = None       # 지금 HOLD 구간 시작 시각(None = HOLD 아님)
+        self.reacquire_t0 = None       # 재획득 정지 창 시작(HOLD→SEARCH lost) 시각, None = 창 없음
         self.hold_timer = HoldTimer(self.keep_radius_m, self.hold_time_sec)
 
         self.create_timer(self.period_sec, self.timer_cb)
@@ -143,7 +159,8 @@ class ShipBack(Node):     # 🚨 작년엔 ShipTurn 이었다(복붙). 이름을
             f"위치유지: hold_dist={self.hold_dist_m}m(⚠️실측)/tol {self.dist_tol_m}, "
             f"규정 {self.keep_radius_m}m 이내 {self.hold_time_sec}s. "
             f"search_timeout_ends={self.search_timeout_ends}, lidar_acquire={self.lidar_acquire}, "
-            f"unknown_giveup={self.unknown_giveup_sec}s, hold_max={self.hold_max_sec}s."
+            f"unknown_giveup={self.unknown_giveup_sec}s, hold_max={self.hold_max_sec}s, "
+            f"reacquire_stop={self.reacquire_stop_sec}s."
         )
 
     # ---------------------- 콜백 ----------------------
@@ -160,6 +177,7 @@ class ShipBack(Node):     # 🚨 작년엔 ShipTurn 이었다(복붙). 이름을
                 self.search_warned = False
                 self.hold_total = 0.0          # HOLD 총시간은 담당 모드 진입 때만 0
                 self.hold_enter_t = None
+                self.reacquire_t0 = None       # 재획득 정지 창 닫음 — 첫 SEARCH 는 20000
                 self.hold_timer.reset()
 
     def angle_cb(self, msg):
@@ -183,11 +201,15 @@ class ShipBack(Node):     # 🚨 작년엔 ShipTurn 이었다(복붙). 이름을
             self.get_logger().info(f"⚓ 위치유지 {self.state} → {s}")
             if self.state == "HOLD" and self.hold_enter_t is not None:
                 self.hold_total += max(0.0, now - self.hold_enter_t)   # HOLD 구간 합산
+            # 재획득 정지 창 중 SEARCH 를 떠나면(재획득 HOLD·DONE) 창 시간도 합산(결정 6 보충 ①)
+            self.hold_total += reacquire_window_elapsed(
+                self.reacquire_t0, now, self.reacquire_stop_sec)
             self.hold_enter_t = now if s == "HOLD" else None
         self.state = s
         self.state_t = now
         self.unknown_t0 = None        # unknown 연속은 HOLD 한 번 안에서만 센다
         self.search_warned = False    # '못 찾음' WARN 은 SEARCH 진입마다 1회
+        self.reacquire_t0 = None      # 재획득 정지 창은 HOLD lost 분기에서만 연다(set_state 뒤)
 
     def elapsed(self):
         return 0.0 if self.state_t is None else time.monotonic() - self.state_t
@@ -289,6 +311,15 @@ class ShipBack(Node):     # 🚨 작년엔 ShipTurn 이었다(복붙). 이름을
 
         # ---- SEARCH: 부표(모드별 색) 비전으로 잡힐 때까지 (autonomous 가 접근 중) ----
         if self.state == "SEARCH":
+            # 재획득 정지 창 시간도 HOLD 총시간 합(결정 6 보충 ①) — 창 끝 틱까지 판정(창 길이로 자름)
+            if self.reacquire_t0 is not None:
+                win = reacquire_window_elapsed(self.reacquire_t0, now, self.reacquire_stop_sec)
+                if hold_total_exceeded(self.hold_total, None, now, self.hold_max_sec, win):
+                    self.get_logger().error(
+                        f"HOLD 총 {self.hold_max_sec:g} s 넘음(성공 못 함, 재획득 정지 창 포함) "
+                        f"→ 포기, DONE")
+                    self.set_state("DONE")       # DONE 은 래치 — ERROR 는 이 전이에서 1회
+                    return
             if seen:
                 self.hold_timer.reset()
                 self.set_state("HOLD")
@@ -304,13 +335,28 @@ class ShipBack(Node):     # 🚨 작년엔 ShipTurn 이었다(복붙). 이름을
                     f"부표 못 찾음 {self.search_timeout_sec:g} s — 계속 탐색(20000), "
                     f"WP 시간 초과로 진행")
                 self.search_warned = True
+            # 재획득 정지 창(§10-추가 6): HOLD 에서 놓친 직후만 제자리 정지로 다시 찾는다
+            if self.reacquire_t0 is not None:
+                if reacquire_stop_active(self.reacquire_t0, now, self.reacquire_stop_sec):
+                    self.publish(STOP_HOLD)
+                    return
+                self.get_logger().warn(
+                    f"부표 재획득 실패 {self.reacquire_stop_sec:g} s → 탐색 계속(20000), WP 진행")
+                # 창 시간(stop_sec 로 자름)만 합에 넣고 닫는다 — 이 뒤 20000 구간은 안 셈
+                self.hold_total += reacquire_window_elapsed(
+                    self.reacquire_t0, now, self.reacquire_stop_sec)
+                self.reacquire_t0 = None         # 창 끝 WARN 은 1회
             self.publish(CANDIDATE_INVALID)      # 못 찾는 동안 autonomous 유지
             return
 
         # ---- HOLD: 능동 위치유지 ----
         if self.state == "HOLD":
             if lost:
-                self.set_state("SEARCH")
+                self.set_state("SEARCH")         # HOLD 합 마감·창 정리
+                if self.reacquire_stop_sec > 0.0:
+                    self.reacquire_t0 = now      # 재획득 정지 창 시작(§10-추가 6)
+                    self.get_logger().warn(
+                        f"부표 놓침 → {self.reacquire_stop_sec:g}s 정지 후 재탐색")
                 return
 
             # 규정 판정: keep_radius 이내 연속 hold_time
