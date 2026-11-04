@@ -13,14 +13,28 @@
   · 저장 전 waypoint_loader.parse_waypoints 로 **즉시 검증**(한국 범위·mode) — 형식도 우리 yaml 그대로.
   · **새 파일에만 쓴다** — 기존 waypoints.yaml 을 건드리지 않아 오입력해도 복구 가능.
 
-순수 로직(average_fixes / format_waypoints_yaml)은 ROS 없이 테스트한다(test_waypoint_recorder.py).
-실제 GPS 구독·키 입력은 Ubuntu(ROS2)에서만 동작한다.
+입력 안내(2026-11-04, 계약서_waypoint_recorder안내):
+  · 왜: 코드를 모르는 팀원이 대회장에서 **엔터만 눌러도** 미션 순서·mode·dwell 이 맞게 들어가게 한다.
+  · 시작 화면에 mode 번호표 + 템플릿(기본 share 의 config/waypoints.yaml) 경로·개수를 보여 준다.
+  · 캡처마다 "다음 예상: WP{i} 구역 mode dwell" 을 템플릿에서 뽑아 기본값으로 묻는다(엔터 = 기본).
+  · 틀린 번호(4·6·9)·음수 dwell 은 캡처 취소가 아니라 **재질문**(위치 평균 유지). 최종 검증(is_valid)은 그대로.
+  · q 저장 때 템플릿과 개수·순서가 다르면 경고만 하고 저장은 항상 한다.
+  · 템플릿 경로: `--template=/경로.yaml`. 못 읽으면 "템플릿 없음(사유)" 를 드러내고 기본값 없이 진행한다.
+
+순수 로직(average_fixes / format_waypoints_yaml / parse_cli)은 ROS 없이 테스트한다(test_waypoint_recorder.py).
+안내·질문 로직은 recorder_prompts.py(test_recorder_prompts.py). 실제 GPS 구독·키 입력은 Ubuntu(ROS2)에서만 동작한다.
 """
 
+import argparse
 import os
 import sys
 import threading
 import time
+
+from north_goal_angle.recorder_prompts import (
+    ask_dwell, ask_mode, compare_with_template, describe_template, dwell_default,
+    load_template, mode_menu, next_expected_line, template_defaults,
+)
 
 # ---------------- 순수 로직 (ROS 비의존, 테스트 대상) ----------------
 
@@ -52,16 +66,82 @@ def format_waypoints_yaml(waypoints):
     return "\n".join(lines) + "\n"
 
 
+def strip_ros_args(argv):
+    """`--ros-args ... [--]` 구간을 떼어낸다(rclpy 의 remove_ros_args 와 같은 규칙, rclpy 없이).
+
+    예전엔 sys.argv[1] 을 그대로 써서 `ros2 run ... waypoint_recorder --ros-args -p x:=1` 이면
+    `--ros-args` 가 **출력 경로**가 됐다. argparse 만으로는 `-p` 뒤의 `x:=1` 이 위치 인자로 잡히므로
+    `--ros-args` 부터 다음 `--` 까지를 먼저 통째로 버린다.
+    """
+    out = []
+    skipping = False
+    for a in argv:
+        if skipping:
+            if a == "--":
+                skipping = False
+            continue
+        if a == "--ros-args":
+            skipping = True
+            continue
+        out.append(a)
+    return out
+
+
+def parse_cli(argv):
+    """명령줄(프로그램명 제외) → Namespace(out_path, template, unknown). 순수 함수(테스트 대상).
+
+    · out_path: 위치 인자(기존 그대로). 없으면 None → main 이 ~/ssf_logs/waypoints_recorded.yaml.
+    · --template=<경로>: 기본값 템플릿 yaml. 없으면 None → main 이 share 의 config/waypoints.yaml.
+    · parse_known_args: 모르는 옵션(예: 미래의 ROS 인자)은 unknown 에 담아 경고만 하고 죽지 않는다.
+    """
+    p = argparse.ArgumentParser(
+        prog="waypoint_recorder", add_help=True,
+        description="RC 로 몰고 다니며 현재 GPS 를 waypoints yaml 로 기록한다.")
+    p.add_argument("out_path", nargs="?", default=None,
+                   help="출력 yaml 경로(기본 ~/ssf_logs/waypoints_recorded.yaml)")
+    p.add_argument("--template", default=None,
+                   help="기본값 템플릿 yaml(기본: 패키지 share 의 config/waypoints.yaml)")
+    ns, unknown = p.parse_known_args(strip_ros_args(list(argv)))
+    ns.unknown = unknown
+    return ns
+
+
+def resolve_template_path(explicit=None):
+    """템플릿 경로 결정: --template > share config/waypoints.yaml > 소스 config/waypoints.yaml > None.
+
+    share 를 먼저 보는 건 노드(north_goal_angle.py)가 읽는 파일과 같은 것을 기준으로 삼기 위해서다.
+    재빌드를 안 해 share 가 옛 파일일 수 있으므로 시작 화면에 **절대경로·개수**를 찍어 드러낸다.
+    """
+    if explicit:
+        return os.path.abspath(explicit)
+    candidates = []
+    try:
+        from ament_index_python.packages import get_package_share_directory
+        candidates.append(os.path.join(
+            get_package_share_directory('north_goal_angle'), 'config', 'waypoints.yaml'))
+    except Exception:  # ament 없음(Mac)·패키지 미설치 → 소스 경로로
+        pass
+    candidates.append(os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), '..', 'config', 'waypoints.yaml'))
+    for c in candidates:
+        if os.path.isfile(c):
+            return os.path.abspath(c)
+    return None
+
+
 # ---------------- ROS 노드 (Ubuntu 에서만 실행) ----------------
 
-def _run_node(out_path, avg_window_sec, cov_warn):
+def _run_node(out_path, avg_window_sec, cov_warn, template_path=None):
     import rclpy
     from rclpy.node import Node
     from rclpy.qos import QoSProfile, ReliabilityPolicy
     from sensor_msgs.msg import NavSatFix
 
     # 저장 직전 검증에 우리 로더를 그대로 쓴다(범위·mode 체크 일관).
-    from north_goal_angle.waypoint_loader import parse_waypoints, WaypointError
+    from north_goal_angle.waypoint_loader import parse_waypoints, WaypointError, VALID_MODES
+
+    # 템플릿(기본값 출처). 못 읽으면 None + 사유 — 시작 화면에 그대로 드러낸다(그럴듯한 기본값을 안 만든다).
+    template, template_reason = load_template(template_path)
 
     class WaypointRecorder(Node):
         def __init__(self):
@@ -148,6 +228,10 @@ def _run_node(out_path, avg_window_sec, cov_warn):
     print("  d N    = N 번 WP 삭제")
     print("  r N    = N 번 WP 를 현재 위치로 재캡처(위치만 갱신, mode/dwell 유지)")
     print("  q      = 저장·종료\n")
+    print(mode_menu(VALID_MODES))
+    print(describe_template(template_path, template, template_reason))
+    print("  (캡처마다 템플릿 순서대로 기본값을 보여 준다 — 맞으면 엔터, 다르면 번호를 직접 입력)")
+    print(next_expected_line(template, len(node.recorded)) + "\n")
     try:
         while True:
             raw = input("[Enter=추가 / l=목록 / d N=삭제 / r N=재캡처 / q=종료] > ").strip()
@@ -181,13 +265,23 @@ def _run_node(out_path, avg_window_sec, cov_warn):
                 avg = capture_position()
                 if not avg:
                     continue
-                mode = _ask_int("  mode(미션번호)? ")
-                dwell = _ask_float("  dwell(머무는 초)? ")
-                label = input("  구역 이름(엔터=자동)? ").strip()
+                # 기본값은 매번 현재 개수(i = len(recorded)) 기준 — 'd N' 삭제로 인덱스가 당겨져도 맞는다.
+                i = len(node.recorded)
+                d = template_defaults(template, i)
+                d_label, d_mode, d_dwell = d if d is not None else ("", None, None)
+                print("  " + next_expected_line(template, i))
+                # 틀린 번호·음수는 안에서 재질문한다(캡처 취소 아님 — 위치 평균 avg 는 그대로 쓴다).
+                mode = ask_mode(input, VALID_MODES, d_mode)
+                # 템플릿 dwell 은 템플릿 mode 를 그대로 받았을 때만 기본값. mode 를 바꿨으면 그 mode 의 폴백표.
+                dwell = ask_dwell(input, dwell_default(mode, d_dwell if mode == d_mode else None))
+                label_hint = d_label if d_label else f"자동 WP{i}"
+                label = input(f"  구역 이름(엔터={label_hint})? ").strip() or d_label
                 if not is_valid(avg[0], avg[1], mode, dwell):
                     continue
                 node.recorded.append([avg[0], avg[1], mode, dwell, label])
-                print(f"  ✔ WP{len(node.recorded) - 1} 추가됨 (총 {len(node.recorded)}개)\n")
+                print(f"  ✔ WP{len(node.recorded) - 1} 추가됨 (총 {len(node.recorded)}개)")
+                print("  " + next_expected_line(template, len(node.recorded),
+                                                prefix="다음에 찍을 곳") + "\n")
                 continue
             print("  알 수 없는 명령 — Enter/l/d N/r N/q")
     except (EOFError, KeyboardInterrupt):
@@ -202,6 +296,9 @@ def _run_node(out_path, avg_window_sec, cov_warn):
                 for w in node.recorded]})
         except WaypointError as e:
             print(f"🚨 전체 검증 실패: {e}\n저장은 하되 미션 전 반드시 확인하세요.")
+        # 템플릿과 개수·순서(mode) 비교 — 경고만, 저장은 항상(계약서 §9-1). 'd N' 뒤 최종 목록 기준.
+        for w in compare_with_template(node.recorded, template):
+            print(f"⚠️ 템플릿과 다름: {w}")
         text = format_waypoints_yaml(node.recorded)
         with open(out_path, "w", encoding="utf-8") as f:
             f.write(text)
@@ -220,22 +317,6 @@ def _run_node(out_path, avg_window_sec, cov_warn):
     rclpy.shutdown()
 
 
-def _ask_int(prompt):
-    while True:
-        try:
-            return int(input(prompt).strip())
-        except ValueError:
-            print("    정수로 입력하세요.")
-
-
-def _ask_float(prompt):
-    while True:
-        try:
-            return float(input(prompt).strip())
-        except ValueError:
-            print("    숫자로 입력하세요.")
-
-
 def main():
     # 🚨 기본 출력은 **고정 경로**다 (~/ssf_logs/waypoints_recorded.yaml).
     #    예전엔 os.getcwd() 였는데, 실행한 폴더에 따라 파일이 어디 생길지 모른다.
@@ -243,11 +324,17 @@ def main():
     #    "찍긴 찍었는데 파일이 어디 있지" 가 된다 (2026-08-07 야외 시험에서 실제로 겪음 —
     #    세 군데를 뒤졌다). blackbox 로그(~/ssf_logs/)와 같은 자리에 모은다.
     #    다른 곳에 쓰려면 인자로 경로를 준다:  ros2 run ... waypoint_recorder /경로.yaml
+    #    기본값 템플릿을 바꾸려면:            ros2 run ... waypoint_recorder --template=/경로.yaml
+    #    (`--ros-args ...` 는 parse_cli 가 떼어내므로 출력 경로로 오인되지 않는다.)
+    cli = parse_cli(sys.argv[1:])
+    if cli.unknown:
+        print(f"⚠️ 모르는 인자 무시: {cli.unknown}")
     default_dir = os.path.join(os.path.expanduser("~"), "ssf_logs")
     os.makedirs(default_dir, exist_ok=True)
     default_out = os.path.join(default_dir, "waypoints_recorded.yaml")
-    out_path = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else default_out)
-    _run_node(out_path, avg_window_sec=2.0, cov_warn=2.0)
+    out_path = os.path.abspath(cli.out_path if cli.out_path else default_out)
+    template_path = resolve_template_path(cli.template)
+    _run_node(out_path, avg_window_sec=2.0, cov_warn=2.0, template_path=template_path)
 
 
 if __name__ == "__main__":
