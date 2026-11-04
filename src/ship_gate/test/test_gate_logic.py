@@ -18,6 +18,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from ship_gate.gate_logic import (  # noqa: E402
     GateCounter, gate_candidate, circular_mid)
 
+
 def check(name, cond, extra=""):
     """실패하면 AssertionError — pytest·직접 실행 둘 다 잡는다."""
     print(f"  {'✅' if cond else '❌'} {name} {extra}")

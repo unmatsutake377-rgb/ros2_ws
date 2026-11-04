@@ -63,7 +63,7 @@ CANDIDATE_INVALID = 20000.0  # 미션 없음
 STOP_HOLD = 50000.0          # 정지/대기
 
 REVERSE_REL = 180.0          # 상대 180° = 후진 (→ desired 260 → motor_control 분기 5)
-                             #   근거: ship_direction (B) 정확 일치 예외(test_candidate_reverse)
+#   근거: ship_direction (B) 정확 일치 예외(test_candidate_reverse)
 IMAGE_INVALID = 10000.0      # /image_angle 의 '표식 없음' 센티널 (작년 규약 유지)
 
 LIDAR_FORWARD_DEG = 80.0     # LiDAR 프레임에서 정면에 해당하는 각도
