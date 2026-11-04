@@ -171,6 +171,9 @@ gps_vel(RTK) 로 기록. ★ RTK fix 품질 확인 필수(아래).</pre>
 근접 도킹 이탈: 접안(CONTACT) 뒤 BACKOFF 에서 실제로 <b>뒤로 빠져</b> 2.5 m 에서 DONE 되는지. 예전 코드는 여기서 8 s 멈춰 있다 DONE(시뮬 확인).
   후진은 뒤를 안 본다 → 수조 벽이 선미 쪽 3 m 안이면 하지 말 것. 후진 중 선수 흔들림·속도 기록.
 위치유지 후진: 부표 2.1 m 안으로 밀어 넣으면 후진, 2.1~2.9 m 면 정지(50000) 나오는지.
+<b>각도 제한 ±80° (11-04, 계약서_각도클램프)</b> — 벤치, 담당 검출기 끈 상태(안 끄면 /image_angle 발행자가 둘):
+  mode 7: /image_angle 0.0 pub 으로 APPROACH 진입 + 전방 1.2 m 판 → /image_angle 180.0 으로 바꾸면 /candidate_angle 80.0, /desired_angle 160(260 아님), warn 1초 1번
+  mode 2: 선미 쪽 2.9 m 밖 벽 + /image_angle -180.0 → /candidate_angle 280.0, /desired_angle 0 (수정 전엔 180.0 → 후진)
 근접 게이트: 빨강(좌현)·초록(우현) 부표 2개 사이를 지나며 ros2 topic echo /gates_passed 가 0 → 1 로 오르고 유지되는지
   (11-04 수정: 통과 임계 pass_behind_deg 28° = OAK HFOV 63.9° 의 반값 31.95° 안. 빨강만 보일 때 배가 빨강 반대쪽(우측)으로 트는지도 — 부호 수정 확인).
   벤치: 부표가 화면 가장자리에서 잘려 검출이 끊기는 각도를 재서 28° 보다 큰지 확인(작으면 pass_behind_deg 를 그 아래로). OAK 는 <code>ros2 topic echo /oak/rgb/camera_info --once</code> 로 width 640·K[0]≈513.5 먼저(ISP 1/3 빠지면 화각 40° 인데 숫자로 안 드러남).

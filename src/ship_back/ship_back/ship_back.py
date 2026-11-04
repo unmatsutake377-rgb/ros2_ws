@@ -19,6 +19,7 @@ FSM: INIT → SEARCH → HOLD → DONE.
 
 프레임 규약: /image_angle=상대각(0=정면). 전진은 부표 방위로 조향, 후진은 상대 180°.
   /candidate_angle 은 0~360(0=정면) 규약. LiDAR 80°=정면.
+  전진 조향만 발행 직전 ±STEER_LIMIT_DEG(80) 클램프 — 180.0(후진 신호)이 우연히 나가지 않게.
 
 ⚠️ ship_last 는 6b 에서 이미 제거됨(6d-[3]). 여기선 ship_back 만 다룬다.
 """
@@ -42,6 +43,10 @@ STOP_HOLD = 50000.0
 REVERSE_REL = 180.0          # 상대 180° = 후진 (→ ship_direction 260 → motor_control 분기 5)
                              #   근거: ship_direction (B) 정확 일치 예외(test_candidate_reverse)
 LIDAR_FORWARD_DEG = 80.0     # LiDAR 프레임 정면
+# ship_direction (B) 매핑: mapped = 80 + raw, 정상 범위 0~160 → 상대 조향 |steer| ≤ 80 만 조향이 된다.
+# 180.0 정확 일치는 후진(260) 예외라, 부표 방위가 ±180 이면 전진 대신 후진한다 → 발행 직전 클램프.
+# 튜닝값이 아니라 하류 프로토콜 상수(LIDAR_FORWARD_DEG 와 같은 성격) — 파라미터로 두지 않는다.
+STEER_LIMIT_DEG = 80.0
 
 
 # QoS-B: /scan 표준 sensor-data QoS. 작년은 depth=10 기본 RELIABLE 이었다.
@@ -199,6 +204,18 @@ class ShipBack(Node):     # 🚨 작년엔 ShipTurn 이었다(복붙). 이름을
     def publish(self, value):
         self.pub_candidate.publish(Float32(data=float(value)))
 
+    def publish_steer(self, rel_deg):
+        """상대 조향(좌 양수)을 ±STEER_LIMIT_DEG 로 잘라 /candidate_angle 0~360 으로 발행.
+
+        LiDAR 매칭(_dist_at)은 클램프 전 방위를 쓴다 — 여기서만 자른다.
+        NaN 은 +80 이 되므로 상류(angle_cb)에서 걸러야 한다 — 가드 지우지 말 것.
+        """
+        if not (-STEER_LIMIT_DEG <= rel_deg <= STEER_LIMIT_DEG):
+            self.get_logger().warn(
+                f"위치유지 조향 {rel_deg:.1f}° 가 ±{STEER_LIMIT_DEG:.0f}° 밖 → 잘라서 발행",
+                throttle_duration_sec=1.0)
+        self.publish(rel_to_raw(clamp(rel_deg, -STEER_LIMIT_DEG, STEER_LIMIT_DEG)))
+
     # ---------------------- FSM ----------------------
     def timer_cb(self):
         with self.lock:
@@ -248,7 +265,7 @@ class ShipBack(Node):     # 🚨 작년엔 ShipTurn 이었다(복붙). 이름을
             # bang-bang + 데드밴드. 부표를 향해 조향하며 전/후진.
             action = station_keep_action(dist, self.hold_dist_m, self.dist_tol_m)
             if action == 'forward':
-                self.publish(rel_to_raw(rel))    # 부표 방향으로 전진
+                self.publish_steer(rel)          # 부표 방향으로 전진 (±80 클램프)
             elif action == 'reverse':
                 self.publish(REVERSE_REL)        # 후진 (조류로 붙었을 때 되돌림)
             elif action == 'hold':
@@ -267,6 +284,10 @@ def clamp_pm180(a):
 
 def rel_to_raw(a):
     return (a + 360.0) % 360.0
+
+
+def clamp(v, lo, hi):
+    return max(lo, min(hi, v))
 
 
 def _min_range(ranges, lo, hi):
