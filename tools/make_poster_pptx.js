@@ -124,7 +124,9 @@ function spTreeOf(slideXml) {
   // 앞의 nvGrpSpPr / grpSpPr 제거
   return m[1].replace(/^[\s\S]*?<\/p:grpSpPr>/, '');
 }
-const isSldNum = (xml) => /<p:ph [^>]*type="(sldNum|dt|ftr)"/.test(xml);
+const isSldNum = (xml) => /<p:ph\s[^>]*type="(sldNum|dt|ftr)"/.test(xml);
+// pptxgenjs 는 <p:ph 뒤에 줄바꿈을 넣는다 — 공백 한 칸만 보면 놓쳐서 자리표시자가 남는다(빈 제목 상자가 겹쳐 보임)
+const isPh = (xml) => /<p:ph[\s/>]/.test(xml);
 
 async function main() {
   const deck = await JSZip.loadAsync(fs.readFileSync(DECK));
@@ -194,6 +196,7 @@ async function main() {
     for (const [xml, rmap, base] of [[layoutXml, lrels, 'ppt/slideLayouts/'], [slideXml, rels, 'ppt/slides/']]) {
       for (const ch of topLevelChildren(spTreeOf(xml))) {
         if (isSldNum(ch.xml)) continue;
+        if (base === 'ppt/slideLayouts/' && isPh(ch.xml)) continue;   // 레이아웃 자리표시자(빈 제목 등)는 복사 안 함
         let x = ch.xml;
         // 그림 관계 id 재배정
         const embeds = [...new Set([...x.matchAll(/r:embed="(rId\d+)"/g)].map((m) => m[1]))];
@@ -205,7 +208,7 @@ async function main() {
           x = x.replace(new RegExp(`r:embed="${rid}"`, 'g'), `r:embed="${nrid}"`);
         }
         x = x.replace(/<a:extLst>[\s\S]*?<\/a:extLst>/g, '');          // a16 등 확장 제거
-        x = x.replace(/<p:ph [^>]*\/>/g, '');                            // 자리표시자 상속 끊기 (xfrm·글자속성은 명시돼 있음)
+        x = x.replace(/<p:ph\s[^>]*\/>/g, '');                            // 자리표시자 상속 끊기 (xfrm·글자속성은 명시돼 있음)
         x = x.replace(/<p:nvPr><\/p:nvPr>/g, '<p:nvPr/>');
         x = fixSchemeColors(x);
         x = fixFonts(x);
