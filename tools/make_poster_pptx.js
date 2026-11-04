@@ -78,6 +78,19 @@ function fixFonts(xml) {
   });
 }
 
+// ── 포스터 양식 자체 글자(머리 영역 팀원 줄·주최·주관 등): 테마 글꼴(+mj-ea 등)을 가리키거나 글꼴이 없어
+//    여는 프로그램마다 다른 대체 글꼴로 보인다(양식 테마의 한글 글꼴 비어 있음) → 모두 맑은 고딕으로 명시.
+//    CT_TextCharacterProperties 순서(… uFill, latin, ea, cs, sym, hlinkClick …)를 지켜 latin·ea·cs 를 다시 넣는다.
+function fixTemplateFonts(xml) {
+  return xml.replace(/<a:(rPr|endParaRPr|defRPr)\b([^>]*?)(\/>|>([\s\S]*?)<\/a:\1>)/g, (m, tag, attrs, close, inner) => {
+    let body = (inner || '').replace(/<a:(latin|ea|cs)\b[^>]*\/>/g, '');
+    const fonts = `<a:latin typeface="${FONT}"/><a:ea typeface="${FONT}"/><a:cs typeface="${FONT}"/>`;
+    const after = body.search(/<a:(sym|hlinkClick|hlinkMouseOver|rtl|extLst)\b/);
+    body = after < 0 ? body + fonts : body.slice(0, after) + fonts + body.slice(after);
+    return `<a:${tag}${attrs}>${body}</a:${tag}>`;
+  });
+}
+
 // ── 슬라이드 하나에서 복사할 도형 XML 목록 ───────────────────────────────────────
 function topLevelChildren(spTreeXml) {
   // spTree 바로 아래의 sp / pic / graphicFrame / grpSp / cxnSp 를 순서대로 (중첩 그룹은 통째)
@@ -222,6 +235,7 @@ async function main() {
     const run = (t) => `<a:r>${firstRun}<a:t>${xmlEsc(t)}</a:t></a:r>`;
     return head + `<a:p>${pPr}${run('팀  원 : ' + TEAM.members)}</a:p>` + tail;
   });
+  posterXml = fixTemplateFonts(posterXml);
   posterXml = posterXml.replace('</p:spTree>', groups.join('') + '</p:spTree>');
 
   poster.file('ppt/slides/slide1.xml', posterXml);

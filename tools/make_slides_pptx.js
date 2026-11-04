@@ -8,9 +8,10 @@ const fs = require('fs');
 const path = require('path');
 const pptxgen = require('pptxgenjs');
 
-const [, , OUT, BOAT] = process.argv;
+const [, , OUT, BOAT, MODE] = process.argv;
+const POSTER = MODE === '--poster';   // 포스터용: 1장(표지) 대신 선형 3D·선도 칸
 if (!OUT || !['A', 'B'].includes(BOAT)) {
-  console.error('사용법: node tools/make_slides_pptx.js <출력.pptx> <A|B>');
+  console.error('사용법: node tools/make_slides_pptx.js <출력.pptx> <A|B> [--poster]');
   process.exit(1);
 }
 const isA = BOAT === 'A';
@@ -32,7 +33,7 @@ const B = isA ? {
   layer: 'FRP 적층', hullImg: HULL('1번배_선형_3D.png'), planImg: FIG('hull_plan_A.png'),
   thrImg: FIG('thruster_asbuilt_A.png'), resImg: FIG('resistance_A.png'),
   circImg: TEAMFIG('회로_구성도_A.png'), estopImg: TEAMFIG('비상정지_구성도_A.png'),
-  draftMeasured: true, gm: '0.18 (경사시험, KG 역산 0.12)', incl: 'w 2.1 kg · d 0.30 m · θ 5.9° (좌 6.15 / 우 5.60) · W 34 kg → GM 0.18 m', boxExt: '80 → 480×300', roll: '약 1 s · 10°→1° 약 10 s (0.5 s 샘플링 한계)', figThr: 3, figRes: 4,
+  draftMeasured: true, gm: '0.18 (경사시험, KG 역산 0.12)', incl: 'w 2.1 kg · d 0.30 m · θ 5.9° (좌 6.15 / 우 5.60) · W 34 kg → GM 0.18 m', boxExt: '80 mm → 480×300 mm', wMeas: '0.57', roll: '약 1 s · 10°→1° 약 10 s (0.5 s 샘플링 한계)', figThr: 3, figRes: 4,
   cost: [
     ['RPLIDAR A3', '1', '800,000'], ['T200 스러스터 + ESC', '2+2', '776,882'], ['OAK-1 PoE FF', '1', '661,000'],
     ['GPS ZED-F9P + 안테나', '1+1', '610,900'], ['선체 재료 (FRP 등 8종, 두 배 공용 1/2)', '1/2', '285,870'], ['IMU iAHRS', '1', '198,000'],
@@ -42,10 +43,10 @@ const B = isA ? {
 } : {
   team: 'S.S.F B', no: '배', leader: '박유진',
   members: '박윤서, 차준혁, 이송언, 이태훈, 김세연, 김현지, 전홍윤, 황예진',
-  boxExt: '135 → 535×300', roll: '약 1 s · 10°→1° 약 7~17 s (0.5 s 샘플링 한계)', figThr: 3, figRes: 4,
+  boxExt: '135 mm → 535×300 mm', wMeas: '0.535', roll: '약 1 s · 10°→1° 약 7~17 s (0.5 s 샘플링 한계)', figThr: 3, figRes: 4,
   gm: '0.20 (경사시험, KG 역산 0.26)', incl: 'w 2.1 kg · d 0.26 m · θ 5.28° (좌 5.30 / 우 5.25) · W 30 kg → GM 0.20 m. 종경사 GM_L ≈ 2.9 m',
   loa: '1.77', boa: '0.522', depth: '0.19 m (선체)',
-  thr: 'T200 ×4 · V자형 (선미 간격 280, 선수 측 125, 전후 365 mm)',
+  thr: 'T200 ×4 · V자형 (뒤쪽 쌍 280, 앞쪽 쌍 125, 전후 365 mm)',
   mass: '30 (실측)', draft: '선미 80 · 중앙 65 · 선수 75 (부상 시험)', freeboard: '선미 110 · 중앙 125 · 선수 115',
   kb: '0.0357', bm: '0.4209', km: '0.4566', wl: '60.9 mm (STL 계산)', cb: '0.533 (STL) / 0.443 (실측 흘수)',
   thrustTotal: '188 N (4기)', S: '0.709 m²', lwl: '1.537 m',
@@ -56,9 +57,9 @@ const B = isA ? {
   cost: [
     ['T200 스러스터', '4', '1,341,268'], ['OAK-1 PoE FF', '1', '661,000'], ['선체 재료 (카본섬유·수지)', '1식', '590,000'],
     ['선체 공용 재료 (퍼티·수지·필라멘트 등, 1/2)', '1/2', '285,870'], ['RPLIDAR A3 (중고)', '1', '170,000'], ['ESC BESC30-R3', '4', '212,496'], ['배터리 4S LiPo', '2', '155,200'],
-    ['Arduino Mega 2560 R3', '1', '64,900'], ['PoE 인젝터', '1', '61,000'], ['그 외 (무선스위치·어댑터·컨버터·버튼·케이블)', '—', '70,115'],
+    ['Arduino Mega 2560 R3', '1', '64,900'], ['PoE 인젝터', '1', '61,000'], ['그 외 (무선 릴레이·허브·어댑터·컨버터·퓨즈·버튼·케이블)', '—', '102,815'],
   ],
-  costTotal: '3,611,849 원',
+  costTotal: '3,644,549 원',
 };
 
 // ── 테마 ────────────────────────────────────────────────────────────────────────
@@ -94,7 +95,7 @@ pres.defineSlideMaster({
   title: 'CONTENT', background: { color: THEME.colors.lt1 },
   objects: [
     ...FRAME,
-    { placeholder: { options: { name: 'title', type: 'title', x: 0.4, y: 0.39, w: 7.0, h: 0.44, fontSize: 20, bold: true, color: C.text2, margin: 0, valign: 'middle' }, text: '' } },
+    { placeholder: { options: { name: 'title', type: 'title', x: 0.62, y: 0.39, w: 6.8, h: 0.44, fontSize: 20, bold: true, color: C.text2, margin: 0, valign: 'middle' }, text: '' } },
   ],
   slideNumber: { x: 9.0, y: 6.9, w: 0.6, h: 0.35, fontSize: 12, color: C.text1, align: 'right' },
 });
@@ -177,7 +178,17 @@ function card(s, x, y, w, h, head, body, opt = {}) {
 // pptxgenjs 로는 작년 표지의 사선으로 자른 사진(custGeom)·그라데이션 삼각형을 못 만든다.
 // 그래서 여기선 자리만 만들고, 파일을 쓴 뒤 coverFromLastYear() 가 작년 slide1.xml 로 통째로 바꾼다.
 pres.addSection({ title: '소개' });
-pres.addSlide({ masterName: 'TITLE', sectionTitle: '소개' });
+if (!POSTER) {
+  pres.addSlide({ masterName: 'TITLE', sectionTitle: '소개' });
+} else {
+  // 포스터 1칸: 선형 3D 모델 + 측면도·반폭도·정면도 (발표 1장 표지는 그대로 두고 포스터에서만)
+  const s = slide('선형 3D 모델과 선도', '소개');
+  const HV = (v) => path.join(ROOT, `docs/전달용/선도_${isA ? 1 : 2}번배`, `${isA ? 1 : 2}번배_${v}.png`);
+  img(s, HV('선형_3D'), M, 1.25, 9, 2.0, '선형 3D 모델');
+  img(s, HV('측면도'), M, 3.7, 5.7, 1.3, '측면도 (Profile)');
+  img(s, HV('반폭도'), M, 5.4, 5.7, 1.3, '반폭도 (Half-breadth plan)');
+  img(s, HV('정면도'), 6.45, 3.7, 3.05, 3.0, '정면도 (Body plan)');
+}
 
 const COVER_DIR = path.join(ROOT, 'docs/전달용/보고서_분담/작년PPT_표지');   // slide1.xml + image1/2.jpeg (작년 파일에서 추출)
 const EMU = 914400;
@@ -245,7 +256,7 @@ pres.addSection({ title: '선형 설계 및 제작' });
   const s = slide('설계 요구조건과 설계 반영', '선형 설계 및 제작');
   bullets(s, [
     '두 척 모두 단동선 — 지난 대회 쌍동선·V형 단동선 비교 끝에 선종 통일, 설계·제작 경험 공유',
-    isA ? '추진기 4기에서 2기로: 단순화·경량화, 선미 차동추력으로 선회' : '추진기 4기 V자형: 선수 측 안쪽·선미 측 바깥, 좌·우 2기씩 같은 신호',
+    isA ? '추진기 4기에서 2기로: 추진 장비 단순화·경량화, 선미 차동추력으로 선회' : '추진기 4기 V자형: 앞쪽 쌍 안쪽·뒤쪽 쌍 바깥, 좌·우 2기씩 같은 신호',
     '임무 우선순위는 코스 순서대로: 게이트, 위치유지, 탐색, 장애물 회피, 도킹, 토너먼트',
   ], M, 1.3, 9, 1.3, { fontSize: 13 });
   table(s, [
@@ -253,14 +264,14 @@ pres.addSection({ title: '선형 설계 및 제작' });
     ['L ≥ 1.0 m, H ≤ 1.0 m', `LOA ${B.loa} m × BOA ${B.boa} m, 깊이 ${B.depth}`],
     ['100~110 % 부력 흘수선 표시', isA ? '부상 시험 흘수 45·95·105 mm → 110 % 수선 115.3 mm (STL 계산, 34 kg 109.5 mm)' : '부상 시험 흘수 80·65·75 mm → 110 % 수선 65.2 mm (STL 계산, 30 kg 60.9 mm)'],
     ['복원성 확보, 중량물 고정', '배터리·방수박스 선체 내부 고정, 좌우 중량 균형'],
-    ['DC 모터 + 축전지, ≤ 24 V DC', '4S LiPo 14.8 V (만충 16.8 V), T200'],
+    ['DC 모터 + 축전지, DC 24 V 이하', `4S LiPo 14.8 V (만충 16.8 V), T200 ${isA ? 2 : 4}기`],
   ], M, 2.75, 9, [3.3, 5.7], { fontSize: 11 });
   table(s, [
     ['경기장 구성물', '치수', '설계 반영'],
-    ['부표 높이 / 폭', '1.0 m / 0.5 m', 'LiDAR 장착 높이 = 부표 높이, 카메라 시야 확보'],
+    ['부표 높이 / 폭', '1.0 m / 0.5 m', 'LiDAR 선수 갑판(회전면이 부표 높이 안), 카메라 마스트'],
     ['자율운항 장애물 간격', '약 1.0 m', '통과 최소 폭 0.29×2 + 0.25 = 0.83 m'],
-    ['도크 간격', '1.0 m', `선폭 ${B.boa} m → 좌우 여유 약 ${(((1.0 - Number(B.boa)) / 2)).toFixed(2)} m`],
-    ['도킹 표식', '3형상 × 5색 중 당일 지정', 'vision.yaml 에 6색 HSV·3형상 판정 보유'],
+    ['도크 간격', '1.0 m', `폭(스러스터 포함) ${B.wMeas} m → 좌우 여유 약 ${(((1.0 - Number(B.wMeas)) / 2)).toFixed(2)} m`],
+    ['도킹 표식', '3형상 × 5색 중 당일 지정', '비전 설정에 6색 색 범위·3형상 판정 보유'],
   ], M, 4.75, 9, [2.2, 2.3, 4.5], { fontSize: 11 });
 }
 
@@ -276,7 +287,7 @@ pres.addSection({ title: '선형 설계 및 제작' });
     ['흘수 [mm]', B.draft || { ph: '수조 실측 (선수·중앙·선미)' }],
     ['건현 [mm]', B.freeboard || { ph: '수조 실측' }],
   ], M, 1.3, 4.9, [1.5, 3.4], { fontSize: 10.5, rowH: 0.36 });
-  img(s, B.planImg, M, 4.05, 4.9, 2.4, `그림 ${B.no} 선형`);
+  img(s, B.planImg, M, 4.05, 4.9, 2.4, '선형');
   // 복원성
   const x2 = 5.7, w2 = 3.8;
   s.addText('초기 복원성 (STL 정수력 계산)', { x: x2, y: 1.3, w: w2, h: 0.35, fontSize: 13, bold: true, color: C.text2, isTextBox: true, margin: 0 });
@@ -298,19 +309,19 @@ pres.addSection({ title: '선형 설계 및 제작' });
 // ── 4. 추진기 배치·저항·침몰방지 (Ⅱ-3.3, 3.4, 4) ────────────────────────────
 {
   const s = slide('추진기 배치 · 저항 추정 · 침몰방지', '선형 설계 및 제작');
-  img(s, B.thrImg, M, 1.3, 4.4, 1.9, `그림 Ⅱ-${B.figThr} ${B.no} 추진기 배치 (실제 장착)`);
+  img(s, B.thrImg, M, 1.3, 4.4, 1.9, `그림 Ⅱ-${B.figThr} 추진기 배치 (실제 장착)`);
   img(s, B.resImg, 5.1, 1.3, 4.4, 2.2, `그림 Ⅱ-${B.figRes} 속도별 점성 저항과 가용 추력`);
   bullets(s, [
     `T200 최대 추력 1기 약 47 N (14.8 V 보간) → 가용 추력 ${B.thrustTotal}`,
-    'Fn 0.4 (약 1.5 m/s) 부터 조파 저항 급증 — 순항 속도는 그 아래',
+    `Fn 0.4 (약 ${isA ? '1.5' : '1.6'} m/s) 부터 조파 저항 급증 — 순항 속도는 그 아래`,
   ], M, 3.85, 4.4, 1.25, { fontSize: 10.5, gap: 3, name: '추력 불릿' });
   bullets(s, [
     `침수 표면적 ${B.S}, 수선 길이 ${B.lwl}. ITTC-1957 × 형상계수 1.2 — 2.0 m/s 에서도 점성 저항은 추력의 몇 %`,
-    isA ? '차동추력 선회: 좌·우 출력 차로 선회 모멘트, 선미 간격 240 mm' : '선미 2기는 중심선에서 멀리(선회 모멘트), 선수 2기는 선형 따라 안쪽',
+    isA ? '차동추력 선회: 좌·우 출력 차로 선회 모멘트, 선미 간격 240 mm' : '뒤쪽 2기는 중심선에서 멀리(선회 모멘트), 앞쪽 2기는 선형 따라 안쪽',
     '잠김 깊이: 흘수·파랑 고려, 환기(ventilation) 없는 높이',
   ], 5.1, 3.85, 4.4, 1.25, { fontSize: 10, gap: 2 });
   card(s, M, 5.15, 9, 1.7, '침몰방지·수밀', [
-    `전장품 전부 400×300×200 방수박스 + 선미 쪽 3D 프린팅 연장 ${B.boxExt} (뚜껑 = 해치, 개스킷·물끊기). 갑판 관통은 마스트 구멍 하나로 모아 실란트 마감`,
+    `전장품 전부 400×300×200 mm 방수박스 + 선미 쪽 3D 프린팅 연장 ${B.boxExt} (뚜껑이 해치, 개스킷·물끊기). 갑판 관통은 마스트 구멍 하나로 모아 실란트 마감`,
     '선체·스러스터 관통부, 갑판 부착부, 박스 관통부 방수 마감 후 수조에서 수밀 확인',
     isA ? 'FRP 적층 선체 + 방수제(노루페인트) 외벽, 관통부 실리콘' : '카본섬유 적층 선체 + 방수제 외벽, 관통부 실리콘(TYTAN FIX2)',
   ], { fontSize: 11 });
@@ -321,7 +332,7 @@ pres.addSection({ title: '선형 설계 및 제작' });
 {
   const s = slide('제작 과정', '선형 설계 및 제작');
   const steps = [['① 몰드 제작', `공정_${BOAT}_몰드.jpg`, 'PLA+ 3D 프린팅 몰드, Six10 에폭시 접합'],
-    [`② ${B.layer}`, `공정_${BOAT}_적층.jpg`, isA ? 'FRP 춉매트 / 얀크로스 적층·보강' : '카본섬유 적층 — 경량화·강성'],
+    [`② ${B.layer}`, `공정_${BOAT}_적층.jpg`, isA ? '촙 매트(CSM) / 얀 크로스 적층·보강' : '카본섬유 적층 — 재료 경량화·강성'],
     ['③ 수밀', `공정_${BOAT}_수밀.jpg`, '방수제 도포, 관통부 실리콘 씰링'],
     ['④ 부착물', `공정_${BOAT}_부착물.jpg`, '나사 고정 + 에폭시·실리콘 혼합 마감']];
   steps.forEach(([h, f, d], i) => {
@@ -331,8 +342,8 @@ pres.addSection({ title: '선형 설계 및 제작' });
     s.addText(d, { x, y: 4.65, w: 2.1, h: 0.8, fontSize: 11, color: C.text1, valign: 'top', isTextBox: true, margin: 0 });
   });
   card(s, M, 5.6, 9, 1.2, '재료', isA
-    ? 'PLA+ 필라멘트(몰드) · FRP 춉매트/얀크로스 · 방수 실리콘·실란트 · 방수제(노루페인트) · Six10 에폭시 · 방수 컨트롤박스 400×300×200'
-    : 'PLA+ 필라멘트(몰드) · 카본섬유 · 방수 실리콘(TYTAN FIX2) · 방수제(노루페인트) · Six10 에폭시 · 방수 컨트롤박스 400×300×200', { fontSize: 11.5 });
+    ? 'PLA+ 필라멘트(몰드) · FRP 촙 매트/얀 크로스 · 방수 실리콘(TYTAN FIX2)·실란트 · 방수제(노루페인트) · Six10 에폭시 · 방수박스 400×300×200 mm'
+    : 'PLA+ 필라멘트(몰드) · 카본섬유 · 방수 실리콘(TYTAN FIX2) · 방수제(노루페인트) · Six10 에폭시 · 방수박스 400×300×200 mm', { fontSize: 11.5 });
 }
 
 // ── 6. 시스템 구성·센서 (Ⅲ-1, 7) ────────────────────────────────────────────
@@ -351,8 +362,8 @@ pres.addSection({ title: '소프트웨어' });
   ], 5.9, 1.3, 3.6, [1.15, 1.85, 0.6], { fontSize: 9.5, rowH: 0.42 });
   bullets(s, [
     'Lenovo IdeaPad (Ubuntu 22.04, ROS2 Humble) 한 대가 스택 전체. ssf_bridge 가 USB 시리얼로 좌·우 PWM 을 Mega 로',
-    '모드 전환은 조종기 스위치뿐 (WAIT / MANUAL / AUTO). 노트북엔 모드를 바꾸는 경로를 두지 않음',
-    '명령 500 ms 무수신이면 펌웨어가 자동 중립. 추력 부호 반전은 ssf_bridge 한 곳',
+    '모드 전환은 조종기 2단 스위치뿐 (MANUAL / AUTO, 첫 신호 전 WAIT). 노트북엔 모드를 바꾸는 경로를 두지 않음',
+    '명령 0.5 s 무수신이면 펌웨어가 자동 중립. 추력 부호 반전은 ssf_bridge 한 곳',
     `실행: ros2 launch launch_files launch_files.launch.py boat:=${BOAT}`,
   ], M, 5.15, 9, 1.7, { fontSize: 11.5 });
 }
@@ -362,20 +373,20 @@ pres.addSection({ title: '소프트웨어' });
   const s = slide('임무 상태기계', '소프트웨어');
   img(s, FIG('mission_flowchart.png'), M, 1.3, 4.6, 3.1, '그림 Ⅲ-4 종합임무 상태기계');
   table(s, [
-    ['wp_mode', '임무', '노드 · 검출기', 'dwell / 시간초과'],
+    ['mode', '임무', '노드 · 검출기', 'dwell / 초과'],
     ['0, 1', '게이트 (항로추종)', 'ship_gate · 빨강/초록', '3 s / 120 s'],
-    ['2', '위치유지', 'ship_back · 흰색', '3 s / 120 s'],
-    ['3', '탐색 (부표 앞 위치유지)', 'ship_back · 빨강', '3 s / 90 s'],
-    ['5', '장애물 회피', 'ship_direction (LiDAR)', '50 s / 120 s'],
-    ['7', '도킹', 'ship_dock · 지정 색·형상', '60 s / 150 s'],
-    ['8', '토너먼트 자율 회피', 'ship_direction', '60 s / —'],
+    ['2', '위치유지', 'ship_back · 흰색', '0.5 s / 120 s'],
+    ['3', '탐색 (부표 앞 위치유지)', 'ship_back · 공지 색', '0.5 s / 90 s'],
+    ['5', '장애물 회피', 'ship_direction (LiDAR)', '1 s / 120 s'],
+    ['7', '도킹', 'ship_dock · 지정 색·형상', '1 s / 150 s'],
+    ['8', '토너먼트 자율 회피', 'ship_direction', '3 s / —'],
   ], 5.3, 1.3, 4.2, [0.7, 1.25, 1.35, 0.9], { fontSize: 9.5, rowH: 0.4 });
   bullets(s, [
-    '웨이포인트 도착(반경 안 dwell 초) 또는 시간초과면 north_goal_angle 이 다음 임무로. 순서·dwell 은 waypoints.yaml 한 파일',
-    '검출기는 담당 모드에서만 발행, /wp_mode 2 s 끊기면 발행 정지',
+    '웨이포인트 도착(반경 안 dwell) 또는 시간초과면 다음 임무로. 위치유지·탐색은 반경 3.5 m·dwell 0.5 s — 임무 노드가 끝나면 부표 쪽으로 더 가지 않고 바로 다음',
+    '부표를 놓치면 5 s 정지 후 재탐색, LiDAR 거리 10 s 모름·합계 60 s 넘으면 포기하고 다음. 탐색 색은 당일 공지 색(파라미터)',
+    '도킹: 목표 칸 정면 접근점 2개(10·6 m) → 칸 입구 → 후진 이탈점. 도크가 멀면 GPS 주행(TRANSIT)',
     '특수 코드: 5000 우선회 · 6000 좌선회 · 20000 미션 없음(GPS 방위 + LiDAR 갭 회피) · 50000 정지',
-    '탐색은 2026 안내문대로 부표 앞 위치유지(search_behavior 기본 hold, ship_back 이 모드 2·3 담당). 선회(ship_turn)는 orbit 옵션',
-  ], M, 4.75, 9, 2.1, { fontSize: 11.5 });
+  ], M, 4.75, 9, 2.1, { fontSize: 10.5, gap: 4 });
 }
 
 // ── 8. 영상 파이프라인·회피·제어기 (Ⅲ-2.4, 4) ──────────────────────────────
@@ -418,15 +429,15 @@ pres.addSection({ title: '소프트웨어' });
   bullets(s, [
     'LiDAR 끊김: 0.70 s 경고, 2.99 s 정지, 복귀 즉시 정상. 14.3분 기록 오탐 0',
     'IMU 끊김: /yaw_error 0.8 s 뒤 멈춤 → 1.8 s 경고, 4.1 s 정지',
-    'GPS fix 2.5 s 없으면 방위·지오펜스·도착 판정 정지. 비전 유실 2 s 뒤 무효값',
-    '진단(/health_ok)은 로그만 — 거짓 정지 금지',
+    'GPS fix 2.5 s 없으면 방위·도착 판정 정지. 후보각 1.0 s 끊기면 20000(GPS + 회피)으로 대체',
+    '진단(/health_ok)은 기록만, 제어에 연결하지 않음'
   ], M, 4.85, 4.4, 2.0, { fontSize: 10.5 });
   sub(s, '회피 파라미터 스윕 (2,400 런)', 5.1, 3.3, 4.4);
   bullets(s, [
     '선폭 5 × clearance 6 × 탐지거리 2 × 게이트폭 2, 칸마다 80 런. 채택 half_width 0.29 m · clearance 0.25 m',
     'clearance 0.20 → 접촉 1.95, 0.25 → 1.32, 0.30 → 1.46 (정체 2 %), 0.35 → 정체 28 %',
     '정체 0 % 범위에서 접촉 최소인 0.25 채택. 통과 최소 폭 0.83 m',
-    '전 코스(70×20 m) 궤적 시뮬로 출발~도착 확인 (보고서 그림 Ⅲ-12)',
+    '실제 노드 전체 코스 200 시드: 전 WP 완료 200/200, 코스 중앙값 314 s (보고서 그림 Ⅲ-14)',
   ], 5.1, 3.75, 4.4, 2.6, { fontSize: 10.5 });
   s.addNotes('페일세이프: 센서가 끊기면 바로 멈추지 않고 경고(0.7 s, 속도 0.7배·조향 유지) → 정지(3.0 s) 두 단계. 오판 방지로 연속 3회 확인. 벤치 실측 LiDAR 0.70/2.99 s, IMU 1.8/4.1 s. 왜 경고 때 직진 안 시키나 → 회피 중 직진 강제는 피하던 부표에 부딪힌다. 비상정지와 다름: 이건 소프트웨어 판단, 비상정지는 접촉기가 물리적으로 추진 전원을 끊는다. 스윕: half_width·clearance 조합마다 80번 주행, 정체 0 % 범위에서 접촉 최소 조합(0.29·0.25) 채택.');
 }
@@ -435,7 +446,7 @@ pres.addSection({ title: '소프트웨어' });
 pres.addSection({ title: '회로' });
 {
   const s = slide('회로 구성 및 비상정지', '회로');
-  img(s, B.circImg, M, 1.3, 4.4, 2.4, `그림 Ⅳ-1 ${B.no} 전체 회로 구성도`);
+  img(s, B.circImg, M, 1.3, 4.4, 2.4, '그림 Ⅳ-1 전체 회로 구성도');
   img(s, B.estopImg, 5.1, 1.3, 4.4, 2.4, '그림 Ⅳ-2 비상정지 장치 구성도');
   table(s, [
     ['계통', '경로', '비상정지 시'],
@@ -445,7 +456,7 @@ pres.addSection({ title: '회로' });
     ['카메라 PoE 48 V', '배터리 A 접촉기 앞단 → 2 A 퓨즈 → PoE 인젝터 → OAK', '유지'],
   ], M, 4.1, 9, [1.4, 6.0, 1.6], { fontSize: 10.5, rowH: 0.36 });
   bullets(s, [
-    '배터리 2개 (4S LiPo 14.8 V) 가 좌·우 추진 분담. LS MD-30a 2극 접촉기: 버튼·무선이 코일 회로를 직렬로 끊어 제어기가 죽어도 동작',
+    '배터리 A 우현 · B 좌현 추진 (4S LiPo 14.8 V). LS MD-30a 2극 접촉기: 버튼·무선이 코일 회로를 직렬로 끊어 제어기가 죽어도 동작',
     '접촉기 보조접점 → Mega 핀 38: 노트북이 차단 상태를 알고 표시등 빨강',
   ], M, 6.15, 9, 0.85, { fontSize: 10, gap: 2 });
 }
@@ -464,6 +475,7 @@ pres.addSection({ title: '시험·비용' });
     ['10분 연속', '센서 5종 유지, 끊김 0, CPU 여유 83 %'],
     ['수동 영상 송출', '424×240 · 30 fps · 1 Mbps, LTE 지연 113 ms'],
     ['배터리 A 분리', '센서 4종 유지, 접촉기만 열려 추진 정지'],
+    ['비상정지', '버튼·무선 각각 단독 차단, 감지 확인'],
     ['부상 시험 흘수', isA ? '선미 45 · 중앙 95 · 선수 105 mm' : '선미 80 · 중앙 65 · 선수 75 mm'],
   ], M, 1.6, 4.6, [1.4, 3.2], { fontSize: 9.5, rowH: 0.38 });
   s.addText('수조 시험 (6 × 6 m, 담수)', { x: 5.4, y: 1.25, w: 4.1, h: 0.3, fontSize: 12, bold: true, color: C.text2, isTextBox: true, margin: 0 });
@@ -472,7 +484,7 @@ pres.addSection({ title: '시험·비용' });
     ['GM (경사 시험)', B.gm || { ph: '값 [m]' }],
     ['횡요 고유주기 (롤 감쇠)', B.roll || { ph: '값 [s]' }],
   ], 5.4, 1.6, 4.1, [2.3, 1.8], { fontSize: 9.5, rowH: 0.38 });
-  card(s, M, 5.6, 9, 1.25, '대회 전 물 위에서 확인할 것', '직진 속도(수조는 정속 구간 부족) · 선회 지름·정지 거리 · 조향 부호·추력 PWM 확정 · IMU 오프셋·자기편각 · LTE 핫스팟 켠 상태 RTK FIXED · 도크 접안 거리(contact_dist_m) · 무선 비상정지 도달 거리', { fontSize: 11 });
+  card(s, M, 5.6, 9, 1.25, '대회 전 물 위에서 확인할 것', '직진 속도(수조는 정속 구간 부족) · 선회 지름·정지 거리 · 조향 부호·추력 PWM 확정 · IMU 오프셋·자기편각 · LTE 핫스팟 켠 상태 RTK FIXED · 도크 접안 거리 · 무선 비상정지 도달 거리', { fontSize: 11 });
 }
 
 // ── 12. 비용 (Ⅴ) ────────────────────────────────────────────────────────────
@@ -483,7 +495,7 @@ pres.addSection({ title: '시험·비용' });
   s.addText(B.costTotal, { x: 6.5, y: 1.7, w: 3.0, h: 0.6, fontSize: 18, bold: true, color: C.text1, isTextBox: true, margin: 0, valign: 'top', objectName: '총액' });
   bullets(s, [
     isA ? '센서 4종(LiDAR·GPS·IMU·OAK) 이 전체의 약 58 %, 선체 재료(공용 1/2) 약 7 %' : '추진기 4기 + ESC 가 전체의 약 43 %, 선체 재료(카본 + 공용 1/2) 약 24 %',
-    isA ? '학과 보유(합계 제외): 노트북·D455·접촉기·무선 릴레이·LED' : '학과 보유(합계 제외): 노트북·GPS·IMU·조종기·D455·박스·접촉기·허브',
+    isA ? '학과 보유(합계 제외): 노트북·D455·접촉기·무선 릴레이·LED' : '학과 보유(합계 제외): 노트북·GPS·IMU·조종기·D455·박스·접촉기·5 V 모듈',
     '이 배에 단 수량 × 구매 단가. 선체 공용 재료 571,740 원은 두 배 1/2 씩',
   ], 6.5, 3.5, 3.0, 2.5, { fontSize: 10.5 });
 }
@@ -492,6 +504,6 @@ pres.addSection({ title: '시험·비용' });
   await pres.writeFile({ fileName: OUT });
   const { applyTheme } = require(process.env.PPTX_SKILL_APPLY_THEME || path.join(__dirname, 'apply_theme.js'));
   await applyTheme(OUT, THEME);
-  await coverFromLastYear(OUT);
-  console.log(`${OUT} — ${sn + 1} slides`);
+  if (!POSTER) await coverFromLastYear(OUT);
+  console.log(`${OUT} — ${sn + (POSTER ? 0 : 1)} slides`);
 })().catch((e) => { console.error(e); process.exit(1); });
