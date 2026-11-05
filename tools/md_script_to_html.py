@@ -80,6 +80,19 @@ while i < len(lines):
             o.append(f'<tr class="{boatclass(raw).strip()}">' + "".join(f"<td>{inline(c)}</td>" for c in r) + "</tr>")
         o.append("</tbody></table></div>")
         continue
+    elif l.startswith("```"):
+        i += 1
+        code = []
+        while i < len(lines) and not lines[i].startswith("```"):
+            code.append(html.escape(lines[i], quote=False)); i += 1
+        o.append("<pre>" + "\n".join(code) + "</pre>")
+    elif re.match(r"^\d+\. ", l):
+        o.append("<ol>")
+        while i < len(lines) and re.match(r"^\d+\. ", lines[i]):
+            item = re.sub(r"^\d+\. ", "", lines[i])
+            o.append("<li>" + inline(item) + "</li>"); i += 1
+        o.append("</ol>")
+        continue
     elif l.startswith("- "):
         o.append("<ul>")
         while i < len(lines) and lines[i].startswith("- "):
@@ -97,13 +110,20 @@ if sec_open:
     o.append("</section>")
 
 body = "\n".join(o)
+def _title(h):
+    h = re.sub(r"\s*\([^)]*\)\s*$", "", re.sub(r"[*`]", "", h)).strip()
+    head, _, sub = h.partition(" — ")
+    return f"{head} {sub}" if sub and len(sub) <= 12 else head
+
+
+TITLE = next((_title(x[2:]) for x in lines if x.startswith("# ")), "SSF 문서")
 has_boat = bool(re.search(r"`\[(A|B)\]`", "\n".join(lines)))
 BOATBTN = '<button data-b="all" class="on">A·B 모두</button><button data-b="a">A만</button><button data-b="b">B만</button>\n<span class="sep"></span>\n'
 
 page = """<!doctype html>
 <html lang="ko"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>SSF 설계심사 발표 대본</title>
+<title>""" + html.escape(TITLE) + """</title>
 <style>
 :root{--bg:#f6f7f9;--card:#fff;--fg:#1b2230;--mut:#5d6778;--line:#dfe3ea;--accent:#1f3a68;--a:#0f6e8c;--b:#9a4a14;--abg:#e6f3f7;--bbg:#fbefe5;--say:#f2f5fa;color-scheme:light}
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#11151c;--card:#1a2029;--fg:#e6e9ef;--mut:#9aa4b5;--line:#2c3542;--accent:#8fb2ec;--a:#5cc3e0;--b:#f0a66e;--abg:#12303a;--bbg:#3a2616;--say:#1f2733;color-scheme:dark}}
@@ -121,6 +141,9 @@ h2{font-size:1.25rem;margin:40px 0 14px;padding-bottom:6px;border-bottom:2px sol
 h3{font-size:1.05rem;margin:0}
 p{margin:8px 0}
 .ref{color:var(--accent)}
+pre{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13.5px;background:var(--say);border:1px solid var(--line);border-radius:8px;padding:10px 12px;overflow-x:auto;white-space:pre}
+ol{padding-left:1.4em;margin:8px 0}
+ol li{margin:4px 0}
 code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.88em;background:var(--say);padding:1px 5px;border-radius:4px}
 ul{padding-left:1.2em;margin:8px 0}
 .slide,.part{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin:14px 0}
