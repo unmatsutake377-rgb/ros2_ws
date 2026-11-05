@@ -27,7 +27,7 @@ REVERSE_REL = 180.0          # /candidate_angle 180.0 = 후진 요청 (ship_dock
 LIDAR_FORWARD_DEG = 80.0     # LiDAR 프레임에서 정면 (상대방위 0 에 대응)
 CANDIDATE_STALE_LOG_PERIOD_SEC = 5.0  # candidate stale 지속 중 ERROR 반복 주기(로그 전용, 제어 무관)
 CANDIDATE_SLOWEST_PUB_SEC = 0.5  # 가장 느린 정상 /candidate_angle 발행 주기(north period_sec).
-                                 # candidate_stale_sec 가 이보다 작으면 거짓 stale 경고만(값은 그대로)
+# candidate_stale_sec 가 이보다 작으면 거짓 stale 경고만(값은 그대로)
 
 
 def edge_range(distance_array, i, detection_distance):
