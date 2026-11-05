@@ -362,7 +362,7 @@ td:nth-child(2){white-space:nowrap}
 <li>5000·6000이면 → 그대로 통과(제자리 회전).</li>
 <li>180이면 → 후진 신호 260으로 바꿈. 단 0.5초 넘게 새로 안 오면 멈춤(뒤를 못 보니까).</li>
 <li>보통 각도면 → 격자 각도(정면 80)로 바꾸고, 0~160 밖이면 멈춤.</li>
-<li><strong>20000이면 → 갭 선택(아래 ②).</strong></li>
+<li><strong>20000이면 → 갭 선택(아래 ②).</strong> 단, 켜진 뒤 <code>/yaw_error</code>를 <strong>한 번도 못 받았으면</strong> 갈 방향을 모르니 멈춤(50000) + 5초마다 ERROR. (11-05 추가 — 그전에는 0을 '정면이 목표'로 읽어 뱃머리 방향으로 계속 갔다)</li>
 <li><strong>후보각이 1.0초 넘게 안 오면</strong> → 20000으로 간주(GPS + 회피로 계속 감). 임무 번호가 바뀌는 순간도 20000부터.</li>
 </ol>
 <p><strong>② 갭 선택 — 장애물 사이 빈틈 고르기</strong></p>
@@ -390,6 +390,7 @@ td:nth-child(2){white-space:nowrap}
 <li>센서가 돌아오면 <strong>바로</strong> 레벨 0으로 복귀.</li>
 <li>레벨 1에서 직진을 강제하지 않는 이유: 피하던 부표 쪽으로 직진해 부딪히기 때문.</li>
 <li>LiDAR를 한 번도 못 받았으면 아무것도 안 낸다 → motor_control이 0.5초 뒤 중립.</li>
+<li>한 번도 안 온 <code>/yaw_error</code>는 감시 대상이 아니다(켜자마자 거짓 정지를 막으려고). 대신 ①-6 규칙으로 20000일 때만 멈춘다. 이때 <code>/failsafe_level</code>은 0이라 계기판엔 정상으로 보이고, 원인은 ERROR 로그로 본다.</li>
 </ul>
 <p><strong>④ 내는 것:</strong> <code>/desired_angle</code>(최종 방향), <code>/obstacle_distance_array</code>(앞쪽 가장 가까운 거리 — 감속용, 잡음 거른 값), <code>/failsafe_level</code>.</p>
 </article>
@@ -441,7 +442,7 @@ td:nth-child(2){white-space:nowrap}
 </ul>
 </article>
 </section>
-<section id="s391"><h2>6. 코스 한 바퀴 이야기로 따라가기</h2>
+<section id="s392"><h2>6. 코스 한 바퀴 이야기로 따라가기</h2>
 <ol>
 <li><strong>출발 전:</strong> MANUAL로 출발점까지 몬다. north는 WP0 방향을 계산만 하고 기다린다.</li>
 <li><strong>AUTO 전환:</strong> WP0(임무 0, 게이트 시작). 카메라 gate 검출기가 켜진다. ship_gate가 빨강·초록 가운데로 조향하고, 안 보이면 20000이라 GPS로 간다. 게이트 끝(WP1)까지 같은 방식. 게이트 구간은 탐지거리를 2.0 m로 줄여 좁은 게이트에서 괜히 피하지 않게 한다.</li>
@@ -454,12 +455,13 @@ td:nth-child(2){white-space:nowrap}
 </ol>
 <p>어느 임무든 <strong>시간 초과</strong>가 지나면 위치와 상관없이 다음으로 넘어간다.</p>
 </section>
-<section id="s404"><h2>7. 고장 났을 때 — 누가 알아채고 배는 어떻게 되나</h2>
+<section id="s405"><h2>7. 고장 났을 때 — 누가 알아채고 배는 어떻게 되나</h2>
 <div class="tw"><table><thead><tr><th>상황</th><th>알아채는 곳</th><th>배 동작</th></tr></thead><tbody>
 <tr class=""><td>LiDAR 선이 빠짐</td><td>ship_direction 감시</td><td>0.7초 감속 → 3초 정지. 다시 꽂으면 바로 정상</td></tr>
 <tr class=""><td>IMU 끊김</td><td>yaw_mux 침묵 → ship_goal_angle 침묵 → ship_direction</td><td>감속 → 정지</td></tr>
 <tr class=""><td>RTK·GPS 끊김</td><td>north_goal_angle (2.5초)</td><td>방위가 끊겨 감속 → 정지. 임무 번호와 시간 초과는 계속</td></tr>
 <tr class=""><td>카메라 끊김</td><td>검출기가 2초 뒤 10000</td><td>임무 노드가 "안 보임"으로 처리(게이트는 20000, 위치유지는 재탐색·포기)</td></tr>
+<tr class=""><td>부팅부터 GPS fix·IMU 없음</td><td>ship_direction (<code>/yaw_error</code> 한 번도 없음)</td><td>20000 구간은 정지 + 5초마다 ERROR. 게이트가 보일 때·도킹·위치유지처럼 임무 노드가 각도를 주는 구간은 그대로</td></tr>
 <tr class=""><td>임무 노드가 죽음</td><td>ship_direction (1초)</td><td>20000으로 대체 → GPS + 회피로 계속</td></tr>
 <tr class=""><td>노트북 프로그램이 멈춤</td><td>motor_control·아두이노 워치독 (0.5초)</td><td>정지</td></tr>
 <tr class=""><td>USB 선 빠짐</td><td>아두이노 워치독 (0.5초)</td><td>정지. bridge는 1초마다 재연결 시도</td></tr>
@@ -467,7 +469,7 @@ td:nth-child(2){white-space:nowrap}
 <tr class=""><td>위험 상황</td><td>사람</td><td>비상정지 버튼 또는 무선 리모컨 → 접촉기가 추진 전원 차단(소프트웨어와 무관)</td></tr>
 </tbody></table></div>
 </section>
-<section id="s417"><h2>8. 알아 두면 좋은 주의점</h2>
+<section id="s419"><h2>8. 알아 두면 좋은 주의점</h2>
 <ul>
 <li><strong>헤딩 보정값이 아직 0이다.</strong> 수조 정북 시험 후 배마다 <code>ssf_heading_A/B.yaml</code>에 기입.</li>
 <li><strong>지오펜스는 꺼져 있다.</strong> 대회장 경계 좌표가 생기면 <code>north_goal_angle.yaml</code>의 <code>geofence_polygon</code>에 넣는다.</li>
@@ -479,7 +481,7 @@ td:nth-child(2){white-space:nowrap}
 <li>펌웨어 주석 몇 곳은 코드와 다르다(예: 주석은 "&lt; 1500 = AUTO", 실제는 &gt; 1500 = AUTO). <strong>코드가 맞다.</strong></li>
 </ul>
 </section>
-<section id="s429"><h2>9. 용어 풀이</h2>
+<section id="s431"><h2>9. 용어 풀이</h2>
 <div class="tw"><table><thead><tr><th>용어</th><th>쉬운 뜻</th></tr></thead><tbody>
 <tr class=""><td>ROS2</td><td>로봇 프로그램들을 단톡방 방식으로 엮어 주는 틀</td></tr>
 <tr class=""><td>노드 / 토픽</td><td>일하는 프로그램 하나 / 그들이 글을 주고받는 단톡방</td></tr>
