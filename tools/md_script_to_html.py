@@ -97,6 +97,8 @@ if sec_open:
     o.append("</section>")
 
 body = "\n".join(o)
+has_boat = bool(re.search(r"`\[(A|B)\]`", "\n".join(lines)))
+BOATBTN = '<button data-b="all" class="on">A·B 모두</button><button data-b="a">A만</button><button data-b="b">B만</button>\n<span class="sep"></span>\n'
 
 page = """<!doctype html>
 <html lang="ko"><head><meta charset="utf-8">
@@ -144,9 +146,7 @@ td:nth-child(2){white-space:nowrap}
 </style></head>
 <body class="show-all">
 <div class="bar">
-<button data-b="all" class="on">A·B 모두</button><button data-b="a">A만</button><button data-b="b">B만</button>
-<span class="sep"></span>
-<span class="timer" id="t">0:00</span><button id="go">시작</button><button id="rs">초기화</button>
+""" + (BOATBTN if has_boat else "") + """<span class="timer" id="t">0:00</span><button id="go">시작</button><button id="rs">초기화</button>
 </div>
 <main class="wrap">
 """ + body + """
