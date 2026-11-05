@@ -89,7 +89,7 @@ class ShipGate(Node):
 
         # 통과 카운트 [4]
         # 🚨 카메라 HFOV 63.9°(OAK) 의 반값 31.95° 안이어야 한다. 75 는 물리적으로 도달 불가해 /gates_passed 가
-        #    영원히 0 이었다(2026-11-04 시뮬). 대회 launch 는 yaml 을 안 넘기므로 이 코드 기본값이 대회값 —
+        #    영원히 0 이었다(2026-11-04 시뮬). 대회 launch 가 ship_gate.yaml 을 넘긴다(11-05, yaml 이 대회값) —
         #    gate_logic.GateCounter 기본 인자·ship_gate.yaml 과 세 곳 동시에 바꾼다(test_gate_logic 이 검사).
         #    11-04 OAK 전환: 35(D455 반화각 40.16) → 28(여유 3.95°). ⚠️ 실측 필요: 벤치 최대 |각| 이 28 에 못 미치면 27.
         self.pass_behind_deg = float(self.declare_parameter("pass_behind_deg", 28.0).value)

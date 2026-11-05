@@ -54,7 +54,7 @@ class _Pub:
 
 
 class _Node:
-    """파라미터는 코드 기본값(= 대회값, launch 가 ship_dock 에 yaml 을 안 넘긴다)."""
+    """파라미터는 코드 기본값(= ship_dock.yaml 값. 대회 launch 는 그 yaml 을 넘긴다, 11-05)."""
 
     def __init__(self, name):
         self._logger = _Logger()

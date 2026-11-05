@@ -86,8 +86,9 @@ class GateCounter:
     🚨 pass_behind_deg 는 카메라 반화각(OAK hfov 63.9/2 = 31.95°, vision.yaml; 11-04 전환 전 D455 40.16°) **안**이어야 한다.
        부표는 그 밖으로 나가면 검출기가 10000(안 보임)을 내서 각이 아예 안 들어온다 — 옛 기본값 75 는
        물리적으로 도달 불가라 /gates_passed 가 영원히 0 이었다(2026-11-04 시뮬). 그래서 "뒤로 갔다" 가
-       아니라 "통과 직전(게이트 선 ~2~6 m 앞)" 에 센다. 대회 launch 는 yaml 을 안 넘기므로 이 기본 인자와
-       ship_gate.py 의 declare_parameter 기본값·ship_gate.yaml 세 곳을 같이 바꿔야 한다(test_gate_logic 이 검사).
+       아니라 "통과 직전(게이트 선 ~2~6 m 앞)" 에 센다. 대회값은 ship_gate.yaml(대회 launch 가 넘김,
+       11-05). 이 기본 인자와 ship_gate.py 의 declare_parameter 기본값·ship_gate.yaml 세 곳을
+       같이 바꿔야 한다(test_gate_logic 이 검사).
 
     arming(⑥): 유효 쌍이 전방(두 |각| ≤ pass_behind)에 보이면 거리 조건 없이 armed.
        (옛 gate_arm_dist_m(6 m) 조건은 폭 6 m 게이트에서 '둘 다 ≤ 35° 이면서 ≤ 6 m' arming 창이 0.9 m 로 짧고

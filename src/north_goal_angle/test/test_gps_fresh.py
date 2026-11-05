@@ -115,7 +115,7 @@ def test_sanitize_result_always_usable():
         assert math.isfinite(sec) and sec > 0.0, (v, sec)
 
 
-# ---------------- yaml ↔ 코드 기본값 (대회 launch 는 parameters= 없이 띄운다 → 코드 기본값이 대회값)
+# ---------------- yaml ↔ 코드 기본값 (north_goal_angle_launch.py 가 이 yaml 을 넘긴다 → yaml 이 대회값)
 def test_yaml_value_is_float_and_matches_code_default():
     with open(_PARAMS_YAML, encoding='utf-8') as f:
         p = yaml.safe_load(f)['/north_goal_angle']['ros__parameters']

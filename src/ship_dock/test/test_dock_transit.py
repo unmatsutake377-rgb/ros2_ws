@@ -12,7 +12,7 @@
   · DONE 원인별(§10-추가·추가 결정 2): 후진 이탈 완료 = 20000. SEARCH 타임아웃 = WP8 동안 50000,
     north 가 WP9 로 넘어가면(/wp_remaining_time 리셋 감지) 20000. 후진 타임아웃·원인 모름 = 50000.
     7→7 은 리셋하지 않는다(원인·WP 전환 기록 유지).
-  · 코드 기본값 = config/ship_dock.yaml (대회 launch 는 ship_dock 에 yaml 을 안 넘긴다).
+  · 코드 기본값 = config/ship_dock.yaml (대회 launch 가 ship_dock 에 이 yaml 을 넘긴다, 11-05).
 
 스텁 방식은 test_dock_steer_clamp.py 와 같다(import 동안만 sys.modules 에 넣고 되돌림).
 """

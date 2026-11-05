@@ -157,7 +157,7 @@ class ShipDock(Node):
         self.align_tol_deg = float(self.declare_parameter("align_tol_deg", 8.0).value)
         self.realign_tol_deg = float(self.declare_parameter("realign_tol_deg", 25.0).value)
         # 재정렬 하한 [6]: 이 거리 안(dist < 하한)에서는 위 두 재정렬(standoff 1회·realign_tol)을 안 한다.
-        #   🚨 대회 launch_files.launch.py 는 ship_dock 에 yaml 을 안 넘긴다 → **이 코드 기본값이 대회값**.
+        #   🚨 대회 launch_files.launch.py 가 ship_dock 에 yaml 을 넘긴다(11-05) → **yaml 값이 대회값**.
         #      config/ship_dock.yaml 과 같은 값으로 유지할 것. contact_dist_m 바꾸면 같이(contact + 0.5 권장).
         self.realign_min_dist_m = float(
             self.declare_parameter("realign_min_dist_m", 1.5).value)  # ⚠️ 실측 필요 — contact + 관성 여유(v·τ)
@@ -192,8 +192,8 @@ class ShipDock(Node):
         self.image_stale_sec = float(self.declare_parameter("image_stale_sec", 1.0).value)
         self.scan_stale_sec = float(self.declare_parameter("scan_stale_sec", 1.0).value)
 
-        # [8] TRANSIT → INIT 진입 (GPS 거리 /goal_distance 기준). 대회 launch 는 yaml 을 안 넘긴다
-        #     → 이 코드 기본값이 대회값. config/ship_dock.yaml 과 같게 유지.
+        # [8] TRANSIT → INIT 진입 (GPS 거리 /goal_distance 기준). 대회 launch 가 yaml 을 넘긴다
+        #     (11-05) → config/ship_dock.yaml 값이 대회값. 이 코드 기본값과 같게 유지.
         self.dock_engage_dist_m = float(
             self.declare_parameter("dock_engage_dist_m", 12.0).value)   # ⚠️ 실측 필요
         self.goal_dist_stale_sec = float(

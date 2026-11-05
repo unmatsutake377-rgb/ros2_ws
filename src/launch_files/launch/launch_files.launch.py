@@ -1,6 +1,7 @@
 from launch import LaunchDescription
 from launch.actions import (IncludeLaunchDescription, TimerAction, DeclareLaunchArgument,
                             LogInfo, OpaqueFunction)
+from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from ament_index_python.packages import get_package_share_directory, PackageNotFoundError
@@ -42,6 +43,18 @@ def _yaw_mux(context):
     ]
 
 
+def _pkg_yaml(pkg):
+    """<pkg> 설치 share 의 config/<pkg>.yaml — 미션·제어 노드와 blackbox 의 파라미터 출처.
+
+    🚨 11-05 부터 이 yaml 이 대회값이다(그 전엔 parameters= 없이 떠서 코드 기본값이 대회값).
+       · 타입 오타(3.0 ↔ 3, 1360 ↔ 1360.0)는 그 노드를 부팅 때 죽인다(InvalidParameterType).
+       · 노드가 선언 안 한 키는 에러 없이 버려진다.
+       · 노트북에서 커밋 안 하고 고친 yaml 도 그대로 대회값이 된다(git status 로 확인).
+    test_launch_params.py 가 yaml 키 ⊆ 선언 키, 타입 일치, 절 이름 = 노드 이름을 검사한다.
+    """
+    return os.path.join(get_package_share_directory(pkg), 'config', f'{pkg}.yaml')
+
+
 def search_behavior_params(behavior):
     """launch 인자 search_behavior → ship_back·ship_turn 에 넘길 파라미터 (순수 함수, ROS 없이 테스트).
 
@@ -68,13 +81,16 @@ def _search_nodes(context):
     else:
         msg = 'search_behavior=orbit: 탐색(3) = ship_turn 선회(2025 규정 대비 옵션), ship_back 은 모드 2'
     actions = [LogInfo(msg=msg)]
+    # 🚨 parameters 순서가 의미다: yaml 먼저, search_behavior dict **맨 뒤** (뒤가 이긴다).
+    #    거꾸로면 orbit 에서 ship_back 이 yaml [2,3] 으로 뜨고 ship_turn 도 켜져
+    #    mode 3 /candidate_angle 발행자가 2개가 된다(에러 없음). test_launch_params T5 가 검사.
     actions += [
         Node(package='ship_turn', executable='ship_turn', name='ship_turn', output='screen',
-             parameters=[params['ship_turn']]),
+             parameters=[_pkg_yaml('ship_turn'), params['ship_turn']]),
         # ship_last 제거됨(6b): mode 0 을 ship_gate 가 인수. 하던 일은 /candidate_angle 에 20000
         #   폴백을 내는 것뿐이라 중복이었다. (mode 5,8 폴백은 north_goal_angle 이 담당)
         Node(package='ship_back', executable='ship_back', name='ship_back', output='screen',
-             parameters=[params['ship_back']]),
+             parameters=[_pkg_yaml('ship_back'), params['ship_back']]),
     ]
     return actions
 
@@ -112,6 +128,30 @@ def _oak_camera(context):
             parameters=[oak_cfg],
             respawn=True,
             respawn_delay=OAK_RESPAWN_DELAY_S,
+        ),
+    ]
+
+
+def _blackbox(context):
+    """13) blackbox(CSV 기록, 구독 전용·발행 0). ssf_tools 가 없으면 **건너뛴다** — launch 를 안 세운다.
+
+    record:=false 면 안 뜬다(IfCondition). ~/ssf_logs/blackbox_<초>.csv, launch 마다 1개.
+    🚨 대회 launch 와 ssf_tools.launch.py 를 같이 띄우지 말 것 — /blackbox 가 2개가 되고
+       같은 초에 뜨면 파일명이 같아 CSV 를 덮어쓴다. healthcheck·mission_monitor 는 넣지 않는다.
+    """
+    try:
+        cfg = _pkg_yaml('ssf_tools')
+    except PackageNotFoundError:
+        return [LogInfo(msg='⏭️ ssf_tools 없음 — blackbox 건너뜀 (colcon build 확인). '
+                            '나머지 노드는 그대로 뜬다.')]
+    return [
+        Node(
+            package='ssf_tools',
+            executable='blackbox',
+            name='blackbox',            # = ssf_tools.yaml 의 /blackbox 절
+            output='screen',
+            parameters=[cfg],
+            condition=IfCondition(LaunchConfiguration('record')),
         ),
     ]
 
@@ -159,6 +199,10 @@ def generate_launch_description():
             'search_behavior', default_value='hold', choices=['orbit', 'hold'],
             description='탐색(wp_mode 3) 행동: hold=ship_back 위치유지, ship_turn 침묵(기본, 2026 안내문) / '
                         'orbit=ship_turn 선회(2025 규정 대비 옵션)'),
+        # blackbox 기록. 기본 true — 끄려면 record:=false (아래 13, _blackbox 참고).
+        DeclareLaunchArgument(
+            'record', default_value='true', choices=['true', 'false'],
+            description='blackbox CSV 기록(~/ssf_logs): true(기본) / false'),
 
         # ============================================================
         # 0) yaw_mux — /imu/yaw 의 단독 발행자 (params: 공통 → boat 별, _yaw_mux 참고)
@@ -285,8 +329,11 @@ def generate_launch_description():
         # ============================================================
         # 9) SHIP mission nodes (WP 루틴)
         # ============================================================
-        Node(package='ship_gate', executable='ship_gate', name='ship_gate', output='screen'),
-        Node(package='ship_dock', executable='ship_dock', name='ship_dock', output='screen'),
+        # 9)~11) 의 파라미터 출처 = 각 패키지 config/<pkg>.yaml (_pkg_yaml, 11-05 부터).
+        Node(package='ship_gate', executable='ship_gate', name='ship_gate', output='screen',
+             parameters=[_pkg_yaml('ship_gate')]),
+        Node(package='ship_dock', executable='ship_dock', name='ship_dock', output='screen',
+             parameters=[_pkg_yaml('ship_dock')]),
         # ship_turn·ship_back 은 search_behavior 인자에 따라 파라미터가 달라 _search_nodes 가 띄운다.
         OpaqueFunction(function=_search_nodes),
 
@@ -297,7 +344,8 @@ def generate_launch_description():
             package='ship_direction',
             executable='ship_direction',
             name='ship_direction',
-            output='screen'
+            output='screen',
+            parameters=[_pkg_yaml('ship_direction')],
         ),
 
         # ============================================================
@@ -307,7 +355,8 @@ def generate_launch_description():
             package='motor_control',
             executable='motor_control',
             name='motor_control',
-            output='screen'
+            output='screen',
+            parameters=[_pkg_yaml('motor_control')],
         ),
 
         # ============================================================
@@ -323,4 +372,10 @@ def generate_launch_description():
                 os.path.join(dir_bridge, 'launch', 'ssf_bridge.launch.py')
             )
         ),
+
+        # ============================================================
+        # 13) blackbox — CSV 기록 (구독 전용, 죽어도 다른 노드 영향 없음)
+        # ============================================================
+        # record:=false 면 안 뜬다. ssf_tools 가 없으면 _blackbox 가 LogInfo 만 찍고 건너뛴다.
+        OpaqueFunction(function=_blackbox),
     ])

@@ -85,7 +85,7 @@
     # /candidate_angle 180.0(ship_dock BACKOFF·ship_back reverse) → 260(후진). 단, 수신 후 이 시간 넘게
     # 갱신이 없으면 발행 노드 사망으로 보고 STOP_HOLD(묵은 180 으로 무한 후진 방지). 다른 값엔 안 건다.
     # 발행 노드 10 Hz 매 틱 발행 → 0.5 s = 5 틱 누락. 비유한·≤0 이면 노드가 0.5 로 되돌린다.
-    # 🚨 대회 launch 는 parameters= 없이 띄운다 → 노드 코드 기본값이 대회값. 바꾸면 둘 다 같이.
+    # 🚨 대회 launch 가 이 yaml 을 넘긴다(11-05) → yaml 값이 대회값. 코드 기본값도 같게 바꿀 것.
     candidate_reverse_stale_sec: 0.5
     # ---- candidate 전체 신선도 (계약서_전체코스_20261104 §2-6·§10-3) ----
     # /candidate_angle 이 수신 후 이 시간 넘게 갱신이 없으면 발행 노드 사망으로 보고 20000(GPS 주행 +
@@ -93,7 +93,7 @@
     # candidate 를 20000·수신 기록 없음으로 초기화. 발행 주기 0.1 s(미션 노드)·0.5 s(north) → 1.0 =
     # north 주기 × 2. 180(후진)은 위 0.5 s 유지: 0.5~1.0 s STOP_HOLD, 1.0 s 넘으면 20000.
     # 비유한·≤0 이면 노드가 1.0 으로 되돌린다.
-    # 🚨 대회 launch 는 parameters= 없이 띄운다 → 노드 코드 기본값이 대회값. 바꾸면 둘 다 같이.
+    # 🚨 대회 launch 가 이 yaml 을 넘긴다(11-05) → yaml 값이 대회값. 코드 기본값도 같게 바꿀 것.
     candidate_stale_sec: 1.0
     # ---- [K] 조향각 변화율 제한 (0~160° 정상 조향값에만 적용) ----
     rate_limit_max_deg_per_tick: 15.0  # tick당 최대 변화폭. 실각속도=이 값/control_period(0.1s→150°/s). 실측 후 튜닝

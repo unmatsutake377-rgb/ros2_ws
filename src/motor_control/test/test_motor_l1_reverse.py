@@ -106,7 +106,7 @@ MC = _load()
 
 
 def make(**params):
-    """MotorController 생성. params 가 없으면 코드 기본값(= 대회값, launch 가 yaml 외엔 안 넘김)."""
+    """MotorController 생성. params 가 없으면 코드 기본값(= motor_control.yaml, launch 가 넘김)."""
     _Node.PARAMS = dict(params)
     try:
         return MC.MotorController()

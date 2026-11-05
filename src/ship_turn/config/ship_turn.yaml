@@ -29,7 +29,8 @@
     lidar_match_half_deg: 3.0  # 부표 방위 ±이 각도의 LiDAR 최소거리 (부표=점 물체)
 
     # ---- LiDAR 방위 추적 (카메라 HFOV ±40° 밖 = orbit 자세 ±90° 에서 부표 방위를 LiDAR 로 잇는다) ----
-    # 🚨 대회 launch(launch_files.launch.py)는 이 yaml 을 안 넘긴다 → 코드 기본값 = 대회값. 두 값을 같이 고칠 것.
+    # 🚨 대회 launch(launch_files.launch.py)가 이 yaml 을 넘긴다(11-05) → yaml 값 = 대회값.
+    #    코드 기본값과 같이 고칠 것.
     lidar_track_window_deg: 25.0  # ⚠️ 실측 필요 — 직전 유효 방위 ±이 창 안의 최근접 빔만 부표로 본다
     lidar_track_max_m: 5.0        # ⚠️ 실측 필요 — 이보다 먼 반사는 부표로 안 본다(= orbit_radius 3 + 2).
                                   #   LiDAR 높이·부표 높이 미확인(못 보면 lost_sec 뒤 SEARCH), 수조 6×6 은 벽(3 m) 오인 가능

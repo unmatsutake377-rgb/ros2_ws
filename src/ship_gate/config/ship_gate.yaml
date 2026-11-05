@@ -16,11 +16,12 @@
     # 🚨 빨강이 좌현인가 — 한쪽만 보일 때 트는 방향을 정한다 [6]. 대회 규정 기본 true.
     #    부호 규약(11-04 확정): /red_angle·/green_angle 은 상대각, 왼쪽 양수(vision_geom.angle_from_pixel).
     #    /candidate_angle·LiDAR a−80 과 같은 부호. 빨강이 좌현이면 /red_angle > 0.
-    #    🚨 false 로 '고치지' 말 것 — 파라미터 뜻이 거꾸로 되고, 대회 launch 는 이 yaml 을 안 넘겨 효과도 없다.
+    #    🚨 false 로 '고치지' 말 것 — 파라미터 뜻이 거꾸로 된다. 대회 launch 가 이 yaml 을 넘기므로
+    #       (11-05) 여기 값이 그대로 대회값이다 — false 면 한쪽만 보일 때 반대로 튼다.
     red_on_port: true
 
     # ---- 순차 통과 카운트 [4] → /gates_passed ----
-    # 🚨 대회 launch(launch_files.launch.py) 는 ship_gate 에 이 yaml 을 안 넘긴다 → 코드 기본값이 대회값.
+    # 🚨 대회 launch(launch_files.launch.py) 가 ship_gate 에 이 yaml 을 넘긴다(11-05) → yaml 이 대회값.
     #    값을 바꿀 땐 ship_gate.py declare_parameter 기본값·gate_logic.GateCounter 기본 인자와 세 곳 동시에.
     pass_behind_deg: 28.0    # 부표 |상대각| 이 이 각을 넘으면 '통과' 로 카운트(폭 3/6/8 m 게이트 선 2.8/5.6/7.5 m 앞).
                              # 🚨 카메라 반화각(OAK hfov 63.9/2 = 31.95°) 보다 작아야 한다 — 부표는 그 밖에서

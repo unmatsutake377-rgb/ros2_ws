@@ -151,7 +151,7 @@ def test_count_within_fov():
 
 def test_default_threshold_inside_fov():
     """기본 임계가 세 곳(gate_logic 기본 인자·ship_gate.py 기본값·yaml) 같고 카메라 반화각 안인지.
-    대회 launch 는 yaml 을 안 넘기므로 코드 기본값이 대회값(계약서 §4)."""
+    대회 launch 가 ship_gate.yaml 을 넘기므로(11-05) yaml 이 대회값 — 세 곳이 같아야 한다."""
     logic_default = GateCounter().pass_behind
     node_default = _node_default("pass_behind_deg")
     yaml_val = _yaml_value(_NODE_YAML, "pass_behind_deg")

@@ -333,7 +333,10 @@ def test_switch_defaults():
 
 
 def test_code_defaults_equal_yaml():
-    """코드 기본값 = config/ship_back.yaml (대회 launch 는 ship_back 에 active_wp_modes 만 넘긴다)."""
+    """코드 기본값 = config/ship_back.yaml.
+
+    대회 launch 는 ship_back 에 [이 yaml, search_behavior dict(맨 뒤)] 를 넘긴다(11-05).
+    """
     import yaml
     SB.ShipBack()
     with open(os.path.join(PKG, 'config', 'ship_back.yaml'), encoding='utf-8') as f:

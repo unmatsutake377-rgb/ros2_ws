@@ -116,7 +116,7 @@ class ShipTurn(Node):
         self.scan_stale_sec = float(self.declare_parameter('scan_stale_sec', 1.0).value)
         self.lidar_match_half_deg = float(self.declare_parameter('lidar_match_half_deg', 3.0).value)
         # (B) LiDAR 방위 추적 — 카메라 밖(ORBIT·APPROACH 말기)에서 직전 유효 방위 ±창의 최근접 빔을 부표로.
-        #   🚨 대회 launch 는 yaml 을 안 넘긴다(launch_files.launch.py 는 enabled 만) → 이 기본값이 대회값.
+        #   🚨 대회 launch 가 ship_turn.yaml 을 넘긴다(11-05, 그 뒤 enabled dict) → yaml 이 대회값.
         #   ⚠️ 실측 필요: LiDAR 높이 ≠ 부표 높이면 못 본다 / 수조(6×6)에선 벽이 창 안 최근접이 될 수 있다.
         self.lidar_track_window_deg = float(self.declare_parameter('lidar_track_window_deg', 25.0).value)
         self.lidar_track_max_m = float(self.declare_parameter('lidar_track_max_m', 5.0).value)  # = orbit_radius 3 + 2

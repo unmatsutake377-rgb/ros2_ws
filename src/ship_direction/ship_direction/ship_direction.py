@@ -280,7 +280,8 @@ class ShipDirection(Node):
         # 수신 후 이 시간 넘게 갱신이 없으면 발행 노드 사망으로 보고 candidate 를 20000 으로 바꾼다
         # (GPS 주행 + LiDAR 회피). 발행 주기 0.1 s(미션 노드)·0.5 s(north) → 1.0 = north 주기 × 2.
         # 180(후진)은 위 0.5 s 규칙 유지: 0.5~1.0 s 는 _compute 가 STOP_HOLD, 1.0 s 넘으면 20000.
-        # 🚨 대회 launch 는 parameters= 없이 띄운다 → 코드 기본값이 대회값. yaml 과 같이 바꿀 것.
+        # 🚨 대회 launch 가 config/ship_direction.yaml 을 넘긴다(11-05) → yaml 값이 대회값.
+        #    yaml 과 같이 바꿀 것.
         self.candidate_stale_sec = float(
             self.declare_parameter('candidate_stale_sec', 1.0).value)
 
