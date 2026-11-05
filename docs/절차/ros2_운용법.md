@@ -77,10 +77,11 @@ ros2 topic echo /desired_angle
 ros2 topic pub -r 10 /candidate_angle std_msgs/msg/Float32 "{data: 90.0}"
 ```
 
-**블랙박스로 기록** (`~/ssf_logs/*.csv` 에 40컬럼으로 쌓인다):
+**블랙박스로 기록** (`~/ssf_logs/*.csv` 에 40컬럼으로 쌓인다). 11-05부터 메인 launch 가 같이 띄운다(`record:=false` 로 끔). 메인 launch 없이 벤치에서만 쓸 때:
 ```bash
 ros2 launch ssf_tools ssf_tools.launch.py
 ```
+🚨 메인 launch 와 **같이 띄우지 말 것** — 블랙박스가 2개 떠 같은 초 파일명을 서로 덮어쓴다.
 CSV 에 값이 들어오는지로 **배선이 맞는지**를 눈으로 확인할 수 있다.
 (검증 예: `/imu/mag_heading` 를 쏘면 `imu_mag_heading` 컬럼이 찬다. 안 차면 이름이 어긋난 것이다.)
 
@@ -169,11 +170,11 @@ ros2 launch launch_files launch_files.launch.py boat:=A   # 🚨 필수 — 1번
 
 ### ③ 🚨 메인 launch 에 **안 들어 있는** 것 — 터미널 2·3
 
-빠뜨리기 쉽다. 둘 다 따로 띄워야 한다.
+빠뜨리기 쉽다. 따로 띄워야 한다. (11-05부터 **블랙박스는 메인 launch 에 들어 있다** — `record:=false` 가 아니면 자동 기록)
 
-블랙박스 + 헬스체크 (**빼먹으면 왜 실패했는지 알 방법이 없다**):
+헬스체크 (진단만, 제어에 안 물림) — ssf_tools.launch.py 는 블랙박스까지 띄우므로 메인 launch 와 같이 쓰지 말고 헬스체크만:
 ```bash
-ros2 launch ssf_tools ssf_tools.launch.py
+ros2 run ssf_tools healthcheck --ros-args --params-file $(ros2 pkg prefix ssf_tools)/share/ssf_tools/config/ssf_tools.yaml
 ```
 
 미션 모니터 — 지금 무슨 미션이고 배가 무슨 모드인가 (2026-08-10 신설):

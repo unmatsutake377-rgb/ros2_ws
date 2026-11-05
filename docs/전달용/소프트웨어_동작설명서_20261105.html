@@ -152,10 +152,11 @@ td:nth-child(2){white-space:nowrap}
 <tr class=""><td>11</td><td>ship_direction</td><td>회피 + 최종 방향 결정 + 페일세이프</td></tr>
 <tr class=""><td>12</td><td>motor_control</td><td>방향 → 좌·우 추진 세기</td></tr>
 <tr class=""><td>13</td><td>ssf_bridge</td><td>USB로 아두이노와 대화. <code>/dev/ttyMEGA</code> 가 있을 때만 뜬다</td></tr>
+<tr class=""><td>14</td><td>blackbox</td><td>주요 값을 0.1초마다 CSV로 기록. 실행 인자 <code>record:=false</code> 면 안 뜬다(기본은 켬)</td></tr>
 </tbody></table></div>
 <ul>
 <li><code>ssf_bridge</code>는 포트를 연 뒤 <strong>2초 기다린다</strong>(포트를 열면 아두이노가 재부팅되기 때문). 그다음 정지 명령(1500/1500)부터 보낸다.</li>
-<li>진단 도구(healthcheck·blackbox·mission_monitor)는 <strong>대회 실행 파일에 없다.</strong> 따로 켜야 한다(9장).</li>
+<li>기록 도구 blackbox는 대회 실행에 <strong>들어 있다</strong>(11-05부터). 진단 도구 healthcheck·mission_monitor는 <strong>없다</strong> — 필요하면 따로 켠다(5.13).</li>
 </ul>
 </article>
 <article class="part"><h3>3.3 조종기를 켜고 MANUAL로 출발점까지</h3>
@@ -169,11 +170,11 @@ td:nth-child(2){white-space:nowrap}
 <ul>
 <li>아두이노가 노트북 명령을 추진기로 보내기 시작한다.</li>
 <li>north_goal_angle이 시계를 켜고 WP0부터 진행한다. 경로선 시작점은 "AUTO로 바꾼 순간 배의 위치"다.</li>
-<li>⚠️ <strong>도중에 MANUAL로 뺐다가 다시 AUTO로 올리면 WP0이 아니라 하던 웨이포인트부터 이어 간다.</strong> 처음부터 다시 하려면 노드를 다시 실행해야 한다. (코드 로그와 보고서 문장은 "WP0부터"라고 쓰여 있지만 실제로는 처음 시작할 때만 WP0이다.)</li>
+<li>⚠️ <strong>도중에 MANUAL로 뺐다가 다시 AUTO로 올리면 WP0이 아니라 하던 웨이포인트부터 이어 간다.</strong> 처음부터 다시 하려면 노드를 다시 실행해야 한다. (11-05부터 코드 로그도 '처음 AUTO 면 WP0, 재진입은 현재 WP 부터'로 정정. 보고서 문장은 수정안 77에 대기.)</li>
 </ul>
 </article>
 </section>
-<section id="s123"><h2>4. 0.1초 동안 일어나는 일 — 숫자로 따라가기</h2>
+<section id="s124"><h2>4. 0.1초 동안 일어나는 일 — 숫자로 따라가기</h2>
 <p><strong>상황:</strong> 장애물 없는 물 위, 회피 구간(mode 5). 뱃머리는 정북에서 30°(헤딩 30°), 다음 웨이포인트는 50° 방향.</p>
 <div class="tw"><table><thead><tr><th>단계</th><th>노드</th><th>하는 일</th><th>이 예의 값</th></tr></thead><tbody>
 <tr class=""><td>①</td><td>iahrs_driver</td><td>IMU 원시값을 100 Hz로 낸다</td><td>/imu/yaw_raw</td></tr>
@@ -187,7 +188,7 @@ td:nth-child(2){white-space:nowrap}
 </tbody></table></div>
 <p><strong>앞에 장애물이 0.6 m에 있으면:</strong> motor_control이 감속비 = 0.7 + 0.3 × 0.6/1.2 = 0.85를 곱해 1500 쪽으로 당긴다. 예: 1336 → 1500 + (1336 − 1500) × 0.85 ≈ 1361.</p>
 </section>
-<section id="s137"><h2>5. 노드 하나하나</h2>
+<section id="s138"><h2>5. 노드 하나하나</h2>
 <p>각 노드를 "하는 일 / 받는 것 / 내는 것 / 동작 순서 / 문제가 생기면" 순서로 적었다.</p>
 <article class="part"><h3>5.1 yaw_mux — 뱃머리 방향 정리 담당 (<code>src/ssf_heading</code>)</h3>
 <ul>
@@ -434,15 +435,15 @@ td:nth-child(2){white-space:nowrap}
 <li>모드 신호가 도중에 끊기면 <strong>마지막 모드를 유지</strong>한다(팀 결정: 조종기 신호 두절로 모드를 바꾸지 않음). 조종기 수신기 자체는 신호 두절 때 스틱을 중립으로 내도록 설정했다.</li>
 </ul>
 </article>
-<article class="part"><h3>5.13 진단 도구 (<code>src/ssf_tools</code>) — 대회 실행에 포함 안 됨, 따로 켠다</h3>
+<article class="part"><h3>5.13 기록·진단 도구 (<code>src/ssf_tools</code>) — blackbox만 대회 실행에 포함, 나머지는 따로 켠다</h3>
 <ul>
 <li><strong>healthcheck:</strong> 2초마다 LiDAR·헤딩·GPS·카메라가 오는지, 임무 번호에 맞는 노드가 있는지 확인. <code>/health_ok</code>를 내지만 <strong>제어에는 연결하지 않았다</strong>(진단이 틀려서 배가 서는 일을 막으려고).</li>
-<li><strong>blackbox:</strong> 주요 값을 0.1초마다 <code>~/ssf_logs/blackbox_날짜.csv</code>에 기록. 경기 뒤 분석용.</li>
+<li><strong>blackbox:</strong> 주요 값을 0.1초마다 <code>~/ssf_logs/blackbox_날짜.csv</code>에 기록. 경기 뒤 분석용. <strong>대회 실행에 포함</strong>(<code>record</code> 기본 켬). 🚨 <code>ssf_tools.launch.py</code>를 또 띄우면 기록기가 2개 떠 같은 파일을 덮어쓰니 같이 쓰지 않는다. 시간당 약 14 MB(추정).</li>
 <li><strong>mission_monitor:</strong> 화면에 현재 모드·임무·거리·RTK·페일세이프를 0.5초마다 보여 주는 계기판.</li>
 </ul>
 </article>
 </section>
-<section id="s392"><h2>6. 코스 한 바퀴 이야기로 따라가기</h2>
+<section id="s393"><h2>6. 코스 한 바퀴 이야기로 따라가기</h2>
 <ol>
 <li><strong>출발 전:</strong> MANUAL로 출발점까지 몬다. north는 WP0 방향을 계산만 하고 기다린다.</li>
 <li><strong>AUTO 전환:</strong> WP0(임무 0, 게이트 시작). 카메라 gate 검출기가 켜진다. ship_gate가 빨강·초록 가운데로 조향하고, 안 보이면 20000이라 GPS로 간다. 게이트 끝(WP1)까지 같은 방식. 게이트 구간은 탐지거리를 2.0 m로 줄여 좁은 게이트에서 괜히 피하지 않게 한다.</li>
@@ -455,7 +456,7 @@ td:nth-child(2){white-space:nowrap}
 </ol>
 <p>어느 임무든 <strong>시간 초과</strong>가 지나면 위치와 상관없이 다음으로 넘어간다.</p>
 </section>
-<section id="s405"><h2>7. 고장 났을 때 — 누가 알아채고 배는 어떻게 되나</h2>
+<section id="s406"><h2>7. 고장 났을 때 — 누가 알아채고 배는 어떻게 되나</h2>
 <div class="tw"><table><thead><tr><th>상황</th><th>알아채는 곳</th><th>배 동작</th></tr></thead><tbody>
 <tr class=""><td>LiDAR 선이 빠짐</td><td>ship_direction 감시</td><td>0.7초 감속 → 3초 정지. 다시 꽂으면 바로 정상</td></tr>
 <tr class=""><td>IMU 끊김</td><td>yaw_mux 침묵 → ship_goal_angle 침묵 → ship_direction</td><td>감속 → 정지</td></tr>
@@ -469,7 +470,7 @@ td:nth-child(2){white-space:nowrap}
 <tr class=""><td>위험 상황</td><td>사람</td><td>비상정지 버튼 또는 무선 리모컨 → 접촉기가 추진 전원 차단(소프트웨어와 무관)</td></tr>
 </tbody></table></div>
 </section>
-<section id="s419"><h2>8. 알아 두면 좋은 주의점</h2>
+<section id="s420"><h2>8. 알아 두면 좋은 주의점</h2>
 <ul>
 <li><strong>헤딩 보정값이 아직 0이다.</strong> 수조 정북 시험 후 배마다 <code>ssf_heading_A/B.yaml</code>에 기입.</li>
 <li><strong>지오펜스는 꺼져 있다.</strong> 대회장 경계 좌표가 생기면 <code>north_goal_angle.yaml</code>의 <code>geofence_polygon</code>에 넣는다.</li>
@@ -477,11 +478,11 @@ td:nth-child(2){white-space:nowrap}
 <li><strong>위치유지·탐색 웨이포인트는 부표 바로 옆에서 찍는다.</strong> 도착 반경 3.5 m가 그 전제다. 카메라가 부표를 3.5 m보다 멀리서 처음 잡아야 위치유지가 된다(실해역 확인 항목).</li>
 <li><strong>탐색 색 공지 후</strong> <code>vision.yaml</code>의 <code>turn_color_mode3</code> 변경. <strong>도킹 표식 공지 후</strong> <code>target_color</code>·<code>target_shape</code> 변경.</li>
 <li><strong>MANUAL→AUTO 재진입은 이어서 진행</strong>(3.4).</li>
-<li><strong>ship_direction·motor_control·ship_gate·ship_dock은 yaml 없이 켜진다.</strong> 코드에 적힌 기본값이 실제 값이다. yaml 파일을 고쳐도 반영되지 않으니 바꾸려면 코드 기본값을 고치거나 실행 파일에 yaml을 넘겨야 한다.</li>
-<li>펌웨어 주석 몇 곳은 코드와 다르다(예: 주석은 "&lt; 1500 = AUTO", 실제는 &gt; 1500 = AUTO). <strong>코드가 맞다.</strong></li>
+<li><strong>11-05부터 대회 실행이 노드 yaml을 실제로 읽는다</strong>(ship_direction·motor_control·ship_gate·ship_dock·ship_back·ship_turn). 현장에서 yaml을 고치면 바로 대회값이 된다. 그래서 ① 고친 뒤 꼭 커밋 ② <strong>숫자 모양을 그대로</strong>(3.0을 3으로, 1360을 1360.0으로 바꾸면 그 노드가 켜질 때 죽는다) ③ 없는 이름을 쓰면 조용히 무시된다. ship_back·ship_turn은 실행 인자(<code>search_behavior</code>)가 yaml보다 우선한다.</li>
+<li>펌웨어 주석이 코드와 반대로 적혀 있던 곳("&lt; 1500 = AUTO", 모드 핀 18)은 11-05에 정정했다. 실제는 &gt; 1500 = AUTO, 핀 19. 주석만 바뀌어 다시 올릴 필요는 없다.</li>
 </ul>
 </section>
-<section id="s431"><h2>9. 용어 풀이</h2>
+<section id="s432"><h2>9. 용어 풀이</h2>
 <div class="tw"><table><thead><tr><th>용어</th><th>쉬운 뜻</th></tr></thead><tbody>
 <tr class=""><td>ROS2</td><td>로봇 프로그램들을 단톡방 방식으로 엮어 주는 틀</td></tr>
 <tr class=""><td>노드 / 토픽</td><td>일하는 프로그램 하나 / 그들이 글을 주고받는 단톡방</td></tr>
