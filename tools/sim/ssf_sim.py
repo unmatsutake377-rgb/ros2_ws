@@ -120,7 +120,13 @@ def dilate_obstacles(binary, distance_array, angle_increment_deg, detection_dist
 def ship_direction_step(ranges, angle_min_deg, inc_deg, yaw_error_sd,
                         detection_distance=BASE_DETECTION_DISTANCE,
                         debug=None):
-    """실제 scan_callback의 (C) 경로 = candidate 20000(자율회피) 상태를 재현."""
+    """실제 scan_callback의 (C) 경로 = candidate 20000(자율회피) 상태를 재현.
+
+    yaw_error_sd None = 노드가 부팅 뒤 /yaw_error 를 한 번도 못 받은 상태 → (STOP_HOLD, None) 반환
+    — 두 번째 값(yaw_mapped)이 None 이다. 호출자는 이때 매핑각을 쓰면 안 된다.
+    (노드 control_cb [N]·_compute (C) 가드 사본, 계약서_yaw미수신정지_20261105). 판정은 `is None`."""
+    if yaw_error_sd is None:
+        return STOP_HOLD, None
     inc_rad = math.radians(inc_deg)
     min_index = int((0 - angle_min_deg) / inc_deg)
     max_index = int((160 - angle_min_deg) / inc_deg)

@@ -4,6 +4,7 @@
 
     from ship_direction.failsafe import SensorWatch, TemporalVote, median_min
     from ship_direction.failsafe import effective_candidate, candidate_is_stale, CandidateStaleLog
+    from ship_direction.failsafe import heading_missing
 
 시각(now)은 호출자가 주입한다 → 테스트에서 시간을 마음대로 돌릴 수 있다.
 """
@@ -216,6 +217,20 @@ def effective_candidate(candidate, candidate_t, now, stale_sec, invalid):
     return candidate
 
 
+def heading_missing(candidate, yaw_error, invalid):
+    """갭 선택(20000)인데 목표 방위가 없다 → True (계약서_yaw미수신정지_20261105, 안 A).
+
+    · candidate == invalid(20000) 이고 yaw_error 를 부팅 뒤 한 번도 못 받음(None) → True = STOP_HOLD.
+      (C) 갭 선택은 yaw_error 를 목표 방위로 쓰는데, 예전엔 초기값 0.0 을 '목표가 정면'으로 읽어
+      뱃머리 방향으로 갭을 골랐다. 모르면 입을 다문다.
+    · 🚨 판정은 반드시 `is None`. 0.0 은 '정확히 정렬'인 정상값 — `not yaw_error` 면 정렬된 순간 영구 정지.
+    · 그 밖의 candidate(각도·5000·6000·180·50000)는 yaw_error 를 안 읽는다 → False(거짓 정지 없음).
+    · 받은 뒤 끊김은 여기 몫이 아니다 — SensorWatch(ARMED 뒤 stale → 레벨 2)가 모든 모드를 멈춘다.
+    invalid 는 호출자가 넘긴다(상수 공유 안 함).
+    """
+    return candidate == invalid and yaw_error is None
+
+
 class CandidateStaleLog:
     """candidate stale 로그 시점 판정 — ROS 비의존. update() 가 낼 로그 종류를 돌려준다.
 
@@ -224,6 +239,11 @@ class CandidateStaleLog:
       'recover': stale → 신선/기록 없음(새 수신 또는 wp_mode 변경 초기화) (INFO 1회)
       None     : 로그 없음
     호출 지점은 노드에서 심각도별로 나눈다(CLAUDE.md §1-7, 같은 줄 다른 심각도 금지).
+
+    yaw_error 미수신(heading_missing) 로그에도 같은 클래스를 쓴다. 노드는 막힌 틱에서만 update(True),
+    yaw_error 가 생긴 뒤 틱에서만 update(False)(첫 번만 'recover')를 부르고, 그 밖의 틱(yaw 없음 +
+    후보각이 각도 등)은 부르지 않는다
+    → 후보각이 20000 ↔ 각도로 깜빡여도 'recover'·'enter' 가 번갈아 나오지 않는다(ERROR 폭주 방지).
     """
 
     def __init__(self, period_sec=5.0):

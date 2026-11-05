@@ -13,6 +13,7 @@ from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 # 재수출: from ship_direction.ship_direction import SensorWatch 로도 접근 가능.
 from ship_direction.failsafe import SensorWatch, TemporalVote, median_min
 from ship_direction.failsafe import effective_candidate, candidate_is_stale, CandidateStaleLog
+from ship_direction.failsafe import heading_missing
 
 # 특수 신호 상수 (CLAUDE.md 3-9 상수표)
 SPIN_RIGHT = 5000.0          # 우선회
@@ -26,6 +27,7 @@ REVERSE_REL = 180.0          # /candidate_angle 180.0 = 후진 요청 (ship_dock
 #   (B) 에서 범위 검사 앞 정확 일치로만 260 으로 통과 (계약서_후진통과_20261104).
 LIDAR_FORWARD_DEG = 80.0     # LiDAR 프레임에서 정면 (상대방위 0 에 대응)
 CANDIDATE_STALE_LOG_PERIOD_SEC = 5.0  # candidate stale 지속 중 ERROR 반복 주기(로그 전용, 제어 무관)
+YAW_MISSING_LOG_PERIOD_SEC = 5.0  # [N] yaw_error 미수신 정지 지속 중 ERROR 반복 주기(로그 전용, 제어 무관)
 CANDIDATE_SLOWEST_PUB_SEC = 0.5  # 가장 느린 정상 /candidate_angle 발행 주기(north period_sec).
                                  # candidate_stale_sec 가 이보다 작으면 거짓 stale 경고만(값은 그대로)
 
@@ -89,7 +91,8 @@ class ShipDirection(Node):
     [B] 페일세이프(독립 watchdog 타이머). scan 이 묵은 정도로 레벨을 매긴다. **3상태·2임계.**
         0 정상        : 계산한 각도        / 속도 100%
         1 경고(0.7s)  : 계산한 각도 그대로 / 속도 70%    ← 각도 안 건드림
-        2 정지(3.0s)  : STOP_HOLD override / 정지        ← 각도를 덮어쓰는 건 여기뿐
+        2 정지(3.0s)  : STOP_HOLD override / 정지        ← 페일세이프 레벨 중 각도를 덮어쓰는 건 여기뿐
+          (레벨 0 이어도 [N] yaw 미수신+20000·[I] 경계는 50000)
 
         ★ 임계가 적을수록 틀릴 곳이 적다. 중간에 'freeze' 레벨을 뒀다가 뺐다 —
           새 스캔이 없는데 재계산하면 같은 스캔으로 같은 답이 나온다.
@@ -116,6 +119,7 @@ class ShipDirection(Node):
         인데, 세 번째 화살표(침묵을 들을 귀)가 없으면 마지막 yaw_error 를 영원히 붙들고 조향한다.
         (측정: IMU 사망 시 정지율 0%, 접촉 3회, 14.8m 계속 주행)
         센서별로 첫 데이터를 받은 뒤에만 감시(ARMED) — 부팅 오발동 방지.
+        ※ 그래서 '부팅부터 /yaw_error 가 한 번도 안 옴'은 워치독이 못 본다(레벨 0 그대로) → [N].
 
     [F] angle_increment == 0 가드. min_index/max_index 계산에서 이 값으로 나눈다 →
         LiDAR 가 이상 스캔을 보내면 ZeroDivisionError 로 노드가 통째로 죽는다
@@ -178,6 +182,20 @@ class ShipDirection(Node):
         (발행 노드가 죽으면 묵은 조향각·SPIN·STOP_HOLD 를 모드가 바뀔 때까지 붙들던 결함).
         wp_mode 가 바뀌면 candidate 를 20000·수신 기록 없음으로 초기화. 진입 ERROR 1회 + 5 s 주기 ERROR,
         복구 INFO 1회. 180(후진)은 0.5 s 규칙 유지(0.5~1.0 s STOP_HOLD, 그 뒤 20000).
+
+    [N] yaw_error 미수신 정지 (계약서_yaw미수신정지_20261105, 안 A). /yaw_error 를 부팅 뒤 **한 번도**
+        못 받았는데(yaw_error None) 실효 candidate 가 20000(갭 선택)이면 control_cb 가 _compute 전에
+        candidate 를 STOP_HOLD 로 바꾼다. 예전엔 초기값 0.0 을 '목표가 정면'으로 읽어 뱃머리 쪽 갭으로
+        전진했다(GPS fix 없음 → north 가 tp 미발행 → ship_goal_angle 이 /yaw_error 미발행인데,
+        [E] 워치독은 ARMED 전이라 레벨 0). 판정은 `is None` — 0.0 은 정상값.
+        · 각도·5000·6000·180 은 yaw_error 를 안 읽으므로 그대로 따른다(거짓 정지 없음).
+        · [M] 의 stale·wp_mode 변경으로 생긴 20000 도 같은 입구라 함께 막힌다.
+        · /failsafe_level 은 0 그대로(mission_monitor 엔 정상으로 보임) → ERROR 로그가 유일한 단서.
+          진입 ERROR 1회 + YAW_MISSING_LOG_PERIOD_SEC(5 s) 주기 ERROR(막힌 틱에서만),
+          복구 INFO 1회(yaw_error 첫 수신에서만). 후보각이 20000 ↔ 각도로 깜빡여도 폭주 안 함.
+        · 받은 뒤 끊김은 [E] 가 맡는다(ARMED 뒤 stale → 레벨 2, 모든 모드 정지).
+        · _compute (C) 첫머리에도 같은 가드(None → STOP_HOLD) — None % 360 TypeError 로 노드가
+          죽는 걸 막는 방어선.
 
     ※ 판정 로직(SensorWatch, TemporalVote, median_min)은 **ROS 비의존 모듈** ship_direction/failsafe.py 에 있다.
       워치독을 노드 안에 인라인하면 단위 테스트가 불가능해진다. rclpy 없이 임포트 가능:
@@ -326,7 +344,11 @@ class ShipDirection(Node):
         # ----------------------
         self.wp_mode = -1
         self.wp4_enter_time = None
-        self.yaw_error = 0.0
+        # [N] None = 부팅 뒤 /yaw_error 를 아직 한 번도 못 받음(0.0 아님 — 0.0 은 '정확히 정렬' 정상값).
+        #   이 상태에서 candidate 20000 이면 control_cb 가 STOP_HOLD 로 바꾼다.
+        self.yaw_error = None
+        # [N] 로그 시점(진입 ERROR 1회·5 s 주기 ERROR·복구 INFO). control_cb 에서만 쓴다.
+        self.yaw_missing_log = CandidateStaleLog(YAW_MISSING_LOG_PERIOD_SEC)
         self.candidate_angle = CANDIDATE_INVALID
         self.candidate_t = None       # candidate 마지막 수신 시각(monotonic). None = 아직 못 받음
         # candidate stale 로그 시점(진입 ERROR 1회·5 s 주기 ERROR·복구 INFO). control_cb 에서만 쓴다.
@@ -584,11 +606,15 @@ class ShipDirection(Node):
             detection_distance = self.detection_distance
             wp_mode = self.wp_mode
 
+        now = time.monotonic()
+
         # ---- candidate 신선도: candidate_stale_sec 넘게 갱신 없으면 20000 (_compute 전) ----
         candidate_angle = self._effective_candidate(
-            candidate_angle, candidate_t, time.monotonic(), wp_mode)
+            candidate_angle, candidate_t, now, wp_mode)
 
-        # ---- 레벨 2(정지) 또는 이상 스캔: STOP_HOLD 로 override. 각도를 덮어쓰는 건 여기뿐. ----
+        # ---- 레벨 2(정지) 또는 이상 스캔: STOP_HOLD 로 override(_compute 건너뜀). ----
+        # 페일세이프 레벨로 덮어쓰는 건 여기뿐 — 레벨과 별개인 정지는 아래 [N](yaw 미수신+20000)·
+        # _compute (0)/[I].
         # bad 를 여기서도 보는 이유: 워치독 틱(0.1s)을 기다리지 않고 즉시 멈추기 위해서다.
         if level >= 2 or bad:
             self.pub_obstacle_distance.publish(self._closest_obstacle(scan))
@@ -600,6 +626,31 @@ class ShipDirection(Node):
         # motor_control 은 '첫 명령 전 중립'이라 안전하다.
         if scan is None:
             return
+
+        # ---- [N] 20000(갭 선택)인데 yaw_error 를 한 번도 못 받음 → STOP_HOLD (_compute 전) ----
+        # 50000 은 _compute (0) 경로 → 후진 상태기계 리셋, 레이트 리미터도 범위 밖 값이라 리셋.
+        # 로그: 막힌 틱은 update(True)(진입·주기 ERROR), yaw_error 가 생긴 뒤 틱은 update(False)(첫 번만
+        # 복구 INFO), 그 밖의 틱(yaw 없음 + 각도 등)은 안 부른다 → 20000 ↔ 각도 깜빡임에도 ERROR 폭주
+        # 없음. 심각도별 호출 줄 분리(§1-7).
+        blocked = heading_missing(candidate_angle, yaw_error, CANDIDATE_INVALID)
+        if blocked:
+            ev = self.yaw_missing_log.update(True, now)
+        elif yaw_error is not None:
+            ev = self.yaw_missing_log.update(False, now)
+        else:
+            ev = None
+        if ev == 'enter':
+            self.get_logger().error(
+                f"/yaw_error 를 부팅 뒤 한 번도 받지 못함 + candidate 20000(갭 선택, wp_mode {wp_mode}) "
+                f"→ 목표 방위 없음, 50000 정지. GPS fix·RTK·IMU·ship_goal_angle 확인 "
+                f"(/failsafe_level 은 0 그대로)")
+        elif ev == 'repeat':
+            self.get_logger().error(
+                f"/yaw_error 미수신 지속 (wp_mode {wp_mode}) → 20000 대신 50000 유지")
+        elif ev == 'recover':
+            self.get_logger().info("/yaw_error 첫 수신 → 20000(갭 선택)도 목표 방위로 계산")
+        if blocked:
+            candidate_angle = STOP_HOLD
 
         # ---- 레벨 0·1: 계산한 각도를 그대로 낸다. ----
         # 레벨 1(경고)에서도 각도는 안 건드린다. 속도만 줄인다
@@ -835,6 +886,12 @@ class ShipDirection(Node):
             return c_mapped, obst
 
         # ---- (C) candidate == 20000 → yaw_error 기반 자율 회피 ----
+        # [N] 방어 가드: 목표 방위를 한 번도 못 받음(None) → 정지. control_cb 가 이미 50000 으로 바꾸지만,
+        #   직접 호출(시뮬·테스트)에서 None % 360 TypeError 로 노드가 죽는 걸 막는다. 판정은 `is None`.
+        if yaw_error is None:
+            self._reset_reverse_sequence()
+            return STOP_HOLD, obst
+
         angle_min = math.degrees(msg.angle_min)
         angle_increment_deg = math.degrees(msg.angle_increment)
         angle_increment_rad = msg.angle_increment

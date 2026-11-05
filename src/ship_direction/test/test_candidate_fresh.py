@@ -60,7 +60,7 @@ _stub('sensor_msgs.msg', LaserScan=_msg)
 import ship_direction.ship_direction as SD  # noqa: E402
 from ship_direction.ship_direction import (  # noqa: E402
     ShipDirection, CANDIDATE_INVALID, REVERSE_ANGLE, STOP_HOLD, SPIN_RIGHT, SPIN_LEFT,
-    CANDIDATE_STALE_LOG_PERIOD_SEC)
+    CANDIDATE_STALE_LOG_PERIOD_SEC, YAW_MISSING_LOG_PERIOD_SEC)
 from ship_direction.failsafe import (  # noqa: E402
     effective_candidate, candidate_is_stale, CandidateStaleLog)
 
@@ -164,6 +164,8 @@ def fake_self(wp_mode=7):
         candidate_stale_sec=STALE,
         candidate_reverse_stale_sec=REV_STALE,
         candidate_stale_log=CandidateStaleLog(CANDIDATE_STALE_LOG_PERIOD_SEC),
+        # [N] 로그 상태. 여기선 yaw_error 0.0(받음)이라 막히지 않는다
+        yaw_missing_log=CandidateStaleLog(YAW_MISSING_LOG_PERIOD_SEC),
         geofence=None,
         last_geofence_t=None,
         geofence_stale_sec=2.0,
