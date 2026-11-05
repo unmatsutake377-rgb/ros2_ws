@@ -4,7 +4,7 @@
 대회 좌표를 미리 못 받는 상황용. 흐름:
   1) '좌표 설정 단계' — GPS 드라이버 + 이 노드만 실행(미션 스택은 끔).
   2) RC 로 각 지점에 배를 대고 → 터미널에서 Enter → 현재 GPS 캡처 → mode/dwell 입력.
-  3) 다 찍으면 q → 검증된 yaml 을 **새 파일**(config/waypoints_recorded.yaml)로 저장.
+  3) 다 찍으면 q → 검증된 yaml 을 **새 파일**(기본 ~/ssf_logs/waypoints_recorded.yaml)로 저장.
   4) 확인 후 waypoints.yaml 로 옮겨서 '미션 단계' 실행.
 
 설계:

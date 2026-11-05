@@ -437,11 +437,13 @@ class NorthGoalAngle(Node):
         self.last_yaw_t = time.monotonic()
 
     def boat_mode_cb(self, msg):
-        # 0=WAIT 1=MANUAL 2=AUTO. AUTO 로 바뀌면 미션이 WP0 부터 시작한다(timer_cb 게이트).
+        # 0=WAIT 1=MANUAL 2=AUTO. AUTO 로 바뀌면 미션이 진행된다(timer_cb 게이트).
+        #   처음 AUTO 면 WP0, MANUAL→AUTO 재진입은 현재 WP 부터(wp_idx 를 리셋하지 않는다).
         prev = self.boat_mode
         self.boat_mode = int(msg.data)
         if prev != self.boat_mode and self.boat_mode == MODE_AUTO:
-            self.get_logger().info("🚀 AUTO 전환 감지 → 미션 시작 (WP0 부터)")
+            self.get_logger().info(
+                "🚀 AUTO 전환 감지 → 미션 진행 (처음 AUTO 면 WP0, MANUAL→AUTO 재진입은 현재 WP 부터)")
 
     # ───────────────────────── Geofence ─────────────────────────
     def _local_xy(self, lat, lon):
@@ -602,17 +604,19 @@ class NorthGoalAngle(Node):
         if wp_mode in FALLBACK_MODES:
             self.pub_candidate.publish(Float32(data=CANDIDATE_INVALID))
 
-        # 🚀 자율 시작 게이트 — AUTO 가 아니면 미션을 '전진'시키지 않는다(WP0 에서 대기).
+        # 🚀 자율 시작 게이트 — AUTO 가 아니면 미션을 '전진'시키지 않는다(지금 WP 에서 대기).
         #    수동(RC)으로 시작점까지 몰고 가는 동안 GPS 도착/타임아웃으로 wp_idx 가 새는 걸 막는다.
         #    (위에서 방위·거리·wp_mode 는 계속 낸다 — 정보용. 모터는 아두이노 MANUAL 이 무시한다.)
-        #    RC 모드를 AUTO 로 넘기는 순간부터 아래 도착/타임아웃 로직이 살아나 WP0 부터 진짜 시작한다.
+        #    RC 모드를 AUTO 로 넘기는 순간부터 아래 도착/타임아웃 로직이 살아나 진짜 시작한다 —
+        #    처음 AUTO 면 WP0, MANUAL→AUTO 재진입은 현재 WP 부터(여기서 wp_idx 를 리셋하지 않는다).
         if not mission_should_run(self.boat_mode, self.require_auto):
             self.wp_enter_time = None         # 타임아웃 시계 리셋 → AUTO 시작 시점부터 카운트
             self.t_start = None               # dwell 리셋
             self.integral_xte = 0.0           # LOS 적분 리셋
             self.prev_lat = self.prev_lon = None   # 경로선 시작점 = AUTO 전환 시점 위치
             self.get_logger().info(
-                "🕹 AUTO 대기 — RC 모드를 AUTO 로 넘기면 WP0 부터 자율 시작 "
+                "🕹 AUTO 대기 — RC 모드를 AUTO 로 넘기면 자율 시작"
+                "(처음 AUTO 면 WP0, MANUAL→AUTO 재진입은 현재 WP 부터) "
                 "(벤치는 require_boat_mode_auto:=false 또는 /boat_mode 2 발행)",
                 throttle_duration_sec=5.0)
             return

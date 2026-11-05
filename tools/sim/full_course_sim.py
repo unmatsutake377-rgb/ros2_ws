@@ -17,14 +17,14 @@
   옵션: --wp-file <yaml>(north_goal_angle 이 읽을 파일; 세계 배치는 늘 --world-wp-file 기준), --gps-sigma 0.03,
         --current VX VY(조류 m/s, 기본 0 0), --t-max 1500, --jobs N(병렬 프로세스)
 
-실제로 돌리는 노드 코드 (한 줄도 안 바꾼다. 파라미터는 launch_files.launch.py 배선 그대로)
+실제로 돌리는 노드 코드 (한 줄도 안 바꾼다. 파라미터는 아래 — 대회 launch 와 값은 같다)
   north_goal_angle  ← north_goal_angle.yaml + waypoints_file (launch 가 둘 다 넘김)
   ship_goal_angle   ← ship_goal_angle.yaml (launch 가 넘김)
-  ship_direction    ← 파라미터 없음(launch 가 안 넘김 → 코드 기본값)
-  motor_control     ← 파라미터 없음(코드 기본값)
-  ship_gate, ship_dock ← 파라미터 없음(코드 기본값)
+  ship_direction, motor_control, ship_gate, ship_dock ← 코드 기본값
   ship_back         ← {active_wp_modes: [2, 3]}  (search_behavior 기본 hold)
   ship_turn         ← {enabled: False}           (hold 에서 침묵 — 발행 0 회인지 검사한다)
+  ⚠️ 11-05부터 대회 launch 는 위 6개 노드에 각 패키지 yaml 도 넘긴다(계약서_launch_yaml_blackbox).
+     지금 yaml 값 == 코드 기본값이라 결과는 같지만, 현장에서 yaml 을 고치면 이 시뮬과 달라진다.
   검출기 3종의 모드 게이트·확정기는 실제 순수 모듈(color_shape_detector.mode_gate.ModeGate,
   dock_logic.DetectionConfirmer)을 쓴다. 영상 처리(cv2)만 아래 카메라 모델로 바꾼다.
 
