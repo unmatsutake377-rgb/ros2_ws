@@ -402,7 +402,7 @@ def cam_closest(x, y, psi, pts, rng, dmin=CAM_MIN):
 
 
 # ───────────────────────── 한 런 ─────────────────────────
-def node_params(wp_file):
+def node_params(wp_file, overrides=None):
     rosstub.PARAMS.clear()
     rosstub.PARAMS["north_goal_angle"] = dict(P_NGA, waypoints_file=wp_file)
     rosstub.PARAMS["ship_goal_angle"] = dict(P_SGA)
@@ -410,6 +410,20 @@ def node_params(wp_file):
         rosstub.PARAMS[n] = {}
     rosstub.PARAMS["ship_back"] = {"active_wp_modes": [2, 3]}
     rosstub.PARAMS["ship_turn"] = {"enabled": False}
+    for node, kv in (overrides or {}).items():         # --param 노드.키=값 (11-06, 계약서_DWA 결정 11)
+        rosstub.PARAMS.setdefault(node, {}).update(kv)
+
+
+def parse_param_overrides(items):
+    """['ship_direction.dwa_enabled=true', ...] → {'ship_direction': {'dwa_enabled': True}} (값은 yaml 해석)."""
+    out = {}
+    for it in items or []:
+        key, _, val = it.partition("=")
+        node, _, name = key.partition(".")
+        if not node or not name or not _:
+            raise SystemExit(f"--param 형식은 노드.키=값: {it!r}")
+        out.setdefault(node, {})[name] = yaml.safe_load(val)
+    return out
 
 
 def apply_dwell(path, overrides):
@@ -434,7 +448,8 @@ def apply_dwell(path, overrides):
 
 
 def run(seed, variant="A", wp_file=None, world_wp_file=WP_DEFAULT, gps_sigma=0.03, current=(0.0, 0.0),
-        t_max=1500.0, tail=90.0, record=False, dwell_override=None, fault=None, dyn="legacy", hull=None):
+        t_max=1500.0, tail=90.0, record=False, dwell_override=None, fault=None, dyn="legacy", hull=None,
+        node_overrides=None):
     world_wps = load_wps(world_wp_file)
     W = build_world(world_wps, seed)
     geo = W["geo"]; dock = W["dock"]
@@ -443,7 +458,7 @@ def run(seed, variant="A", wp_file=None, world_wp_file=WP_DEFAULT, gps_sigma=0.0
     wp_file = apply_dwell(wp_file, dwell_override)
     wps = load_wps(wp_file)
     WPXY = [np.array(geo.xy(w["lat"], w["lon"])) for w in wps]
-    node_params(wp_file)
+    node_params(wp_file, node_overrides)
     Clock.t = 0.0
     vtag = variant + ("" if not dwell_override else "-dwell(" + ",".join(f"{k}={v:g}" for k, v in dwell_override.items()) + ")")
     out = dict(seed=seed, variant=vtag, wp_file=wp_file, bay=dock["bay"], exception="")
@@ -1233,11 +1248,13 @@ def main():
     ap.add_argument("--dyn", default="legacy", choices=["legacy", "fossen"],
                     help="운동 모델: legacy = K_V·K_W 1차 지연(기존) / fossen = 3자유도(boat3dof.py, Gazebo 모델과 같은 계수)")
     ap.add_argument("--hull", default=None, choices=["A", "B"], help="fossen 선체 계수(기본 = variant 글자)")
+    ap.add_argument("--param", action="append", default=[], metavar="노드.키=값",
+                    help="노드 파라미터 덮어쓰기(반복 가능), 예 --param ship_direction.dwa_enabled=true")
     a = ap.parse_args()
     os.makedirs(OUT_DIR, exist_ok=True)
     dov = {kv.split("=")[0].strip(): float(kv.split("=")[1]) for kv in a.dwell_label.split(",") if "=" in kv} or None
     kw = dict(wp_file=a.wp_file, world_wp_file=a.world_wp_file, gps_sigma=a.gps_sigma, current=tuple(a.current), t_max=a.t_max, tail=a.tail, dyn=a.dyn, hull=a.hull,
-              dwell_override=dov)
+              dwell_override=dov, node_overrides=parse_param_overrides(a.param))
     variants = ["A", "B"] if a.variant == "AB" else [a.variant]
     if a.plot_seed is not None:
         for vv in variants:
