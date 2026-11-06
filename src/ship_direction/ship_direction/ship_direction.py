@@ -11,6 +11,7 @@ from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 
 # 판정 로직은 ROS 비의존 모듈에 있다 (ROS 없이 단위 테스트 가능).
 # 재수출: from ship_direction.ship_direction import SensorWatch 로도 접근 가능.
+from ship_direction.dwa import DwaPlanner, HULLS as DWA_HULLS
 from ship_direction.failsafe import SensorWatch, TemporalVote, median_min
 from ship_direction.failsafe import effective_candidate, candidate_is_stale, CandidateStaleLog
 from ship_direction.failsafe import heading_missing
@@ -32,6 +33,13 @@ CANDIDATE_STALE_LOG_PERIOD_SEC = 5.0  # candidate stale 지속 중 ERROR 반복 
 YAW_MISSING_LOG_PERIOD_SEC = 5.0  # [N] yaw_error 미수신 정지 지속 중 ERROR 반복 주기(로그 전용, 제어 무관)
 CANDIDATE_SLOWEST_PUB_SEC = 0.5  # 가장 느린 정상 /candidate_angle 발행 주기(north period_sec).
 # candidate_stale_sec 가 이보다 작으면 거짓 stale 경고만(값은 그대로)
+DWA_ALLOWED_MODES = (5, 8)   # DWA 를 켤 수 있는 wp_mode (계약서_DWA_20261106 팀장 결정 ①). 0·1·2·3·7 금지
+DWA_AGILITY_MIN, DWA_AGILITY_MAX = 0.5, 2.0   # dwa_model_agility 허용 범위(결정 5)
+DWA_LIDAR_X_MAX_M = 1.0      # |dwa_lidar_x_m| 상한 (선체 길이 안)
+DWA_SLOW_WARN_SEC = 0.05     # DWA 1회가 이보다 오래 걸리면 WARN(결정 12, 로그 전용)
+DWA_LOG_PERIOD_SEC = 5.0     # DWA 느림·예외 로그 throttle(로그 전용)
+DWA_IDLE_RESET_SEC = 1.0     # 같은 DWA 모드 안에서 (C) 틱이 이보다 오래 끊기면 추정 초기화
+#   ((0)·레벨2·[N]·(A)(B) 동안 배가 멈췄을 수 있다 — 추정은 (C) 틱에서만 굴린다)
 
 
 def edge_range(distance_array, i, detection_distance):
@@ -353,6 +361,67 @@ class ShipDirection(Node):
                 f"→ 0.0(비킴 끔) 사용")
             self.side_escape_deg = 0.0
 
+        # ---- (C) DWA — 발견 10·11 (계약서_DWA_20261106) ----
+        # wp_mode 가 dwa_modes 이고 (C)(20000) 이면 조향각 후보 0~160 을 3자유도 모델로 2.5 s 굴려
+        # 선체 직사각형이 LiDAR 점에 0.25 m 안으로 안 드는 각 중 목표에 가까운 것을 고른다(ship_direction/
+        # dwa.py). 고르면 비킴·후진 상태기계를 건너뛴다. 전부 불가면 기존 결과(갭 정렬·비킴·후진).
+        # 끔(기본) = 기존과 비트 동일. 🚨 대회 launch 가 yaml 을 넘긴다 → yaml 과 같이 바꿀 것.
+        self.dwa_enabled = self.declare_parameter('dwa_enabled', False).value
+        dwa_modes_raw = self.declare_parameter('dwa_modes', [8]).value
+        self.dwa_hull = self.declare_parameter('dwa_hull', 'A').value
+        self.dwa_model_agility = float(
+            self.declare_parameter('dwa_model_agility', 1.0).value)
+        self.dwa_lidar_x_m = float(
+            self.declare_parameter('dwa_lidar_x_m', 0.0).value)   # ⚠️ 실측 필요(LiDAR 앞뒤 위치)
+        if not isinstance(self.dwa_enabled, bool):
+            self.get_logger().warn(
+                f"dwa_enabled={self.dwa_enabled!r} bool 아님 → false(DWA 끔) 사용")
+            self.dwa_enabled = False
+        try:
+            dwa_modes_raw = list(dwa_modes_raw)
+        except TypeError:
+            dwa_modes_raw = []
+        self.dwa_modes = []
+        dropped = []
+        for m in dwa_modes_raw:
+            if isinstance(m, bool) or m not in DWA_ALLOWED_MODES:
+                dropped.append(m)
+            elif int(m) not in self.dwa_modes:
+                self.dwa_modes.append(int(m))
+        if dropped:
+            self.get_logger().warn(
+                f"dwa_modes 의 {dropped} 는 허용({list(DWA_ALLOWED_MODES)}) 밖 → 제거, "
+                f"남은 {self.dwa_modes}")
+        if self.dwa_enabled and not self.dwa_modes:
+            self.get_logger().warn("dwa_modes 에 허용 모드가 하나도 없음 → DWA 끔")
+            self.dwa_enabled = False
+        if not isinstance(self.dwa_hull, str) or self.dwa_hull not in DWA_HULLS:
+            self.get_logger().error(
+                f"dwa_hull={self.dwa_hull!r} 는 'A'/'B' 가 아님 → DWA 끔")
+            self.dwa_enabled = False
+        if not math.isfinite(self.dwa_model_agility) or \
+                not (DWA_AGILITY_MIN <= self.dwa_model_agility <= DWA_AGILITY_MAX):
+            self.get_logger().warn(
+                f"dwa_model_agility={self.dwa_model_agility} 이상({DWA_AGILITY_MIN}~"
+                f"{DWA_AGILITY_MAX} 밖) → 1.0 사용")
+            self.dwa_model_agility = 1.0
+        if not math.isfinite(self.dwa_lidar_x_m) or abs(self.dwa_lidar_x_m) > DWA_LIDAR_X_MAX_M:
+            self.get_logger().warn(
+                f"dwa_lidar_x_m={self.dwa_lidar_x_m} 이상(|x| > {DWA_LIDAR_X_MAX_M} 또는 비유한) "
+                f"→ 0.0 사용")
+            self.dwa_lidar_x_m = 0.0
+        # 끄면 planner 를 만들지 않는다. 켜면 시작 INFO 한 줄(선체 글자 — 배별 yaml 확인용, 결정 9).
+        self._dwa = None
+        self._dwa_active = False      # 지금 DWA 모드 구간인가(진입 리셋·INFO 1회용)
+        self._dwa_picked = False      # 직전 DWA 틱에 DWA 가 골랐나(폴백 INFO 용)
+        self._dwa_last_t = None       # 마지막 DWA (C) 틱 시각(monotonic). 공백 판정용
+        self._dwa_needs_reset = False  # observe 예외 → 다음 DWA 틱에 조용히 초기화
+        if self.dwa_enabled:
+            self._dwa = DwaPlanner(self.dwa_hull, self.dwa_model_agility, self.dwa_lidar_x_m)
+            self.get_logger().info(
+                f"DWA 켬: 선체 {self.dwa_hull}, 모드 {self.dwa_modes}, "
+                f"배율 {self.dwa_model_agility}, lidar_x {self.dwa_lidar_x_m} m")
+
         self.detection_distance = self.detection_distance_default
 
         # ----------------------
@@ -654,6 +723,9 @@ class ShipDirection(Node):
         if wp_mode != getattr(self, '_side_wp_mode', wp_mode):
             self._side_prev = None
         self._side_wp_mode = wp_mode
+        # DWA 구간을 벗어난 틱 → 다음 진입 때 추정 초기화(결정 6). 끔이면 _dwa_active 가 늘 False.
+        if getattr(self, '_dwa_active', False) and wp_mode not in self.dwa_modes:
+            self._dwa_leave()
 
         # ---- candidate 신선도: candidate_stale_sec 넘게 갱신 없으면 20000 (_compute 전) ----
         candidate_angle = self._effective_candidate(
@@ -889,6 +961,10 @@ class ShipDirection(Node):
         # (C) 비킴 진입 로그용. 비킴 틱에서만 다시 True (발견 9).
         was_escaping = getattr(self, '_side_escape_active', False)
         self._side_escape_active = False
+        # DWA 구간 판정(control_cb 와 같음) — control_cb 를 안 거치는 직접 호출 대비. 가짜 self 호환 getattr.
+        if getattr(self, '_dwa_active', False) and \
+                getattr(self, '_side_wp_mode', None) not in self.dwa_modes:
+            self._dwa_leave()
 
         obst = self._closest_obstacle(msg)
 
@@ -1040,6 +1116,14 @@ class ShipDirection(Node):
             arc_length = angle_increment_rad * r_edge * (e - s)
             candidates.append((angle_diff, -arc_length, best_angle, s, e))
 
+        # ---- (C) DWA (계약서_DWA_20261106 결정 7) — 비킴·후진·갭 정렬 분기보다 **먼저** ----
+        #   DWA 모드가 아니거나 끔이면 (False, None) → 아래는 기존과 같다.
+        #   고르면 후진 상태기계 리셋, 비킴·후진 분기는 건너뛴다(거짓 '후진 시작' WARN 없음).
+        #   편 기억 _side_prev 는 갭 정렬 기준 그대로(후보 있으면 정렬 첫째, 0 개면 None).
+        dwa_on, dwa_angle = False, None
+        if getattr(self, 'dwa_enabled', False):
+            dwa_on, dwa_angle = self._dwa_select(angle_array, distance_array, yaw_mapped)
+
         # ---- [L] 회피 경로가 없으면 후진. 팀원 피드백 C안 반영 ----
         # 작년/2단계 코드는 여기서 매 tick 무조건 REVERSE_ANGLE 을 냈다 — reverse_cooldown 은
         # 타임스탬프만 갱신할 뿐 final_angle 에 영향이 없었다(dead code, 팀 지적).
@@ -1053,12 +1137,20 @@ class ShipDirection(Node):
         #   wp_mode 는 control_cb 가 lock 으로 뜬 스냅샷(_side_wp_mode) — detection_distance 와 같은 틱 값.
         #   직접 호출(control_cb 안 거침)은 None → 모르면 비킴 안 함.
         esc = None
-        if not candidates and getattr(self, 'side_escape_deg', 0.0) > 0.0:
+        if dwa_angle is None and not candidates and getattr(self, 'side_escape_deg', 0.0) > 0.0:
             wp_mode = getattr(self, '_side_wp_mode', None)
             if wp_mode is not None and wp_mode not in self.gate_wp_modes:
                 esc = side_escape(blobs, angle_array, distance_array, self.side_escape_deg,
                                   LIDAR_FORWARD_DEG)
-        if not candidates and esc is not None:
+        if dwa_angle is not None:
+            self._reset_reverse_sequence()
+            final_angle = dwa_angle
+            if candidates:
+                ranked = rank_candidates(candidates, side_prev, blobs,
+                                         self.side_hysteresis_deg, self.cross_penalty_deg,
+                                         LIDAR_FORWARD_DEG)
+                self._side_prev = next_side_memory(ranked[0][2], len(candidates))
+        elif not candidates and esc is not None:
             self._reset_reverse_sequence()
             final_angle = esc
             self._side_escape_active = True
@@ -1081,7 +1173,76 @@ class ShipDirection(Node):
             final_angle = ranked[0][2]
             self._side_prev = next_side_memory(final_angle, len(candidates))
 
+        if dwa_on:
+            self._dwa_observe(final_angle)     # 리미터 전 값(폴백 포함) — 시제품과 같다
         return final_angle, obst
+
+    # =====================================================
+    # (C) DWA 보조 (계약서_DWA_20261106) — 계산은 ship_direction/dwa.py
+    # =====================================================
+    def _dwa_leave(self):
+        """DWA 구간 상태를 내린다 → 다음 DWA 모드 진입 때 reset + INFO(결정 6)."""
+        self._dwa_active = False
+        self._dwa_picked = False
+        self._dwa_last_t = None
+        self._dwa_needs_reset = False
+
+    def _dwa_select(self, angle_array, distance_array, yaw_mapped):
+        """→ (DWA 모드 (C) 틱인가, 선택각 또는 None). 끔·모드 밖이면 (False, None), 아무것도 안 함.
+
+        예외는 잡아서 None(기존 결과) + ERROR. 1회 > DWA_SLOW_WARN_SEC 면 WARN(결정 12).
+        로그(CLAUDE.md §1-7): 심각도마다 호출 줄을 따로 둔다.
+        """
+        mode = getattr(self, '_side_wp_mode', None)
+        if not self.dwa_enabled or mode not in self.dwa_modes:
+            return False, None
+        t0 = time.monotonic()
+        idle = None if self._dwa_last_t is None else t0 - self._dwa_last_t
+        if not self._dwa_active:
+            self._dwa.reset()
+            self._dwa_active = True
+            self._dwa_picked = False
+            self.get_logger().info(
+                f"DWA 사용(mode {mode}) — 선체 {self.dwa_hull}, 배율 {self.dwa_model_agility}")
+        elif idle is not None and idle > DWA_IDLE_RESET_SEC:
+            self._dwa.reset()
+            self._dwa_picked = False
+            self.get_logger().info(
+                f"DWA (C) 공백 {idle:.1f} s > {DWA_IDLE_RESET_SEC:.1f} s → 추정 초기화(mode {mode})",
+                throttle_duration_sec=DWA_LOG_PERIOD_SEC)
+        elif self._dwa_needs_reset:
+            self._dwa.reset()                 # observe 예외 뒤 — ERROR 는 이미 냈다(INFO 없음)
+        self._dwa_needs_reset = False
+        self._dwa_last_t = t0
+        try:
+            angle = self._dwa.choose(angle_array, distance_array, yaw_mapped)
+        except Exception as e:   # 어떤 계산 실패든 노드를 죽이지 않는다(기존 결과로)
+            self.get_logger().error(
+                f"DWA 계산 예외 → 기존 결과 사용: {e!r}",
+                throttle_duration_sec=DWA_LOG_PERIOD_SEC)
+            angle = None
+        dt = time.monotonic() - t0
+        if dt > DWA_SLOW_WARN_SEC:
+            self.get_logger().warn(
+                f"DWA 1회 {dt * 1000.0:.0f} ms > {DWA_SLOW_WARN_SEC * 1000.0:.0f} ms "
+                f"(제어 주기 {self.control_period:.2f} s)",
+                throttle_duration_sec=DWA_LOG_PERIOD_SEC)
+        if angle is None and self._dwa_picked:
+            self.get_logger().info(
+                f"DWA 가능한 후보 없음(mode {mode}) → 기존 결과(갭·비킴·후진) 폴백",
+                throttle_duration_sec=1.0)
+        self._dwa_picked = angle is not None
+        return True, angle
+
+    def _dwa_observe(self, final_angle):
+        """이번 틱 (C) 결과(리미터 전)로 DWA 추정을 굴린다. 예외면 ERROR, 다음 DWA 틱에 초기화."""
+        try:
+            self._dwa.observe(final_angle)
+        except Exception as e:   # 위와 같음
+            self.get_logger().error(
+                f"DWA 추정 갱신 예외 → 다음 DWA 틱에 추정 초기화: {e!r}",
+                throttle_duration_sec=DWA_LOG_PERIOD_SEC)
+            self._dwa_needs_reset = True
 
     # =====================================================
     # 스파이크 억제 / 팽창 (작년 그대로)
