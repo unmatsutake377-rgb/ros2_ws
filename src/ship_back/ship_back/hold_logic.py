@@ -4,10 +4,63 @@
     from ship_back.hold_logic import target_source, counts_as_seen, search_timed_out
     from ship_back.hold_logic import unknown_giveup, search_timeout_warn, hold_total_exceeded
     from ship_back.hold_logic import reacquire_stop_active, reacquire_window_elapsed
+    from ship_back.hold_logic import check_hold_params, DEFAULT_HOLD_DIST_M, DEFAULT_DIST_TOL_M
 
 규정: '부표 5m 이내 5초 유지'. 작년 코드는 그냥 5초간 PWM 중립이라 조류에 밀려 실패했다.
 → LiDAR 로 잰 거리로 전진/후진을 결정해 능동적으로 위치를 유지한다(bang-bang + 데드밴드).
 """
+
+import math
+
+# 시작 가드(check_hold_params)의 복귀값 = ship_back.py declare_parameter 리터럴 = config/ship_back.yaml
+#   (test_hold_param_guard 가 셋을 묶어 둔다). ⚠️ 실측 필요(hold_dist_m).
+DEFAULT_HOLD_DIST_M = 2.5
+DEFAULT_DIST_TOL_M = 0.4
+
+
+def check_hold_params(hold_dist, dist_tol, keep_radius,
+                      default_hold=DEFAULT_HOLD_DIST_M, default_tol=DEFAULT_DIST_TOL_M):
+    """hold_dist_m·dist_tol_m 시작 가드. 순수 함수. → (쓸 hold, 쓸 tol, [(심각도, 메시지), …]).
+
+    심각도는 'ERROR' / 'WARN' / 'INFO'. 노드는 시작 때 한 번만 부르고 줄마다 그 심각도로 찍는다.
+    (계약서_옆비킴_현장조정_20261106 결정 ⑤ — 동작은 그대로, 값 확인만)
+
+    ERROR: 두 값 중 하나라도 숫자 아님·비유한·음수, 또는 hold − tol ≤ 0(후진 경계가 부표 위·뒤)
+           → **두 값 모두** 기본값(default_hold / default_tol)으로 복귀. 아래 검사는 복귀한 값으로.
+    WARN : hold + tol ≥ keep_radius — 유지 띠 바깥 끝이 규정 반경에 닿거나 넘음 → HoldTimer 가
+           리셋돼 위치유지가 성공하지 못함(hold_max_sec 뒤 포기). 값은 그대로(현장 판단).
+    INFO : hold + tol > 기본 바깥 끝(default_hold + default_tol = 2.9 m) — north 는 이 2.9 를
+           los_logic.SHIP_BACK_HOLD_OUTER_M 으로 따로 갖고 arrive_radius_hold_modes_m(3.5) 를 거기에
+           맞춰 두었다. ship_back 은 north 값을 모르므로 숫자 비교 없이 같이 확인하라는 안내만.
+    keep_radius 는 규정값이라 여기서 검사하지 않는다(비유한이면 WARN 비교가 거짓 → 안 남).
+    """
+    issues = []
+    try:
+        h = float(hold_dist)
+        t = float(dist_tol)
+        bad = (not math.isfinite(h) or not math.isfinite(t) or h < 0.0 or t < 0.0
+               or h - t <= 0.0)
+    except (TypeError, ValueError):
+        bad = True
+    if bad:
+        issues.append(('ERROR',
+                       f"🚨 hold_dist_m={hold_dist!r}, dist_tol_m={dist_tol!r} 는 잘못된 값"
+                       f"(숫자 아님·NaN·inf·음수, 또는 hold − tol ≤ 0) → 두 값 모두 기본값 "
+                       f"{default_hold:g}/{default_tol:g} m 로 돈다. ship_back.yaml 확인."))
+        h, t = float(default_hold), float(default_tol)
+
+    outer = h + t
+    if outer >= keep_radius:
+        issues.append(('WARN',
+                       f"⚠️ 유지 띠 바깥 {outer:g} m ≥ 규정 반경 {keep_radius:g} m — HoldTimer 가 "
+                       f"리셋돼 위치유지가 성공하지 못함. 값은 그대로 쓴다(ship_back.yaml 확인)."))
+    base_outer = float(default_hold) + float(default_tol)
+    if outer > base_outer + 1e-9:
+        issues.append(('INFO',
+                       f"유지 띠 바깥 {outer:g} m > 기본 {base_outer:g} m — north 도착 반경"
+                       f"(north_goal_angle.yaml arrive_radius_hold_modes_m, 기본 3.5 m)이 이보다 "
+                       f"큰지 같이 확인(north 는 los_logic.SHIP_BACK_HOLD_OUTER_M {base_outer:g} 를 봄)."))
+    return h, t, issues
 
 
 def should_reset_on_mode(prev_mode, cur_mode, active_modes):

@@ -54,6 +54,7 @@ from ship_back.hold_logic import station_keep_action, HoldTimer, should_reset_on
 from ship_back.hold_logic import target_source, counts_as_seen, search_timed_out, unknown_giveup
 from ship_back.hold_logic import search_timeout_warn, hold_total_exceeded
 from ship_back.hold_logic import reacquire_stop_active, reacquire_window_elapsed
+from ship_back.hold_logic import check_hold_params
 
 IMAGE_ANGLE_INVALID = 10000.0
 CANDIDATE_INVALID = 20000.0
@@ -99,8 +100,22 @@ class ShipBack(Node):     # 🚨 작년엔 ShipTurn 이었다(복붙). 이름을
 
         self.keep_radius_m = float(self.declare_parameter('keep_radius_m', 5.0).value)   # 규정
         self.hold_time_sec = float(self.declare_parameter('hold_time_sec', 5.0).value)   # 규정
-        self.hold_dist_m = float(self.declare_parameter('hold_dist_m', 2.5).value)       # ⚠️ 실측
-        self.dist_tol_m = float(self.declare_parameter('dist_tol_m', 0.4).value)
+        # ⚠️ 실측(hold_dist_m). 코드 기본값 2.5 / 0.4 = hold_logic.DEFAULT_* = yaml(테스트가 묶음).
+        #   기본값은 리터럴로 둔다 — launch_files T3/T4 가 ast 로 읽는다.
+        raw_hold = self.declare_parameter('hold_dist_m', 2.5).value
+        raw_tol = self.declare_parameter('dist_tol_m', 0.4).value
+        # 시작 값 가드(계약서_옆비킴_현장조정_20261106 결정 ⑤): 잘못된 값 → ERROR + 두 값 기본값,
+        #   유지 띠 바깥 ≥ keep_radius → WARN(값 유지), 기본 2.9 m 초과 → north 반경 확인 INFO.
+        #   시작 때 한 번만(파라미터 콜백 없음). 심각도마다 호출 줄을 따로 둔다(§1-7).
+        self.hold_dist_m, self.dist_tol_m, hold_issues = check_hold_params(
+            raw_hold, raw_tol, self.keep_radius_m)
+        for level, text in hold_issues:
+            if level == 'ERROR':
+                self.get_logger().error(text)
+            elif level == 'WARN':
+                self.get_logger().warn(text)
+            else:
+                self.get_logger().info(text)
 
         # SEARCH 시간 초과로 DONE 래치할지(§2-4). 기본 false = 계속 SEARCH(20000), 진행은 north 의
         #   WP 시간 초과. true 면 옛 동작 — search_timeout_sec 는 그때만 쓴다.
