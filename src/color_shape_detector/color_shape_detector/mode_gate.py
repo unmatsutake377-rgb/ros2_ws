@@ -75,6 +75,21 @@ class ModeGate:
         return self._mode
 
 
+def mode_changed(prev, cur):
+    """
+    /wp_mode 값이 바뀌었나 — 검출기가 유예(last_valid)·확정 창을 비울 **유일한** 조건.
+
+    prev = ModeGate.update **전**의 `gate.mode`(부팅 뒤 미수신이면 None), cur = update 뒤의 `gate.mode`.
+    None→m 은 참(첫 수신). 같은 값 반복은 거짓 — north 가 0.5 s 마다 같은 모드를 재발행하므로
+    "수신마다" 비우면 유예 2 s 가 사실상 사라진다(계약서_검출기모드리셋_20261106 위험 1).
+    정수 변환 실패는 update 가 False 를 돌려주고 mode 를 안 바꾸니 호출자가 거기서 끝낸다.
+
+    왜 비우나(발견 7): 2(white)→3(red) 전환 뒤에도 유예 안이면 흰 부표의 각도·색이 /image_angle 로
+    나가 ship_back 이 흰 부표 앞에 HOLD 했다. 모드가 바뀌면 이전 모드 색의 값은 더 이상 답이 아니다.
+    """
+    return prev != cur
+
+
 def check_publisher_conflicts(node_specs):
     """
     상주 노드들이 같은 토픽을 겹치는 모드에서 발행하지 않는지 정적 검사.

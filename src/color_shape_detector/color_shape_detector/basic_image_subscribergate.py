@@ -5,7 +5,7 @@ from std_msgs.msg import Float32, Int32
 from cv_bridge import CvBridge
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 
-from color_shape_detector.mode_gate import ModeGate
+from color_shape_detector.mode_gate import ModeGate, mode_changed
 from color_shape_detector.vision_geom import (
     DEFAULT_HFOV_DEG, angle_from_pixel, solidity,
 )
@@ -167,7 +167,23 @@ class ImageSubscriber(Node):
     # -----------------------------------
 
     def wp_mode_callback(self, msg):
-        self.mode_gate.update(msg.data, time.monotonic())
+        prev = self.mode_gate.mode          # update 전 값 — 바뀌었는지는 이걸로 본다
+        if not self.mode_gate.update(msg.data, time.monotonic()):
+            return
+        if not mode_changed(prev, self.mode_gate.mode):
+            return
+        # 모드가 바뀌면 red·green 유예(last_valid)·확정 창을 비운다(계약서_검출기모드리셋_20261106).
+        #   0→1 전환이 부표가 잠깐 안 보이는 순간과 겹치면 최대 grace 2 s 10000 → ship_gate 는 20000(GPS)
+        #   — 정상 경로의 한 갈래(위험 4). 같은 값 반복(north 0.5 s)은 안 비운다.
+        # 🚨 여기서는 발행하지 않는다. 발행은 color_callback 의 모드 게이트 뒤에서만(AST 검사 대상).
+        self.last_valid = {
+            'red':    {'angle': None, 'time': 0.0},
+            'green': {'angle': None, 'time': 0.0},
+        }
+        for conf in self.confirm.values():
+            conf.reset()
+        self.found_in_frame = {'red': False, 'green': False}
+        self.get_logger().info(f"wp_mode {prev}→{self.mode_gate.mode}: 유예·확정 창 초기화")
 
     def color_callback(self, msg):
         # V1(T2-3): `if self.latest_depth is None: return` 가드 제거.

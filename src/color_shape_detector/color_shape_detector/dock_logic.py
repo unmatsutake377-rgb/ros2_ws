@@ -161,6 +161,31 @@ class DetectionConfirmer:
     def confirmed(self):
         return self._confirmed
 
+    def reset(self):
+        """
+        창·확정을 비운다 — /wp_mode 값이 바뀐 순간 노드가 부른다(계약서_검출기모드리셋_20261106).
+        새 모드에서는 다시 N 프레임을 요구한다. 새 인스턴스로 갈아끼우지 않고 메서드로 두는 이유:
+        tools/sim 의 Det 가 confirmer 를 채널별로 캐시한다(위험 3) — 같은 객체를 비워야 어긋나지 않는다.
+        """
+        self._window.clear()
+        self._confirmed = None
+
+
+def fallback_value(last_valid, now, grace_period_s):
+    """
+    미검출 프레임의 유예 판정(turn 검출기). 유예 안이면 (angle, color), 아니면 None.
+
+    last_valid = {'angle', 'color', 'time'} — time 0.0 또는 angle None 은 "유효값 없음"(모드 전환 리셋 뒤 상태).
+    None 이면 호출자가 10000·"none" 을 낸다(센티널은 노드가 들고 있다 — 상수 공유 모듈화 금지, CLAUDE.md 1-8).
+    노드 안 fallback 분기와 완전히 같은 식이다. 여기로 뺀 이유: "모드 2 확정 → 3 수신(리셋) → 미검출 →
+    10000" 과 "3→3 반복 → 미검출 → 유예 유지" 를 cv2 없이 검증하려고(test_detector_mode_reset).
+    """
+    t = last_valid.get('time', 0.0)
+    angle = last_valid.get('angle')
+    if t > 0 and (now - t) <= grace_period_s and angle is not None:
+        return angle, last_valid.get('color')
+    return None
+
 
 # ---- 프레임 처리 분기 (계약서_도킹게이트_20261028) ----
 # 이미지 한 장이 왔을 때 도킹 검출기가 할 일. 노드(color_callback)는 **이 함수의 결과로만** 분기한다.

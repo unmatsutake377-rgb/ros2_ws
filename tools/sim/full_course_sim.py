@@ -352,6 +352,15 @@ class Det:
             self.conf[key] = DetectionConfirmer(self.cf, confirm_window=self.cw)
         return self.conf[key]
 
+    def on_mode_change(self):
+        """노드 wp_mode_callback 과 같은 리셋 — /wp_mode **값이 바뀐** 틱에만 부른다(계약서_검출기모드리셋_20261106).
+        유예(last)·확정 창(실제 DetectionConfirmer.reset)·turn 의 마지막 색을 비운다. 같은 값 반복엔 부르지 않는다."""
+        self.last.clear()
+        for c in self.conf.values():
+            c.reset()
+        if hasattr(self, "last_color"):
+            del self.last_color
+
     def frame(self, chan, det_key, angle, t):
         """채널 하나의 프레임 처리 → 발행값(None = 이 채널 발행 안 함)."""
         c = self.confirmer(chan)
@@ -513,8 +522,11 @@ def run(seed, variant="A", wp_file=None, world_wp_file=WP_DEFAULT, gps_sigma=0.0
                 if nga.pubs["/wp_mode"].count > c0["/wp_mode"]:
                     m = nga.pubs["/wp_mode"].last
                     sd.wp_mode_cb(m); sg.wp_mode_cb(m); sb.wp_cb(m); st.wp_cb(m); sk.wp_mode_cb(m)
+                    mode_chg = m.data != pub_mode          # 값 변화만 — 0.5 s 반복 발행엔 리셋 안 함
                     for d in (det_gate, det_turn, det_dock):
                         d.gate.update(m.data, Clock.t)
+                        if mode_chg:
+                            d.on_mode_change()
                     det_turn.wp_mode = m.data
                     pub_mode = m.data
                 if nga.pubs["/wp_remaining_time"].count > c0["/wp_remaining_time"]:

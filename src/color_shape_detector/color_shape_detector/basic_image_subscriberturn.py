@@ -5,12 +5,12 @@ from std_msgs.msg import Float32, String, Int32
 from cv_bridge import CvBridge
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 
-from color_shape_detector.mode_gate import ModeGate
+from color_shape_detector.mode_gate import ModeGate, mode_changed
 from color_shape_detector.vision_geom import (
     DEFAULT_HFOV_DEG, angle_from_pixel, solidity,
 )
 from color_shape_detector import hsv_ranges
-from color_shape_detector.dock_logic import DetectionConfirmer
+from color_shape_detector.dock_logic import DetectionConfirmer, fallback_value
 from color_shape_detector.turn_color_logic import (
     DEFAULT_TURN_COLOR_MODE2, DEFAULT_TURN_COLOR_MODE3, TURN_COLORS,
     build_wp_color_map, detection_disabled, log_due, resolve_turn_color,
@@ -193,8 +193,19 @@ class ImageSubscriber(Node):
         return color   # 무효면 None → build_wp_color_map 이 빈 목록으로
 
     def wp_mode_callback(self, msg: Int32):
-        self.mode_gate.update(msg.data, time.monotonic())
+        prev = self.mode_gate.mode          # update 전 값 — 바뀌었는지는 이걸로 본다
+        ok = self.mode_gate.update(msg.data, time.monotonic())
         self.wp_mode = msg.data
+        if not (ok and mode_changed(prev, self.mode_gate.mode)):
+            return
+        # 모드가 바뀌면 이전 모드 색의 유예(last_valid)·확정 창을 비운다(발견 7, 계약서_검출기모드리셋).
+        #   안 비우면 2(white)→3(red) 뒤 최대 grace 2 s 동안 흰 부표 각도가 /image_angle 로 나가
+        #   ship_back 이 흰 부표 앞에 HOLD 한다. 같은 값 반복(north 0.5 s)은 안 비운다 — 유예가 사라진다.
+        # 🚨 여기서는 발행하지 않는다. 발행은 color_callback 의 모드 게이트 뒤에서만(AST 검사 대상).
+        self.last_valid = {'angle': None, 'color': None, 'time': 0.0}
+        self.confirm.reset()
+        self.found_in_frame = False
+        self.get_logger().info(f"wp_mode {prev}→{self.mode_gate.mode}: 유예·확정 창 초기화")
 
     def color_callback(self, msg):
         # V1(T2-3): depth 가드 제거 — 뎁스 없는 카메라에서 콜백이 영원히 막히는 것 방지
@@ -244,15 +255,12 @@ class ImageSubscriber(Node):
             self.color_pub.publish(String(data=str(color)))
 
         if not self.found_in_frame:
-            lv = self.last_valid
-            if (
-                lv['time'] > 0 and
-                (now - lv['time']) <= self.grace_period_s and
-                lv['angle'] is not None
-            ):
-                publish(lv['angle'], lv['color'])
-            else:
+            # 유예 판정은 순수 함수(dock_logic.fallback_value) — 모드 전환 리셋 뒤 None 이 나오는지 테스트한다.
+            fb = fallback_value(self.last_valid, now, self.grace_period_s)
+            if fb is None:
                 publish(IMAGE_ANGLE_INVALID, "none")
+            else:
+                publish(fb[0], fb[1])
 
     def process_image(self, cv_image, view_frame):
         hsv = cv2.cvtColor(cv_image, cv2.COLOR_BGR2HSV)
