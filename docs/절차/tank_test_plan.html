@@ -192,6 +192,8 @@ gps_vel(RTK) 로 기록. ★ RTK fix 품질 확인 필수(아래).</pre>
 <b>미션 명령 신선도 (11-04, 계약서_전체코스 C1)</b> — 벤치: ros2 param get /ship_direction candidate_stale_sec → 1.0.
   /wp_mode 7 + /candidate_angle 5000 10 Hz pub → SPIN(16001400) → pub 끊으면 약 1.0 s 뒤 /desired_angle 이 (C) 값으로, ERROR 1회(이후 5 s 마다),
   다시 pub 하면 INFO 1회·노드 생존. /wp_mode 를 다른 값으로 바꾸면 즉시 20000 기준으로 초기화.
+<b>목표 근접 감속 (11-06, 계약서_목표근접감속_20261106)</b> — 벤치: motor_control+ssf_bridge 만, <code>/desired_angle 80.0</code> 20 Hz + <code>ros2 topic pub -r 2 /goal_distance std_msgs/msg/Float32 "{data: 10.0}"</code> → Motor_run 13601360; 6.0 → 중심 약 1388(전진 성분 112); 3.0·0.0 → 14301430; pub 끊고 2 s → 1360 복귀. /desired_angle 110 일 때 좌우 차(pwm_l−pwm_r)가 거리와 무관하게 같은지. 260 → 15901590 불변, 5000 → 16001400 불변.
+  수조: 부표 쪽으로 다가갈 때 8 m 안에서 속도가 줄어드는지(블랙박스 gps 속도), 정지 거리. <b>실측 항목 추가: 추진기 좌우 간격(A ±0.12 m 가정)·제자리/최소 선회 지름</b> — 감속 기본값(8/3 m, 0.5)과 시뮬 계수를 이 값으로 맞춘다.
 <b>헤딩 오차 한 번도 없음 → 20000 구간 정지 (11-05, 계약서_yaw미수신정지_20261105)</b> — 벤치(프로펠러 물 밖), GPS 안테나 뺀 채 launch → AUTO:
   /candidate_angle 20000(또는 무수신) 동안 /desired_angle 50000, ERROR '/yaw_error 를 부팅 뒤 한 번도 받지 못함 …' 1회 + 5 s 마다 '/yaw_error 미수신 지속', <b>/failsafe_level 은 0</b>(계기판은 정상으로 보임 — 로그로 확인).
   /candidate_angle 30.0 · 5000 · 180 을 pub 하면 막히지 않음(110 · 5000 · 260). 이어서 <code>ros2 topic pub -r 20 /yaw_error std_msgs/msg/Float32 "{data: 0.0}"</code> → INFO '/yaw_error 첫 수신 → 20000(갭 선택)도 목표 방위로 계산' 1회, 조향 재개, <b>노드 생존</b>.
