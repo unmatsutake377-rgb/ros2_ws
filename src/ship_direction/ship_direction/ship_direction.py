@@ -14,6 +14,7 @@ from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 from ship_direction.failsafe import SensorWatch, TemporalVote, median_min
 from ship_direction.failsafe import effective_candidate, candidate_is_stale, CandidateStaleLog
 from ship_direction.failsafe import heading_missing
+from ship_direction.gap_select import obstacle_blobs, rank_candidates, next_side_memory
 
 # 특수 신호 상수 (CLAUDE.md 3-9 상수표)
 SPIN_RIGHT = 5000.0          # 우선회
@@ -319,6 +320,24 @@ class ShipDirection(Node):
         self.rate_limit_max_deg_per_tick = float(
             self.declare_parameter('rate_limit_max_deg_per_tick', 15.0).value)
 
+        # ---- (C) 후보 정렬 벌점(도) — 발견 8 (계약서_회피편선택_20261106) ----
+        # 편 유지: 직전 선택(리미터 전)과 정면 80 반대편 후보에 +side_hysteresis_deg.
+        # 가로지름: 정면과 후보 사이에 장애물 덩어리 중심이 끼면 +cross_penalty_deg.
+        # 0.0 = 끔(기존 정렬과 같음). 비유한·음수 → 기본값 + WARN 1회.
+        # 🚨 대회 launch 가 yaml 을 넘긴다 → yaml 과 같이 바꿀 것.
+        self.side_hysteresis_deg = float(
+            self.declare_parameter('side_hysteresis_deg', 40.0).value)
+        self.cross_penalty_deg = float(
+            self.declare_parameter('cross_penalty_deg', 90.0).value)
+        if not math.isfinite(self.side_hysteresis_deg) or self.side_hysteresis_deg < 0.0:
+            self.get_logger().warn(
+                f"side_hysteresis_deg={self.side_hysteresis_deg} 이상 → 기본값 40.0도 사용")
+            self.side_hysteresis_deg = 40.0
+        if not math.isfinite(self.cross_penalty_deg) or self.cross_penalty_deg < 0.0:
+            self.get_logger().warn(
+                f"cross_penalty_deg={self.cross_penalty_deg} 이상 → 기본값 90.0도 사용")
+            self.cross_penalty_deg = 90.0
+
         self.detection_distance = self.detection_distance_default
 
         # ----------------------
@@ -362,6 +381,11 @@ class ShipDirection(Node):
         self.reverse_state = 'READY'
         self.reverse_start_time = None
         self.reverse_cooldown_start_time = None
+
+        # (C) 편 유지 기억: 직전 틱 (C) 선택각(리미터 전). None = 기억 없음.
+        #   (C) 를 타는 틱에서만 유지 — (0)(A)(B)·STOP·레벨2·wp_mode 변경 틱엔 None (발견 8).
+        self._side_prev = None
+        self._side_wp_mode = None     # wp_mode 변경 감지용(control_cb 스냅샷 비교)
 
         self.prev_final_angle = None  # [K] rate limiter 상태. None = "직전 값 없음/특수신호였음" → 다음 정상값에 즉시 스냅
 
@@ -609,6 +633,11 @@ class ShipDirection(Node):
 
         now = time.monotonic()
 
+        # (C) 편 유지 기억은 wp_mode 가 바뀐 틱에 버린다 (구간이 바뀌면 직전 편은 의미 없음).
+        if wp_mode != getattr(self, '_side_wp_mode', wp_mode):
+            self._side_prev = None
+        self._side_wp_mode = wp_mode
+
         # ---- candidate 신선도: candidate_stale_sec 넘게 갱신 없으면 20000 (_compute 전) ----
         candidate_angle = self._effective_candidate(
             candidate_angle, candidate_t, now, wp_mode)
@@ -618,6 +647,7 @@ class ShipDirection(Node):
         # _compute (0)/[I].
         # bad 를 여기서도 보는 이유: 워치독 틱(0.1s)을 기다리지 않고 즉시 멈추기 위해서다.
         if level >= 2 or bad:
+            self._side_prev = None
             self.pub_obstacle_distance.publish(self._closest_obstacle(scan))
             angle = self._apply_rate_limit(STOP_HOLD)   # [K] 범위 밖 값 → 통과 + 상태 리셋
             self.pub_desired_angle.publish(Float32(data=angle))
@@ -626,6 +656,7 @@ class ShipDirection(Node):
         # 스캔을 한 번도 못 받음(부팅 중) → 발행할 각도가 없다.
         # motor_control 은 '첫 명령 전 중립'이라 안전하다.
         if scan is None:
+            self._side_prev = None
             return
 
         # ---- [N] 20000(갭 선택)인데 yaw_error 를 한 번도 못 받음 → STOP_HOLD (_compute 전) ----
@@ -832,6 +863,11 @@ class ShipDirection(Node):
         """
         now = time.monotonic()
 
+        # (C) 편 유지 기억: 꺼내 두고 None 으로 비운다 → (C) 에서 후보를 골랐을 때만 다시 채운다.
+        #   (0)(A)(B)·[I]·후보 0 개 틱은 None 으로 남는다. 가짜 self(테스트) 호환 위해 getattr.
+        side_prev = getattr(self, '_side_prev', None)
+        self._side_prev = None
+
         obst = self._closest_obstacle(msg)
 
         # ---- (0) WP4 초기 5초 & STOP_HOLD 우선 처리 ----
@@ -940,6 +976,8 @@ class ShipDirection(Node):
 
         binary = self.smooth_spikes(binary)
         binary = self.suppress_spike_edges(binary)
+        # 가로지름 벌점용 장애물 덩어리 — 팽창 **전** 마스크(필터 뒤)에서 (발견 8)
+        blobs = obstacle_blobs(binary, angle_array, distance_array)
         binary = self.dilate_obstacles(binary, distance_array, angle_increment_deg,
                                        detection_distance)
 
@@ -992,8 +1030,13 @@ class ShipDirection(Node):
             final_angle = self._apply_reverse_sequence(now)
         else:
             self._reset_reverse_sequence()
-            candidates.sort(key=lambda x: (x[0], x[1]))
-            final_angle = candidates[0][2]
+            # 편 유지·가로지름 벌점을 더한 정렬 (발견 8, 계약서_회피편선택_20261106).
+            #   벌점 0.0/0.0 이면 기존 (angle_diff, -arc) 정렬과 같다.
+            ranked = rank_candidates(candidates, side_prev, blobs,
+                                     self.side_hysteresis_deg, self.cross_penalty_deg,
+                                     LIDAR_FORWARD_DEG)
+            final_angle = ranked[0][2]
+            self._side_prev = next_side_memory(final_angle, len(candidates))
 
         return final_angle, obst
 
