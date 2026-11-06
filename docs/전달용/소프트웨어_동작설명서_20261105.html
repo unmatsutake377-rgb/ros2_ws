@@ -345,7 +345,7 @@ td:nth-child(2){white-space:nowrap}
 </tbody></table></div>
 <ul>
 <li>APPROACH 중 다시 맞추기: 1.5 m보다 멀 때만, 표식이 25° 넘게 벗어나거나 처음 3 m 안에 들어올 때 8° 넘게 벗어나 있으면 ALIGN으로 돌아간다.</li>
-<li>거리를 모르면(APPROACH·CONTACT·BACKOFF) 멈춘다.</li>
+<li>거리를 모를 때(11-06 수정): APPROACH는 멈추되 30초 타임아웃은 계속 세서 BACKOFF로 빠진다. CONTACT는 거리와 무관하게 3초 뒤 BACKOFF. BACKOFF는 스캔이 오는데 앞에 반환이 없으면(벽에 바짝 붙음) 그대로 후진하고, LiDAR 자체가 끊겼으면 멈춘다. 그전 코드는 셋 다 거리를 모르면 멈춘 채 타이머도 안 돌아서, 벽에 닿아 LiDAR 최소 측정거리 아래로 들어가면 150초 갇혔다(시뮬3자유도_발견 발견 1).</li>
 </ul>
 <div class="tw"><table><thead><tr><th>DONE 이유</th><th>내는 값</th></tr></thead><tbody>
 <tr class=""><td>정상 후진 이탈</td><td>20000 → 다음 WP로</td></tr>
