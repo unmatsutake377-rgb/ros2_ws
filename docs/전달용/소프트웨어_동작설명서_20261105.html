@@ -279,7 +279,7 @@ td:nth-child(2){white-space:nowrap}
 <li><strong>가장 큰 것 하나</strong>를 고른다.</li>
 <li><strong>확인:</strong> 게이트·위치유지는 1프레임, 도킹은 <strong>3프레임 연속</strong> 같은 결과여야 믿는다.</li>
 <li><strong>방향으로 바꾸기:</strong> 화면 가로 위치 → 각도. 화면 가운데가 0°, 왼쪽이 +. 화각 63.9°(직접 잰 값)로 계산한다.</li>
-<li><strong>잠깐 안 보이면:</strong> 2초까지는 마지막 각도를 계속 내고, 그 뒤에는 10000(안 보임).</li>
+<li><strong>잠깐 안 보이면:</strong> 2초까지는 마지막 각도를 계속 내고, 그 뒤에는 10000(안 보임). <strong>임무 번호가 바뀌면 그 즉시 마지막 각도와 확인 창을 버린다</strong>(11-06 수정). 그전에는 위치유지(흰)에서 탐색(빨강)으로 넘어가도 2초 동안 흰 부표 각도가 계속 나가서 ship_back이 흰 부표를 탐색 부표로 잡았다(발견 7).</li>
 </ol>
 <div class="tw"><table><thead><tr><th>검출기</th><th>담당 임무</th><th>찾는 것</th><th>내는 토픽</th></tr></thead><tbody>
 <tr class=""><td>gate</td><td>0, 1</td><td>빨강·초록 부표</td><td><code>/red_angle</code>, <code>/green_angle</code></td></tr>
@@ -322,6 +322,7 @@ td:nth-child(2){white-space:nowrap}
 <ul>
 <li>성공: 부표에서 <strong>5 m 이내에 5초 연속</strong> (규정).</li>
 <li>부표를 2초 넘게 놓침 → <strong>5초 멈춰서</strong> 다시 찾는다(SEARCH). 다시 보이면 이어서 HOLD.</li>
+<li>ship_back은 각도만 보고 색은 확인하지 않는다. 모드가 바뀐 직후 이전 부표 각도가 섞여 오지 않게 하는 건 검출기 쪽(모드 변경 시 유예 폐기, 11-06)이 맡는다. INIT 1초는 그 방어가 아니다.</li>
 <li>HOLD와 재탐색 멈춤을 합쳐 60초가 넘으면 포기(DONE).</li>
 <li>임무 번호가 2→3처럼 바뀌면 처음(INIT)부터 다시.</li>
 </ul>
@@ -444,7 +445,7 @@ td:nth-child(2){white-space:nowrap}
 </ul>
 </article>
 </section>
-<section id="s394"><h2>6. 코스 한 바퀴 이야기로 따라가기</h2>
+<section id="s395"><h2>6. 코스 한 바퀴 이야기로 따라가기</h2>
 <ol>
 <li><strong>출발 전:</strong> MANUAL로 출발점까지 몬다. north는 WP0 방향을 계산만 하고 기다린다.</li>
 <li><strong>AUTO 전환:</strong> WP0(임무 0, 게이트 시작). 카메라 gate 검출기가 켜진다. ship_gate가 빨강·초록 가운데로 조향하고, 안 보이면 20000이라 GPS로 간다. 게이트 끝(WP1)까지 같은 방식. 게이트 구간은 탐지거리를 2.0 m로 줄여 좁은 게이트에서 괜히 피하지 않게 한다.</li>
@@ -457,7 +458,7 @@ td:nth-child(2){white-space:nowrap}
 </ol>
 <p>어느 임무든 <strong>시간 초과</strong>가 지나면 위치와 상관없이 다음으로 넘어간다.</p>
 </section>
-<section id="s407"><h2>7. 고장 났을 때 — 누가 알아채고 배는 어떻게 되나</h2>
+<section id="s408"><h2>7. 고장 났을 때 — 누가 알아채고 배는 어떻게 되나</h2>
 <div class="tw"><table><thead><tr><th>상황</th><th>알아채는 곳</th><th>배 동작</th></tr></thead><tbody>
 <tr class=""><td>LiDAR 선이 빠짐</td><td>ship_direction 감시</td><td>0.7초 감속 → 3초 정지. 다시 꽂으면 바로 정상</td></tr>
 <tr class=""><td>IMU 끊김</td><td>yaw_mux 침묵 → ship_goal_angle 침묵 → ship_direction</td><td>감속 → 정지</td></tr>
@@ -471,7 +472,7 @@ td:nth-child(2){white-space:nowrap}
 <tr class=""><td>위험 상황</td><td>사람</td><td>비상정지 버튼 또는 무선 리모컨 → 접촉기가 추진 전원 차단(소프트웨어와 무관)</td></tr>
 </tbody></table></div>
 </section>
-<section id="s421"><h2>8. 알아 두면 좋은 주의점</h2>
+<section id="s422"><h2>8. 알아 두면 좋은 주의점</h2>
 <ul>
 <li><strong>헤딩 보정값이 아직 0이다.</strong> 수조 정북 시험 후 배마다 <code>ssf_heading_A/B.yaml</code>에 기입.</li>
 <li><strong>지오펜스는 꺼져 있다.</strong> 대회장 경계 좌표가 생기면 <code>north_goal_angle.yaml</code>의 <code>geofence_polygon</code>에 넣는다.</li>
@@ -483,7 +484,7 @@ td:nth-child(2){white-space:nowrap}
 <li>펌웨어 주석이 코드와 반대로 적혀 있던 곳("&lt; 1500 = AUTO", 모드 핀 18)은 11-05에 정정했다. 실제는 &gt; 1500 = AUTO, 핀 19. 주석만 바뀌어 다시 올릴 필요는 없다.</li>
 </ul>
 </section>
-<section id="s433"><h2>9. 용어 풀이</h2>
+<section id="s434"><h2>9. 용어 풀이</h2>
 <div class="tw"><table><thead><tr><th>용어</th><th>쉬운 뜻</th></tr></thead><tbody>
 <tr class=""><td>ROS2</td><td>로봇 프로그램들을 단톡방 방식으로 엮어 주는 틀</td></tr>
 <tr class=""><td>노드 / 토픽</td><td>일하는 프로그램 하나 / 그들이 글을 주고받는 단톡방</td></tr>
