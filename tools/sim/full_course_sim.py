@@ -51,6 +51,7 @@
 
 모델로 바꾼 것 (전부 가정)
   · 운동: gate_sim 과 같은 K_V(1.2 m/s ÷ 140 PWM), K_W 0.22 °/s/PWM, 1차 지연 τ 0.5 s, 조류는 옵션(기본 0).
+    --dyn fossen 이면 3자유도 모델(boat3dof.py: 질량·수력 계수·추진기 위치, Gazebo 모델과 같은 계수, 가정값).
     후진도 같은 K_V. 충돌 물리 없음(통과) — 접촉은 횟수만 센다.
   · LiDAR: 360°/0.5° (fastworld 와 같은 규약, 80° = 정면), 최대 20 m, 원형 부표(반경 0.2 m)+도크 선분 레이캐스트, 잡음 없음.
     LiDAR 위치 = 배 중심.
@@ -409,7 +410,7 @@ def apply_dwell(path, overrides):
 
 
 def run(seed, variant="A", wp_file=None, world_wp_file=WP_DEFAULT, gps_sigma=0.03, current=(0.0, 0.0),
-        t_max=1500.0, tail=90.0, record=False, dwell_override=None, fault=None):
+        t_max=1500.0, tail=90.0, record=False, dwell_override=None, fault=None, dyn="legacy", hull=None):
     world_wps = load_wps(world_wp_file)
     W = build_world(world_wps, seed)
     geo = W["geo"]; dock = W["dock"]
@@ -441,6 +442,10 @@ def run(seed, variant="A", wp_file=None, world_wp_file=WP_DEFAULT, gps_sigma=0.0
     by_color = {"red": reds, "green": greens, "white": whites}
 
     x, y = float(W["start"][0]), float(W["start"][1]); psi = W["psi0"]; v = w = 0.0
+    boat3 = None
+    if dyn == "fossen":
+        import boat3dof
+        boat3 = boat3dof.Boat3DOF(hull or (variant if variant in ("A", "B") else "A"), x, y, psi)
     t = 0.0; k = 0
     wp_idx = nga.wp_idx; wp_enter = {0: 0.0}; wp_how = {}
     mode_pubs = {}                 # mode → {노드: 틱 수}
@@ -608,12 +613,15 @@ def run(seed, variant="A", wp_file=None, world_wp_file=WP_DEFAULT, gps_sigma=0.0
                     if key == "sga" and "목표각 stale" in ln_: flags["sga_goal"] = True
                 log_idx[key] = len(lines)
             code = mc.pubs["Motor_run"].last.data; pr, pl = code // 10000, code % 10000
-            TR, TL = 1500 - pr, 1500 - pl
-            v_cmd, w_cmd = K.K_V * (TR + TL) / 2.0, K.K_W * (TL - TR)
-            v += (v_cmd - v) * DT / TAU; w += (w_cmd - w) * DT / TAU
-            psi = (psi + w * DT) % 360.0
-            x += (v * math.sin(math.radians(psi)) + current[0]) * DT
-            y += (v * math.cos(math.radians(psi)) + current[1]) * DT
+            if boat3 is not None:
+                x, y, psi = boat3.step(pl, pr, DT, current); v = boat3.u; w = boat3.yaw_rate_dps
+            else:
+                TR, TL = 1500 - pr, 1500 - pl
+                v_cmd, w_cmd = K.K_V * (TR + TL) / 2.0, K.K_W * (TL - TR)
+                v += (v_cmd - v) * DT / TAU; w += (w_cmd - w) * DT / TAU
+                psi = (psi + w * DT) % 360.0
+                x += (v * math.sin(math.radians(psi)) + current[0]) * DT
+                y += (v * math.cos(math.radians(psi)) + current[1]) * DT
             t += DT; k += 1; Clock.t = t
             pos = np.array([x, y])
             # ---- 판정 ----
@@ -1180,10 +1188,13 @@ def main():
     ap.add_argument("--dwell-label", default="", help='보조 진단: 구역 이름 접두어별 dwell 덮어쓰기, 예 "WP6=3,WP7=3" (스크래치 사본에만)')
     ap.add_argument("--faults", action="store_true", help="고장 주입 묶음: 변형별 --seeds 개 × (a)~(e) + 기준 런 → tools/sim/out/full_course_sim_faults.csv")
     ap.add_argument("--jobs", type=int, default=max(1, (os.cpu_count() or 2) - 1))
+    ap.add_argument("--dyn", default="legacy", choices=["legacy", "fossen"],
+                    help="운동 모델: legacy = K_V·K_W 1차 지연(기존) / fossen = 3자유도(boat3dof.py, Gazebo 모델과 같은 계수)")
+    ap.add_argument("--hull", default=None, choices=["A", "B"], help="fossen 선체 계수(기본 = variant 글자)")
     a = ap.parse_args()
     os.makedirs(OUT_DIR, exist_ok=True)
     dov = {kv.split("=")[0].strip(): float(kv.split("=")[1]) for kv in a.dwell_label.split(",") if "=" in kv} or None
-    kw = dict(wp_file=a.wp_file, world_wp_file=a.world_wp_file, gps_sigma=a.gps_sigma, current=tuple(a.current), t_max=a.t_max, tail=a.tail,
+    kw = dict(wp_file=a.wp_file, world_wp_file=a.world_wp_file, gps_sigma=a.gps_sigma, current=tuple(a.current), t_max=a.t_max, tail=a.tail, dyn=a.dyn, hull=a.hull,
               dwell_override=dov)
     variants = ["A", "B"] if a.variant == "AB" else [a.variant]
     if a.plot_seed is not None:

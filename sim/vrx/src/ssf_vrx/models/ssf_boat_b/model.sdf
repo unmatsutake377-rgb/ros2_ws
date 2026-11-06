@@ -244,12 +244,12 @@
     <plugin filename="libSimpleHydrodynamics.so" name="vrx::SimpleHydrodynamics">
       <link_name>base_link</link_name>
       <xDotU>0.0</xDotU><yDotV>0.0</yDotV><nDotR>0.0</nDotR>
-      <xU>10.0</xU><xUU>25.0</xUU>
-      <yV>40.0</yV><yVV>60.0</yVV>
+      <xU>10.0</xU><xUU>52.0</xUU>
+      <yV>50.0</yV><yVV>80.0</yVV>
       <zW>200.0</zW>
       <kP>20.0</kP><kPP>30.0</kPP>
       <mQ>40.0</mQ><mQQ>60.0</mQQ>
-      <nR>6.0</nR><nRR>8.0</nRR>
+      <nR>8.0</nR><nRR>12.0</nRR>
     </plugin>
 
     <plugin filename="gz-sim-thruster-system" name="gz::sim::systems::Thruster">
