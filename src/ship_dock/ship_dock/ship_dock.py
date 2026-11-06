@@ -30,6 +30,11 @@
         · 후진 타임아웃·원인 모름 → STOP_HOLD (이탈 거리 미확인 = 아직 도크 앞일 수 있다).
       WP8→WP9 는 7→7 이라 /wp_mode 로 안 보인다 → /wp_remaining_time 리셋으로 감지한다(wp_reset_detected).
       7→7(WP8→WP9)은 리셋하지 않는다 — 이탈점으로 가는 동안 도킹 상태 유지.
+  [9] LiDAR 전방 거리 None (계약서_도킹거리None_20261106): 상태별로 다룬다. APPROACH 만 정지(접근
+      타임아웃은 진행), CONTACT 는 시간으로 BACKOFF, BACKOFF 는 /scan 이 신선하면(전방 반환만 없음 =
+      벽 밀착 추정) 거리 없이 후진·/scan 이 없거나 stale 이면 정지+ERROR. 판단은 dock_fsm_logic 의
+      approach_gate / contact_step / backoff_step. (이전엔 셋 다 None 이면 공통 가드가 전이 평가를
+      통째로 막아 거리 복귀까지 CONTACT·BACKOFF 가 멈췄다 — 시뮬3자유도_발견_20261106 발견 1.)
 
 ⚠️ 이 노드는 mode 7 에서 /candidate_angle 의 **유일한 발행자**다.
    (6a 에서 north_goal_angle 의 mode-7 폴백을 제거했다 — 안 그러면 발행자가 둘이라 조향이 튄다.)
@@ -54,7 +59,9 @@ from std_msgs.msg import Float32, Int32
 from sensor_msgs.msg import LaserScan
 
 from ship_dock.dock_fsm_logic import (
-    approach_decision, check_realign_min, CONTACT, ALIGN_STANDOFF, ALIGN)
+    approach_decision, check_realign_min, approach_gate, contact_step, backoff_step,
+    CONTACT, ALIGN_STANDOFF, ALIGN, SEARCH, BACKOFF, STOP_BLIND,
+    DONE_BACKOFF, DONE_TIMEOUT, STOP_NO_SCAN)
 
 # 특수 신호 상수 (CLAUDE.md 3-9 상수표)
 SPIN_RIGHT = 5000.0          # 우선회
@@ -330,16 +337,23 @@ class ShipDock(Node):
             return False
         return self.image_angle != IMAGE_INVALID and math.isfinite(self.image_angle)
 
+    def scan_fresh(self, now):
+        """/scan 이 신선한가(받은 지 scan_stale_sec 이내). front_min_dist 의 stale 기준과 같은 함수다.
+
+        [9] BACKOFF 에서 front_min_dist 가 None 인 원인을 가른다: 신선한데 None = 전방에 유한 반환이
+        없다(벽 밀착 추정) / 신선하지 않음 = /scan 미수신·stale(LiDAR 부재)."""
+        if self.latest_scan is None or self.last_scan_t is None:
+            return False
+        return (now - self.last_scan_t) <= self.scan_stale_sec
+
     def front_min_dist(self, now):
         """전방 섹터(정면 ±half)의 LiDAR 최소거리. 모르면 None.
 
         ★ 표식 방위로 매칭하지 않는다. 도크는 넓어서 표식 방위와 LiDAR 최근접점이 최대 15° 어긋난다.
           "전방에 뭔가 얼마나 가까운가"만 알면 접안에는 충분하다."""
+        if not self.scan_fresh(now):
+            return None
         scan = self.latest_scan
-        if scan is None or self.last_scan_t is None:
-            return None
-        if (now - self.last_scan_t) > self.scan_stale_sec:
-            return None
 
         inc = math.degrees(scan.angle_increment)
         if not math.isfinite(inc) or inc <= 0.0:
@@ -398,12 +412,9 @@ class ShipDock(Node):
             has_marker = self.marker_ok(now)
             angle = self.image_angle if has_marker else 0.0
 
-            # 거리를 모르면 접근하지 않는다. 눈 감고 도킹하지 않는다.
-            if dist is None and self.state in ("APPROACH", "CONTACT", "BACKOFF"):
-                self.get_logger().warn(
-                    "LiDAR 거리 없음 → 도킹 접근 중단(정지)", throttle_duration_sec=2.0)
-                self.publish(STOP_HOLD)
-                return
+            # 거리 None 은 상태별로 다룬다 [9] — APPROACH 정지(타임아웃 진행) · CONTACT 시간 전이 ·
+            #   BACKOFF 원인별. 공통 가드로 먼저 return 하면 전이 평가가 통째로 막힌다(11-06 이전 결함).
+            #   TRANSIT~ALIGN 은 거리를 안 쓴다.
 
             # ---- TRANSIT [8]: GPS 주행(20000)으로 WP8 쪽으로. 가까워지면 INIT. 모르면 유지 ----
             if self.state == "TRANSIT":
@@ -466,12 +477,22 @@ class ShipDock(Node):
 
             # ---- APPROACH: 표식을 향해 직진. 거리는 LiDAR 전방 최소거리. ----
             if self.state == "APPROACH":
-                if not has_marker:
+                # 앞단은 순수 함수 [9]: 거리를 알 때만 표식 유실→SEARCH, 타임아웃은 거리 None 이어도
+                #   흐른다(→BACKOFF), 거리 None 이면 정지. 순서는 approach_gate 가 정한다(결정 ①).
+                gate = approach_gate(dist is not None, has_marker, self.elapsed(),
+                                     self.approach_timeout_sec)
+                if gate == SEARCH:
                     self.set_state("SEARCH")
                     return
-                if self.elapsed() > self.approach_timeout_sec:
+                if gate == BACKOFF:
                     self.get_logger().error("접근 타임아웃 → 후진")
                     self.set_state("BACKOFF")
+                    return
+                if gate == STOP_BLIND:
+                    # 눈 감고 접근하지 않는다. 정지하되 접근 타임아웃 시계는 그대로 흐른다.
+                    self.get_logger().warn(
+                        "LiDAR 거리 없음 → 도킹 접근 중단(정지)", throttle_duration_sec=2.0)
+                    self.publish(STOP_HOLD)
                     return
 
                 # 접안 / standoff 1회 정밀 재정렬 / 크게 틀어짐 재정렬 / 조향 접근 — 판단은 순수 함수 [6]
@@ -490,22 +511,28 @@ class ShipDock(Node):
                 self.publish_steer(angle)    # 표식 방위로 조향하며 전진 (하한 안 경로도 여기 — 매 틱 발행 유지)
                 return
 
-            # ---- CONTACT: 접안 완료. 유지. ----
+            # ---- CONTACT: 접안 완료. 거리와 무관하게 정지 유지, 시간이 차면 후진 [9] ----
             if self.state == "CONTACT":
                 self.publish(STOP_HOLD)
-                if self.elapsed() >= self.contact_hold_sec:
+                if dist is None:
+                    self.get_logger().info(
+                        "LiDAR 전방 거리 없음 — CONTACT 는 정지 유지, 시간으로 BACKOFF 전이",
+                        throttle_duration_sec=5.0)
+                if contact_step(self.elapsed(), self.contact_hold_sec) == BACKOFF:
                     self.set_state("BACKOFF")
                 return
 
-            # ---- BACKOFF: 후진으로 빠져나온다 ----
+            # ---- BACKOFF: 후진으로 빠져나온다. 거리 None 은 원인별 [9] (판단은 backoff_step) ----
             if self.state == "BACKOFF":
-                if dist is not None and dist >= self.backoff_dist_m:
+                step = backoff_step(dist, self.scan_fresh(now), self.elapsed(),
+                                    self.backoff_dist_m, self.backoff_timeout_sec)
+                if step == DONE_BACKOFF:
                     self.get_logger().info(
                         f"후진 이탈 완료(전방 {dist:.1f} m) → DONE(20000, GPS 가 다음 WP 로)")
                     self.done_reason = "backoff"
                     self.set_state("DONE")
                     return
-                if self.elapsed() > self.backoff_timeout_sec:
+                if step == DONE_TIMEOUT:
                     # 이탈 거리를 확인 못 함 → 아직 도크 앞일 수 있다. 모르면 GPS 에 넘기지 않는다.
                     self.get_logger().error(
                         f"후진 타임아웃({self.backoff_timeout_sec}s, 전방 "
@@ -513,6 +540,17 @@ class ShipDock(Node):
                     self.done_reason = "backoff_timeout"
                     self.set_state("DONE")
                     return
+                if step == STOP_NO_SCAN:
+                    # /scan 자체가 없다(미수신·stale) → 뒤를 못 보니 후진하지 않는다. 타임아웃 시계는 흐른다.
+                    self.get_logger().error(
+                        "LiDAR 없음(/scan 미수신·stale) → 후진 중단(정지)", throttle_duration_sec=2.0)
+                    self.publish(STOP_HOLD)
+                    return
+                if dist is None:
+                    # /scan 은 신선한데 전방 ±front_sector 에 유한 반환이 없다 = 최소 측정거리 안(벽 밀착) 추정
+                    self.get_logger().warn(
+                        "전방 LiDAR 반환 없음(스캔은 신선) — 벽 밀착 추정, 거리 없이 후진",
+                        throttle_duration_sec=2.0)
                 self.publish(REVERSE_REL)    # 상대 180° = 후진
                 return
 

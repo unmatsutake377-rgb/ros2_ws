@@ -2,6 +2,9 @@
 
     python3 src/ship_dock/test/test_dock_fsm_logic.py
     tools/run_tests.sh ship_dock
+
+approach_decision(APPROACH 접안/재정렬/조향) · check_realign_min(부팅 방어) 에 더해
+거리 None 처리(11-06, 계약서_도킹거리None_20261106)의 approach_gate · contact_step · backoff_step 경계.
 """
 
 import os
@@ -10,7 +13,9 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from ship_dock.dock_fsm_logic import (  # noqa: E402
-    approach_decision, check_realign_min, CONTACT, ALIGN_STANDOFF, ALIGN, STEER)
+    approach_decision, check_realign_min, approach_gate, contact_step, backoff_step,
+    CONTACT, ALIGN_STANDOFF, ALIGN, STEER, SEARCH, BACKOFF, STOP_BLIND, DECIDE, HOLD,
+    DONE_BACKOFF, DONE_TIMEOUT, REVERSE, STOP_NO_SCAN)
 
 fails = 0
 
@@ -117,6 +122,45 @@ def test_check_realign_min():
     check("하한 == standoff → above_standoff", check_realign_min(3.0, 1.0, 3.0) == "above_standoff")
     check("하한 > standoff → above_standoff", check_realign_min(4.0, 1.0, 3.0) == "above_standoff")
     check("contact 바로 위(1.01) → ok", check_realign_min(1.01, 1.0, 3.0) == "ok")
+
+
+# ─────────────── 거리 None (11-06): approach_gate — 순서·경계 ───────────────
+def test_approach_gate_order_and_boundary():
+    g = approach_gate                      # (dist_known, has_marker, elapsed, timeout 30)
+    check("거리 O 표식 X → SEARCH", g(True, False, 0.0, 30.0) == SEARCH)
+    check("거리 O 표식 X, 타임아웃 지나도 SEARCH 가 먼저(현행 순서)", g(True, False, 31.0, 30.0) == SEARCH)
+    check("거리 X 표식 X → 유실 안 봄 → STOP_BLIND (결정 ①)", g(False, False, 29.9, 30.0) == STOP_BLIND)
+    check("거리 X 표식 O 29.99 → STOP_BLIND", g(False, True, 29.99, 30.0) == STOP_BLIND)
+    check("거리 X 30.0 = 경계(>) → 아직 STOP_BLIND", g(False, True, 30.0, 30.0) == STOP_BLIND)
+    check("거리 X 30.01 → BACKOFF (None 이어도 타임아웃은 흐른다)", g(False, True, 30.01, 30.0) == BACKOFF)
+    check("거리 X 표식 X 30.01 → BACKOFF", g(False, False, 30.01, 30.0) == BACKOFF)
+    check("거리 O 표식 O 30.01 → BACKOFF", g(True, True, 30.01, 30.0) == BACKOFF)
+    check("거리 O 표식 O 5.0 → DECIDE", g(True, True, 5.0, 30.0) == DECIDE)
+
+
+# ─────────────── 거리 None (11-06): contact_step — 경계 ───────────────
+def test_contact_step_boundary():
+    check("0.0 → HOLD", contact_step(0.0, 3.0) == HOLD)
+    check("2.99 → HOLD", contact_step(2.99, 3.0) == HOLD)
+    check("3.0 → BACKOFF (>=)", contact_step(3.0, 3.0) == BACKOFF)
+    check("3.01 → BACKOFF", contact_step(3.01, 3.0) == BACKOFF)
+
+
+# ─────────────── 거리 None (11-06): backoff_step — 순서·경계 ───────────────
+def test_backoff_step_order_and_boundary():
+    def b(dist, fresh, elapsed):
+        return backoff_step(dist, fresh, elapsed, 2.5, 8.0)
+    check("None 신선 7.99 → REVERSE (벽 밀착 추정, 결정 ②)", b(None, True, 7.99) == REVERSE)
+    check("None 신선 8.0 = 경계(>) → 아직 REVERSE", b(None, True, 8.0) == REVERSE)
+    check("None 신선 8.01 → DONE_TIMEOUT", b(None, True, 8.01) == DONE_TIMEOUT)
+    check("None stale 7.99 → STOP_NO_SCAN (LiDAR 부재)", b(None, False, 7.99) == STOP_NO_SCAN)
+    check("None stale 0.0 → STOP_NO_SCAN", b(None, False, 0.0) == STOP_NO_SCAN)
+    check("None stale 8.01 → DONE_TIMEOUT (정지 중에도 시계는 흐른다)", b(None, False, 8.01) == DONE_TIMEOUT)
+    check("2.5 0.0 → DONE_BACKOFF (>=)", b(2.5, True, 0.0) == DONE_BACKOFF)
+    check("2.49 8.01 → DONE_TIMEOUT", b(2.49, True, 8.01) == DONE_TIMEOUT)
+    check("2.49 7.99 → REVERSE", b(2.49, True, 7.99) == REVERSE)
+    check("3.0 9.0 → DONE_BACKOFF (거리가 시간보다 먼저)", b(3.0, True, 9.0) == DONE_BACKOFF)
+    check("1.0 stale 1.0 → REVERSE (dist 가 숫자면 scan_fresh 무관)", b(1.0, False, 1.0) == REVERSE)
 
 
 if __name__ == '__main__':

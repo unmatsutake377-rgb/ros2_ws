@@ -14,6 +14,13 @@
     7→7 은 리셋하지 않는다(원인·WP 전환 기록 유지).
   · 코드 기본값 = config/ship_dock.yaml (대회 launch 가 ship_dock 에 이 yaml 을 넘긴다, 11-05).
 
+계약서 docs/문제와작업/계약서_도킹거리None_20261106.md (LiDAR 전방 거리 None):
+  · APPROACH None → 50000 + WARN 2 s, 표식 유실→SEARCH 는 안 봄, 30 s 접근 타임아웃은 진행 → BACKOFF.
+  · CONTACT None → 50000 유지(INFO 5 s), 3 s 뒤 BACKOFF.
+  · BACKOFF None: /scan 신선(전방 반환만 없음) → 180 + WARN 2 s, 8 s 초과 → backoff_timeout(50000)+ERROR;
+    /scan 없음·stale → 50000 + ERROR 2 s. 거리가 돌아와 >= 2.5 m 면 그 틱에 DONE(backoff) → 20000.
+  · None 만들기: `_Scan(inf)`(원인 ② 신선·반환 없음) / last_scan_t 없음·묵음(원인 ① LiDAR 부재).
+
 스텁 방식은 test_dock_steer_clamp.py 와 같다(import 동안만 sys.modules 에 넣고 되돌림).
 """
 
@@ -646,6 +653,268 @@ def test_remain_no_gap_0_to_150_is_reset_with_info():
     remain(n, 0.0, T0 + 1.0)
     remain(n, 150.0, T0 + 1.8)              # 간격 0.8 s = 경계, 기준 유지
     assert n.wp_resets == 1
+
+
+# ---------------- 거리 None (계약서_도킹거리None_20261106): APPROACH 만 정지, CONTACT·BACKOFF 는 진행
+REV = 180.0
+INF = float('inf')
+
+
+def no_return_scan(n, t):
+    """원인 ②: /scan 은 신선한데 전방 ±15° 에 유한 반환이 없다(전부 inf) → front_min_dist None."""
+    n.latest_scan = _Scan(INF)
+    n.last_scan_t = t
+
+
+def marker(n, t, angle=0.0):
+    n.image_angle = float(angle)
+    n.last_image_t = t
+
+
+def lidar_lines(n, lvl):
+    """거리 None 로그만(부팅 안내문 'ship_dock 시작' 도 'LiDAR' 를 담고 있어 제외)."""
+    return [x for x in lines(n, lvl) if 'LiDAR' in x[1] and 'ship_dock 시작' not in x[1]]
+
+
+def test_none_scan_variants_give_none_distance():
+    n = new_node()
+    no_return_scan(n, T0)
+    assert n.front_min_dist(T0) is None and n.scan_fresh(T0) is True
+    fresh_sensors(n, T0, dist=1.0)
+    assert n.front_min_dist(T0 + 1.0) == 1.0 and n.scan_fresh(T0 + 1.0) is True   # 1.0 s = 신선(경계)
+    assert n.front_min_dist(T0 + 1.01) is None and n.scan_fresh(T0 + 1.01) is False
+    n.latest_scan, n.last_scan_t = None, None
+    assert n.front_min_dist(T0) is None and n.scan_fresh(T0) is False
+
+
+def test_contact_none_holds_stop_then_backoff_by_time():
+    """CONTACT 중 None(원인 ①·② 둘 다): 매 틱 50000, 3.0 s 틱에 BACKOFF. INFO 5 s 한 줄, WARN·ERROR 0."""
+    for how in ('no_return', 'no_scan'):
+        n = new_node()
+        enter(n)
+        n.state, n.state_t = 'CONTACT', T0 + 20.0
+        for k in range(30):                                   # 0.0 ~ 2.9 s
+            t = T0 + 20.0 + k / 10.0
+            if how == 'no_return':
+                no_return_scan(n, t)
+            assert tick(n, t) == [STOP], (how, k)
+            assert n.state == 'CONTACT', (how, k)
+        t = T0 + 20.0 + 3.0
+        if how == 'no_return':
+            no_return_scan(n, t)
+        assert tick(n, t) == [STOP], how
+        assert n.state == 'BACKOFF', how
+        info = lidar_lines(n, 'INFO')
+        assert info and all(x[2].get('throttle_duration_sec') == 5.0 for x in info), (how, info)
+        assert lidar_lines(n, 'WARN') == [] and lines(n, 'ERROR') == [], how
+
+
+def test_backoff_none_fresh_scan_reverses_then_timeout_stop():
+    """원인 ②(스캔 신선·전방 반환 없음): 매 틱 180 + WARN 2 s, 8.0 s 초과 틱 DONE(backoff_timeout)
+    + ERROR 1회('없음'), 이후 매 틱 50000."""
+    n = new_node()
+    enter(n)
+    n.state, n.state_t = 'BACKOFF', T0 + 20.0
+    for k in range(81):                                       # 0.0 ~ 8.0 s (8.0 은 경계, 아직 후진)
+        t = T0 + 20.0 + k / 10.0
+        no_return_scan(n, t)
+        assert tick(n, t) == [REV], k
+        assert n.state == 'BACKOFF', k
+    assert lines(n, 'ERROR') == []
+    w = lidar_lines(n, 'WARN')
+    assert w and all(x[2].get('throttle_duration_sec') == 2.0 for x in w), w
+    assert all('후진' in x[1] for x in w), w
+    t = T0 + 20.0 + 8.1
+    no_return_scan(n, t)
+    tick(n, t)
+    assert n.state == 'DONE' and n.done_reason == 'backoff_timeout'
+    e = lines(n, 'ERROR')
+    assert len(e) == 1 and '후진 타임아웃' in e[0][1] and '없음' in e[0][1], e
+    for k in range(50):
+        t2 = t + (k + 1) / 10.0
+        no_return_scan(n, t2)
+        assert tick(n, t2) == [STOP], k
+    assert len(lines(n, 'ERROR')) == 1
+
+
+def test_backoff_none_then_distance_returns_done_backoff_20000():
+    """None 으로 후진하다 전방 3.0 m 가 돌아오면 그 틱에 DONE(backoff) → 20000."""
+    n = new_node()
+    enter(n)
+    n.state, n.state_t = 'BACKOFF', T0 + 20.0
+    for k in range(20):
+        t = T0 + 20.0 + k / 10.0
+        no_return_scan(n, t)
+        assert tick(n, t) == [REV], k
+    t = T0 + 22.0
+    fresh_sensors(n, t, dist=3.0)
+    tick(n, t)
+    assert n.state == 'DONE' and n.done_reason == 'backoff'
+    assert _ticks50(n, t) == [GPS] * 50
+    assert lines(n, 'ERROR') == []
+    assert any('후진 이탈 완료' in x[1] for x in lines(n, 'INFO'))
+
+
+def test_backoff_none_then_short_distance_keeps_reversing():
+    """None 으로 후진하다 1.5 m(< 2.5)가 돌아오면 계속 180 (타임아웃 전)."""
+    n = new_node()
+    enter(n)
+    n.state, n.state_t = 'BACKOFF', T0 + 20.0
+    no_return_scan(n, T0 + 20.0)
+    assert tick(n, T0 + 20.0) == [REV]
+    fresh_sensors(n, T0 + 20.1, dist=1.5)
+    assert tick(n, T0 + 20.1) == [REV] and n.state == 'BACKOFF'
+
+
+def test_backoff_scan_stale_stops_with_error_then_timeout():
+    """원인 ①(/scan 없음·stale, 결정 ②): 뒤를 못 본다 → 50000 + ERROR 2 s. 시계는 흘러 8 s 뒤 backoff_timeout."""
+    for how in ('no_scan', 'stale'):
+        n = new_node()
+        enter(n)
+        n.state, n.state_t = 'BACKOFF', T0 + 20.0
+        if how == 'stale':
+            fresh_sensors(n, T0 + 18.0, dist=1.0)             # 2.0 s 전 스캔 = stale(1.0 s 초과)
+        for k in range(81):
+            t = T0 + 20.0 + k / 10.0
+            assert tick(n, t) == [STOP], (how, k)
+            assert n.state == 'BACKOFF', (how, k)
+        e = lidar_lines(n, 'ERROR')
+        assert e and all(x[2].get('throttle_duration_sec') == 2.0 for x in e), (how, e)
+        assert all('후진 중단' in x[1] for x in e), (how, e)
+        assert lidar_lines(n, 'WARN') == [], how
+        t = T0 + 20.0 + 8.1
+        tick(n, t)
+        assert n.state == 'DONE' and n.done_reason == 'backoff_timeout', how
+        assert _ticks50(n, t) == [STOP] * 50
+
+
+def test_backoff_scan_returns_resumes_reverse():
+    """/scan 이 끊겼다(50000) 다시 오면(전방 반환 없음이라도) 그 틱부터 180."""
+    n = new_node()
+    enter(n)
+    n.state, n.state_t = 'BACKOFF', T0 + 20.0
+    for k in range(10):
+        assert tick(n, T0 + 20.0 + k / 10.0) == [STOP], k
+    no_return_scan(n, T0 + 21.0)
+    assert tick(n, T0 + 21.0) == [REV] and n.state == 'BACKOFF'
+    assert len(lidar_lines(n, 'ERROR')) == 10
+
+
+def test_approach_none_stops_but_timeout_runs_to_backoff():
+    """APPROACH 중 None(표식 유효): 매 틱 50000 + WARN 2 s, 30.0 s 까지 APPROACH, 30.1 s 에 BACKOFF(①-a)."""
+    n = new_node()
+    enter(n)
+    n.state, n.state_t = 'APPROACH', T0 + 20.0
+    for k in range(301):                                      # 0.0 ~ 30.0 s (30.0 은 경계)
+        t = T0 + 20.0 + k / 10.0
+        no_return_scan(n, t)
+        marker(n, t)
+        assert tick(n, t) == [STOP], k
+        assert n.state == 'APPROACH', k
+    w = lidar_lines(n, 'WARN')
+    assert w and all(x[2].get('throttle_duration_sec') == 2.0 for x in w), w
+    assert lines(n, 'ERROR') == []
+    t = T0 + 20.0 + 30.1
+    no_return_scan(n, t)
+    marker(n, t)
+    tick(n, t)
+    assert n.state == 'BACKOFF'
+    e = lines(n, 'ERROR')
+    assert len(e) == 1 and '접근 타임아웃' in e[0][1], e
+
+
+def test_approach_none_blocks_marker_loss_until_distance_returns():
+    """결정 ①: 거리 None 동안은 표식 유실→SEARCH 를 안 본다(현행 유지). 거리가 돌아오면 그 틱에 SEARCH."""
+    n = new_node()
+    enter(n)
+    n.state, n.state_t = 'APPROACH', T0 + 20.0
+    for k in range(20):
+        t = T0 + 20.0 + k / 10.0
+        no_return_scan(n, t)                                  # 표식 없음(IMAGE_INVALID·수신 없음)
+        assert tick(n, t) == [STOP], k
+        assert n.state == 'APPROACH', k
+    t = T0 + 22.0
+    fresh_sensors(n, t, dist=2.0)                             # 거리 복귀, 표식은 여전히 없음
+    tick(n, t)
+    assert n.state == 'SEARCH'
+
+
+def test_approach_none_then_contact_distance_returns_contact():
+    """APPROACH 중 None 이었다가 0.9 m(<= contact 1.0)가 돌아오면 그 틱에 CONTACT, 다음 틱 50000."""
+    n = new_node()
+    enter(n)
+    n.state, n.state_t = 'APPROACH', T0 + 20.0
+    for k in range(20):
+        t = T0 + 20.0 + k / 10.0
+        no_return_scan(n, t)
+        marker(n, t)
+        assert tick(n, t) == [STOP], k
+    t = T0 + 22.0
+    fresh_sensors(n, t, dist=0.9, image=0.0)
+    tick(n, t)
+    assert n.state == 'CONTACT'
+    fresh_sensors(n, t + 0.1, dist=0.9, image=0.0)
+    assert tick(n, t + 0.1) == [STOP] and n.state == 'CONTACT'
+
+
+def test_approach_scan_dead_then_backoff_stop_no_scan_then_timeout():
+    """복합(권고): APPROACH 중 /scan 완전 사망(stale, 표식은 유효) → 매 틱 50000 + WARN 2 s
+    → 30 s 초과 틱에 BACKOFF → BACKOFF 첫 틱부터 STOP_NO_SCAN(50000 + ERROR 2 s, 180 발행 0회)
+    → 8 s 초과 틱에 DONE(backoff_timeout, ERROR 1회) → 이후 50000 유지."""
+    n = new_node()
+    enter(n)
+    fresh_sensors(n, T0 + 18.0, dist=1.5, image=0.0)       # 마지막 스캔. 이후 /scan 끊김(T0+19 부터 stale)
+    n.state, n.state_t = 'APPROACH', T0 + 20.0
+    for k in range(301):                                      # 0.0 ~ 30.0 s (30.0 = 경계, APPROACH)
+        t = T0 + 20.0 + k / 10.0
+        marker(n, t)
+        assert n.scan_fresh(t) is False, k
+        assert tick(n, t) == [STOP], k
+        assert n.state == 'APPROACH', k
+    w = lidar_lines(n, 'WARN')
+    assert w and all(x[2].get('throttle_duration_sec') == 2.0 for x in w), w
+    assert lines(n, 'ERROR') == []
+    t = T0 + 20.0 + 30.1                                      # 타임아웃 초과 틱 → BACKOFF (전이 틱)
+    marker(n, t)
+    tick(n, t)
+    assert n.state == 'BACKOFF'
+    e = lines(n, 'ERROR')
+    assert len(e) == 1 and '접근 타임아웃' in e[0][1], e
+    tb = n.state_t
+    t = tb + 0.1                                              # 전이 직후 첫 BACKOFF 틱: 반드시 STOP
+    marker(n, t)
+    assert tick(n, t) == [STOP]
+    assert n.state == 'BACKOFF'
+    first = lidar_lines(n, 'ERROR')
+    assert len(first) == 1 and '후진 중단' in first[0][1], first
+    assert first[0][2].get('throttle_duration_sec') == 2.0, first
+    for k in range(2, 80):                                    # 0.2 ~ 7.9 s: 계속 STOP, 180 없음
+        t = tb + k / 10.0
+        marker(n, t)
+        assert tick(n, t) == [STOP], k
+        assert n.state == 'BACKOFF', k
+    assert REV not in n.pub_candidate.values
+    e = lidar_lines(n, 'ERROR')
+    assert e and all(x[2].get('throttle_duration_sec') == 2.0 for x in e), e
+    t = tb + 8.1                                              # 8 s 초과 틱 → DONE(backoff_timeout)
+    marker(n, t)
+    tick(n, t)
+    assert n.state == 'DONE' and n.done_reason == 'backoff_timeout'
+    to = [x for x in lines(n, 'ERROR') if '후진 타임아웃' in x[1]]
+    assert len(to) == 1 and '없음' in to[0][1], to
+    assert _ticks50(n, t) == [STOP] * 50
+    assert REV not in n.pub_candidate.values
+    assert len([x for x in lines(n, 'ERROR') if '후진 타임아웃' in x[1]]) == 1
+
+
+def test_approach_distance_known_steers_as_before():
+    """회귀: 거리·표식이 있으면 종전대로 조향 발행(2.0 m, 5°, standoff 재정렬 끝남 → 5.0)."""
+    n = new_node()
+    enter(n)
+    n.state, n.state_t, n.standoff_aligned = 'APPROACH', T0 + 20.0, True
+    fresh_sensors(n, T0 + 20.0, dist=2.0, image=5.0)
+    assert tick(n, T0 + 20.0) == [5.0] and n.state == 'APPROACH'
+    assert lidar_lines(n, 'WARN') == []
 
 
 if __name__ == '__main__':
