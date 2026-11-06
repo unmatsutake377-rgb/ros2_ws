@@ -508,6 +508,8 @@ def run(seed, variant="A", wp_file=None, world_wp_file=WP_DEFAULT, gps_sigma=0.0
                 nga.timer_cb()
                 if nga.pubs["/goal_distance"].count > c0["/goal_distance"]:
                     sk.goal_distance_cb(nga.pubs["/goal_distance"].last)   # 거리 → /wp_mode 순서
+                    # motor_control 목표 근접 감속 (계약서_목표근접감속_20261106)
+                    mc.goal_distance_cb(nga.pubs["/goal_distance"].last)
                 if nga.pubs["/wp_mode"].count > c0["/wp_mode"]:
                     m = nga.pubs["/wp_mode"].last
                     sd.wp_mode_cb(m); sg.wp_mode_cb(m); sb.wp_cb(m); st.wp_cb(m); sk.wp_mode_cb(m)

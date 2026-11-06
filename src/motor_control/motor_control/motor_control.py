@@ -27,6 +27,11 @@ class MotorController(Node):
         정리: L1 상한 = 전진·후진 공통, 근접 감속 = 전진만 (계약서_후진감속_L1_20261104).
       · 명령 워치독: /desired_angle 이 cmd_timeout_sec 넘게 끊기면 중립(1500/1500).
         + 부팅 직후 첫 명령이 오기 전에도 중립 (명령 없이 전진 금지).
+      · 목표(WP) 근접 감속 (계약서_목표근접감속_20261106, A-2): /goal_distance(north_goal_angle 의
+        현재 WP 까지 거리) 를 구독해, 가까워지면 '전진 명령'(2,4,6)의 **중심 PWM 만** 중립 쪽으로
+        당기고 조향 차동은 그대로 둔다(균일 축소는 선회 반경이 안 줄어든다 — 시뮬 발견 5).
+        그 뒤 기존 min(근접비, L1) 균일 축소가 이어진다. 미수신·stale 이면 1.0(지금과 동일).
+        SPIN(3)·후진(5)·STOP(1)·워치독은 안 건드린다.
 
     ※ TTC 비상제동은 넣지 않는다. /obstacle_distance_array 최소거리는 시간필터 없는 생값이라
       미분(접근속도)이 노이즈를 증폭 → 물보라 반사 하나로 급정지. 시뮬상 이득 0/위험 막대라 폐기.
@@ -68,12 +73,51 @@ class MotorController(Node):
         self.steer_invert = bool(self.declare_parameter("steer_invert", False).value)
         self.max_angle = 81   # -1~161도 전체를 조향에 반영 (매핑 상수, 보트 무관)
 
+        # ---- 목표(WP) 근접 감속 (/goal_distance 구독, 계약서_목표근접감속_20261106) ----
+        #   d ≥ goal_slow_start_m → 1.0 / d ≤ goal_slow_full_m → goal_slow_min_ratio / 사이 선형.
+        #   중심 PWM 만 1500 쪽으로 당기고(1500 − (1500 − base_pwm)·비율) 조향 차동은 유지(A-2).
+        #   /goal_distance 미수신 또는 goal_dist_stale_sec 넘게 묵으면 1.0 (= 이 기능 없을 때와 동일).
+        #   모드 무관(도킹 접근 WP 도 감속). 끄려면 goal_slow_min_ratio 1.0.
+        # ⚠️ 실측 필요 — 기본값은 가정 계수(1360 속도·정지 거리·선회 지름) 기준. 수조 뒤 재조정.
+        self.goal_slow_start_m = float(self.declare_parameter("goal_slow_start_m", 8.0).value)
+        self.goal_slow_full_m = float(self.declare_parameter("goal_slow_full_m", 3.0).value)
+        self.goal_slow_min_ratio = float(self.declare_parameter("goal_slow_min_ratio", 0.5).value)
+        self.goal_dist_stale_sec = float(self.declare_parameter("goal_dist_stale_sec", 2.0).value)
+        # 값 가드: 잘못된 값이면 ERROR 로그 + 기본값 (노드는 죽이지 않는다 — 체인 끝단).
+        if not math.isfinite(self.goal_slow_start_m) or self.goal_slow_start_m <= 0.0:
+            self.get_logger().error(
+                f"goal_slow_start_m={self.goal_slow_start_m} 이상(비유한·≤0) → 기본값 8.0 m 사용")
+            self.goal_slow_start_m = 8.0
+        if not math.isfinite(self.goal_slow_full_m) or self.goal_slow_full_m <= 0.0:
+            self.get_logger().error(
+                f"goal_slow_full_m={self.goal_slow_full_m} 이상(비유한·≤0) → 기본값 3.0 m 사용")
+            self.goal_slow_full_m = 3.0
+        if self.goal_slow_start_m <= self.goal_slow_full_m:
+            self.get_logger().error(
+                f"goal_slow_start_m({self.goal_slow_start_m}) ≤ "
+                f"goal_slow_full_m({self.goal_slow_full_m}) → 둘 다 기본값 8.0/3.0 m 사용")
+            self.goal_slow_start_m, self.goal_slow_full_m = 8.0, 3.0
+        # 0.0 금지: full_m 안에서 전진 0 → 도착 반경(도킹 WP 2.0 m)에 영영 못 든다. 1.0 = 끄기.
+        if not (math.isfinite(self.goal_slow_min_ratio)
+                and 0.0 < self.goal_slow_min_ratio <= 1.0):
+            self.get_logger().error(
+                f"goal_slow_min_ratio={self.goal_slow_min_ratio} 이상(0 초과~1 밖) → 기본값 0.5 사용")
+            self.goal_slow_min_ratio = 0.5
+        if not math.isfinite(self.goal_dist_stale_sec) or self.goal_dist_stale_sec <= 0.0:
+            self.get_logger().error(
+                f"goal_dist_stale_sec={self.goal_dist_stale_sec} 이상(비유한·≤0) → 기본값 2.0 s 사용")
+            self.goal_dist_stale_sec = 2.0
+
         # ---- 구독/발행 (토픽·타입 불변, CLAUDE.md 1-3) ----
         self.sub_angle = self.create_subscription(Float32, "/desired_angle", self.angle_callback, 2)
         self.sub_obstacle = self.create_subscription(
             Float32MultiArray, "/obstacle_distance_array", self.obstacle_callback, 10)
         self.sub_failsafe = self.create_subscription(
             Int32, "/failsafe_level", self.failsafe_callback, 10)
+        # /goal_distance: north_goal_angle 발행(RELIABLE depth 2, 신선 fix 때만 — 코스 끝·stale 땐 침묵).
+        #   depth 정수 = rclpy 기본 RELIABLE·KEEP_LAST → 발행 쪽과 맞는다. ship_dock 도 같은 식으로 구독.
+        self.sub_goal_dist = self.create_subscription(
+            Float32, "/goal_distance", self.goal_distance_cb, 2)
         self.pub_motor = self.create_publisher(Int32, "Motor_run", 2)
 
         # N2: 후진 상태를 밖에 알린다 (신규 토픽 — 기존 계약 불변, CLAUDE.md 1-3).
@@ -89,6 +133,8 @@ class MotorController(Node):
         self.last_cmd_t = None             # /desired_angle 마지막 수신 시각(monotonic, CLAUDE.md 1-5)
         self.nearest_dist = float("inf")   # 전방 최근접 장애물 거리(없으면 inf → 감속 안 함)
         self.failsafe_level = 0            # ship_direction 이 발행. 못 받으면 0(상한 없음)
+        self.goal_dist = None              # 마지막 /goal_distance(m). 없으면 None → 목표 근접 감속 없음
+        self.goal_dist_t = None            # 그 수신 시각(monotonic). stale 판정용
 
         self.timer = self.create_timer(0.05, self.timer_callback)
 
@@ -97,7 +143,10 @@ class MotorController(Node):
             f"min_ratio={self.min_speed_ratio}, 명령 워치독={self.cmd_timeout_sec}s, "
             f"steer_invert={self.steer_invert}.\n"
             f"   SPIN(5000=우/6000=좌) 중심={self.spin_forward_pwm}(1500=제자리). "
-            f"첫 명령 전/끊김 시 중립. PWM: <1500 전진, >1500 후진."
+            f"첫 명령 전/끊김 시 중립. PWM: <1500 전진, >1500 후진.\n"
+            f"   목표 근접 감속(/goal_distance): {self.goal_slow_start_m}m 부터 → "
+            f"{self.goal_slow_full_m}m 에서 중심 비율 {self.goal_slow_min_ratio} "
+            f"(차동 유지), stale {self.goal_dist_stale_sec}s → 1.0."
         )
 
     # ───────────────────────── 콜백 ─────────────────────────
@@ -115,6 +164,17 @@ class MotorController(Node):
 
     def failsafe_callback(self, msg):
         self.failsafe_level = int(msg.data)
+
+    def goal_distance_cb(self, msg):
+        # north_goal_angle 계약: 현재 WP 까지 GPS 거리(m). 비유한·음수는 값 갱신 없이 버린다
+        # (직전 값은 stale 로 자연히 1.0 에 수렴 — 모르면 0 같은 값을 만들어 내지 않는다).
+        d = float(msg.data)
+        if not math.isfinite(d) or d < 0.0:
+            self.get_logger().warn(
+                f"/goal_distance 무시: {d} (비유한·음수)", throttle_duration_sec=5.0)
+            return
+        self.goal_dist = d
+        self.goal_dist_t = time.monotonic()
 
     # ───────────────────────── 보조 ─────────────────────────
     def linear_diff(self, offset):
@@ -137,6 +197,20 @@ class MotorController(Node):
             return 1.0
         frac = max(0.0, d) / self.slow_start_dist
         return self.min_speed_ratio + (1.0 - self.min_speed_ratio) * frac
+
+    def goal_ratio(self, now):
+        """목표(WP) 거리 → 전진 중심 PWM 비율 [goal_slow_min_ratio, 1.0].
+        미수신·stale(goal_dist_stale_sec) → 1.0. d ≥ start → 1.0, d ≤ full → min_ratio, 사이 선형.
+        이 비율은 중심(base)에만 건다 — 차동은 apply_steer 가 그대로 더한다(A-2)."""
+        if self.goal_dist is None or (now - self.goal_dist_t) > self.goal_dist_stale_sec:
+            return 1.0
+        d = self.goal_dist
+        if d >= self.goal_slow_start_m:
+            return 1.0
+        if d <= self.goal_slow_full_m:
+            return self.goal_slow_min_ratio
+        frac = (d - self.goal_slow_full_m) / (self.goal_slow_start_m - self.goal_slow_full_m)
+        return self.goal_slow_min_ratio + (1.0 - self.goal_slow_min_ratio) * frac
 
     def failsafe_speed_cap(self):
         """페일세이프 레벨 → 속도 상한.
@@ -187,6 +261,14 @@ class MotorController(Node):
         angle = self.desired_angle
         slow_ok = False   # 아래 공통 감속은 '전진 명령'(2,4,6)에만. 후진(5) L1 상한은 분기 안에서.
 
+        # (목표 근접) 전진 중심 PWM. 비율 1.0 이면 base_pwm 그대로(= 이 기능이 없을 때와 동일).
+        #   중심만 당기고 차동은 유지 → 안쪽 추진기가 1500 을 넘어 역추진으로 가며 선회 반경이 준다.
+        #   SPIN(3)·후진(5)·STOP(1)은 이 중심을 쓰지 않는다.
+        g_ratio = self.goal_ratio(now)
+        fwd_center = self.base_pwm
+        if g_ratio < 1.0:
+            fwd_center = int(round(1500 - (1500 - self.base_pwm) * g_ratio))
+
         # (1) STOP
         if angle >= STOP_HOLD:
             pwm_r = 1500
@@ -194,8 +276,8 @@ class MotorController(Node):
 
         # (2) fallback 전진 (미션 없음)
         elif CANDIDATE_INVALID <= angle < STOP_HOLD:
-            pwm_r = self.base_pwm
-            pwm_l = self.base_pwm
+            pwm_r = fwd_center
+            pwm_l = fwd_center
             slow_ok = True
 
         # (3a) SPIN_RIGHT(5000) → 우선회 (제자리, 중심=spin_forward_pwm).
@@ -212,7 +294,7 @@ class MotorController(Node):
             offset = angle - 80.0   # 중앙(정면) 80도 기준
             diff = self.linear_diff(offset)
             # offset>0 = 왼쪽 조향(+), offset<=0 = 오른쪽 조향(-)
-            pwm_r, pwm_l = self.apply_steer(diff if offset > 0 else -diff)
+            pwm_r, pwm_l = self.apply_steer(diff if offset > 0 else -diff, center=fwd_center)
             slow_ok = True
 
         # (5) 후진 구간 — 페일세이프 L1 상한만 여기서 건다(계약서_후진감속_L1_20261104).
@@ -227,14 +309,15 @@ class MotorController(Node):
 
         # (6) 기본값: 직진 유지
         else:
-            pwm_r = self.base_pwm
-            pwm_l = self.base_pwm
+            pwm_r = fwd_center
+            pwm_l = fwd_center
             slow_ok = True
 
         # (감속) '전진 명령'일 때. 두 가지 이유로 느려진다 — 더 보수적인 쪽(min)을 쓴다:
         #   ① 장애물 근접 (speed_ratio) — 전진만
         #   ② 페일세이프 레벨 (failsafe_speed_cap) — 센서가 묵었으니 속도를 줄여 오차를 줄인다.
         #      후진(5)의 ② 는 분기 (5) 안에서 따로 건다(① 은 후진에 안 건다).
+        #   순서: 목표 근접(중심 축소, 위) → 여기 균일 축소. 둘이 겹치면 두 번 곱해진다(의도: 보수적).
         # ★ 반드시 slow_ok 뒤에 둔다. SPIN(제자리 1400/1600)에 감속이 걸리면 전진 쪽만 깎여
         #   배가 뒤로 밀리며 돈다(이미 겪은 버그). STOP 도 제외. 후진에 slow_ok=True 금지(① 이 걸림).
         ratio = min(self.speed_ratio(), self.failsafe_speed_cap())

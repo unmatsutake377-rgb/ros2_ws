@@ -44,6 +44,10 @@ MAX_DIFF = 100
 TURN_OFFSET = -60
 PWM_NEUTRAL = 1500
 PWM_REVERSE = 1590
+# 목표(WP) 근접 감속 — motor_control.py 기본값과 같은 값 (계약서_목표근접감속_20261106)
+GOAL_SLOW_START_M = 8.0
+GOAL_SLOW_FULL_M = 3.0
+GOAL_SLOW_MIN_RATIO = 0.5
 
 # --- LiDAR 스캔 규격 (RPLIDAR A3 유사) ---
 SCAN_ANGLE_MIN_DEG = -180.0
@@ -219,12 +223,34 @@ def linear_diff(offset):
     return int((abs(off) / MAX_ANGLE) * MAX_DIFF)
 
 
-def motor_control_step(angle):
-    # L1 상한 미모사: 실코드는 failsafe L1 이면 전진·후진 ×0.7 — 이 사본엔 페일세이프 레벨이 없다
+def goal_ratio(goal_dist):
+    """motor_control.goal_ratio 와 같은 식. None(미수신·stale) → 1.0."""
+    if goal_dist is None or not math.isfinite(goal_dist):
+        return 1.0
+    if goal_dist >= GOAL_SLOW_START_M:
+        return 1.0
+    if goal_dist <= GOAL_SLOW_FULL_M:
+        return GOAL_SLOW_MIN_RATIO
+    frac = (goal_dist - GOAL_SLOW_FULL_M) / (GOAL_SLOW_START_M - GOAL_SLOW_FULL_M)
+    return GOAL_SLOW_MIN_RATIO + (1.0 - GOAL_SLOW_MIN_RATIO) * frac
+
+
+def motor_control_step(angle, goal_dist=None):
+    # ⚠️ 이 사본은 실제 motor_control.py 와 이미 3가지가 다르다(기준은 full_course_sim 이 싣는 실코드):
+    #   ① L1 상한 미모사: 실코드는 failsafe L1 이면 전진·후진 ×0.7 — 이 사본엔 페일세이프 레벨이 없다
+    #   ② 장애물 근접 감속(slow_start_dist 1.2·min_speed_ratio 0.7) 없음
+    #   ③ SPIN 이 옛 방식: 5000~20000 전부 좌선회, 중심 BASE_PWM(실코드는 5000=우/6000=좌, 중심 1500)
+    # 목표(WP) 근접 감속(계약서_목표근접감속_20261106, A-2)만 실코드와 같은 식으로 더했다:
+    #   goal_dist=None(기본) 이면 결과가 전과 완전히 같다(sweep_s1·kaboat_full_course_sim 불변).
+    #   값이 있으면 전진(2,4,6) 중심만 1500 쪽으로 당기고 차동은 유지. SPIN·후진·STOP 은 그대로.
+    c = BASE_PWM
+    gr = goal_ratio(goal_dist)
+    if gr < 1.0:
+        c = int(round(PWM_NEUTRAL - (PWM_NEUTRAL - BASE_PWM) * gr))
     if angle >= 50000:                       # (1) STOP
         return PWM_NEUTRAL, PWM_NEUTRAL, "STOP"
     elif 20000 <= angle < 50000:             # (2) fallback 전진
-        return BASE_PWM, BASE_PWM, "FALLBACK_FWD"
+        return c, c, "FALLBACK_FWD"
     elif 5000 <= angle < 20000:              # (3) 느린 좌선회
         d = linear_diff(TURN_OFFSET)
         return BASE_PWM - d, BASE_PWM + d, "SPIN_LEFT"
@@ -232,13 +258,13 @@ def motor_control_step(angle):
         offset = angle - 80.0
         d = linear_diff(offset)
         if offset > 0:
-            return BASE_PWM - d, BASE_PWM + d, "STEER_LEFT"
+            return c - d, c + d, "STEER_LEFT"
         else:
-            return BASE_PWM + d, BASE_PWM - d, "STEER_RIGHT"
+            return c + d, c - d, "STEER_RIGHT"
     elif 161.0 < angle < 5000.0:             # (5) 후진 (260 포함)
         return PWM_REVERSE, PWM_REVERSE, "REVERSE"
     else:                                    # (6) 직진
-        return BASE_PWM, BASE_PWM, "STRAIGHT"
+        return c, c, "STRAIGHT"
 
 
 # ============================================================
