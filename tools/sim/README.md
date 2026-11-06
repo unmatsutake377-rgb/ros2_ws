@@ -19,6 +19,8 @@
 `BASE_DETECTION_DISTANCE 1.8` 은 기본값일 뿐 — 스윕은 `dd` 인자로 yaml 의 2.0/3.0 을 넘긴다.
 `candidate_stale_sec`(11-04, candidate 신선도)는 동기화 대상 아님 — `ssf_sim.py` 는 (C) 경로 사본.
 `side_hysteresis_deg`·`cross_penalty_deg`(11-06, (C) 편 유지·가로지름 벌점, 발견 8)는 `ssf_sim.py`·`tools/gap_selection_figure.py` 의 (C) 사본에 **미반영**(옛 규칙 그대로, 계약서_회피편선택_20261106 결정 4).
+`side_escape_deg`(11-06, (C) 후보 0 개 + 옆 장애물 → 후진 대신 비킴, 발견 9)도 `ssf_sim.py` 사본에
+**미반영**(옛 규칙 = 무조건 후진, 계약서_옆비킴_현장조정_20261106 결정 ⑥).
 회피 성능 기준은 `full_course_sim.py`(실제 노드 코드 `SD.ShipDirection()` 사용 — `avoid_sim`·`gate_sim`·`l1_dropout_sim`·`mission_figs` 도 실노드라 자동 반영). `sweep_s1`·`kaboat`·`avoid_figure` 결과는 옛 규칙 수치다.
 
 의존: `numpy`, `matplotlib`. ROS 불필요.

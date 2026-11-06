@@ -15,6 +15,7 @@ from ship_direction.failsafe import SensorWatch, TemporalVote, median_min
 from ship_direction.failsafe import effective_candidate, candidate_is_stale, CandidateStaleLog
 from ship_direction.failsafe import heading_missing
 from ship_direction.gap_select import obstacle_blobs, rank_candidates, next_side_memory
+from ship_direction.gap_select import side_escape
 
 # 특수 신호 상수 (CLAUDE.md 3-9 상수표)
 SPIN_RIGHT = 5000.0          # 우선회
@@ -338,6 +339,20 @@ class ShipDirection(Node):
                 f"cross_penalty_deg={self.cross_penalty_deg} 이상 → 기본값 90.0도 사용")
             self.cross_penalty_deg = 90.0
 
+        # ---- (C) 후보 0 개 + 옆 장애물 → 후진 대신 비킴 — 발견 9 (계약서_옆비킴_현장조정_20261106) ----
+        # 가장 가까운 덩어리 중심이 정면에서 15~60° 옆이고 정면·호·목표 창이 비었으면 반대편으로
+        # 이 각도(도)만큼 꺾은 각을 낸다(260 대신). 게이트 구간(gate_wp_modes)은 비킴 안 함.
+        # 0.0 = 끔(기존 후진과 같음, 기본). 0 < 값 ≤ 80(목표각 0~160 안). 비유한·음수·> 80 → 0.0 + WARN.
+        # 🚨 대회 launch 가 yaml 을 넘긴다 → yaml 과 같이 바꿀 것. 실배 확인 뒤 배별 yaml 에서 60.0.
+        self.side_escape_deg = float(
+            self.declare_parameter('side_escape_deg', 0.0).value)
+        if not math.isfinite(self.side_escape_deg) or self.side_escape_deg < 0.0 or \
+                self.side_escape_deg > LIDAR_FORWARD_DEG:
+            self.get_logger().warn(
+                f"side_escape_deg={self.side_escape_deg} 이상(0~{LIDAR_FORWARD_DEG:.0f} 밖) "
+                f"→ 0.0(비킴 끔) 사용")
+            self.side_escape_deg = 0.0
+
         self.detection_distance = self.detection_distance_default
 
         # ----------------------
@@ -386,6 +401,8 @@ class ShipDirection(Node):
         #   (C) 를 타는 틱에서만 유지 — (0)(A)(B)·STOP·레벨2·wp_mode 변경 틱엔 None (발견 8).
         self._side_prev = None
         self._side_wp_mode = None     # wp_mode 변경 감지용(control_cb 스냅샷 비교)
+        # (C) 비킴 중인가(직전 _compute 틱). 진입 INFO 1회용 — 제어엔 안 쓴다 (발견 9).
+        self._side_escape_active = False
 
         self.prev_final_angle = None  # [K] rate limiter 상태. None = "직전 값 없음/특수신호였음" → 다음 정상값에 즉시 스냅
 
@@ -648,6 +665,7 @@ class ShipDirection(Node):
         # bad 를 여기서도 보는 이유: 워치독 틱(0.1s)을 기다리지 않고 즉시 멈추기 위해서다.
         if level >= 2 or bad:
             self._side_prev = None
+            self._side_escape_active = False
             self.pub_obstacle_distance.publish(self._closest_obstacle(scan))
             angle = self._apply_rate_limit(STOP_HOLD)   # [K] 범위 밖 값 → 통과 + 상태 리셋
             self.pub_desired_angle.publish(Float32(data=angle))
@@ -657,6 +675,7 @@ class ShipDirection(Node):
         # motor_control 은 '첫 명령 전 중립'이라 안전하다.
         if scan is None:
             self._side_prev = None
+            self._side_escape_active = False
             return
 
         # ---- [N] 20000(갭 선택)인데 yaw_error 를 한 번도 못 받음 → STOP_HOLD (_compute 전) ----
@@ -867,6 +886,9 @@ class ShipDirection(Node):
         #   (0)(A)(B)·[I]·후보 0 개 틱은 None 으로 남는다. 가짜 self(테스트) 호환 위해 getattr.
         side_prev = getattr(self, '_side_prev', None)
         self._side_prev = None
+        # (C) 비킴 진입 로그용. 비킴 틱에서만 다시 True (발견 9).
+        was_escaping = getattr(self, '_side_escape_active', False)
+        self._side_escape_active = False
 
         obst = self._closest_obstacle(msg)
 
@@ -1025,7 +1047,28 @@ class ShipDirection(Node):
         #    즉 지금 구조로 '계속 후진'은 뒤를 못 보며 맹목 후진하는 것과 같다.
         # → C안: 후진은 쿨다운마다 '한 번만' 짧게 내고, 그 사이(쿨다운 중)는 STOP_HOLD 로
         #   멈춰서 재탐색한다. 쿨다운이 끝났는데도 여전히 후보가 없으면 다시 한 번 후진한다.
-        if not candidates:
+        # 발견 9 (계약서_옆비킴_현장조정_20261106): 가장 가까운 장애물이 옆(15~60°)이고 정면·호·
+        #   목표 창이 비었으면 후진 대신 반대편으로 side_escape_deg 비킴. 후진·쿨다운 도중에도 끊는다
+        #   (결정 ④). 비킴 틱은 편 기억 None(결정 ⑥). 게이트 구간 제외(결정 ③). 0.0 이면 기존과 같다.
+        #   wp_mode 는 control_cb 가 lock 으로 뜬 스냅샷(_side_wp_mode) — detection_distance 와 같은 틱 값.
+        #   직접 호출(control_cb 안 거침)은 None → 모르면 비킴 안 함.
+        esc = None
+        if not candidates and getattr(self, 'side_escape_deg', 0.0) > 0.0:
+            wp_mode = getattr(self, '_side_wp_mode', None)
+            if wp_mode is not None and wp_mode not in self.gate_wp_modes:
+                esc = side_escape(blobs, angle_array, distance_array, self.side_escape_deg,
+                                  LIDAR_FORWARD_DEG)
+        if not candidates and esc is not None:
+            self._reset_reverse_sequence()
+            final_angle = esc
+            self._side_escape_active = True
+            if not was_escaping:
+                c, d = min(blobs, key=lambda b: b[1])
+                self.get_logger().info(
+                    f"회피 경로 없음 + 장애물 옆(중심 {c:.0f}°, {d:.2f} m) "
+                    f"→ 후진 대신 {esc:.0f}° 로 비킴",
+                    throttle_duration_sec=1.0)
+        elif not candidates:
             # 일정 시간 후진 → 일정 시간 STOP 재탐색 → 필요하면 반복
             final_angle = self._apply_reverse_sequence(now)
         else:
