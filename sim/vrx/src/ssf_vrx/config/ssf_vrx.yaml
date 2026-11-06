@@ -1,0 +1,12 @@
+/sim_bridge:
+  ros__parameters:
+    # boat·model_name 은 launch 가 넘긴다(여기 두면 launch 인자가 이긴다).
+    fwd_max_n: 47.0          # T200 14.8 V 보간 최대 전진 추력 (보고서 Ⅱ-3.4). 1차 근사 — 수조 실측 뒤 표로
+    rev_max_n: 35.0          # 후진 최대 (가정)
+    deadband_pwm: 25         # 1475~1525 정지
+    cmd_timeout_sec: 0.5     # 펌웨어 CMD_TIMEOUT_MS 500 과 같게
+    boat_mode: 2             # 0 WAIT 1 MANUAL 2 AUTO — north_goal_angle require_boat_mode_auto 게이트
+    imu_topic: /vrx/imu
+    yaw_raw_topic: /imu/yaw_raw
+    thrust_rate_hz: 20.0
+    status_rate_hz: 10.0

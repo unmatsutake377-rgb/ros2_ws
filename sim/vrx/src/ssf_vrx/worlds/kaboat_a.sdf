@@ -1,0 +1,240 @@
+<?xml version="1.0" ?>
+<!-- 생성 파일: python3 -m ssf_vrx.make_world (손으로 고치지 말 것). 코스 = waypoints.yaml, 배 = S.S.F A -->
+<sdf version="1.9">
+  <world name="kaboat_a">
+    <physics name="4ms" type="dart">
+      <max_step_size>0.004</max_step_size>
+      <real_time_factor>1.0</real_time_factor>
+    </physics>
+    <plugin filename="gz-sim-physics-system" name="gz::sim::systems::Physics"/>
+    <plugin filename="gz-sim-user-commands-system" name="gz::sim::systems::UserCommands"/>
+    <plugin filename="gz-sim-sensors-system" name="gz::sim::systems::Sensors">
+      <render_engine>ogre2</render_engine>
+    </plugin>
+    <plugin filename="gz-sim-imu-system" name="gz::sim::systems::Imu"/>
+    <plugin filename="gz-sim-scene-broadcaster-system" name="gz::sim::systems::SceneBroadcaster"/>
+    <plugin filename="gz-sim-contact-system" name="gz::sim::systems::Contact"/>
+    <plugin filename="gz-sim-navsat-system" name="gz::sim::systems::NavSat"/>
+
+    <scene>
+      <sky></sky>
+      <grid>false</grid>
+      <ambient>1.0 1.0 1.0</ambient>
+      <background>0.8 0.8 0.8</background>
+    </scene>
+
+    <!-- 월드 원점 = WP0. ENU: x 동, y 북 -->
+    <spherical_coordinates>
+      <surface_model>EARTH_WGS84</surface_model>
+      <world_frame_orientation>ENU</world_frame_orientation>
+      <latitude_deg>35.1862375</latitude_deg>
+      <longitude_deg>128.5655118</longitude_deg>
+      <elevation>0.0</elevation>
+      <heading_deg>0.0</heading_deg>
+    </spherical_coordinates>
+
+    <light type="directional" name="sun">
+      <cast_shadows>true</cast_shadows>
+      <pose>0 0 10 0 0 0</pose>
+      <diffuse>0.8 0.8 0.8 1</diffuse>
+      <specular>0.2 0.2 0.2 1</specular>
+      <direction>-0.5 0.1 -0.9</direction>
+    </light>
+
+    <!-- 수면 (VRX 파도 셰이더). 파도 크기는 아래 wavefield gain -->
+    <include>
+      <name>Coast Waves</name>
+      <pose>0 0 0 0 0 0</pose>
+      <uri>coast_waves</uri>
+    </include>
+
+    <!-- 배 -->
+    <include>
+      <name>ssf_boat</name>
+      <pose>-6.602 -4.540 0.02 0 0 0.74448</pose>
+      <uri>ssf_boat_a</uri>
+    </include>
+
+    <!-- 부표 -->
+    <include>
+      <name>buoy_0_gate0</name>
+      <pose>1.239 3.109 0 0 0 0</pose>
+      <uri>kaboat_buoy_red</uri>
+    </include>
+    <include>
+      <name>buoy_1_gate0</name>
+      <pose>3.321 0.417 0 0 0 0</pose>
+      <uri>kaboat_buoy_green</uri>
+    </include>
+    <include>
+      <name>buoy_2_gate1</name>
+      <pose>5.145 7.481 0 0 0 0</pose>
+      <uri>kaboat_buoy_red</uri>
+    </include>
+    <include>
+      <name>buoy_3_gate1</name>
+      <pose>8.536 3.097 0 0 0 0</pose>
+      <uri>kaboat_buoy_green</uri>
+    </include>
+    <include>
+      <name>buoy_4_gate2</name>
+      <pose>9.783 10.908 0 0 0 0</pose>
+      <uri>kaboat_buoy_red</uri>
+    </include>
+    <include>
+      <name>buoy_5_gate2</name>
+      <pose>13.019 6.722 0 0 0 0</pose>
+      <uri>kaboat_buoy_green</uri>
+    </include>
+    <include>
+      <name>buoy_6_gate3</name>
+      <pose>14.810 13.830 0 0 0 0</pose>
+      <uri>kaboat_buoy_red</uri>
+    </include>
+    <include>
+      <name>buoy_7_gate3</name>
+      <pose>17.113 10.852 0 0 0 0</pose>
+      <uri>kaboat_buoy_green</uri>
+    </include>
+    <include>
+      <name>buoy_8_hold</name>
+      <pose>48.647 71.768 0 0 0 0</pose>
+      <uri>kaboat_buoy_white</uri>
+    </include>
+    <include>
+      <name>buoy_9_search_green</name>
+      <pose>28.158 69.719 0 0 0 0</pose>
+      <uri>kaboat_buoy_green</uri>
+    </include>
+    <include>
+      <name>buoy_10_search_red</name>
+      <pose>26.994 59.979 0 0 0 0</pose>
+      <uri>kaboat_buoy_red</uri>
+    </include>
+    <include>
+      <name>buoy_11_search_white</name>
+      <pose>14.247 69.797 0 0 0 0</pose>
+      <uri>kaboat_buoy_white</uri>
+    </include>
+    <include>
+      <name>buoy_12_obst_5</name>
+      <pose>-6.229 33.421 0 0 0 0</pose>
+      <uri>kaboat_obst_orange</uri>
+    </include>
+    <include>
+      <name>buoy_13_obst_5</name>
+      <pose>-1.309 39.211 0 0 0 0</pose>
+      <uri>kaboat_obst_orange</uri>
+    </include>
+    <include>
+      <name>buoy_14_obst_5</name>
+      <pose>-13.228 23.486 0 0 0 0</pose>
+      <uri>kaboat_obst_orange</uri>
+    </include>
+    <include>
+      <name>buoy_15_obst_5</name>
+      <pose>-6.598 28.894 0 0 0 0</pose>
+      <uri>kaboat_obst_orange</uri>
+    </include>
+    <include>
+      <name>buoy_16_obst_5</name>
+      <pose>-10.525 28.558 0 0 0 0</pose>
+      <uri>kaboat_obst_orange</uri>
+    </include>
+    <include>
+      <name>buoy_17_obst_5</name>
+      <pose>-10.712 24.936 0 0 0 0</pose>
+      <uri>kaboat_obst_orange</uri>
+    </include>
+    <include>
+      <name>buoy_18_obst_5</name>
+      <pose>-0.338 42.337 0 0 0 0</pose>
+      <uri>kaboat_obst_orange</uri>
+    </include>
+    <include>
+      <name>buoy_19_obst_5</name>
+      <pose>2.623 43.060 0 0 0 0</pose>
+      <uri>kaboat_obst_orange</uri>
+    </include>
+    <include>
+      <name>buoy_20_obst_5</name>
+      <pose>-6.934 26.333 0 0 0 0</pose>
+      <uri>kaboat_obst_orange</uri>
+    </include>
+    <include>
+      <name>buoy_21_obst_8</name>
+      <pose>34.820 -9.786 0 0 0 0</pose>
+      <uri>kaboat_obst_orange</uri>
+    </include>
+    <include>
+      <name>buoy_22_obst_8</name>
+      <pose>41.249 -6.750 0 0 0 0</pose>
+      <uri>kaboat_obst_orange</uri>
+    </include>
+    <include>
+      <name>buoy_23_obst_8</name>
+      <pose>32.606 -12.007 0 0 0 0</pose>
+      <uri>kaboat_obst_orange</uri>
+    </include>
+    <include>
+      <name>buoy_24_obst_8</name>
+      <pose>37.391 -6.560 0 0 0 0</pose>
+      <uri>kaboat_obst_orange</uri>
+    </include>
+    <include>
+      <name>buoy_25_obst_8</name>
+      <pose>39.645 -5.173 0 0 0 0</pose>
+      <uri>kaboat_obst_orange</uri>
+    </include>
+    <include>
+      <name>buoy_26_obst_8</name>
+      <pose>29.372 -14.666 0 0 0 0</pose>
+      <uri>kaboat_obst_orange</uri>
+    </include>
+
+    <!-- 도크 (표식: 칸 -1/0/+1 = ('green', 'Triangle')/('red', 'Square')/('blue', 'Circle'); 목표 칸 0) -->
+
+    <model name="kaboat_dock">
+      <pose>2.820 -34.576 0 0 0 1.92649</pose>
+      <static>true</static>
+      <link name="link">
+      <collision name="back_wall_c"><pose>-0.075 0 0.2 0 0 0</pose><geometry><box><size>0.15 3.0 0.6</size></box></geometry></collision>
+      <visual name="back_wall_v"><pose>-0.075 0 0.2 0 0 0</pose><geometry><box><size>0.15 3.0 0.6</size></box></geometry><material><ambient>0.6 0.5 0.4 1</ambient><diffuse>0.6 0.5 0.4 1</diffuse></material></visual>
+      <collision name="div0_c"><pose>0.25 -1.5 0.2 0 0 0</pose><geometry><box><size>0.5 0.15 0.6</size></box></geometry></collision>
+      <visual name="div0_v"><pose>0.25 -1.5 0.2 0 0 0</pose><geometry><box><size>0.5 0.15 0.6</size></box></geometry><material><ambient>0.6 0.5 0.4 1</ambient><diffuse>0.6 0.5 0.4 1</diffuse></material></visual>
+      <collision name="div1_c"><pose>0.25 -0.5 0.2 0 0 0</pose><geometry><box><size>0.5 0.15 0.6</size></box></geometry></collision>
+      <visual name="div1_v"><pose>0.25 -0.5 0.2 0 0 0</pose><geometry><box><size>0.5 0.15 0.6</size></box></geometry><material><ambient>0.6 0.5 0.4 1</ambient><diffuse>0.6 0.5 0.4 1</diffuse></material></visual>
+      <collision name="div2_c"><pose>0.25 0.5 0.2 0 0 0</pose><geometry><box><size>0.5 0.15 0.6</size></box></geometry></collision>
+      <visual name="div2_v"><pose>0.25 0.5 0.2 0 0 0</pose><geometry><box><size>0.5 0.15 0.6</size></box></geometry><material><ambient>0.6 0.5 0.4 1</ambient><diffuse>0.6 0.5 0.4 1</diffuse></material></visual>
+      <collision name="div3_c"><pose>0.25 1.5 0.2 0 0 0</pose><geometry><box><size>0.5 0.15 0.6</size></box></geometry></collision>
+      <visual name="div3_v"><pose>0.25 1.5 0.2 0 0 0</pose><geometry><box><size>0.5 0.15 0.6</size></box></geometry><material><ambient>0.6 0.5 0.4 1</ambient><diffuse>0.6 0.5 0.4 1</diffuse></material></visual>
+      <visual name="marker_0"><pose>0.02 -1.0 0.75 1.5708 0 1.5708</pose><geometry><mesh><uri>model://symbol_triangle/mesh/triangle.dae</uri><scale>0.5 0.5 0.5</scale></mesh></geometry><material><ambient>0.05 0.6 0.1 1</ambient><diffuse>0.05 0.6 0.1 1</diffuse></material></visual>
+      <visual name="marker_1"><pose>0.02 0.0 0.75 0 0 0</pose><geometry><box><size>0.03 0.5 0.5</size></box></geometry><material><ambient>0.85 0.05 0.05 1</ambient><diffuse>0.85 0.05 0.05 1</diffuse></material></visual>
+      <visual name="marker_2"><pose>0.02 1.0 0.75 0 1.5708 0</pose><geometry><cylinder><radius>0.25</radius><length>0.03</length></cylinder></geometry><material><ambient>0.05 0.2 0.85 1</ambient><diffuse>0.05 0.2 0.85 1</diffuse></material></visual>
+      </link>
+    </model>
+
+
+    <!-- 파도 파라미터 (모든 Surface/WaveVisual 이 이 토픽을 듣는다). gain 0 = 잔잔 -->
+    <plugin filename="libPublisherPlugin.so" name="vrx::PublisherPlugin">
+      <message type="gz.msgs.Param" topic="/vrx/wavefield/parameters" every="2.0">
+        params {
+          key: "direction"
+          value { type: DOUBLE  double_value: 0.0 }
+        }
+        params {
+          key: "gain"
+          value { type: DOUBLE  double_value: 0.0 }
+        }
+        params {
+          key: "period"
+          value { type: DOUBLE  double_value: 5 }
+        }
+        params {
+          key: "steepness"
+          value { type: DOUBLE  double_value: 0 }
+        }
+      </message>
+    </plugin>
+  </world>
+</sdf>

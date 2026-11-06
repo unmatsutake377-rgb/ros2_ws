@@ -1,0 +1,20 @@
+<?xml version="1.0" ?>
+<!-- 생성 파일: ssf_vrx.make_world. KABOAT 부표 orange: 높이 1.0 m, 폭 0.5 m, static -->
+<sdf version="1.9">
+  <model name="kaboat_buoy_orange">
+    <static>true</static>
+    <link name="link">
+      <collision name="collision">
+        <pose>0 0 0.300 0 0 0</pose>
+        <geometry><cylinder><radius>0.25</radius><length>1.0</length>
+        </cylinder></geometry>
+      </collision>
+      <visual name="visual">
+        <pose>0 0 0.300 0 0 0</pose>
+        <geometry><cylinder><radius>0.25</radius><length>1.0</length>
+        </cylinder></geometry>
+        <material><ambient>1.0 0.45 0.0 1</ambient><diffuse>1.0 0.45 0.0 1</diffuse></material>
+      </visual>
+    </link>
+  </model>
+</sdf>

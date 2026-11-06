@@ -1,0 +1,33 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>ssf_vrx</name>
+  <version>0.1.0</version>
+  <description>
+    SSF 자율운항보트 스택을 VRX(Gazebo Garden) 위에서 돌리기 위한 접착 패키지.
+    배 모델(ssf_boat_a/b)·KABOAT 코스 월드 생성기·Motor_run↔추진기 브릿지·드라이버 없는 스택 launch.
+    대회 코드(src/)는 건드리지 않는다. 별도 워크스페이스(sim/vrx)에서 빌드한다.
+  </description>
+  <maintainer email="unmatsutake377@gmail.com">SSF</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_python</buildtool_depend>
+
+  <depend>rclpy</depend>
+  <depend>std_msgs</depend>
+  <depend>sensor_msgs</depend>
+  <depend>nav_msgs</depend>
+  <exec_depend>ros_gz_bridge</exec_depend>
+  <exec_depend>ros_gz_sim</exec_depend>
+  <exec_depend>vrx_gz</exec_depend>
+  <exec_depend>launch_files</exec_depend>
+
+  <test_depend>ament_copyright</test_depend>
+  <test_depend>ament_flake8</test_depend>
+  <test_depend>ament_pep257</test_depend>
+  <test_depend>python3-pytest</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>
