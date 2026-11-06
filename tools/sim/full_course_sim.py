@@ -173,6 +173,21 @@ TAU = 0.5
 HALF_W = K.BOAT_HALF_W            # 0.29 (ship_direction half_width 기본값과 같음)
 BUOY_R = K.BUOY_R                 # 0.2
 HULL_HALF_L = 0.83
+# 직사각형 선체 접촉(보조 지표, 11-06 계약서_옆비킴_현장조정 결정 ⑥): 기본 접촉은 중심 원(반경 HALF_W)이라
+# 선미 휘두름을 못 본다. 여기서는 선체를 LOA×BOA 직사각형(중심 = 배 위치 = LiDAR 가정)으로 보고 부표 원과 겹치면 접촉.
+# 치수는 sim/vrx make_boat.BOATS(A 1.66×0.55, B 1.77×0.522). 기존 접촉 수치는 바꾸지 않는다(별도 카운터).
+HULL_DIMS = {"A": (1.66, 0.55), "B": (1.77, 0.522)}
+
+
+def rect_hull_dist(x, y, psi, bx, by, half_l, half_b):
+    """부표 중심에서 방향 psi(나침반 °) 직사각형 선체까지 최단 거리(안이면 0)."""
+    p = math.radians(psi)
+    fx, fy = math.sin(p), math.cos(p)
+    dx, dy = bx - x, by - y
+    u = dx * fx + dy * fy                 # 선수 방향 성분
+    w = dx * (-fy) + dy * fx              # 왼쪽 성분
+    return math.hypot(max(abs(u) - half_l, 0.0), max(abs(w) - half_b, 0.0))
+
 HFOV = float(VIS_ALL["hfov_deg"])
 CAM_MIN, CAM_MAX, CAM_NOISE = 0.5, 12.0, 0.5
 DOCK_CAM_MIN = 0.7
@@ -468,6 +483,8 @@ def run(seed, variant="A", wp_file=None, world_wp_file=WP_DEFAULT, gps_sigma=0.0
     sb_events = []; sk_events = []; prev_sb = sb.state; prev_sk = sk.state
     sb_log_idx = 0
     contacts_sb_state = {}
+    _hd = HULL_DIMS.get(hull or variant[:1], HULL_DIMS["A"]); rect_hl, rect_hb = _hd[0] / 2.0, _hd[1] / 2.0
+    contacts_rect = {"gate": 0, "hold": 0, "search": 0, "obst_5": 0, "obst_8": 0}; rect_on = {}
     dock_contact = None; dock_mode7_t0 = None; dock_dist_at = {}
     t_last_reach = None; img_pub_conflict = 0
     rec = dict(t=[], x=[], y=[], psi=[], v=[], mode=[], wp=[], sk=[], sb=[], cand=[], des=[], dd=[]) if record else None
@@ -654,6 +671,12 @@ def run(seed, variant="A", wp_file=None, world_wp_file=WP_DEFAULT, gps_sigma=0.0
                         ks = f"{kind}@WP{nga.wp_idx}(m{cur_mode}):{sb.state}"
                         contacts_sb_state[ks] = contacts_sb_state.get(ks, 0) + 1
                 contact_on[("b", i)] = on if on else (dd < HALF_W + 0.1 and contact_on.get(("b", i), False))
+                rd = rect_hull_dist(x, y, psi, b["x"], b["y"], rect_hl, rect_hb)
+                ron = rd < BUOY_R
+                if ron and not rect_on.get(i):
+                    kind = b["kind"]; key = "gate" if kind.startswith("gate") else ("search" if kind.startswith("search") else kind)
+                    contacts_rect[key] = contacts_rect.get(key, 0) + 1
+                rect_on[i] = ron if ron else (rd < BUOY_R + 0.1 and rect_on.get(i, False))
             if math.hypot(x - dock["O"][0], y - dock["O"][1]) < 4.0:
                 h = np.array([math.sin(math.radians(psi)), math.cos(math.radians(psi))])
                 bow, stern = pos + h * HULL_HALF_L, pos - h * HULL_HALF_L
@@ -758,6 +781,7 @@ def run(seed, variant="A", wp_file=None, world_wp_file=WP_DEFAULT, gps_sigma=0.0
     out["sk_events"] = sk_events; out["sb_events"] = sb_events
     out["contacts"] = contacts; out["contacts_total"] = sum(contacts.values())
     out["contacts_avoid"] = contacts["obst_5"] + contacts["obst_8"]
+    out["contacts_rect"] = contacts_rect; out["contacts_rect_avoid"] = contacts_rect["obst_5"] + contacts_rect["obst_8"]
     out["contacts_by_mode"] = contacts_by_mode
     out["contacts_sb_state"] = contacts_sb_state
     out["mode_pubs"] = mode_pubs; out["multi_pub_ticks"] = multi_pub_ticks
@@ -976,6 +1000,10 @@ def summarize(R, label):
     lines.append(f"  WP 시간 초과 합 {sum(r['timeouts'] for r in R)} (런당 중앙값 {med(sorted(r['timeouts'] for r in R))}) | 접촉 합 {sum(r['contacts_total'] for r in R)} "
                  f"(회피 장애물 {sum(r['contacts_avoid'] for r in R)}, 게이트 {sum(r['contacts']['gate'] for r in R)}, 위치유지 {sum(r['contacts']['hold'] for r in R)}, "
                  f"탐색 부표 {sum(r['contacts']['search'] for r in R)}, 도크 {sum(r['contacts']['dock'] for r in R)})")
+    if all("contacts_rect" in r for r in R):
+        lines.append(f"  직사각형 선체 접촉(보조, 선미 포함) 회피 장애물 {sum(r['contacts_rect_avoid'] for r in R)}, "
+                     f"게이트 {sum(r['contacts_rect']['gate'] for r in R)}, 위치유지 {sum(r['contacts_rect']['hold'] for r in R)}, "
+                     f"탐색 부표 {sum(r['contacts_rect']['search'] for r in R)}")
     cs = {}
     for r in R:
         for kk, vv in r.get("contacts_sb_state", {}).items():
