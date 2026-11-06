@@ -41,6 +41,8 @@ Ubuntu 노트북에서 아래 순서대로 올리고, §5 점검표의 기대값
 
 ## 3. 설치 (한 번)
 
+**빠른 길(스크립트):** 노트북 터미널에서 `bash ~/ros2_ws/sim/vrx/scripts/01_install_sudo.sh`(sudo) → `bash ~/ros2_ws/sim/vrx/scripts/02_build.sh` → `bash ~/ros2_ws/sim/vrx/scripts/03_smoke.sh A`. 03 은 화면 없이 띄워 §5 의 1~4 를 자동으로 재고 `~/ssf_logs/vrx_smoke_*.log` 에 남긴다. 아래는 같은 일을 손으로 하는 순서.
+
 ```bash
 # 1) Gazebo Garden (VRX humble 브랜치가 요구). Garden 은 지원 종료됐지만 패키지는 내려받아진다.
 sudo apt-get update && sudo apt-get install -y lsb-release gnupg curl
