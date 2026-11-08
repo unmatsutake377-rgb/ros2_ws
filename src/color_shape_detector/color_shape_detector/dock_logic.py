@@ -41,7 +41,7 @@ def classify_shape(v_count, area, perimeter, w, h, *,
                    min_area=80.0,
                    square_extent_min=0.4,
                    square_aspect_lo=0.6, square_aspect_hi=1.4,
-                   circle_circularity_min=0.82,
+                   circle_circularity_min=0.87,
                    square_circularity_max=0.60):
     """
     컨투어 기하 특징 → 형상 이름 또는 None.
@@ -56,6 +56,15 @@ def classify_shape(v_count, area, perimeter, w, h, *,
       · 원형도 >= circle_circularity_min  → 강하게 원
       · 원형도 <  square_circularity_max  → 원이 될 수 없음(각진 도형)
     임계는 전부 파라미터(하드코딩 금지). 실제 값은 D4 하네스 수치로 튜닝한다.
+
+    circle_circularity_min 0.82 → 0.87 (2026-11-08, 계약서_도킹비전_사전수정 A):
+      작은 사각의 **픽셀 외곽선** 원형도가 0.82~0.86 까지 올라가 원으로 오인됐다(계단 효과로 모서리가
+      깎여 보임). 0.82 에서 사각 정답률 12~25 px 40~60%, 0.87 에서 95~100%. 원은 두 임계 모두 100%
+      (원 경로는 v>=7 이라 임계 무관). 근거: `python3 tools/sim/dock_shape_sweep.py` (cv2 5.0.0, eps 0.0315).
+      ⚠️ 픽셀 기하 합성 근거다 — 실영상 혼동행렬이 나오면 재확인.
+      알려진 한계: 16 px 이하 사각이 45° 마름모면 0.87 에서도 원(12px@45 v4 원형도 0.876).
+      부작용: 4<=v<=6·원형도 0.82~0.87 은 CIRCLE→SQUARE, v==3·원형도 0.82~0.87 은 None→TRIANGLE.
+      되돌리기: vision.yaml dock 절 circle_circularity_min: 0.82.
     """
     if area is None or area < min_area:
         return None

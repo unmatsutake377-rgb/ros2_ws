@@ -132,7 +132,13 @@ class ImageSubscriber(Node):
         # grace_period 도 파라미터로 (열화 환경에서 N·grace 를 올려 대응)
         self.grace_period_s = float(
             self.declare_parameter('grace_period_s', 2.0).value)
-        self.confirmer = DetectionConfirmer(confirm_frames=self.confirm_frames)
+        # C(2026-11-08, 계약서_도킹비전_사전수정): 창 M 중 N — gate·turn(A1) 과 같은 패턴.
+        #   기본 = confirm_frames → 옛 "연속 N" 과 동일(동작 불변). window < N 이면 DetectionConfirmer 가 N 으로 보정.
+        #   🚨 정수다. yaml 에 3.0 처럼 소수로 쓰면 rclpy 가 부팅 때 타입 예외로 노드를 세운다.
+        #   켜는 후보(confirm_window 5)는 dock 깜빡임 벤치 뒤 — 측정 없이 켜지 않는다.
+        #   🚨 속성 이름 self.confirmer 유지(wp_mode_callback 의 reset, test_detector_mode_reset 의존).
+        cw = int(self.declare_parameter('confirm_window', self.confirm_frames).value)
+        self.confirmer = DetectionConfirmer(confirm_frames=self.confirm_frames, confirm_window=cw)
 
         # ---- D3: 도형 분류·검출 임계 파라미터화 ----
         self.approx_epsilon = float(self.declare_parameter('approx_epsilon', 0.0315).value)
@@ -141,8 +147,12 @@ class ImageSubscriber(Node):
             self.declare_parameter('square_extent_min', 0.4).value)
         self.square_aspect_lo = float(self.declare_parameter('square_aspect_lo', 0.6).value)
         self.square_aspect_hi = float(self.declare_parameter('square_aspect_hi', 1.4).value)
+        # A(2026-11-08): 0.82 → 0.87. 작은 사각의 픽셀 외곽선 원형도가 0.82~0.86 이라 원으로 오인됐다
+        #   (tools/sim/dock_shape_sweep.py, 픽셀 기하 합성 — 실영상 혼동행렬 나오면 재확인).
+        #   알려진 한계: 16 px 이하 45° 마름모는 0.87 에서도 원. 되돌리기: vision.yaml dock 절 0.82.
+        #   ⚠️ dock_logic.classify_shape 기본 인자·vision.yaml 과 같아야 한다(test_dock_logic 정적 검사).
         self.circle_circularity_min = float(
-            self.declare_parameter('circle_circularity_min', 0.82).value)
+            self.declare_parameter('circle_circularity_min', 0.87).value)
         self.square_circularity_max = float(
             self.declare_parameter('square_circularity_max', 0.60).value)
         self.y_zone_lo = float(self.declare_parameter('y_zone_lo', 0.15).value)
@@ -215,8 +225,9 @@ class ImageSubscriber(Node):
         # 이번 프레임에서 목표 표식을 찾는다 → (각도, (색,형상)) 또는 (None, None)
         angle_deg, key = self.process_image(frame, view_frame)
 
-        # D2: N프레임 시간 안정화. 같은 (색,형상)이 confirm_frames 연속일 때만 확정.
-        #   한 프레임 오탐이 그대로 조향에 튀는 것을 막는다.
+        # D2: N프레임 시간 안정화. 같은 (색,형상)이 최근 confirm_window 프레임 중 confirm_frames 번일 때만 확정
+        #   (기본 window = confirm_frames → 연속 N). 한 프레임 오탐이 그대로 조향에 튀는 것을 막는다.
+        #   미검출(None)은 창에 남을 뿐 리셋하지 않고, 다른 (색,형상)이 오면 창을 비운다.
         confirmed = self.confirmer.update(key)
 
         if self.debug_view:

@@ -2,6 +2,7 @@
 """hsv_ranges 순수 로직 테스트 — ROS·OpenCV·카메라 없이 돈다."""
 
 import os
+import re
 import sys
 import unittest
 
@@ -89,6 +90,17 @@ class TestDefaults(unittest.TestCase):
         lo, _ = DEFAULT_RANGES["red"][0]
         self.assertLessEqual(lo[2], 100, f"V 하한 {lo[2]} 이 너무 높다 — 어두운 빨강을 놓친다")
 
+    def test_파랑은_진짜_파랑이다(self):
+        """🚨 옛 dock 값(H 130~175·S 18~60)은 보라·회청색이라 파랑 표식 0% 였다(2026-11-08 합성시험)."""
+        for lo, hi in DEFAULT_RANGES["blue"]:
+            self.assertGreaterEqual(lo[0], 90, f"H 하한 {lo[0]} — 파랑대(≈100~130) 밖으로 내려갔다")
+            self.assertLessEqual(hi[0], 135, f"H 상한 {hi[0]} — 보라 쪽으로 넘어갔다")
+            self.assertGreaterEqual(lo[1], 80, f"S 하한 {lo[1]} — 회청색(저채도)을 다시 받는다")
+
+    def test_옛_파랑은_버린_값에_남아_있다(self):
+        self.assertIn("blue@dock", SUPERSEDED)
+        self.assertEqual(SUPERSEDED["blue@dock"], [130, 18, 160, 175, 60, 200])
+
     def test_버린_값도_파싱은_된다(self):
         """비교하려면 읽을 수는 있어야 한다."""
         for k, flat in SUPERSEDED.items():
@@ -123,6 +135,27 @@ class TestLoad(unittest.TestCase):
         for lo, hi in got["red"]:
             self.assertEqual(len(lo), 3)
             self.assertEqual(len(hi), 3)
+
+
+class TestSyncWithVisionYaml(unittest.TestCase):
+    """🚨 코드 기본값(yaml 이 안 닿을 때)과 vision.yaml `hsv.<색>` 이 같아야 한다(§1-4, 단일 출처).
+
+    한쪽만 바꾸면 `ros2 run` 단독 실행과 launch 실행이 다른 색을 본다. pyyaml 없이 정규식으로 읽는다.
+    """
+
+    YAML = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'config', 'vision.yaml')
+
+    def _yaml_flat(self, color):
+        txt = open(self.YAML, encoding='utf-8').read()
+        m = re.search(r'^\s*hsv\.' + re.escape(color) + r':\s*\[([^\]]*)\]', txt, re.M)
+        self.assertIsNotNone(m, f"vision.yaml 에 hsv.{color} 가 없다")
+        return [int(x) for x in m.group(1).replace(" ", "").split(",") if x]
+
+    def test_여섯_색_모두_yaml과_같다(self):
+        self.assertEqual(len(VALID_COLORS), 6)
+        for c in VALID_COLORS:
+            self.assertEqual(self._yaml_flat(c), default_flat(c),
+                             f"hsv.{c}: vision.yaml 과 hsv_ranges.DEFAULT_RANGES 가 어긋났다")
 
 
 class TestFormatYaml(unittest.TestCase):
