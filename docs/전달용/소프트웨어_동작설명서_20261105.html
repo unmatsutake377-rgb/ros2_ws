@@ -277,7 +277,7 @@ td:nth-child(2){white-space:nowrap}
 <li><strong>덩어리 찾기:</strong> 흰 덩어리의 윤곽선을 찾고, 너무 작은 것(40픽셀, 도킹은 80픽셀 미만)은 버린다.</li>
 <li><strong>모양·높이 검사:</strong> 화면 높이의 일정 띠(대략 위 10~15% ~ 55%) 안에 있는 것만 남긴다. 부표 밑 물 반사나 하늘을 거르기 위해서다.</li>
 <li><strong>가장 큰 것 하나</strong>를 고른다.</li>
-<li><strong>확인:</strong> 게이트·위치유지는 1프레임, 도킹은 <strong>3프레임 연속</strong> 같은 결과여야 믿는다.</li>
+<li><strong>확인:</strong> 게이트·위치유지는 1프레임, 도킹은 <strong>3프레임 연속</strong> 같은 결과여야 믿는다(도킹도 창 파라미터 <code>confirm_window</code> 가 있다, 기본 = 연속 3).</li>
 <li><strong>방향으로 바꾸기:</strong> 화면 가로 위치 → 각도. 화면 가운데가 0°, 왼쪽이 +. 화각 63.9°(직접 잰 값)로 계산한다.</li>
 <li><strong>잠깐 안 보이면:</strong> 2초까지는 마지막 각도를 계속 내고, 그 뒤에는 10000(안 보임). <strong>임무 번호가 바뀌면 그 즉시 마지막 각도와 확인 창을 버린다</strong>(11-06 수정). 그전에는 위치유지(흰)에서 탐색(빨강)으로 넘어가도 2초 동안 흰 부표 각도가 계속 나가서 ship_back이 흰 부표를 탐색 부표로 잡았다(발견 7).</li>
 </ol>
@@ -288,7 +288,7 @@ td:nth-child(2){white-space:nowrap}
 </tbody></table></div>
 <ul>
 <li><strong>탐색 색이 당일 바뀌면</strong> <code>vision.yaml</code>의 <code>turn_color_mode3</code> 한 줄만 바꾼다. red·green·white 외의 글자를 넣으면 켤 때 ERROR가 나고 <strong>그 임무에서는 아무것도 안 낸다</strong>(엉뚱한 색으로 대신 찾지 않음).</li>
-<li><strong>도킹 모양 판정:</strong> 꼭짓점 3개 = 삼각, 4~6개 = 사각(동그란 정도가 0.82 이상이면 원), 7개 이상 = 원.</li>
+<li><strong>도킹 모양 판정:</strong> 꼭짓점 3개 = 삼각, 4~6개 = 사각(동그란 정도가 0.87 이상이면 원 — 11-08 에 0.82 에서 올림: 작은 사각이 픽셀 계단 때문에 0.82~0.86 으로 재져 원으로 오인됐다), 7개 이상 = 원.</li>
 <li>도킹 목표 색·모양이 틀린 글자면 도킹 임무에서만 10000을 계속 내고 5초마다 ERROR.</li>
 </ul>
 </article>
