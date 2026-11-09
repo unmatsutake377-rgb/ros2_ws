@@ -847,7 +847,7 @@ hr{border:0;border-top:1px solid var(--line);margin:20px 0}li{margin:3px 0}
 <td><code>dwa_enabled</code> (<code>ship_direction_tournament.yaml</code>)</td>
 <td><code>true</code></td>
 <td>DWA: 배의 움직임을 2.5 초 앞까지 굴려 보고, 선체가 장애물·상대 배에 닿지 않는 조향각 중 목표에 가까운 것을 고름</td>
-<td>실해역에서 부표 접촉·갇힘·'폴백' 로그가 잦으면, 또는 물 위 확인을 못 했으면 <code>false</code></td>
+<td>실해역에서 부표 접촉·갇힘·'폴백' 로그가 잦을 때만 <code>false</code>. 물 위 확인을 못 했으면 <strong>켠 채</strong> 경기(시뮬: 끄면 경계 이탈 2배·부표 접촉 4배). 🚨 실제 배 속도에 맞춰 <code>dwa_model_agility</code> 를 정하면 빠른 배의 경계 이탈이 9.4→3.0 %</td>
 </tr>
 <tr>
 <td><code>side_lock_enabled</code> (〃)</td>
