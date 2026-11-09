@@ -17,6 +17,9 @@ from ship_direction.failsafe import effective_candidate, candidate_is_stale, Can
 from ship_direction.failsafe import heading_missing
 from ship_direction.gap_select import obstacle_blobs, rank_candidates, next_side_memory
 from ship_direction.gap_select import side_escape
+from ship_direction.side_lock import SideLockWait, SideLockFilter, side_states, allowed_range
+from ship_direction.side_lock import angle_allowed
+from ship_direction.side_lock import clip_candidates, check_params, UNKNOWN
 
 # 특수 신호 상수 (CLAUDE.md 3-9 상수표)
 SPIN_RIGHT = 5000.0          # 우선회
@@ -422,6 +425,51 @@ class ShipDirection(Node):
                 f"DWA 켬: 선체 {self.dwa_hull}, 모드 {self.dwa_modes}, "
                 f"배율 {self.dwa_model_agility}, lidar_x {self.dwa_lidar_x_m} m")
 
+        # ---- (C) 옆 잠금 — 토너먼트 T2-1 (계약서_토너먼트분리_20261109 §9-6·§9-7) ----
+        # 배 옆 구역(상대방위 ±side_lock_min_deg~side_lock_max_deg, 좌 양수)의 최솟값이 side_lock_dist_m
+        # 안인 새 스캔이 연속 side_lock_confirm_frames 번이면 그쪽을 잠그고(dist + side_lock_release_margin_m
+        # 이상이면 풀림), 그쪽으로 정면(80) 대비 side_lock_turn_deg 넘게 꺾는 후보(갭·DWA·비킴)를 뺀다
+        # (규정: 나란히 가다 침로를 바꾼 쪽이 접촉 책임). **잠금 때문에** 후보가 0 개가 되면 후진하지 않고
+        # STOP_HOLD 로 매 틱 재평가, side_lock_wait_max_sec 넘으면 기존 동작으로 폴백 + WARN. 잠금과
+        # 무관하게 막힌 곳(잠금 없이도 후보 0)은 기존 동작(비킴·후진) 그대로. 스캔이 옆 구역을
+        # 못 덮으면 그쪽은 '모름' → 안 잠금(기존 동작). 상대 배·부표 구분 안 함. 계산은 side_lock.py.
+        # 켜짐 여부는 이 스위치뿐 — wp_mode 로 가르지 않는다(main 에도 mode 8). 끔(기본) = 기존과 같다.
+        # 이상값(bool 아님·비유한·범위 밖) → ERROR 1회 + 끔. 🚨 대회 launch 가 yaml 을 넘긴다 → yaml 과 같이.
+        # ⚠️ RPLIDAR 옆·뒤 가림·자기 선체 반사 미확인(side_lock.py 머리말) — 물 위 확인 뒤 켬.
+        self.side_lock_enabled = self.declare_parameter('side_lock_enabled', False).value
+        self.side_lock_dist_m = float(self.declare_parameter('side_lock_dist_m', 1.5).value)
+        self.side_lock_min_deg = float(self.declare_parameter('side_lock_min_deg', 45.0).value)
+        self.side_lock_max_deg = float(self.declare_parameter('side_lock_max_deg', 135.0).value)
+        self.side_lock_turn_deg = float(self.declare_parameter('side_lock_turn_deg', 15.0).value)
+        self.side_lock_wait_max_sec = float(
+            self.declare_parameter('side_lock_wait_max_sec', 10.0).value)
+        # 정수 — int() 로 감싸지 않는다(소수·bool 이면 가드가 잡게). 쓸 때는 SideLockFilter 가 int.
+        self.side_lock_confirm_frames = self.declare_parameter('side_lock_confirm_frames', 3).value
+        self.side_lock_release_margin_m = float(
+            self.declare_parameter('side_lock_release_margin_m', 0.3).value)
+        bad = check_params(self.side_lock_enabled, self.side_lock_dist_m, self.side_lock_min_deg,
+                           self.side_lock_max_deg, self.side_lock_turn_deg,
+                           self.side_lock_wait_max_sec, self.side_lock_confirm_frames,
+                           self.side_lock_release_margin_m)
+        if bad:
+            self.get_logger().error(f"옆 잠금 파라미터 이상({'; '.join(bad)}) → 옆 잠금 끔")
+            self.side_lock_enabled = False
+        self._side_lock_wait = None      # 켰을 때만 만든다(후보 0 개 대기 상태, §9-7)
+        self._side_lock_filter = None    # 켰을 때만 만든다(연속 프레임 확인 + 풀림 히스테리시스)
+        self._side_lock_last_scan = None  # 마지막으로 센 스캔 메시지(같은 스캔 재처리는 안 셈)
+        self._side_lock_seen = False     # 직전 _compute 틱이 옆 잠금을 평가한 (C) 틱이었나
+        self._side_lock_prev = (False, False)   # 직전 (좌, 우) 잠김 — 잠김 INFO 용(제어엔 안 씀)
+        self._side_lock_unknown_warned = False  # 옆 구역 '모름' WARN 1회
+        if self.side_lock_enabled:
+            self._side_lock_wait = SideLockWait(self.side_lock_wait_max_sec)
+            self._side_lock_filter = SideLockFilter(self.side_lock_confirm_frames,
+                                                    self.side_lock_release_margin_m)
+            self.get_logger().info(
+                f"옆 잠금 켬: dist {self.side_lock_dist_m} m, 옆 구역 ±{self.side_lock_min_deg}~"
+                f"{self.side_lock_max_deg}°, turn {self.side_lock_turn_deg}°, "
+                f"wait {self.side_lock_wait_max_sec} s, 확인 {self.side_lock_confirm_frames}프레임, "
+                f"풀림 여유 {self.side_lock_release_margin_m} m")
+
         self.detection_distance = self.detection_distance_default
 
         # ----------------------
@@ -738,6 +786,7 @@ class ShipDirection(Node):
         if level >= 2 or bad:
             self._side_prev = None
             self._side_escape_active = False
+            self._side_lock_seen = False     # 옆 잠금 대기 시간은 연속 (C) 틱으로만 센다
             self.pub_obstacle_distance.publish(self._closest_obstacle(scan))
             angle = self._apply_rate_limit(STOP_HOLD)   # [K] 범위 밖 값 → 통과 + 상태 리셋
             self.pub_desired_angle.publish(Float32(data=angle))
@@ -748,6 +797,7 @@ class ShipDirection(Node):
         if scan is None:
             self._side_prev = None
             self._side_escape_active = False
+            self._side_lock_seen = False
             return
 
         # ---- [N] 20000(갭 선택)인데 yaw_error 를 한 번도 못 받음 → STOP_HOLD (_compute 전) ----
@@ -961,6 +1011,9 @@ class ShipDirection(Node):
         # (C) 비킴 진입 로그용. 비킴 틱에서만 다시 True (발견 9).
         was_escaping = getattr(self, '_side_escape_active', False)
         self._side_escape_active = False
+        # 옆 잠금: 직전 틱이 잠금 평가 (C) 틱이었나 — 꺼내 두고 비운다((C) 에서 평가하면 다시 True).
+        lock_seen = getattr(self, '_side_lock_seen', False)
+        self._side_lock_seen = False
         # DWA 구간 판정(control_cb 와 같음) — control_cb 를 안 거치는 직접 호출 대비. 가짜 self 호환 getattr.
         if getattr(self, '_dwa_active', False) and \
                 getattr(self, '_side_wp_mode', None) not in self.dwa_modes:
@@ -1116,13 +1169,24 @@ class ShipDirection(Node):
             arc_length = angle_increment_rad * r_edge * (e - s)
             candidates.append((angle_diff, -arc_length, best_angle, s, e))
 
+        # ---- (C) 옆 잠금 (계약서_토너먼트분리_20261109 T2-1) — 갭·DWA·비킴 후보를 잠금 구간으로 ----
+        #   끔(기본)·잠긴 쪽 없음이면 lock_on False → cand_use 는 candidates 그대로, 아래는 기존과 같다.
+        lock_on, a_lo, a_hi = False, 0.0, 160.0
+        if getattr(self, 'side_lock_enabled', False):
+            lock_on, a_lo, a_hi = self._side_lock_eval(msg, lock_seen)
+        cand_use = candidates
+        if lock_on:
+            cand_use = clip_candidates(candidates, angle_array, yaw_mapped, a_lo, a_hi)
+
         # ---- (C) DWA (계약서_DWA_20261106 결정 7) — 비킴·후진·갭 정렬 분기보다 **먼저** ----
         #   DWA 모드가 아니거나 끔이면 (False, None) → 아래는 기존과 같다.
         #   고르면 후진 상태기계 리셋, 비킴·후진 분기는 건너뛴다(거짓 '후진 시작' WARN 없음).
         #   편 기억 _side_prev 는 갭 정렬 기준 그대로(후보 있으면 정렬 첫째, 0 개면 None).
+        #   옆 잠금 중이면 잠금 구간 안 후보만(dwa.choose allowed).
         dwa_on, dwa_angle = False, None
         if getattr(self, 'dwa_enabled', False):
-            dwa_on, dwa_angle = self._dwa_select(angle_array, distance_array, yaw_mapped)
+            dwa_on, dwa_angle = self._dwa_select(angle_array, distance_array, yaw_mapped,
+                                                 (a_lo, a_hi) if lock_on else None)
 
         # ---- [L] 회피 경로가 없으면 후진. 팀원 피드백 C안 반영 ----
         # 작년/2단계 코드는 여기서 매 tick 무조건 REVERSE_ANGLE 을 냈다 — reverse_cooldown 은
@@ -1136,21 +1200,54 @@ class ShipDirection(Node):
         #   (결정 ④). 비킴 틱은 편 기억 None(결정 ⑥). 게이트 구간 제외(결정 ③). 0.0 이면 기존과 같다.
         #   wp_mode 는 control_cb 가 lock 으로 뜬 스냅샷(_side_wp_mode) — detection_distance 와 같은 틱 값.
         #   직접 호출(control_cb 안 거침)은 None → 모르면 비킴 안 함.
-        esc = None
-        if dwa_angle is None and not candidates and getattr(self, 'side_escape_deg', 0.0) > 0.0:
-            wp_mode = getattr(self, '_side_wp_mode', None)
-            if wp_mode is not None and wp_mode not in self.gate_wp_modes:
-                esc = side_escape(blobs, angle_array, distance_array, self.side_escape_deg,
-                                  LIDAR_FORWARD_DEG)
-        if dwa_angle is not None:
+        def escape_for(cands, dwa_a):
+            if dwa_a is None and not cands and getattr(self, 'side_escape_deg', 0.0) > 0.0:
+                wp_mode = getattr(self, '_side_wp_mode', None)
+                if wp_mode is not None and wp_mode not in self.gate_wp_modes:
+                    return side_escape(blobs, angle_array, distance_array, self.side_escape_deg,
+                                       LIDAR_FORWARD_DEG)
+            return None
+
+        esc = escape_for(cand_use, dwa_angle)
+
+        # ---- 옆 잠금 후보 0 개 (§9-7): 비킴도 잠금 구간 안이어야 한다. 남은 게 없으면 ----
+        #   잠금 없이 고르면 후보(갭·DWA·비킴)가 있었는지 본다 — 있었으면 **잠금이 지운 것**:
+        #   ② 후진하지 않고 STOP_HOLD 로 매 틱 재평가 ③ side_lock_wait_max_sec 넘으면 기존 동작(폴백).
+        #   잠금 없이도 0 개(막다른 곳)면 대기하지 않고 기존 동작(후진 시퀀스) 그대로.
+        #   잠금 없는 DWA 재계산은 이 판단이 필요한 틱(잠금 지키는 후보 0 개)에서만. 끔이면 이 블록 없음.
+        lock_act = 'go'
+        if lock_on:
+            if esc is not None and not angle_allowed(esc, a_lo, a_hi):
+                esc = None
+            blocked, dwa_plain, esc_plain = False, None, None
+            if dwa_angle is None and not cand_use and esc is None:
+                if dwa_on:
+                    dwa_plain = self._dwa_choose_plain(angle_array, distance_array, yaw_mapped)
+                esc_plain = escape_for(candidates, dwa_plain)
+                blocked = bool(candidates) or dwa_plain is not None or esc_plain is not None
+            lock_act = self._side_lock_step(blocked, now)
+            if lock_act == 'fallback':
+                # 기존 동작 그대로 — 잠금 없이 고른 갭·DWA·비킴.
+                cand_use, dwa_angle, esc = candidates, dwa_plain, esc_plain
+            if dwa_on:
+                # DWA 선택 기록·폴백 INFO 는 실제로 쓴 값 기준(대기 틱 = 안 고름, 로그 없음)
+                self._dwa_settle(None if lock_act == 'wait' else dwa_angle,
+                                 log=lock_act != 'wait')
+        elif getattr(self, 'side_lock_enabled', False):
+            self._side_lock_step(False, now)
+
+        if lock_act == 'wait':
+            self._reset_reverse_sequence()
+            final_angle = STOP_HOLD
+        elif dwa_angle is not None:
             self._reset_reverse_sequence()
             final_angle = dwa_angle
-            if candidates:
-                ranked = rank_candidates(candidates, side_prev, blobs,
+            if cand_use:
+                ranked = rank_candidates(cand_use, side_prev, blobs,
                                          self.side_hysteresis_deg, self.cross_penalty_deg,
                                          LIDAR_FORWARD_DEG)
-                self._side_prev = next_side_memory(ranked[0][2], len(candidates))
-        elif not candidates and esc is not None:
+                self._side_prev = next_side_memory(ranked[0][2], len(cand_use))
+        elif not cand_use and esc is not None:
             self._reset_reverse_sequence()
             final_angle = esc
             self._side_escape_active = True
@@ -1160,22 +1257,85 @@ class ShipDirection(Node):
                     f"회피 경로 없음 + 장애물 옆(중심 {c:.0f}°, {d:.2f} m) "
                     f"→ 후진 대신 {esc:.0f}° 로 비킴",
                     throttle_duration_sec=1.0)
-        elif not candidates:
+        elif not cand_use:
             # 일정 시간 후진 → 일정 시간 STOP 재탐색 → 필요하면 반복
             final_angle = self._apply_reverse_sequence(now)
         else:
             self._reset_reverse_sequence()
             # 편 유지·가로지름 벌점을 더한 정렬 (발견 8, 계약서_회피편선택_20261106).
             #   벌점 0.0/0.0 이면 기존 (angle_diff, -arc) 정렬과 같다.
-            ranked = rank_candidates(candidates, side_prev, blobs,
+            ranked = rank_candidates(cand_use, side_prev, blobs,
                                      self.side_hysteresis_deg, self.cross_penalty_deg,
                                      LIDAR_FORWARD_DEG)
             final_angle = ranked[0][2]
-            self._side_prev = next_side_memory(final_angle, len(candidates))
+            self._side_prev = next_side_memory(final_angle, len(cand_use))
 
         if dwa_on:
             self._dwa_observe(final_angle)     # 리미터 전 값(폴백 포함) — 시제품과 같다
         return final_angle, obst
+
+    # =====================================================
+    # (C) 옆 잠금 보조 (계약서_토너먼트분리_20261109 T2-1) — 계산은 ship_direction/side_lock.py
+    # =====================================================
+    def _side_lock_eval(self, msg, lock_seen):
+        """이번 스캔의 옆 구역 판정 → (잠긴 쪽 있나, a_lo, a_hi). 켰을 때 (C) 틱에서만 부른다.
+
+        새 스캔(메시지 객체가 바뀜)만 연속 프레임으로 센다 — 제어 10 Hz 가 같은 스캔을 두 번 볼 수 있다.
+
+        한 바퀴 스캔 전체를 본다(0~160 창 밖). 스캔이 그 구역을 못 덮으면 '모름' → 안 잠금 + WARN 1회.
+        직전 틱이 잠금 평가 (C) 틱이 아니었으면((0)(A)(B)·레벨2·스캔 없음) 대기 상태를 조용히 처음으로.
+        """
+        if not lock_seen:
+            self._side_lock_wait.reset()
+            self._side_lock_filter.reset()
+        self._side_lock_seen = True
+        new_frame = msg is not self._side_lock_last_scan
+        self._side_lock_last_scan = msg
+        (ls, ld), (rs, rd) = side_states(
+            msg.ranges, math.degrees(msg.angle_min), math.degrees(msg.angle_increment),
+            LIDAR_FORWARD_DEG, self.side_lock_dist_m, self.side_lock_min_deg,
+            self.side_lock_max_deg, getattr(msg, 'range_min', 0.0))
+        if UNKNOWN in (ls, rs) and not self._side_lock_unknown_warned:
+            self._side_lock_unknown_warned = True
+            self.get_logger().warn(
+                f"옆 잠금: 스캔이 옆 구역을 다 덮지 않음(좌 {ls}, 우 {rs}, angle_min "
+                f"{math.degrees(msg.angle_min):.1f}°, {len(msg.ranges)}셀) → 그쪽은 안 잠금")
+        # 순간 판정(LOCKED = 최솟값 < dist) → 연속 프레임 확인·풀림 히스테리시스
+        left, right = self._side_lock_filter.update(((ls, ld), (rs, rd)), self.side_lock_dist_m,
+                                                    new_frame)
+        a_lo, a_hi = allowed_range(left, right, LIDAR_FORWARD_DEG, self.side_lock_turn_deg)
+        if (left or right) and (left, right) != self._side_lock_prev:
+            sides = ' '.join(f"{n} {d:.2f} m" for n, on, d in (('좌', left, ld), ('우', right, rd))
+                             if on)
+            self.get_logger().info(
+                f"옆 잠금 걸림: {sides} → 조향 {a_lo:.0f}~{a_hi:.0f}° 안에서만",
+                throttle_duration_sec=2.0)
+        self._side_lock_prev = (left, right)
+        return (left or right), a_lo, a_hi
+
+    def _side_lock_step(self, blocked, now):
+        """대기 상태기계(SideLockWait) 한 걸음 + 전이 로그(§1-7: 심각도마다 호출 줄을 따로) → 동작."""
+        w = self._side_lock_wait
+        t0 = w.wait_t0
+        act, ev = w.update(blocked, now)
+        if ev == 'wait_start':
+            self.get_logger().info(
+                f"옆 잠금: 잠금이 후보를 지움 → 후진 대신 50000 대기(매 틱 재평가, "
+                f"상한 {self.side_lock_wait_max_sec:.1f} s)",
+                throttle_duration_sec=1.0)
+        elif ev == 'resume':
+            self.get_logger().info(
+                f"옆 잠금 대기 끝({now - t0:.1f} s) → 재출발",
+                throttle_duration_sec=1.0)
+        elif ev == 'timeout':
+            self.get_logger().warn(
+                f"옆 잠금 대기 {self.side_lock_wait_max_sec:.1f} s 넘음 → 기존 동작(비킴·후진)으로 폴백",
+                throttle_duration_sec=1.0)
+        elif ev == 'rearm':
+            self.get_logger().info(
+                "옆 잠금 폴백 끝(잠금이 후보를 지우지 않음) → 다시 잠금 지킴",
+                throttle_duration_sec=1.0)
+        return act
 
     # =====================================================
     # (C) DWA 보조 (계약서_DWA_20261106) — 계산은 ship_direction/dwa.py
@@ -1187,8 +1347,10 @@ class ShipDirection(Node):
         self._dwa_last_t = None
         self._dwa_needs_reset = False
 
-    def _dwa_select(self, angle_array, distance_array, yaw_mapped):
+    def _dwa_select(self, angle_array, distance_array, yaw_mapped, allowed=None):
         """→ (DWA 모드 (C) 틱인가, 선택각 또는 None). 끔·모드 밖이면 (False, None), 아무것도 안 함.
+
+        allowed = (a_lo, a_hi) 면 옆 잠금 구간 안 후보만 고른다(None = 기존 호출 그대로).
 
         예외는 잡아서 None(기존 결과) + ERROR. 1회 > DWA_SLOW_WARN_SEC 면 WARN(결정 12).
         로그(CLAUDE.md §1-7): 심각도마다 호출 줄을 따로 둔다.
@@ -1215,7 +1377,10 @@ class ShipDirection(Node):
         self._dwa_needs_reset = False
         self._dwa_last_t = t0
         try:
-            angle = self._dwa.choose(angle_array, distance_array, yaw_mapped)
+            if allowed is None:
+                angle = self._dwa.choose(angle_array, distance_array, yaw_mapped)
+            else:
+                angle = self._dwa.choose(angle_array, distance_array, yaw_mapped, allowed=allowed)
         except Exception as e:   # 어떤 계산 실패든 노드를 죽이지 않는다(기존 결과로)
             self.get_logger().error(
                 f"DWA 계산 예외 → 기존 결과 사용: {e!r}",
@@ -1227,12 +1392,28 @@ class ShipDirection(Node):
                 f"DWA 1회 {dt * 1000.0:.0f} ms > {DWA_SLOW_WARN_SEC * 1000.0:.0f} ms "
                 f"(제어 주기 {self.control_period:.2f} s)",
                 throttle_duration_sec=DWA_LOG_PERIOD_SEC)
-        if angle is None and self._dwa_picked:
+        if allowed is None:      # 옆 잠금 중이면 _compute 가 실제로 쓴 값으로 _dwa_settle 를 부른다
+            self._dwa_settle(angle)
+        return True, angle
+
+    def _dwa_settle(self, angle, log=True):
+        """이번 틱 DWA 가 실제로 고른 각(None = 안 고름)으로 선택 기록·폴백 INFO(직전에 골랐을 때 1회)."""
+        if log and angle is None and self._dwa_picked:
             self.get_logger().info(
-                f"DWA 가능한 후보 없음(mode {mode}) → 기존 결과(갭·비킴·후진) 폴백",
+                f"DWA 가능한 후보 없음(mode {getattr(self, '_side_wp_mode', None)}) "
+                f"→ 기존 결과(갭·비킴·후진) 폴백",
                 throttle_duration_sec=1.0)
         self._dwa_picked = angle is not None
-        return True, angle
+
+    def _dwa_choose_plain(self, angle_array, distance_array, yaw_mapped):
+        """옆 잠금 폴백 틱 전용 — 잠금 없이 한 번 더 고른다(추정·로그 상태는 안 건드림). 예외 → None."""
+        try:
+            return self._dwa.choose(angle_array, distance_array, yaw_mapped)
+        except Exception as e:   # _dwa_select 와 같음
+            self.get_logger().error(
+                f"DWA 계산 예외(옆 잠금 폴백) → 기존 결과 사용: {e!r}",
+                throttle_duration_sec=DWA_LOG_PERIOD_SEC)
+            return None
 
     def _dwa_observe(self, final_angle):
         """이번 틱 (C) 결과(리미터 전)로 DWA 추정을 굴린다. 예외면 ERROR, 다음 DWA 틱에 초기화."""

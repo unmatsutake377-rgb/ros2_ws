@@ -1,5 +1,6 @@
 # ship_direction 토너먼트 덮어쓰기 (계약서_토너먼트분리_20261109 T1-2, §9-3)
-# 무엇: 토너먼트(1대1)에서만 DWA 를 켠다. 여기 없는 키는 공통 ship_direction.yaml 값 그대로.
+# 무엇: 토너먼트(1대1)에서만 DWA 를 켠다(+ 옆 잠금 스위치 자리, T2-1 — 처음엔 꺼 둠).
+#   여기 없는 키는 공통 ship_direction.yaml 값 그대로.
 # 왜: 상대 배를 10 Hz 재계획 정지 장애물로 보고 일찍 부드럽게 비킨다(T2-0, 시뮬 토너먼트 접촉 감소, 발견 11).
 #   DWA 는 물 위 미검증 → 물 위 확인(계약서 §10 현장 스위치 표: 시작 로그 'DWA 켬: 선체 <그 배>' 일치,
 #   부표 끔·켬 각 2회 접촉·갇힘 없음, '폴백' 로그 드묾)이 실패하면 dwa_enabled: false.
@@ -13,3 +14,15 @@
   ros__parameters:
     dwa_enabled: true           # §9-3 처음 값. 물 위 확인 실패 시 false
     dwa_modes: [8]              # 5·8 만 허용. 처음 [8] → 확인 뒤 [5, 8]. 빈 리스트 [] 금지(원소 타입 미정)
+    # ---- 옆 잠금 (T2-1, §9-6·§9-7) — 나란히 가는 상대 배 쪽으로 침로를 바꾸지 않는다 ----
+    # 처음 값 false: 물 위 확인 뒤 켬(계약서 §10 현장 스위치 표 — 옆 1~1.5 m 부표 또는 2번배를 RC 로
+    # 나란히 → 그쪽으로 안 꺾음, 정면 회피 그대로, 후보 0 개 때 멈췄다 길 열리면 출발). 확인 못 하면 false.
+    # 나머지 값은 공통 yaml 과 같다(현장에서 바꿀 때 여기만 고친다). 이상값 → 노드가 ERROR + 끔.
+    side_lock_enabled: false
+    side_lock_dist_m: 1.5
+    side_lock_min_deg: 45.0
+    side_lock_max_deg: 135.0
+    side_lock_turn_deg: 15.0
+    side_lock_wait_max_sec: 10.0
+    side_lock_confirm_frames: 3     # 🚨 정수(3.0 금지)
+    side_lock_release_margin_m: 0.3

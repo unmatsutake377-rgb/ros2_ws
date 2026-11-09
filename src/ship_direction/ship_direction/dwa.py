@@ -245,8 +245,12 @@ class DwaPlanner:
             pts.append((r * math.cos(t) + self.lidar_x_m, r * math.sin(t)))
         return np.array(pts) if pts else np.zeros((0, 2))
 
-    def choose(self, angle_array, distance_array, yaw_mapped):
-        """후보 중 비용 최소 각(0~160). 다 불가·yaw_mapped 비유한 → None. 입력은 안 바꾼다."""
+    def choose(self, angle_array, distance_array, yaw_mapped, allowed=None):
+        """후보 중 비용 최소 각(0~160). 다 불가·yaw_mapped 비유한 → None. 입력은 안 바꾼다.
+
+        allowed = (a_lo, a_hi) 면 그 구간(양끝 포함) 밖 후보는 버린다 — 옆 잠금(side_lock.py,
+        계약서_토너먼트분리_20261109 T2-1)의 후보 필터 단계. None(기본) = 기존과 같다.
+        """
         if yaw_mapped is None or not math.isfinite(yaw_mapped):
             return None
         P = self.points(angle_array, distance_array)
@@ -276,6 +280,8 @@ class DwaPlanner:
             if mc[i] < D_HARD_M:
                 continue
             a = self.cands[i]
+            if allowed is not None and not (allowed[0] <= a <= allowed[1]):
+                continue
             head = -_wrap180(b.psi[i])
             err = abs(_wrap180(goal - head)) / 180.0
             soft = max(0.0, D_SOFT_M - mc[i]) / D_SOFT_M

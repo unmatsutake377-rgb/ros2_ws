@@ -49,6 +49,19 @@ GOAL_SLOW_START_M = 8.0
 GOAL_SLOW_FULL_M = 3.0
 GOAL_SLOW_MIN_RATIO = 0.5
 
+# --- (C) 옆 잠금 — 노드 ship_direction/side_lock.py 사본 (계약서_토너먼트분리_20261109 T2-1) ---
+# 노드 코드 기본값과 같다(끔 → 결과가 전과 완전히 같다). 켜려면 이 모듈의 SIDE_LOCK_ENABLED = True.
+# 이 사본엔 DWA·비킴이 없어 갭 후보만 자른다. 대기 상태는 SIDE_LOCK_STATE(simulate 가 런마다 초기화).
+SIDE_LOCK_ENABLED = False
+SIDE_LOCK_DIST_M = 1.5
+SIDE_LOCK_MIN_DEG = 45.0
+SIDE_LOCK_MAX_DEG = 135.0
+SIDE_LOCK_TURN_DEG = 15.0
+SIDE_LOCK_WAIT_MAX_SEC = 10.0
+SIDE_LOCK_CONFIRM_FRAMES = 3       # 새 스캔 연속 이 횟수면 잠금(이 사본은 호출 1번 = 새 스캔 1장)
+SIDE_LOCK_RELEASE_MARGIN_M = 0.3   # 잠긴 뒤 dist + 이 값 이상이면 풀림
+SIDE_LOCK_STATE = {'wait_t0': None, 'fallback': False, 'locked': [False, False], 'count': [0, 0]}
+
 # --- LiDAR 스캔 규격 (RPLIDAR A3 유사) ---
 SCAN_ANGLE_MIN_DEG = -180.0
 SCAN_INC_DEG = 0.5
@@ -121,14 +134,72 @@ def dilate_obstacles(binary, distance_array, angle_increment_deg, detection_dist
     return out
 
 
+def side_zone_min(ranges, angle_min_deg, inc_deg, lo_rel, hi_rel):
+    """노드 side_lock.zone_min 사본 → (덮였나, 최솟값). 상대방위 = 스캔각 − 80, 좌 양수."""
+    n = len(ranges)
+    width = hi_rel - lo_rel
+    if n * inc_deg < 360.0 - inc_deg / 2.0:
+        off = ((lo_rel + 80.0) - angle_min_deg) % 360.0
+        if off + width > (n - 1) * inc_deg + 1e-6:
+            return False, math.inf
+    best = math.inf
+    for i in range(n):
+        if ((angle_min_deg + i * inc_deg - 80.0) - lo_rel) % 360.0 > width + 1e-6:
+            continue
+        r = ranges[i]
+        if math.isfinite(r) and 0.0 < r < best:
+            best = r
+    return True, best
+
+
+def side_lock_raw(ranges, angle_min_deg, inc_deg):
+    """좌·우 옆 구역 [(덮였나, 최솟값), (덮였나, 최솟값)] — 노드 side_states 의 순간 판정 재료."""
+    zones = ((SIDE_LOCK_MIN_DEG, SIDE_LOCK_MAX_DEG), (-SIDE_LOCK_MAX_DEG, -SIDE_LOCK_MIN_DEG))
+    return [side_zone_min(ranges, angle_min_deg, inc_deg, lo, hi) for lo, hi in zones]
+
+
+def side_lock_filter_step(raw):
+    """노드 side_lock.SideLockFilter.update(new_frame=True) 사본 → (좌 잠김, 우 잠김). 상태는
+    SIDE_LOCK_STATE. 연속 SIDE_LOCK_CONFIRM_FRAMES 장이면 잠금, dist + margin 이상이면 풀림, 미덮임 = 초기화."""
+    st = SIDE_LOCK_STATE
+    for k, (covered, m) in enumerate(raw):
+        if not covered:
+            st['locked'][k], st['count'][k] = False, 0
+        elif st['locked'][k]:
+            if m >= SIDE_LOCK_DIST_M + SIDE_LOCK_RELEASE_MARGIN_M:
+                st['locked'][k], st['count'][k] = False, 0
+        elif m < SIDE_LOCK_DIST_M:
+            st['count'][k] += 1
+            st['locked'][k] = st['count'][k] >= SIDE_LOCK_CONFIRM_FRAMES
+        else:
+            st['count'][k] = 0
+    return st['locked'][0], st['locked'][1]
+
+
+def side_lock_range(ranges, angle_min_deg, inc_deg):
+    """새 스캔 한 장 반영 → (잠긴 쪽 있나, a_lo, a_hi). 노드 _side_lock_eval + allowed_range 사본."""
+    left, right = side_lock_filter_step(side_lock_raw(ranges, angle_min_deg, inc_deg))
+    a_lo = 80.0 - SIDE_LOCK_TURN_DEG if right else 0.0
+    a_hi = 80.0 + SIDE_LOCK_TURN_DEG if left else 160.0
+    return (left or right), a_lo, a_hi
+
+
+def side_lock_reset():
+    """옆 잠금 상태(필터·대기) 초기화 — simulate 가 런마다 부른다."""
+    SIDE_LOCK_STATE.update(wait_t0=None, fallback=False, locked=[False, False], count=[0, 0])
+
+
 def ship_direction_step(ranges, angle_min_deg, inc_deg, yaw_error_sd,
                         detection_distance=BASE_DETECTION_DISTANCE,
-                        debug=None):
+                        debug=None, now=None):
     """실제 scan_callback의 (C) 경로 = candidate 20000(자율회피) 상태를 재현.
 
     yaw_error_sd None = 노드가 부팅 뒤 /yaw_error 를 한 번도 못 받은 상태 → (STOP_HOLD, None) 반환
     — 두 번째 값(yaw_mapped)이 None 이다. 호출자는 이때 매핑각을 쓰면 안 된다.
-    (노드 control_cb [N]·_compute (C) 가드 사본, 계약서_yaw미수신정지_20261105). 판정은 `is None`."""
+    (노드 control_cb [N]·_compute (C) 가드 사본, 계약서_yaw미수신정지_20261105). 판정은 `is None`.
+
+    now(초): 옆 잠금 대기 상한용 시각. None 이면 잠금 후보 0 개 때 상한 없이 STOP_HOLD.
+    SIDE_LOCK_ENABLED False(기본)면 now 는 안 쓴다."""
     if yaw_error_sd is None:
         return STOP_HOLD, None
     inc_rad = math.radians(inc_deg)
@@ -208,6 +279,35 @@ def ship_direction_step(ranges, angle_min_deg, inc_deg, yaw_error_sd,
         angle_diff = abs(best_angle - yaw_mapped)
         arc_length = inc_rad * r_edge * (e - s)
         candidates.append((angle_diff, -arc_length, best_angle, s, e))
+
+    # ---- 옆 잠금 (노드 _compute 사본, §9-7): 잠긴 쪽으로 80±turn 넘는 각을 자른다 ----
+    #   **잠금이** 후보를 다 지우면 후진 대신 STOP_HOLD 대기, 상한 넘으면(0 이면 바로) 기존 동작 폴백.
+    #   잠금 없이도 후보 0 개면 기존(후진) 그대로. 끔이면 이 블록 없음과 같다.
+    if SIDE_LOCK_ENABLED:
+        st = SIDE_LOCK_STATE
+        locked, a_lo, a_hi = side_lock_range(ranges, angle_min_deg, inc_deg)
+        clipped = []
+        if locked:
+            for _d, neg_arc, _b, s, e in candidates:
+                z_lo, z_hi = max(angle_array[s], a_lo), min(angle_array[e], a_hi)
+                if z_lo > z_hi:
+                    continue
+                best = z_lo if yaw_mapped < z_lo else (z_hi if yaw_mapped > z_hi else yaw_mapped)
+                clipped.append((abs(best - yaw_mapped), neg_arc, best, s, e))
+        if not (locked and candidates and not clipped):      # 잠금이 후보를 지우지 않음
+            st['wait_t0'], st['fallback'] = None, False
+            if locked:
+                candidates = clipped
+        elif not st['fallback']:
+            if SIDE_LOCK_WAIT_MAX_SEC <= 0.0:
+                st['fallback'] = True                        # 상한 0 → 바로 기존 동작(노드와 같음)
+            else:
+                if st['wait_t0'] is None:
+                    st['wait_t0'] = now
+                waited = None if (now is None or st['wait_t0'] is None) else now - st['wait_t0']
+                if waited is None or waited <= SIDE_LOCK_WAIT_MAX_SEC:
+                    return STOP_HOLD, yaw_mapped      # 후진하지 않고 대기
+                st['wait_t0'], st['fallback'] = None, True   # 상한 → 기존 동작
 
     if not candidates:
         return 260.0, yaw_mapped   # 회피 경로 없음 → 후진
@@ -322,14 +422,15 @@ def simulate(world, start=(0.0, 0.0), start_psi=0.0, goal=(0.0, 20.0),
              noise_spike=None):
     x, y, psi = start[0], start[1], start_psi
     traj, pwms, angles, modes = [], [], [], []
-    for _ in range(steps):
+    side_lock_reset()   # 옆 잠금 필터·대기 상태(끔이면 안 씀)
+    for k in range(steps):
         if math.hypot(goal[0] - x, goal[1] - y) < stop_radius:
             break
         ranges = world.lidar_scan(x, y, psi, noise_spike=noise_spike)
         gb = bearing_to(x, y, goal[0], goal[1])
         e_sd = yaw_error_chain(gb, psi)
         desired, _ = ship_direction_step(list(ranges), SCAN_ANGLE_MIN_DEG,
-                                         SCAN_INC_DEG, e_sd)
+                                         SCAN_INC_DEG, e_sd, now=k * dt)
         pwm_r, pwm_l, mode = motor_control_step(desired)
 
         # 펌웨어: 입력 1500 = 중립. 추력 ∝ (1500 - pwm)
