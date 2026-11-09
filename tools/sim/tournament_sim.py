@@ -323,7 +323,7 @@ def blame(hist, now):
 
 # ───────────────────────── 한 런 ─────────────────────────
 def run(scenario, seed, hull="A", dyn="fossen", overrides=None, geom=None, t_max=150.0, post=10.0,
-        gps_sigma=0.03, record=False):
+        gps_sigma=0.03, record=False, lidar_noise=False):
     g = dict(DEFAULT_GEOM, **(geom or {}))
     geo = F.Geo(*GEO0)
     W = build_world(seed, g)
@@ -338,6 +338,7 @@ def run(scenario, seed, hull="A", dyn="fossen", overrides=None, geom=None, t_max
     opp, opp_info = build_opp(W, scenario, seed, g, v_ref)
     Clock.t = 0.0
     rng = random.Random(10_000 + seed)
+    nrng = np.random.default_rng(20_000 + seed) if lidar_noise else None
     out = dict(scenario=scenario, seed=seed, hull=hull, dyn=dyn, side="L" if W["side"] < 0 else "R",
                n_buoys=len(W["buoys"]), v_ref=round(v_ref, 3), exception="", **{k: round(v, 2) for k, v in opp_info.items()})
     hl, hb = F.HULL_DIMS[hull][0] / 2.0, F.HULL_DIMS[hull][1] / 2.0
@@ -391,6 +392,8 @@ def run(scenario, seed, hull="A", dyn="fossen", overrides=None, geom=None, t_max
                     seen_any += int(hit.any()); seen_front += int((hit & FRONT_MASK).any())
             else:
                 ranges = rng_b
+            if nrng is not None:
+                ranges = F.add_lidar_noise(ranges, nrng)
             sd.scan_callback(F.Scan(ranges.tolist()))
             yaw = Float64(psi)
             nga.yaw_cb(yaw); sga.yaw_callback(yaw)
@@ -648,13 +651,14 @@ def main():
     ap.add_argument("--wp-beyond", type=float, default=DEFAULT_GEOM["wp_beyond"], help="결승 WP = 결승선 + 이 값(m)")
     ap.add_argument("--fence-inset", type=float, default=DEFAULT_GEOM["fence_inset"],
                     help="지오펜스 폴리곤 좌우 변을 경기장보다 이만큼(m) 안쪽에 둔다(현장 대책 시험). 이탈은 실제 경기장 기준")
+    ap.add_argument("--lidar-noise", action="store_true", help="LiDAR 잡음 — full_course_sim.add_lidar_noise 와 같음(합성)")
     ap.add_argument("--verbose", action="store_true", help="런마다 한 줄")
     a = ap.parse_args()
     ov = F.parse_param_overrides(a.param)
     check_declared(ov, a.hull)
     geom = dict(arena_len=a.arena_len, arena_w=a.arena_wid, start_y=a.start_y, finish_y=a.finish_y, wp_beyond=a.wp_beyond,
                 fence_inset=a.fence_inset)
-    kw = dict(hull=a.hull, dyn=a.dyn, overrides=ov, geom=geom, t_max=a.t_max, post=a.post)
+    kw = dict(hull=a.hull, dyn=a.dyn, overrides=ov, geom=geom, t_max=a.t_max, post=a.post, lidar_noise=a.lidar_noise)
     scens = SCENARIOS if a.scenario == "all" else [a.scenario]
     jobs = [(s, sd, kw) for s in scens for sd in range(a.seed0, a.seed0 + a.seeds)]
     t0 = _walltime.perf_counter()

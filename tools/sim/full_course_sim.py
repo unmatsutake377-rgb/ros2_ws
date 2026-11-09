@@ -324,6 +324,25 @@ def lidar(W, x, y, psi):
     return rng
 
 
+# LiDAR 잡음 모델 (--lidar-noise, 합성 — 실측 물보라 특성 아님). 계약서_도킹물보라필터_20261109 결정 5.
+#   유한 거리에 σ 3 cm 가우스 + 광선 5 % 결측(inf) + 정면 ±30° 광선의 1 % 에 0.3~1.5 m 고립 물보라.
+#   물보라는 '고립 한 점' 모델 — 덩어리 물보라는 다루지 않는다(ship_direction obst_median_kernel 근거와 같은 모델).
+NOISE_SIGMA_M, NOISE_DROP, NOISE_SPRAY, NOISE_SPRAY_HALF_DEG = 0.03, 0.05, 0.01, 30.0
+NOISE_SPRAY_RANGE_M = (0.3, 1.5)
+
+
+def add_lidar_noise(rng, nrng):
+    """lidar() 결과(np 배열)에 잡음을 얹은 새 배열. nrng = np.random.Generator(시드 고정 → 재현 가능)."""
+    r = np.array(rng, dtype=float)
+    fin = np.isfinite(r)
+    r[fin] += nrng.normal(0.0, NOISE_SIGMA_M, int(fin.sum()))
+    r[nrng.random(r.size) < NOISE_DROP] = np.inf
+    rel = (SCAN_REL + 180.0) % 360.0 - 180.0
+    spray = (np.abs(rel) <= NOISE_SPRAY_HALF_DEG) & (nrng.random(r.size) < NOISE_SPRAY)
+    r[spray] = np.minimum(r[spray], nrng.uniform(NOISE_SPRAY_RANGE_M[0], NOISE_SPRAY_RANGE_M[1], int(spray.sum())))
+    return np.maximum(r, 0.05)
+
+
 class Scan:
     def __init__(self, ranges):
         self.angle_min = math.radians(K.SCAN_ANGLE_MIN_DEG)
@@ -449,8 +468,9 @@ def apply_dwell(path, overrides):
 
 def run(seed, variant="A", wp_file=None, world_wp_file=WP_DEFAULT, gps_sigma=0.03, current=(0.0, 0.0),
         t_max=1500.0, tail=90.0, record=False, dwell_override=None, fault=None, dyn="legacy", hull=None,
-        node_overrides=None):
+        node_overrides=None, lidar_noise=False):
     world_wps = load_wps(world_wp_file)
+    nrng = np.random.default_rng(20_000 + seed) if lidar_noise else None
     W = build_world(world_wps, seed)
     geo = W["geo"]; dock = W["dock"]
     if wp_file is None:
@@ -526,7 +546,8 @@ def run(seed, variant="A", wp_file=None, world_wp_file=WP_DEFAULT, gps_sigma=0.0
                 f_node = "/scan" if f_kind.startswith("scan") else ("GPS" if f_kind == "gps10" else ("/imu/yaw" if f_kind == "imu3" else MODE_OWNER.get(pub_mode, "north_goal_angle")))
                 f_cand0 = last_cand
             # ---- 센서 ----
-            scan = Scan(lidar(W, x, y, psi).tolist())
+            _r = lidar(W, x, y, psi)
+            scan = Scan((add_lidar_noise(_r, nrng) if nrng is not None else _r).tolist())
             if not (fa and f_kind in ("scan2", "scan5")):
                 for cb in (sd.scan_callback, sg.scan_cb, sb.scan_cb, st.scan_cb, sk.scan_cb):
                     cb(scan)
@@ -1248,13 +1269,15 @@ def main():
     ap.add_argument("--dyn", default="legacy", choices=["legacy", "fossen"],
                     help="운동 모델: legacy = K_V·K_W 1차 지연(기존) / fossen = 3자유도(boat3dof.py, Gazebo 모델과 같은 계수)")
     ap.add_argument("--hull", default=None, choices=["A", "B"], help="fossen 선체 계수(기본 = variant 글자)")
+    ap.add_argument("--lidar-noise", action="store_true",
+                    help="LiDAR 잡음(σ3cm·결측5%·정면±30° 고립 물보라1%) — 합성, add_lidar_noise 참조")
     ap.add_argument("--param", action="append", default=[], metavar="노드.키=값",
                     help="노드 파라미터 덮어쓰기(반복 가능), 예 --param ship_direction.dwa_enabled=true")
     a = ap.parse_args()
     os.makedirs(OUT_DIR, exist_ok=True)
     dov = {kv.split("=")[0].strip(): float(kv.split("=")[1]) for kv in a.dwell_label.split(",") if "=" in kv} or None
     kw = dict(wp_file=a.wp_file, world_wp_file=a.world_wp_file, gps_sigma=a.gps_sigma, current=tuple(a.current), t_max=a.t_max, tail=a.tail, dyn=a.dyn, hull=a.hull,
-              dwell_override=dov, node_overrides=parse_param_overrides(a.param))
+              dwell_override=dov, node_overrides=parse_param_overrides(a.param), lidar_noise=a.lidar_noise)
     variants = ["A", "B"] if a.variant == "AB" else [a.variant]
     if a.plot_seed is not None:
         for vv in variants:

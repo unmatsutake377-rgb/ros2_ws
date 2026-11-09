@@ -24,6 +24,7 @@
 **미반영**(옛 규칙 = 무조건 후진, 계약서_옆비킴_현장조정_20261106 결정 ⑥).
 `side_lock_*`(11-09, 토너먼트 옆 잠금, 기본 끔)는 `ssf_sim.py` 사본에 **갭 경로만** 반영(DWA·탈출 경로 없음). 실노드 시뮬(`tournament_sim.py`·`full_course_sim.py --param ship_direction.side_lock_enabled=true`)은 전부 반영.
 회피 성능 기준은 `full_course_sim.py`(실제 노드 코드 `SD.ShipDirection()` 사용 — `avoid_sim`·`gate_sim`·`l1_dropout_sim`·`mission_figs` 도 실노드라 자동 반영). `sweep_s1`·`kaboat`·`avoid_figure` 결과는 옛 규칙 수치다.
+`--lidar-noise`(full_course_sim·tournament_sim, 11-09): LiDAR 잡음 σ 3 cm + 결측 5 % + 정면 ±30° 고립 물보라 1 %(합성, `full_course_sim.add_lidar_noise`). 시드 고정이라 재현됨. 도킹 물보라 근거(계약서_도킹물보라필터_20261109).
 `full_course_sim.py --param 노드.키=값`(반복 가능)으로 노드 파라미터를 덮어써 끈 기능을 켜 볼 수 있다. 예: `--param ship_direction.side_escape_deg=60.0`, `--param ship_direction.dwa_enabled=true`. 결과 요약에 '직사각형 선체 접촉(선미 포함)' 줄이 함께 나온다(기존 접촉 수치는 중심 원 기준 그대로).
 
 의존: `numpy`, `matplotlib`. ROS 불필요.
