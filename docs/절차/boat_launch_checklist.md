@@ -100,7 +100,7 @@ ros2 launch launch_files launch_files.launch.py boat:=B course:=tournament waypo
 | T2 | 시작 로그 `course=tournament: 코스 파일 …` · `north_goal_angle: course=tournament, 웨이포인트=<녹화본 경로>` | launch 창 |
 | T3 | `코스 tournament: 웨이포인트 N개 로드` 다음 `미션 순서(mode): [8, 8, …]` — 전부 8 | north 로그 |
 | T4 | `DWA 켬: 선체 <이 배 글자>` (1번배 A / 2번배 B) | ship_direction 로그 |
-| T5 | `geofence ON(n점)`. `OFF` 거나 `geofence_polygon 이 비어 있다` WARN 이면 경계 방어 꺼짐 → 현장 2경기장 좌표를 넣고 재시작 | north 로그 |
+| T5 | `geofence ON(n점)`. `OFF` 거나 `geofence_polygon 이 비었거나 오류로 거부됐다` WARN 이면 경계 방어 꺼짐 → 현장 2경기장 좌표(**[위도, 경도] 순서, 원소마다 소수점**)를 넣고 `python3 tools/param_check.py` 후 재시작. `OFF(폴리곤 오류` 면 바로 위 ERROR 문구대로 고침. `웨이포인트 파일이 패키지 템플릿` WARN 이면 `waypoints_file:=` 빠짐 | north 로그 |
 | T6 | ERROR `웨이포인트 내용 오류` 가 뜨면 mode 8 아닌 WP 가 있는 파일(종합임무 파일을 물렸는지) → north 가 안 나간다 | north 로그 |
 
 - 🚨 **판 사이에는 launch 를 재시작**한다(Ctrl+C → 다시 launch). MANUAL→AUTO 로 다시 들어가도 웨이포인트 순번을 처음으로 안 되돌린다.

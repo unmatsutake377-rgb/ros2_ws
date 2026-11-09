@@ -684,6 +684,7 @@ hr{border:0;border-top:1px solid var(--line);margin:20px 0}li{margin:3px 0}
 <li>역할: 경계를 "가짜 LiDAR 벽"으로 만들어 회피가 경계를 장애물처럼 피하게 합니다. 경계 이탈은 실격입니다.</li>
 <li class="warn">🚨 <strong>실제 경계를 그대로 찍습니다. 안쪽으로 줄이지 마십시오.</strong> 배가 줄인 선을 넘는 순간 경계 정보가 꺼져 오히려 더 나갈 수 있습니다(11-09 시뮬).</li>
 <li>비어 있으면(<code>[]</code>) 경계 방어가 꺼집니다. 토너먼트에서는 시작 WARN 이 뜹니다. 시작 로그에 <code>geofence ON(n점)</code> 이 보여야 합니다.</li>
+<li class="warn">🚨 <strong>[위도, 경도, 위도, 경도, …] 순서, 원소마다 소수점</strong>(예 <code>[35.1862375, 128.5655118, …]</code>). 정수·문자열·홀수 개·6개 미만·한국 범위 밖(위경도 뒤바뀜 포함)이면 ERROR 1회 + 경계 꺼짐(노드는 뜸) → 시작 로그 <code>geofence OFF(폴리곤 오류 — 위 ERROR)</code>. 정수와 소수를 섞으면 launch 자체가 안 뜹니다. 넣은 뒤 <code>python3 tools/param_check.py &lt;파일&gt;</code> 로 먼저 검사.</li>
 <li>⚠️ 경계를 피하는 반응은 약 3 m 앞부터입니다. 경계 쪽으로 크게 꺾인 채 순항하면 다 못 돌 수 있습니다(시뮬 경기 중 이탈 약 1~2 %). 실해역 4-5c 에서 확인합니다.</li>
 <li>결승선 뒤 이탈은 감점이 아닙니다(11-09 확인).</li>
 </ul>
@@ -1506,6 +1507,12 @@ hr{border:0;border-top:1px solid var(--line);margin:20px 0}li{margin:3px 0}
 <td><code>"red"</code></td>
 <td>— (YAML 은 받지만 습관으로)</td>
 </tr>
+<tr>
+<td>경계 폴리곤은 소수, [위도, 경도] 순서, 짝수 개 6개 이상</td>
+<td><code>[35, 128, …]</code>, <code>[128.56, 35.18, …]</code></td>
+<td><code>[35.1862, 128.5655, …]</code></td>
+<td>ERROR + 경계 꺼짐(섞이면 launch 실패)</td>
+</tr>
 </tbody>
 </table>
 <hr />
@@ -1555,9 +1562,14 @@ hr{border:0;border-top:1px solid var(--line);margin:20px 0}li{margin:3px 0}
 <td>4-2</td>
 </tr>
 <tr>
-<td>시작 WARN "geofence_polygon 이 비어 있다"</td>
-<td>토너먼트 경계 미입력</td>
-<td>5-3</td>
+<td>시작 WARN "geofence_polygon 이 비었거나 오류로 거부됐다"</td>
+<td>토너먼트 경계 미입력 또는 형식 오류</td>
+<td>5-3 (ERROR 가 같이 있으면 그 문구대로 고침)</td>
+</tr>
+<tr>
+<td>시작 WARN "웨이포인트 파일이 패키지 템플릿"</td>
+<td>토너먼트인데 <code>waypoints_file:=</code> 을 빠뜨림</td>
+<td>6장 토너먼트 명령, 녹화본 경로</td>
 </tr>
 <tr>
 <td>로그 "DWA 가능한 후보 없음"(폴백)이 잦음</td>

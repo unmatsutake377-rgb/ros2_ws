@@ -217,8 +217,8 @@ def main():
                     continue
                 bad_u = [k for k in merged if k not in p and k in own_keys]
                 # ℹ️ yaml 의 **빈 배열**은 ROS2 가 타입을 못 정해 'not set' 이 된다.
-                #    코드가 `or []` 로 받으면 동작은 같다 — 버그가 아니므로 따로 센다.
-                #    (north_goal_angle 의 geofence_polygon 이 그 경우다)
+                #    버그가 아니므로 따로 센다. (north_goal_angle 의 geofence_polygon 이 그 경우다 —
+                #    dynamic_typing 선언 + sanitize_geofence_polygon 이 None 을 '꺼짐'으로 받는다, 11-09)
                 note = [k for k in merged
                         if k in p and merged[k] == []
                         and str(p[k]).strip() == "# Parameter not set"]
