@@ -1,3 +1,18 @@
+"""대회 launch — 배(boat)와 코스(course)는 필수 인자다(둘 다 기본값 없음, 빠지면 launch 거부).
+
+  ros2 launch launch_files launch_files.launch.py boat:=A course:=main         (종합임무)
+  ros2 launch launch_files launch_files.launch.py boat:=B course:=tournament \
+      waypoints_file:=<레인별 녹화본.yaml>                                      (토너먼트)
+
+코스 (계약서_토너먼트분리_20261109 T1-4, §9):
+  · north_goal_angle 은 Include 로 course·waypoints_file 을 받아 north_goal_angle_{course}.yaml 과
+    코스 기본 웨이포인트 파일을 스스로 고른다(waypoints_file 이 비면 코스 기본 파일).
+  · ship_direction·motor_control 은 공통 yaml 뒤에 course_param_files() 를 붙인다
+    (main = 붙이는 것 없음, tournament = <pkg>_tournament.yaml, 없으면 launch 를 세운다).
+  · ship_direction 의 dwa_hull 은 boat 인자로 정한다(main·tournament 모두, §9-5).
+  · 판 사이에는 launch 를 재시작한다(MANUAL→AUTO 재진입은 wp_idx 를 안 되돌린다).
+"""
+
 from launch import LaunchDescription
 from launch.actions import (IncludeLaunchDescription, TimerAction, DeclareLaunchArgument,
                             LogInfo, OpaqueFunction)
@@ -27,7 +42,8 @@ def _yaw_mux(context):
     missing = [f for f in files if not os.path.isfile(f)]
     if missing:
         # 일부러 launch 전체를 세운다 — 배별 값 없이 뜨면 헤딩이 조용히 틀린다.
-        # 🚨 이 검사는 t=0, 어떤 Node 보다 먼저 돈다(목록 맨 앞) → 아무 프로세스도 안 뜬 채 멈춘다.
+        # 🚨 이 검사는 t=0, 어떤 Node 보다 먼저 돈다(목록에서 _course_check 다음, Node 0개인 그 뒤)
+        #    → 아무 프로세스도 안 뜬 채 멈춘다.
         #    아래 12) 브릿지 주석의 "예외 금지" 는 선택 기능(ntrip·브릿지) 얘기다 — 이 검사를 지우지 말 것.
         raise RuntimeError(
             f'yaw_mux params 파일 없음: {missing} — pull 뒤 colcon build 를 했는지 확인')
@@ -53,6 +69,76 @@ def _pkg_yaml(pkg):
     test_launch_params.py 가 yaml 키 ⊆ 선언 키, 타입 일치, 절 이름 = 노드 이름을 검사한다.
     """
     return os.path.join(get_package_share_directory(pkg), 'config', f'{pkg}.yaml')
+
+
+# 코스 yaml 을 공통 yaml 뒤에 붙이는 패키지. north_goal_angle 은 자기 launch 가 붙인다(Include).
+COURSE_PKGS = ('ship_direction', 'motor_control')
+
+
+def course_param_files(pkg, course):
+    """course → <pkg> 공통 yaml 뒤에 붙일 코스 yaml 목록 (LaunchContext 없이 테스트).
+
+    main       = [] — 공통 <pkg>.yaml 그대로(main 코스 파일은 north_goal_angle 에만 있다).
+    tournament = [share/<pkg>/config/<pkg>_tournament.yaml] — 덮어쓰는 키만 든 파일.
+    🚨 파일이 없으면 RuntimeError: setup.py 누락·빌드 안 함이면 토너먼트 값 없이
+       조용히 main 값으로 뜬다(계약서 위험 1) → launch 를 세운다.
+    모르는 course 는 ValueError — 조용히 main 으로 떨어지지 않는다.
+    """
+    if course == 'main':
+        return []
+    if course != 'tournament':
+        raise ValueError(f"course={course!r} — 'main' 또는 'tournament'")
+    path = os.path.join(get_package_share_directory(pkg), 'config', f'{pkg}_tournament.yaml')
+    if not os.path.isfile(path):
+        raise RuntimeError(
+            f'{pkg} 코스 파일 없음: {path} — pull 뒤 colcon build 를 했는지 확인')
+    return [path]
+
+
+def _course_check(context):
+    # 코스 파일 확인(raise)을 launch 목록 첫 OpaqueFunction 으로 — _yaw_mux 보다도 앞, 어떤 Node
+    # 보다 먼저 한다(launch 는 깊이 우선 방문: 뒤에 두면 앞 OpaqueFunction 의 Node 가 먼저 예약된다).
+    # 여기서는 LogInfo 만 낸다(Node 없음) → 다음 _yaw_mux 의 확인도 여전히 어떤 Node 보다 먼저다.
+    # 노드는 _control_nodes 가 띄운다 — 같은 course_param_files 를 다시 부른다.
+    course = LaunchConfiguration('course').perform(context)
+    wp = LaunchConfiguration('waypoints_file').perform(context)
+    # 🚨 변수 이름을 files 로 쓰지 말 것 — ssf_heading test_boat_config 가 모듈 전체에서
+    #    yaw_mux parameters 변수(files) 대입이 1번인지 본다.
+    by_pkg = {pkg: course_param_files(pkg, course) for pkg in COURSE_PKGS}
+    attached = ', '.join(f'{pkg} ← {by_pkg[pkg] or "없음(공통 yaml 만)"}' for pkg in COURSE_PKGS)
+    return [LogInfo(msg=f'course={course}: 코스 파일 {attached} / north_goal_angle ← '
+                        f'north_goal_angle_{course}.yaml, waypoints_file={wp or "(코스 기본)"}')]
+
+
+def _control_nodes(context):
+    """10) ship_direction · 11) motor_control — course·boat 인자로 parameters 가 정해진다."""
+    course = LaunchConfiguration('course').perform(context)
+    boat = LaunchConfiguration('boat').perform(context)
+    return [
+        # 10) Fusion: 라이다 기반 항로 유지
+        Node(
+            package='ship_direction',
+            executable='ship_direction',
+            name='ship_direction',
+            output='screen',
+            # 🚨 순서가 의미다(뒤가 이긴다): 공통 yaml → 코스 yaml → dwa_hull dict **맨 뒤**.
+            #    dwa_hull 은 boat 가 정한다(§9-5, main·tournament 모두) — 공통 yaml 의 'A' 를
+            #    덮는다. 2번배 yaml 손편집('B')은 이것으로 대신한다. test_launch_params T8 이 검사.
+            parameters=[_pkg_yaml('ship_direction'),
+                        *course_param_files('ship_direction', course),
+                        {'dwa_hull': boat}],
+        ),
+        # 11) Motor Control
+        Node(
+            package='motor_control',
+            executable='motor_control',
+            name='motor_control',
+            output='screen',
+            # 공통 yaml → 코스 yaml (tournament: goal_slow_min_ratio 1.0, 결승 감속 끔 §9-3)
+            parameters=[_pkg_yaml('motor_control'),
+                        *course_param_files('motor_control', course)],
+        ),
+    ]
 
 
 def search_behavior_params(behavior):
@@ -182,19 +268,33 @@ def generate_launch_description():
 
     return LaunchDescription([
         # 🚨 배 (필수, 기본값 없음 — 빠지거나 A/B 가 아니면 launch 거부).
-        #    지금은 yaw_mux 의 배별 IMU 값(ssf_heading_A/B.yaml)만 고른다. GPS 는 아래 gps_config 따로.
-        #    ros2 launch launch_files launch_files.launch.py boat:=A   (또는 boat:=B)
+        #    yaw_mux 의 배별 IMU 값(ssf_heading_A/B.yaml)과 ship_direction 의 dwa_hull 을 고른다.
+        #    GPS 는 아래 gps_config 따로.
+        #    ros2 launch launch_files launch_files.launch.py boat:=A course:=main   (또는 boat:=B)
         #    기본값을 두면 다른 배에서 그 배 값으로 조용히 뜬다(gps_config 가 이미 그렇게 실패 중).
         DeclareLaunchArgument(
             'boat', choices=['A', 'B'],
-            description='배 (필수): A 또는 B — yaw_mux 배별 IMU 값 파일 선택'),
+            description='배 (필수): A 또는 B — yaw_mux 배별 IMU 값, ship_direction dwa_hull'),
+        # 🚨 코스 (필수, 기본값 없음 — boat 와 같은 이유. 계약서_토너먼트분리_20261109 결정 ③).
+        #    main = 종합임무, tournament = 토너먼트(웨이포인트 전부 mode 8, 코스 yaml 덮어쓰기).
+        #    기본값을 두면 토너먼트 날 인자를 빠뜨려도 main 값으로 조용히 뜬다.
+        #    ros2 launch launch_files launch_files.launch.py boat:=A course:=tournament
+        DeclareLaunchArgument(
+            'course', choices=['main', 'tournament'],
+            description='코스 (필수): main(종합임무) 또는 tournament(토너먼트, 전부 mode 8)'),
+        # 웨이포인트 파일. 비우면(기본) 코스 기본 파일(main=waypoints.yaml,
+        #   tournament=waypoints_tournament.yaml 템플릿). 레인별 녹화본은 경로를 직접 준다.
+        DeclareLaunchArgument(
+            'waypoints_file', default_value='',
+            description='웨이포인트 yaml 경로. 비우면 코스 기본 파일 (north_goal_angle 로 전달)'),
         DeclareLaunchArgument(
             'gps_config', default_value='zed_f9p_rover.yaml',
             description='GPS 설정 — 두 배 모두 ZED-F9P 라 기본값 zed_f9p_rover.yaml'),
         # 탐색(mode 3) 행동. 기본 hold — 2026 안내문 코스도 "특정 색상 부표 탐지 후 그 위치에서 위치유지"
         #   (팀장 확정 2026-11-04): ship_back 이 모드 2·3 담당, ship_turn 침묵.
         #   orbit 은 2025 규정(원 선회) 대비 옵션. 현장에서 선회로 돌리려면:
-        #   ros2 launch launch_files launch_files.launch.py boat:=A search_behavior:=orbit
+        #   ros2 launch launch_files launch_files.launch.py boat:=A course:=main \
+        #       search_behavior:=orbit
         DeclareLaunchArgument(
             'search_behavior', default_value='hold', choices=['orbit', 'hold'],
             description='탐색(wp_mode 3) 행동: hold=ship_back 위치유지, ship_turn 침묵(기본, 2026 안내문) / '
@@ -205,9 +305,16 @@ def generate_launch_description():
             description='blackbox CSV 기록(~/ssf_logs): true(기본) / false'),
 
         # ============================================================
+        # 0a) 코스 파일 확인 + LogInfo(course·붙인 파일). 없으면 raise
+        # ============================================================
+        # 🚨 목록의 첫 OpaqueFunction — 어떤 Node 보다 먼저 돈다(launch 는 깊이 우선 방문이라
+        #    _yaw_mux 뒤에 두면 yaw_mux Node 가 먼저 예약된다). Node 를 만들지 않는다.
+        OpaqueFunction(function=_course_check),
+
+        # ============================================================
         # 0) yaw_mux — /imu/yaw 의 단독 발행자 (params: 공통 → boat 별, _yaw_mux 참고)
         # ============================================================
-        # 🚨 맨 앞에 둔다: 배별 파일 확인(raise)이 어떤 노드도 예약되기 전에 돌게.
+        # 🚨 맨 앞쪽(0a 다음)에 둔다: 배별 파일 확인(raise)이 어떤 노드도 예약되기 전에 돌게.
         #    iahrs_driver 보다 먼저 떠도 무해하다 — 원시 yaw 가 오기 전엔 발행하지 않는다(stale).
         OpaqueFunction(function=_yaw_mux),
 
@@ -266,10 +373,17 @@ def generate_launch_description():
         # ============================================================
         # 5) NORTH 기준 각도 계산
         # ============================================================
+        # course·waypoints_file 을 넘긴다 → north launch 가 north_goal_angle_{course}.yaml 과
+        #   코스 기본 웨이포인트 파일을 고른다(waypoints_file 이 비면). 단독 north launch 의 기본
+        #   course=main 은 여기서 안 쓰인다 — 대회 launch 는 course 가 필수(§9-1).
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(
                 os.path.join(dir_north, 'launch', 'north_goal_angle_launch.py')
-            )
+            ),
+            launch_arguments={
+                'course': LaunchConfiguration('course'),
+                'waypoints_file': LaunchConfiguration('waypoints_file'),
+            }.items(),
         ),
 
         # ============================================================
@@ -338,26 +452,10 @@ def generate_launch_description():
         OpaqueFunction(function=_search_nodes),
 
         # ============================================================
-        # 10) Fusion: 라이다 기반 항로 유지
+        # 10) Fusion: 라이다 기반 항로 유지 / 11) Motor Control
         # ============================================================
-        Node(
-            package='ship_direction',
-            executable='ship_direction',
-            name='ship_direction',
-            output='screen',
-            parameters=[_pkg_yaml('ship_direction')],
-        ),
-
-        # ============================================================
-        # 11) Motor Control
-        # ============================================================
-        Node(
-            package='motor_control',
-            executable='motor_control',
-            name='motor_control',
-            output='screen',
-            parameters=[_pkg_yaml('motor_control')],
-        ),
+        # course(코스 yaml)·boat(dwa_hull) 에 따라 parameters 가 달라 _control_nodes 가 띄운다.
+        OpaqueFunction(function=_control_nodes),
 
         # ============================================================
         # 12) 시리얼 브릿지 (Motor_run → 아두이노 Mega, 상태 → /boat_mode)

@@ -12,14 +12,21 @@
 
 지키는 것 (값은 비교하지 않는다 — 결정 ②: yaml 이 이긴다, 키·타입만 강제)
   T1 노드별 Node 정확히 1개 + parameters 첫 항목이 _pkg_yaml('<pkg>') = share/<pkg>/config/<pkg>.yaml
-     T1b OpaqueFunction 진입점(_yaw_mux·_oak_camera·_search_nodes·_blackbox)이 launch 목록에 각 1개
+     T1b OpaqueFunction 진입점(_yaw_mux·_course_check·_oak_camera·_search_nodes·_control_nodes·
+         _blackbox)이 launch 목록에 각 1개
   T2 yaml 절 이름 = launch name= = 노드 super().__init__ 인자 (어긋나면 yaml 이 통째로 안 닿는다)
+     T2~T4 는 코스 yaml(<pkg>_tournament.yaml)도 대조한다 (계약서_토너먼트분리_20261109 T1-4)
   T3 yaml 키 ⊆ 노드 declare_parameter 키 (미선언 키 = 조용히 버려지는 죽은 설정)
   T4 yaml 값 타입 = 선언 기본값 타입 (bool/int/float/str, 리스트는 원소 타입까지). yaml 빈 리스트 금지
   T5 ship_back·ship_turn parameters = [yaml, search_behavior dict] — dict 가 **맨 뒤**
-  T6 setup.py 가 config/<pkg>.yaml 을 share 에 설치한다
+  T6 setup.py 가 config/<pkg>.yaml 을 share 에 설치한다 (코스 패키지는 <pkg>_tournament.yaml 도)
   T7 blackbox: Node 1개, condition=IfCondition(record), ssf_tools.yaml, record 기본 'true'·choices,
      ssf_tools 없으면 건너뜀(PackageNotFoundError), healthcheck·mission_monitor 는 없음(결정 ④)
+  T8 코스(계약서_토너먼트분리_20261109 T1-4): course 필수(choices main/tournament, 기본값 없음),
+     waypoints_file 기본 '', north Include 에 둘 다 전달, ship_direction parameters =
+     [_pkg_yaml, *course_param_files, {'dwa_hull': boat}] (dict 맨 뒤), motor =
+     [_pkg_yaml, *course_param_files], course_param_files: main → [], tournament → 설치 경로,
+     없으면 RuntimeError, 모르는 course 는 ValueError, _course_check 가 목록 첫 OpaqueFunction
 """
 
 import ast
@@ -42,16 +49,26 @@ BLACKBOX = {'package': 'ssf_tools', 'executable': 'blackbox', 'name': 'blackbox'
             'source': os.path.join(SRC, 'ssf_tools', 'ssf_tools', 'blackbox.py')}
 
 
+# course:=tournament 때 공통 yaml 뒤에 <pkg>_tournament.yaml 을 받는 패키지 (= launch COURSE_PKGS)
+COURSE_PKGS = ('ship_direction', 'motor_control')
+COURSES = ['main', 'tournament']
+
+
+def _tournament_yaml(pkg):
+    return os.path.join(SRC, pkg, 'config', f'{pkg}_tournament.yaml')
+
+
 def _node_cases():
-    """(노드 이름, yaml 경로, 노드 소스) — T2·T3·T4 공통."""
+    """(노드 이름, yaml 경로, 노드 소스) — T2·T3·T4 공통. 코스 yaml 도 같은 노드 절로 대조한다."""
     cases = [(p, os.path.join(SRC, p, 'config', f'{p}.yaml'),
               os.path.join(SRC, p, p, f'{p}.py')) for p in MISSION_PKGS]
+    cases += [(p, _tournament_yaml(p), os.path.join(SRC, p, p, f'{p}.py')) for p in COURSE_PKGS]
     cases.append((BLACKBOX['name'], BLACKBOX['yaml'], BLACKBOX['source']))
     return cases
 
 
 NODE_CASES = _node_cases()
-NODE_IDS = [c[0] for c in NODE_CASES]
+NODE_IDS = [os.path.splitext(os.path.basename(c[1]))[0] for c in NODE_CASES]   # 파일 이름
 
 
 # ------------------------------------------------------------ ast 도우미
@@ -321,7 +338,8 @@ def test_t4_yaml_types_match_declared(name, yaml_path, source):
 
 # OpaqueFunction 으로 노드를 띄우는 진입점. 함수가 있어도 목록에서 빠지면 그 노드는 안 뜬다
 # (에러 없음) — T1·T5·T7 은 함수 안의 Node 만 보므로 따로 검사한다.
-OPAQUE_ENTRIES = ('_yaw_mux', '_oak_camera', '_search_nodes', '_blackbox')
+OPAQUE_ENTRIES = ('_yaw_mux', '_course_check', '_oak_camera', '_search_nodes',
+                  '_control_nodes', '_blackbox')
 
 
 def _launch_list():
@@ -396,6 +414,18 @@ def test_t6_setup_installs_yaml(pkg):
         f'{pkg}/setup.py 의 data_files 에 share/{pkg}/config 대상이 없다')
 
 
+@pytest.mark.parametrize('pkg', COURSE_PKGS)
+def test_t6_setup_installs_tournament_yaml(pkg):
+    """계약서 위험 1: setup.py 가 파일 이름을 직접 적는 패키지라 새 yaml 은 따로 적어야 설치된다."""
+    with open(os.path.join(SRC, pkg, 'setup.py'), encoding='utf-8') as f:
+        setup = f.read()
+    assert os.path.isfile(_tournament_yaml(pkg)), f'{_tournament_yaml(pkg)} 없음'
+    assert re.search(r"""['"]config/(\*|""" + re.escape(pkg) + r"""_tournament)\.yaml['"]""",
+                     setup), (
+        f'{pkg}/setup.py 가 config/{pkg}_tournament.yaml 을 설치하지 않는다 — '
+        'course:=tournament 가 launch 시작에서 RuntimeError')
+
+
 # ------------------------------------------------------------ T7  blackbox
 
 def test_t7_blackbox_node_once_with_condition_and_yaml():
@@ -467,3 +497,210 @@ def test_t7_blackbox_yaml_section_has_no_healthcheck_mixup():
     """blackbox 절만 읽는다 — 같은 파일의 /healthcheck 키가 섞이지 않게(파서 확인)."""
     keys = _yaml_section(BLACKBOX['yaml'], 'blackbox')
     assert 'rate_hz' in keys and 'health_period_sec' not in keys
+
+
+# ------------------------------------------------------------ T8  코스 (course·waypoints_file)
+
+def _declare(tree, name):
+    calls = [n for n in ast.walk(tree)
+             if isinstance(n, ast.Call) and _call_name(n) == 'DeclareLaunchArgument'
+             and n.args and isinstance(n.args[0], ast.Constant) and n.args[0].value == name]
+    assert len(calls) == 1, f"DeclareLaunchArgument('{name}') {len(calls)}개"
+    return calls[0]
+
+
+def _is_launch_config(node, name):
+    return (isinstance(node, ast.Call) and _call_name(node) == 'LaunchConfiguration'
+            and len(node.args) == 1 and isinstance(node.args[0], ast.Constant)
+            and node.args[0].value == name)
+
+
+def test_t8_course_arg_required_with_choices():
+    """기본값이 있으면 토너먼트 날 인자를 빠뜨려도 main 값으로 조용히 뜬다(결정 ③ — boat 와 같다)."""
+    call = _declare(_tree(), 'course')
+    assert _kw(call, 'default_value') is None, 'course 는 기본값 없음(필수)'
+    assert ast.literal_eval(_kw(call, 'choices')) == COURSES
+
+
+def test_t8_waypoints_file_arg_default_empty():
+    """비면 north launch 가 코스 기본 파일을 고른다(waypoints.yaml / waypoints_tournament.yaml)."""
+    call = _declare(_tree(), 'waypoints_file')
+    assert _const_kw(call, 'default_value') == ''
+    assert _kw(call, 'choices') is None
+
+
+def test_t8_courses_match_north_launch():
+    """대회 launch choices = north_goal_angle_launch.COURSES, north 도 두 인자를 선언한다."""
+    path = os.path.join(SRC, 'north_goal_angle', 'launch', 'north_goal_angle_launch.py')
+    north = _source_tree(path)
+    vals = [ast.literal_eval(n.value) for n in north.body if isinstance(n, ast.Assign)
+            and any(isinstance(t, ast.Name) and t.id == 'COURSES' for t in n.targets)]
+    assert vals == [COURSES], f'north COURSES {vals}'
+    for name in ('course', 'waypoints_file'):
+        _declare(north, name)
+
+
+def test_t8_north_include_passes_course_and_waypoints_file():
+    """안 넘기면 north 단독 기본값(course=main)으로 떠 토너먼트에서도 main 웨이포인트를 쓴다."""
+    incs = [n for n in ast.walk(_tree())
+            if isinstance(n, ast.Call) and _call_name(n) == 'IncludeLaunchDescription'
+            and any(isinstance(c, ast.Constant) and c.value == 'north_goal_angle_launch.py'
+                    for c in ast.walk(n))]
+    assert len(incs) == 1, f'north Include {len(incs)}개'
+    la = _kw(incs[0], 'launch_arguments')
+    assert (isinstance(la, ast.Call) and isinstance(la.func, ast.Attribute)
+            and la.func.attr == 'items' and isinstance(la.func.value, ast.Dict)), (
+        'launch_arguments={...}.items() 꼴이 아니다')
+    d = la.func.value
+    got = {k.value: v for k, v in zip(d.keys, d.values) if isinstance(k, ast.Constant)}
+    assert sorted(got) == ['course', 'waypoints_file'], f'north 로 넘기는 인자 {sorted(got)}'
+    for name, v in got.items():
+        assert _is_launch_config(v, name), f"{name} 가 LaunchConfiguration('{name}') 가 아니다"
+
+
+def _is_course_files_starred(node, pkg):
+    """*course_param_files('<pkg>', course)"""
+    if not isinstance(node, ast.Starred):
+        return False
+    c = node.value
+    return (isinstance(c, ast.Call) and _call_name(c) == 'course_param_files'
+            and len(c.args) == 2 and isinstance(c.args[0], ast.Constant)
+            and c.args[0].value == pkg
+            and isinstance(c.args[1], ast.Name) and c.args[1].id == 'course')
+
+
+def _performed(fn, var, arg):
+    """fn 안에서 var = LaunchConfiguration('<arg>').perform(context) 가 정확히 한 번."""
+    vals = [n.value for n in ast.walk(fn) if isinstance(n, ast.Assign)
+            and any(isinstance(t, ast.Name) and t.id == var for t in n.targets)]
+    assert len(vals) == 1, f'{fn.name}: {var} 대입 {len(vals)}개'
+    v = vals[0]
+    assert (isinstance(v, ast.Call) and isinstance(v.func, ast.Attribute)
+            and v.func.attr == 'perform' and _is_launch_config(v.func.value, arg)), (
+        f"{fn.name}: {var} 가 LaunchConfiguration('{arg}').perform(context) 가 아니다")
+
+
+def test_t8_ship_direction_params_order():
+    """🚨 뒤가 이긴다: 공통 yaml → 코스 yaml → dwa_hull dict **맨 뒤**(§9-5, main·tournament 모두).
+
+    dwa_hull 은 공통 yaml 에 'A' 로 있고(T3·T4 는 키·타입만 봄 — 값은 안 봄) 여기 dict 가 boat 로
+    덮는다. 그래서 T3·T4 와 충돌하지 않는다. dict 가 yaml 앞이면 B배도 'A' 로 뜬다(에러 없음).
+    """
+    nodes = _nodes(_tree(), 'ship_direction')
+    assert len(nodes) == 1
+    elts = _params_list(nodes[0])
+    assert len(elts) == 3, f'ship_direction parameters 항목 {len(elts)}개'
+    assert _is_pkg_yaml_call(elts[0], 'ship_direction')
+    assert _is_course_files_starred(elts[1], 'ship_direction'), (
+        "두 번째가 *course_param_files('ship_direction', course) 가 아니다")
+    last = elts[2]
+    assert isinstance(last, ast.Dict) and len(last.keys) == 1, '마지막이 dict 1키가 아니다'
+    assert isinstance(last.keys[0], ast.Constant) and last.keys[0].value == 'dwa_hull'
+    assert isinstance(last.values[0], ast.Name) and last.values[0].id == 'boat'
+    fn = _func(_tree(), '_control_nodes')
+    _performed(fn, 'boat', 'boat')
+    _performed(fn, 'course', 'course')
+
+
+def test_t8_motor_control_params_order():
+    elts = _params_list(_nodes(_tree(), 'motor_control')[0])
+    assert len(elts) == 2, f'motor_control parameters 항목 {len(elts)}개'
+    assert _is_pkg_yaml_call(elts[0], 'motor_control')
+    assert _is_course_files_starred(elts[1], 'motor_control'), (
+        "두 번째가 *course_param_files('motor_control', course) 가 아니다")
+
+
+def test_t8_course_nodes_live_in_control_nodes():
+    """ship_direction·motor_control Node 는 _control_nodes 안에만 있다 (course 를 perform 하는 곳)."""
+    fn = _func(_tree(), '_control_nodes')
+    for pkg in COURSE_PKGS:
+        assert len(_nodes(fn, pkg)) == 1, f'{pkg} Node 가 _control_nodes 밖에 있다'
+
+
+def test_t8_dwa_hull_declared_and_boat_values_are_hulls():
+    """dict 키 dwa_hull 을 노드가 str 로 선언하고, boat choices = DWA 선체 표 키(A·B)."""
+    src = os.path.join(SRC, 'ship_direction', 'ship_direction', 'ship_direction.py')
+    assert _ros_type(_declared(src)['dwa_hull']) == 'str'
+    boat = ast.literal_eval(_kw(_declare(_tree(), 'boat'), 'choices'))
+    dwa = _source_tree(os.path.join(SRC, 'ship_direction', 'ship_direction', 'dwa.py'))
+    hulls = [n.value for n in dwa.body if isinstance(n, ast.Assign)
+             and any(isinstance(t, ast.Name) and t.id == 'HULLS' for t in n.targets)]
+    assert len(hulls) == 1 and isinstance(hulls[0], ast.Dict)
+    assert sorted(k.value for k in hulls[0].keys) == sorted(boat)
+
+
+def _course_param_files(share):
+    """launch 의 course_param_files 를 떼어 실행 (get_package_share_directory 는 share(pkg))."""
+    fn = _func(_tree(), 'course_param_files')
+    ns = {'os': os, 'get_package_share_directory': share}
+    exec(compile(ast.Module(body=[fn], type_ignores=[]), '<launch>', 'exec'), ns)
+    return ns['course_param_files']
+
+
+@pytest.mark.parametrize('pkg', COURSE_PKGS)
+def test_t8_course_param_files_main_is_empty(pkg):
+    """main 은 공통 yaml 그대로 — main 동작 불변."""
+    calls = []
+    fn = _course_param_files(lambda p: calls.append(p) or '/nonexistent')
+    assert fn(pkg, 'main') == []
+    assert calls == [], 'main 에서 share 를 조회할 이유가 없다'
+
+
+@pytest.mark.parametrize('pkg', COURSE_PKGS)
+def test_t8_course_param_files_tournament_path(pkg):
+    # 소스 패키지 폴더를 share 로 둔다 — setup.py 가 config/ 를 share/<pkg>/config 로 그대로 옮긴다
+    fn = _course_param_files(lambda p: os.path.join(SRC, p))
+    got = fn(pkg, 'tournament')
+    assert got == [_tournament_yaml(pkg)]
+    assert os.path.isfile(got[0])
+    # 설치 경로 꼴: <share>/config/<pkg>_tournament.yaml (파일 확인은 실패해도 경로는 이 꼴)
+    fake = _course_param_files(lambda p: f'/install/{p}/share/{p}')
+    with pytest.raises(RuntimeError, match=re.escape(
+            f'/install/{pkg}/share/{pkg}/config/{pkg}_tournament.yaml')):
+        fake(pkg, 'tournament')
+
+
+def test_t8_course_param_files_missing_raises():
+    """코스 파일이 없는 패키지(설치 누락과 같은 상황) → RuntimeError, 조용히 main 값으로 안 뜬다."""
+    fn = _course_param_files(lambda p: os.path.join(SRC, p))
+    assert not os.path.isfile(_tournament_yaml('ship_gate'))
+    with pytest.raises(RuntimeError):
+        fn('ship_gate', 'tournament')
+
+
+@pytest.mark.parametrize('course', ['', 'Main', 'TOURNAMENT', 'tourney', 'main '])
+def test_t8_course_param_files_unknown_course_raises(course):
+    fn = _course_param_files(lambda p: os.path.join(SRC, p))
+    with pytest.raises(ValueError):
+        fn('ship_direction', course)
+
+
+def test_t8_launch_course_pkgs_match():
+    tree = _tree()
+    vals = [ast.literal_eval(n.value) for n in tree.body if isinstance(n, ast.Assign)
+            and any(isinstance(t, ast.Name) and t.id == 'COURSE_PKGS' for t in n.targets)]
+    assert vals == [COURSE_PKGS], f'launch COURSE_PKGS {vals}'
+
+
+def test_t8_course_check_before_any_node():
+    """_course_check = launch 목록의 첫 OpaqueFunction, 첫 Node·Include·TimerAction 보다 앞.
+
+    launch 는 깊이 우선 방문이다 — 뒤에 두면 앞 OpaqueFunction(_yaw_mux)의 Node 가 먼저 예약된다.
+    코스 파일이 없으면 아무 노드도 안 뜬 채 멈춰야 한다. _course_check 자신은 Node 를 안 만든다.
+    """
+    items = _launch_list()
+    calls = [(i, _call_name(e)) for i, e in enumerate(items) if isinstance(e, ast.Call)]
+    opaque = [i for i, name in calls if name == 'OpaqueFunction']
+    assert opaque, 'OpaqueFunction 없음'
+    first = items[opaque[0]]
+    assert _kw(first, 'function').id == '_course_check', (
+        f"첫 OpaqueFunction 이 {_kw(first, 'function').id} — _course_check 여야 한다")
+    others = [i for i, name in calls
+              if name in ('Node', 'IncludeLaunchDescription', 'TimerAction', 'OpaqueFunction')
+              and i != opaque[0]]
+    assert opaque[0] < min(others), '_course_check 앞에 Node·Include·TimerAction·OpaqueFunction 이 있다'
+    fn = _func(_tree(), '_course_check')
+    _performed(fn, 'course', 'course')
+    names = [_call_name(n) for n in ast.walk(fn) if isinstance(n, ast.Call)]
+    assert 'course_param_files' in names and 'LogInfo' in names
+    assert 'Node' not in names
