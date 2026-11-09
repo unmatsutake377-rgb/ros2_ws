@@ -216,6 +216,7 @@ gps_vel(RTK) 로 기록. ★ RTK fix 품질 확인 필수(아래).</pre>
   ④ tournament 에 main 파일: <code>course:=tournament waypoints_file:=</code>(종합임무 waypoints.yaml 경로) → north ERROR '웨이포인트 내용 오류' + north 정지(출발 안 함).
   ⑤ 코스 끝: 마지막 WP(mode 8)를 지나게 하면 <code>ros2 topic hz /candidate_angle</code> 약 2 Hz·값 50000, INFO '🏁 코스 … 끝' 1회, Motor_run 15001500. main·tournament 둘 다.
   ⑥ 단독 north launch 인자 없음: <code>ros2 launch north_goal_angle north_goal_angle_launch.py</code> → 로그 'course=main', 웨이포인트 config/waypoints.yaml.
+  ⑦ 옆 잠금 꺼짐 확인(22ca0a5·a6d885a, 기본 끔 — 🚨 대회도 false, 11-09 결정): <code>course:=main</code>·<code>course:=tournament</code> 둘 다 <code>ros2 param get /ship_direction side_lock_enabled</code> → false, ship_direction 로그에 '옆 잠금' 문구 0줄(<code>옆 잠금 켬</code>·<code>옆 잠금 파라미터 이상</code> 도 없음). 문구가 있으면 노트북 yaml 이 바뀐 것 → 되돌림.
   하나라도 실패하면 T1 배포 안 함 → 대안(계약서 §9-9).
 <b>탐색 부표 색 (11-04, 계약서_전체코스 C6/U5)</b> — 벤치: <code>ros2 param get /image_subscriber_turn turn_color_mode2</code> → white, <code>turn_color_mode3</code> → red, 시작 INFO 'turn 목표 색: mode 2=white, mode 3=red'. 공지 색으로 바꾸려면 vision.yaml image_subscriber_turn 의 turn_color_mode3 를 고치고 재시작(허용 red/green/white, 그 외는 ERROR + 그 모드 검출 안 함 — /image_angle 안 나옴, (search_behavior hold 기본일 때) ship_back SEARCH 20000 유지 — orbit 이면 mode 3 은 ship_turn 담당; 담당 모드에선 5 s 마다 ERROR 'turn 목표 색 무효(mode N)'. 문자열 아닌 값은 rclpy 가 부팅 때 노드를 세움). 🚨 orbit 옵션이면 white 는 반시계로 돈다.
 <b>각도 제한 ±80° (11-04, 계약서_각도클램프)</b> — 벤치, 담당 검출기 끈 상태(안 끄면 /image_angle 발행자가 둘):
