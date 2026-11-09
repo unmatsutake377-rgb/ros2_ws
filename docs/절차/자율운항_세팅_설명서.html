@@ -1,0 +1,1439 @@
+<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>SSF 자율운항 소프트웨어 — 세팅 사용설명서</title><style>
+:root{--ink:#1f2328;--mut:#59636e;--bg:#fff;--card:#f6f8fa;--line:#d0d7de;--acc:#1f3864;--warn:#b8860b;--bad:#c00000;--badbg:#fdf0f0}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--ink:#e6edf3;--mut:#9aa4ae;--bg:#0d1117;--card:#161b22;--line:#30363d;--acc:#9ec5ff;--bad:#ff7b72;--badbg:#2a1515;color-scheme:dark}}
+:root[data-theme=dark]{--ink:#e6edf3;--mut:#9aa4ae;--bg:#0d1117;--card:#161b22;--line:#30363d;--acc:#9ec5ff;--bad:#ff7b72;--badbg:#2a1515;color-scheme:dark}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.6 "Apple SD Gothic Neo","Malgun Gothic",system-ui,sans-serif}
+main{max-width:1100px;margin:0 auto;padding:24px max(16px,env(safe-area-inset-right,0px)) 60px max(16px,env(safe-area-inset-left,0px))}
+h1{font-size:27px;color:var(--acc);margin:0 0 8px;padding-bottom:10px;border-bottom:3px solid var(--acc)}
+h2{font-size:20px;color:var(--acc);margin:36px 0 10px;padding-top:12px;border-top:1px solid var(--line)}
+h3{font-size:16px;margin:22px 0 8px}
+table{border-collapse:collapse;width:100%;margin:10px 0;font-size:14px;display:block;overflow-x:auto}
+th,td{border:1px solid var(--line);padding:6px 9px;text-align:left;vertical-align:top}th{background:var(--card);white-space:nowrap}
+pre{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:12px;overflow-x:auto;font-size:13px;line-height:1.45}
+code{font-family:ui-monospace,Menlo,monospace;font-size:.92em;background:var(--card);padding:1px 4px;border-radius:4px}pre code{background:none;padding:0}
+blockquote{margin:0 0 16px;padding:8px 14px;border-left:4px solid var(--acc);background:var(--card);color:var(--mut)}
+.warn{background:var(--badbg);border-left:4px solid var(--bad);padding:4px 10px;border-radius:4px}
+.toc{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 16px;font-size:14px;margin:14px 0}
+.toc a{color:var(--acc);text-decoration:none;margin-right:14px;display:inline-block}
+hr{border:0;border-top:1px solid var(--line);margin:20px 0}li{margin:3px 0}
+</style></head><body><main><h1 id="ssf">SSF 자율운항 소프트웨어 — 세팅 사용설명서</h1><div class="toc"><a href="#_1">표시 기호</a><a href="#1">1. 안전을 위한 주의사항 (반드시 먼저 읽으십시오)</a><a href="#2">2. 구성 — 무엇이 무엇을 하나</a><a href="#3">3. 설치 전 준비 (노트북마다 한 번)</a><a href="#4">4. 처음 한 번만 하는 설정 — 배마다 다른 실측값</a><a href="#5">5. 대회마다 하는 설정</a><a href="#6-launch">6. 실행하기 — launch 명령</a><a href="#7">7. 코스별 설정 — 무엇이 어떻게 덮어써지나</a><a href="#8">8. 파라미터 사전 — 노드별 전체 설명</a><a href="#9">9. 값을 적을 때 지킬 형식</a><a href="#10">10. 문제 해결</a><a href="#11">11. 현장 기록 (대회 전 채우기)</a></div>
+<blockquote>
+<p><strong>제품:</strong> SSF 자율운항 스택 (ROS 2 Humble) · <strong>적용 선체:</strong> 1번배(A) · 2번배(B)
+<strong>버전:</strong> 2026-11-09 (커밋 <code>d166045</code> 기준) · <strong>원본:</strong> <code>docs/절차/자율운항_세팅_설명서.md</code>
+<strong>대상:</strong> 배 노트북(Ubuntu)에서 대회 전 설정을 하는 사람</p>
+<p>이 설명서는 "무엇을 어디에 넣어야 하고, 그 값이 무슨 일을 하는가"만 다룹니다.
+절차의 세부 근거는 각 장 끝 <strong>참고</strong> 에 적은 문서가 원본입니다.</p>
+</blockquote>
+<hr />
+<h2 id="_1">표시 기호</h2>
+<table>
+<thead>
+<tr>
+<th>기호</th>
+<th>뜻</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>🚨 <strong>경고</strong></td>
+<td>지키지 않으면 배가 반대로 가거나, 노드가 죽거나, 실격될 수 있습니다</td>
+</tr>
+<tr>
+<td>⚠️ <strong>주의</strong></td>
+<td>실측이 필요한 값입니다. 지금 값은 가정값입니다</td>
+</tr>
+<tr>
+<td>✅ <strong>확인됨</strong></td>
+<td>실측 또는 Ubuntu 에서 확인된 값입니다</td>
+</tr>
+<tr>
+<td>🔒 <strong>고정</strong></td>
+<td>시뮬레이션으로 검증된 값입니다. 현장에서 바꾸지 마십시오</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="1">1. 안전을 위한 주의사항 (반드시 먼저 읽으십시오)</h2>
+<ol>
+<li class="warn">🚨 <strong>모드 전환(수동 ↔ 자율)은 조종기(RC)로만 합니다.</strong> 노트북에서 <code>/boat_mode</code> 를 바꾸지 마십시오.</li>
+<li class="warn">🚨 <strong>프로펠러가 물 밖일 때만 벤치 시험을 합니다.</strong> 비상정지를 눌러 ESC 전원을 끈 상태가 기본입니다.</li>
+<li class="warn">🚨 <strong>조향 부호(<code>steer_invert</code>)와 IMU 방향(<code>invert_yaw</code>)을 확인하기 전에는 자율로 출발하지 마십시오.</strong> 가장 흔한 사고입니다(배가 정반대로 감).</li>
+<li class="warn">🚨 <strong>설정 파일을 고친 뒤에는 launch 를 다시 시작합니다.</strong> <code>ros2 param set</code> 은 효과가 없습니다(노드가 시작할 때 한 번만 읽습니다).</li>
+<li class="warn">🚨 <strong>배 노트북에서 고친 값은 git 에 커밋하지 않습니다.</strong> 현장 기록은 <code>docs/절차/현장_조정표_20261106.md</code> §4 기록표에 적습니다.</li>
+<li class="warn">🚨 <strong>NTRIP(GPS 보정) 접속 정보는 <code>~/.ssf/</code> 에만 둡니다.</strong> 저장소·채팅에 올리지 마십시오.</li>
+</ol>
+<hr />
+<h2 id="2">2. 구성 — 무엇이 무엇을 하나</h2>
+<pre><code> 센서                         판단                                   구동
+ ─────                        ─────                                  ─────
+ GPS(ZED-F9P) ──▶ north_goal_angle ── 목표 방위 ──▶ ship_goal_angle ── /yaw_error ──┐
+ IMU(iAHRS) ──▶ yaw_mux ── /imu/yaw ──┘     │ /wp_mode, /candidate_angle            │
+                                          │ /geofence_state(경계)                 ▼
+ 카메라(OAK-1) ─▶ 검출기(gate·turn·dock) ─▶ 미션 노드(ship_gate·ship_back·ship_dock)
+                                                        │ /candidate_angle      │
+ LiDAR(RPLIDAR A3) ───────────────────────────────▶ ship_direction ── /desired_angle ──▶ motor_control ──▶ ssf_bridge ──▶ 아두이노 ──▶ 스러스터
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>노드</th>
+<th>하는 일</th>
+<th>설정 파일</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>yaw_mux</code></td>
+<td>IMU 원시 yaw 를 보정해 <code>/imu/yaw</code> 로 냅니다 (배마다 장착값이 다름)</td>
+<td><code>ssf_heading/config/ssf_heading.yaml</code> + <code>ssf_heading_A.yaml</code> / <code>_B.yaml</code></td>
+</tr>
+<tr>
+<td><code>north_goal_angle</code></td>
+<td>웨이포인트를 순서대로 따라가며 목표 방위·거리, 미션 번호(<code>/wp_mode</code>), 경계(지오펜스)를 냅니다</td>
+<td><code>north_goal_angle/config/north_goal_angle.yaml</code> + 코스별 파일 + 웨이포인트 파일</td>
+</tr>
+<tr>
+<td><code>ship_goal_angle</code></td>
+<td>목표 방위와 현재 헤딩의 차이(<code>/yaw_error</code>)를 냅니다</td>
+<td><code>ship_goal_angle/config/ship_goal_angle.yaml</code></td>
+</tr>
+<tr>
+<td>검출기 3개</td>
+<td>카메라에서 부표·표식 색과 모양을 찾아 각도를 냅니다</td>
+<td><code>color_shape_detector/config/vision.yaml</code></td>
+</tr>
+<tr>
+<td><code>ship_gate</code></td>
+<td>게이트(mode 0·1): 빨강·초록 부표 사이로 들어갑니다</td>
+<td><code>ship_gate/config/ship_gate.yaml</code></td>
+</tr>
+<tr>
+<td><code>ship_back</code></td>
+<td>위치유지(mode 2)·탐색(mode 3): 부표 앞 일정 거리에서 버팁니다</td>
+<td><code>ship_back/config/ship_back.yaml</code></td>
+</tr>
+<tr>
+<td><code>ship_dock</code></td>
+<td>도킹(mode 7): 표식을 찾아 정렬·접안·이탈합니다</td>
+<td><code>ship_dock/config/ship_dock.yaml</code></td>
+</tr>
+<tr>
+<td><code>ship_direction</code></td>
+<td>LiDAR 로 장애물을 피하며 최종 조향각을 정합니다. 페일세이프(센서 끊김 시 감속·정지)도 여기 있습니다</td>
+<td><code>ship_direction/config/ship_direction.yaml</code> + 토너먼트 파일</td>
+</tr>
+<tr>
+<td><code>motor_control</code></td>
+<td>조향각을 좌우 모터 PWM 으로 바꿉니다</td>
+<td><code>motor_control/config/motor_control.yaml</code> + 토너먼트 파일</td>
+</tr>
+<tr>
+<td><code>ssf_bridge</code></td>
+<td>PWM 을 아두이노로 보냅니다 (추력 방향 반전은 여기 한 곳)</td>
+<td>파라미터 기본값 사용</td>
+</tr>
+</tbody>
+</table>
+<p><strong>미션 번호(<code>wp_mode</code>)와 담당</strong></p>
+<table>
+<thead>
+<tr>
+<th>mode</th>
+<th>미션</th>
+<th>담당 노드</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0 · 1</td>
+<td>게이트 시작 · 끝</td>
+<td><code>ship_gate</code></td>
+</tr>
+<tr>
+<td>2</td>
+<td>위치유지</td>
+<td><code>ship_back</code></td>
+</tr>
+<tr>
+<td>3</td>
+<td>탐색 부표(색 찾기)</td>
+<td><code>ship_back</code> (기본 <code>search_behavior:=hold</code>)</td>
+</tr>
+<tr>
+<td>5</td>
+<td>장애물 회피</td>
+<td>없음 = 정상 (<code>ship_direction</code> 단독)</td>
+</tr>
+<tr>
+<td>7</td>
+<td>도킹</td>
+<td><code>ship_dock</code></td>
+</tr>
+<tr>
+<td>8</td>
+<td>토너먼트 회피</td>
+<td>없음 = 정상 (<code>ship_direction</code> 단독, 토너먼트에서는 DWA 켬)</td>
+</tr>
+</tbody>
+</table>
+<p><strong>특수 신호값</strong> — <code>/candidate_angle</code>·<code>/desired_angle</code> 에 이 숫자가 오면 각도가 아니라 명령입니다.</p>
+<table>
+<thead>
+<tr>
+<th>값</th>
+<th>뜻</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>5000</code></td>
+<td>제자리 우선회</td>
+</tr>
+<tr>
+<td><code>6000</code></td>
+<td>제자리 좌선회 (예약, 지금 쓰는 노드 없음)</td>
+</tr>
+<tr>
+<td><code>20000</code></td>
+<td>미션 없음 → GPS 방향으로 가며 LiDAR 회피</td>
+</tr>
+<tr>
+<td><code>50000</code></td>
+<td>정지 (STOP_HOLD)</td>
+</tr>
+<tr>
+<td><code>180</code> → <code>260</code></td>
+<td>후진 (미션 노드가 180 을 내면 <code>ship_direction</code> 이 260 으로 바꿔 냄)</td>
+</tr>
+<tr>
+<td><code>10000</code></td>
+<td>(검출기) 표식 안 보임</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="3">3. 설치 전 준비 (노트북마다 한 번)</h2>
+<table>
+<thead>
+<tr>
+<th>순서</th>
+<th>할 일</th>
+<th>명령 / 확인</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>①</td>
+<td>받기·빌드·테스트</td>
+<td><code>cd ~/ros2_ws &amp;&amp; git pull --no-rebase &amp;&amp; colcon build --symlink-install &amp;&amp; colcon test &amp;&amp; colcon test-result --verbose | tail -20</code></td>
+</tr>
+<tr>
+<td>②</td>
+<td>두 배 통신 분리</td>
+<td><code>~/.bashrc</code> 에 <code>export ROS_LOCALHOST_ONLY=1</code> 이 있어야 합니다. 없으면 두 배 노트북이 서로의 토픽을 받습니다</td>
+</tr>
+<tr>
+<td>③</td>
+<td>설정 파일이 바로 먹는지</td>
+<td><code>ls -l ~/ros2_ws/install/ship_direction/share/ship_direction/config/</code> → 화살표(<code>-&gt;</code>)가 보이면 yaml 수정 후 재빌드 없이 재시작만으로 반영됩니다. 화살표가 없으면 고친 뒤 <code>colcon build</code> 를 다시 합니다</td>
+</tr>
+<tr>
+<td>④</td>
+<td>부팅 점검</td>
+<td><code>tools/boat_boot.sh</code> 6가지 점검, 코스 분리 부팅 확인 ①~⑦(<code>docs/절차/코스분리_적용방법_20261109.md</code>)</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="4">4. 처음 한 번만 하는 설정 — 배마다 다른 실측값</h2>
+<p>이 장의 값은 <strong>배마다 다르고, 한 번 재면 대회 내내 유지</strong>합니다. 재는 순서대로 적었습니다.</p>
+<h3 id="4-1-imu-ssf_heading_ayaml-ssf_heading_byaml">4-1. 헤딩(IMU) — <code>ssf_heading_A.yaml</code> / <code>ssf_heading_B.yaml</code></h3>
+<table>
+<thead>
+<tr>
+<th>파라미터</th>
+<th>지금 값</th>
+<th>역할</th>
+<th>넣을 값</th>
+<th>재는 법</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>mount_offset_deg</code></td>
+<td><code>0.0</code> ⚠️</td>
+<td>IMU 를 배에 단 방향 보정. <code>/imu/yaw</code> 가 진북 기준 뱃머리 방위가 되도록 더하는 각</td>
+<td>실측값 (예 <code>37.0</code>)</td>
+<td>배를 나침반으로 정북에 맞춘 뒤 <code>ros2 topic echo /imu/yaw</code> 가 <strong>약 352</strong>(한국 편각 −8°, 자북→진북)가 되게 조정</td>
+</tr>
+<tr>
+<td><code>invert_yaw</code></td>
+<td><code>false</code> ⚠️</td>
+<td>IMU 회전 방향이 반대로 달렸을 때 뒤집기</td>
+<td><code>true</code>/<code>false</code></td>
+<td>뱃머리를 시계방향으로 90° 돌렸을 때 값이 <strong>늘어나야</strong> 정상. 줄면 <code>true</code></td>
+</tr>
+</tbody>
+</table>
+<p class="warn">🚨 <code>mount_offset_deg</code> 는 <strong>반드시 소수점</strong>(<code>37.0</code>). <code>37</code> 로 적으면 <code>yaw_mux</code> 가 부팅 즉시 죽고 <code>/imu/yaw</code> 가 끊깁니다.
+🚨 이 두 키는 배별 파일에만 둡니다. 공통 <code>ssf_heading.yaml</code> 에 적으면 배별 값에 덮여 반영되지 않습니다.
+🚨 launch 첫 줄 <code>boat=…, 파일=…</code> 로 내 배 파일이 맞는지 확인하십시오.</p>
+<h3 id="4-2-motor_controlyaml">4-2. 추진·조향 — <code>motor_control.yaml</code></h3>
+<table>
+<thead>
+<tr>
+<th>파라미터</th>
+<th>지금 값</th>
+<th>역할</th>
+<th>넣을 값</th>
+<th>재는 법</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>steer_invert</code></td>
+<td><code>false</code> ⚠️</td>
+<td>모터 배선이 좌우 반대일 때 조향·제자리 선회를 함께 뒤집습니다</td>
+<td><code>true</code>/<code>false</code></td>
+<td><code>/desired_angle 5000</code> 을 보내면 <strong>오른쪽(시계)으로 제자리 회전</strong>해야 정상. 왼쪽이면 <code>true</code> (실해역 2-1)</td>
+</tr>
+<tr>
+<td><code>base_pwm</code></td>
+<td><code>1360</code> ⚠️</td>
+<td>순항 전진 PWM. 1500=정지, <strong>1500보다 작을수록 빠른 전진</strong></td>
+<td>실측 순항값</td>
+<td>수조 직진 속도</td>
+</tr>
+<tr>
+<td><code>max_diff</code></td>
+<td><code>100</code> ⚠️</td>
+<td>조향 최대 좌우 차이. 클수록 급회전</td>
+<td>실측값</td>
+<td>선회 반경</td>
+</tr>
+<tr>
+<td><code>reverse_pwm</code></td>
+<td><code>1590</code> ⚠️</td>
+<td>후진 PWM (1500보다 클수록 빠른 후진)</td>
+<td>실측값</td>
+<td>후진 속도</td>
+</tr>
+<tr>
+<td><code>spin_forward_pwm</code></td>
+<td><code>1500</code></td>
+<td>제자리 선회 때 가운데 PWM. 1500 이면 진짜 제자리</td>
+<td>물 위에서 제자리 회전이 안 되면 1360 쪽으로 낮춤</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>spin_diff</code></td>
+<td><code>100</code></td>
+<td>제자리 선회 세기</td>
+<td>보통 그대로</td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+<p class="warn">🚨 <code>base_pwm</code>·<code>max_diff</code>·<code>reverse_pwm</code> 을 1360 / 100 / 1590 에서 바꾼 배는 <strong>토너먼트 DWA 를 끕니다</strong>(<code>ship_direction_tournament.yaml</code> 의 <code>dwa_enabled: false</code>). DWA 가 속에 1360/100/1590 기준 배 모델을 갖고 있어 어긋나도 경고가 안 납니다.
+참고: ROS 쪽은 1500보다 작으면 전진이고, 실물 시리얼은 반대입니다. 뒤집기는 <code>ssf_bridge</code> 의 <code>invert_thrust_direction</code>(기본 <code>true</code>) 한 곳이 합니다. 스러스터 배선을 다시 뒤집었을 때만 <code>false</code> 로 바꿉니다.</p>
+<h3 id="4-3-ship_directionyaml">4-3. 선체·센서 위치 — <code>ship_direction.yaml</code></h3>
+<table>
+<thead>
+<tr>
+<th>파라미터</th>
+<th>지금 값</th>
+<th>역할</th>
+<th>넣을 값</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>half_width</code></td>
+<td><code>0.29</code> ✅🔒</td>
+<td>회피할 때 쓰는 배 반폭(m). 1번배 실측 폭 0.57 m ÷ 2, 2번배 0.535 m 도 이 값으로 충분</td>
+<td>그대로. 폭이 바뀌면 네 곳(yaml·코드 기본값·테스트·<code>tools/sim/ssf_sim.py</code>)을 함께</td>
+</tr>
+<tr>
+<td><code>dwa_lidar_x_m</code></td>
+<td><code>0.0</code> ⚠️</td>
+<td>LiDAR 가 선체 중심보다 앞(+)·뒤(−)로 떨어진 거리(m). DWA 가 선체 모서리를 계산할 때 씀</td>
+<td>줄자로 잰 값, 소수점 (예 <code>0.35</code>)</td>
+</tr>
+<tr>
+<td><code>dwa_model_agility</code></td>
+<td><code>1.0</code> ⚠️</td>
+<td>DWA 속 배 모델의 예민도(감쇠 ÷a, 추력 ×a). 실제 배가 모델보다 둔하면 줄이고 예민하면 키움</td>
+<td>1360 직진 속도·1286/1434 선회율을 재서 정함. 모르면 1.2~1.4. 0.5~2.0 밖이면 1.0 으로 되돌아감</td>
+</tr>
+<tr>
+<td><code>dwa_hull</code></td>
+<td>자동</td>
+<td>DWA 가 쓸 선체 치수(A 1.66×0.55 m / B 1.77×0.522 m)</td>
+<td><strong>손대지 않습니다.</strong> launch 가 <code>boat:=</code> 로 넣습니다. 시작 로그 <code>DWA 켬: 선체 &lt;내 배&gt;</code> 로 확인</td>
+</tr>
+</tbody>
+</table>
+<h3 id="4-4-visionyaml">4-4. 카메라 — <code>vision.yaml</code></h3>
+<table>
+<thead>
+<tr>
+<th>파라미터</th>
+<th>지금 값</th>
+<th>역할</th>
+<th>언제 바꾸나</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>hfov_deg</code></td>
+<td><code>63.9</code> ✅</td>
+<td>카메라 수평 화각(OAK-1, 640×360). 모든 부표 각도 계산의 기준</td>
+<td>카메라·해상도·ISP 설정을 바꿀 때만. 바꾸면 <code>ship_gate</code> 의 <code>cam_hfov_deg</code>·<code>pass_behind_deg</code> 도 같이</td>
+</tr>
+<tr>
+<td><code>image_topic</code></td>
+<td><code>/oak/rgb/image_raw</code></td>
+<td>카메라 토픽</td>
+<td>카메라를 바꿀 때만. <code>ssf_tools.yaml</code> 과 같아야 함</td>
+</tr>
+<tr>
+<td><code>hsv.red</code> 등 색 범위</td>
+<td>잠정값 ⚠️</td>
+<td>색별 HSV 범위 <code>[H,S,V 하한, H,S,V 상한]</code> (H 0~180). <strong>세 검출기가 같이 씀</strong></td>
+<td>실외 실제 부표로 재확정: <code>ros2 run color_shape_detector basic_image_subscriberhsv</code>. 빨강은 범위 두 개(0쪽·180쪽)</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="5">5. 대회마다 하는 설정</h2>
+<h3 id="5-1-gps-north_goal_angleconfigwaypointsyaml">5-1. 웨이포인트(GPS 좌표) — <code>north_goal_angle/config/waypoints.yaml</code> (종합임무)</h3>
+<p>형식: <code>- {구역: "설명", lat: 위도, lon: 경도, mode: 미션번호, dwell: 머무는초}</code></p>
+<table>
+<thead>
+<tr>
+<th>바꾸는 것</th>
+<th>바꾸지 않는 것</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>각 줄의 <code>lat</code>·<code>lon</code> (대회장 실측)</td>
+<td><code>mode</code>, <code>dwell</code>, 줄 순서 (이것이 미션 순서입니다)</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li><strong>도킹 네 줄</strong>(<code>도킹 접근 10m</code> ~ <code>WP9 도킹 이탈</code>, ⚠️ 현장 교체 표시)은 손으로 좌표만 고치지 않습니다. 목표 칸이 공지되면 <code>tools/dock_wp.py</code> 가 찍어 주는 네 줄로 통째로 바꿉니다(<code>docs/절차/도킹_칸별_웨이포인트.md</code>).</li>
+<li>녹화 방법: <code>docs/절차/웨이포인트_녹화절차.md</code>.</li>
+<li>위도·경도를 바꿔 넣거나 오타가 있으면 배가 출발하지 않고 "몇 번째 줄이 왜 틀렸는지" 로그를 냅니다. 정상입니다(틀린 좌표로 달리지 않도록).</li>
+<li>로그의 WP 번호는 0부터 센 순번입니다. 도킹 접근 두 줄이 끼어 있어 <code>WP8 입구</code> = 10, <code>WP9 이탈</code> = 11, <code>WP10</code> = 12 로 찍힙니다.</li>
+</ul>
+<h3 id="5-2">5-2. 토너먼트 웨이포인트 — 노트북 녹화본</h3>
+<ul>
+<li>레인별로 녹화해 <strong>노트북에만</strong> 둡니다: <code>~/ssf_logs/waypoints_tournament_&lt;배&gt;_&lt;레인&gt;.yaml</code> (<code>웨이포인트_녹화절차.md</code> §3a).</li>
+<li class="warn">🚨 <strong>모든 줄이 <code>mode: 8</code></strong> 이어야 합니다. 다른 mode 가 섞이면 <code>north_goal_angle</code> 이 ERROR 를 내고 멈춥니다(배가 출발하지 않음).</li>
+<li>마지막 줄 = 결승선 너머 약 3 m, <code>dwell: 0.5</code>. 마지막 WP 를 지나면 즉시 정지(50000)합니다.</li>
+<li>저장소의 <code>config/waypoints_tournament.yaml</code> 은 자리표시 템플릿입니다. 녹화본을 거기에 복사하지 말고 launch 의 <code>waypoints_file:=</code> 로 넘깁니다.</li>
+</ul>
+<h3 id="5-3-north">5-3. 경기장 경계(지오펜스) — 코스별 north 파일</h3>
+<table>
+<thead>
+<tr>
+<th>파일</th>
+<th>파라미터</th>
+<th>넣을 값</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>north_goal_angle_main.yaml</code> (종합임무)</td>
+<td><code>geofence_polygon</code></td>
+<td><code>[lat1, lon1, lat2, lon2, …]</code> 평탄 배열, 최소 3점(숫자 6개)</td>
+</tr>
+<tr>
+<td><code>north_goal_angle_tournament.yaml</code> (토너먼트)</td>
+<td><code>geofence_polygon</code></td>
+<td>같은 형식. <strong>결승선 너머까지 포함</strong></td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li>역할: 경계를 "가짜 LiDAR 벽"으로 만들어 회피가 경계를 장애물처럼 피하게 합니다. 경계 이탈은 실격입니다.</li>
+<li class="warn">🚨 <strong>실제 경계를 그대로 찍습니다. 안쪽으로 줄이지 마십시오.</strong> 배가 줄인 선을 넘는 순간 경계 정보가 꺼져 오히려 더 나갈 수 있습니다(11-09 시뮬).</li>
+<li>비어 있으면(<code>[]</code>) 경계 방어가 꺼집니다. 토너먼트에서는 시작 WARN 이 뜹니다. 시작 로그에 <code>geofence ON(n점)</code> 이 보여야 합니다.</li>
+<li>⚠️ 경계를 피하는 반응은 약 3 m 앞부터입니다. 경계 쪽으로 크게 꺾인 채 순항하면 다 못 돌 수 있습니다(시뮬 경기 중 이탈 약 1~2 %). 실해역 4-5c 에서 확인합니다.</li>
+<li>결승선 뒤 이탈은 감점이 아닙니다(11-09 확인).</li>
+</ul>
+<h3 id="5-4-visionyaml">5-4. 미션 색·표식 — <code>vision.yaml</code></h3>
+<table>
+<thead>
+<tr>
+<th>절</th>
+<th>파라미터</th>
+<th>지금 값</th>
+<th>역할</th>
+<th>넣을 값</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>image_subscriber_turn</code></td>
+<td><code>turn_color_mode2</code></td>
+<td><code>"white"</code></td>
+<td>위치유지 부표 색</td>
+<td>공지 색 (<code>red</code>/<code>green</code>/<code>white</code>)</td>
+</tr>
+<tr>
+<td><code>image_subscriber_turn</code></td>
+<td><code>turn_color_mode3</code></td>
+<td><code>"red"</code></td>
+<td>탐색 부표(색 찾기) 목표 색</td>
+<td>공지 색 (<code>red</code>/<code>green</code>/<code>white</code>). 그 밖이면 ERROR + 그 모드 검출 안 함</td>
+</tr>
+<tr>
+<td><code>image_subscriber_dock</code></td>
+<td><code>target_color</code></td>
+<td><code>"red"</code></td>
+<td>도킹 표식 색</td>
+<td>공지 색 (<code>red</code>/<code>orange</code>/<code>yellow</code>/<code>green</code>/<code>blue</code>/<code>white</code>). 틀리면 ERROR + 검출 안 함</td>
+</tr>
+<tr>
+<td><code>image_subscriber_dock</code></td>
+<td><code>target_shape</code></td>
+<td><code>"Square"</code></td>
+<td>도킹 표식 모양</td>
+<td>공지 모양 (<code>Square</code>/<code>Circle</code>/<code>Triangle</code>, 첫 글자 대문자)</td>
+</tr>
+<tr>
+<td><code>hsv.&lt;색&gt;</code></td>
+<td>—</td>
+<td>잠정값</td>
+<td>그 색의 HSV 범위</td>
+<td>🚨 대회 당일 아침, 그 시각 해 방향에서 공지 색을 찍어 확인 → 그 색 한 줄만 조정 → 재시작</td>
+</tr>
+</tbody>
+</table>
+<p>⚠️ 역광이면 빨강·초록·파랑 표식을 놓칠 수 있습니다(합성 시험). <code>hsv.blue</code> 는 맑은 하늘도 범위 안이라 파랑 공지 때는 반드시 당일 확인합니다.</p>
+<hr />
+<h2 id="6-launch">6. 실행하기 — launch 명령</h2>
+<p><strong>종합임무 · 수조 · 실해역 시험</strong></p>
+<pre><code class="language-bash">ros2 launch launch_files launch_files.launch.py boat:=A course:=main
+</code></pre>
+<p><strong>토너먼트</strong></p>
+<pre><code class="language-bash">ros2 launch launch_files launch_files.launch.py boat:=A course:=tournament waypoints_file:=$HOME/ssf_logs/waypoints_tournament_A_1.yaml
+</code></pre>
+<p>(2번배는 <code>boat:=B</code>, 파일 이름의 <code>A</code> 도 <code>B</code> 로)</p>
+<table>
+<thead>
+<tr>
+<th>인자</th>
+<th>필수</th>
+<th>기본값</th>
+<th>역할</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>boat</code></td>
+<td>🚨 필수</td>
+<td>—</td>
+<td><code>A</code> 또는 <code>B</code>. 배별 IMU 값 파일과 DWA 선체를 고릅니다</td>
+</tr>
+<tr>
+<td><code>course</code></td>
+<td>🚨 필수</td>
+<td>—</td>
+<td><code>main</code>(종합임무) 또는 <code>tournament</code>. 코스별 덮어쓰기 파일을 고릅니다. 빠지거나 <code>Main</code> 처럼 틀리면 launch 가 거부합니다</td>
+</tr>
+<tr>
+<td><code>waypoints_file</code></td>
+<td>—</td>
+<td>(비움)</td>
+<td>웨이포인트 파일 경로. 비우면 코스 기본 파일(main=<code>waypoints.yaml</code>, tournament=템플릿)</td>
+</tr>
+<tr>
+<td><code>gps_config</code></td>
+<td>—</td>
+<td><code>zed_f9p_rover.yaml</code></td>
+<td>GPS 설정. 두 배 모두 ZED-F9P 라 그대로</td>
+</tr>
+<tr>
+<td><code>search_behavior</code></td>
+<td>—</td>
+<td><code>hold</code></td>
+<td>탐색(mode 3): <code>hold</code>=부표 앞 위치유지(2026 안내문). <code>orbit</code>=부표 돌기(옵션)</td>
+</tr>
+<tr>
+<td><code>record</code></td>
+<td>—</td>
+<td><code>true</code></td>
+<td>블랙박스 CSV(<code>~/ssf_logs</code>) 기록</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li class="warn">🚨 판(경기) 사이에는 launch 를 다시 띄웁니다. 웨이포인트 순번이 처음으로 되돌아가지 않습니다.</li>
+<li class="warn">🚨 RC 가 AUTO(<code>/boat_mode</code> 2)여야 미션이 진행됩니다(<code>require_boat_mode_auto: true</code>). 벤치에서 아두이노가 없으면 <code>ros2 topic pub /boat_mode std_msgs/msg/Int32 "{data: 2}"</code>.</li>
+</ul>
+<hr />
+<h2 id="7">7. 코스별 설정 — 무엇이 어떻게 덮어써지나</h2>
+<p>launch 는 <strong>공통 파일 → 코스 파일 → 배 인자</strong> 순서로 넘깁니다. 뒤가 이깁니다. 코스 파일에는 덮어쓰는 키만 있습니다.</p>
+<table>
+<thead>
+<tr>
+<th>노드</th>
+<th><code>course:=main</code></th>
+<th><code>course:=tournament</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>north_goal_angle</code></td>
+<td><code>north_goal_angle_main.yaml</code> (<code>geofence_polygon</code> 만)</td>
+<td><code>north_goal_angle_tournament.yaml</code> (<code>geofence_polygon</code> 만). 웨이포인트는 전부 mode 8 이어야 함</td>
+</tr>
+<tr>
+<td><code>ship_direction</code></td>
+<td>덮어쓰기 없음 (DWA 끔)</td>
+<td><code>ship_direction_tournament.yaml</code>: <code>dwa_enabled: true</code>, <code>dwa_modes: [8]</code>, <code>side_lock_enabled: false</code></td>
+</tr>
+<tr>
+<td><code>motor_control</code></td>
+<td>덮어쓰기 없음 (결승 감속 0.5)</td>
+<td><code>motor_control_tournament.yaml</code>: <code>goal_slow_min_ratio: 1.0</code> (결승 앞 감속 끔)</td>
+</tr>
+<tr>
+<td>공통</td>
+<td>마지막 WP(mode 5·8)를 지나면 즉시 정지(50000)</td>
+<td>같음</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_2">토너먼트 현장 스위치</h3>
+<table>
+<thead>
+<tr>
+<th>스위치 (파일)</th>
+<th>처음 값</th>
+<th>역할</th>
+<th>끄는/바꾸는 조건</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>dwa_enabled</code> (<code>ship_direction_tournament.yaml</code>)</td>
+<td><code>true</code></td>
+<td>DWA: 배의 움직임을 2.5 초 앞까지 굴려 보고, 선체가 장애물·상대 배에 닿지 않는 조향각 중 목표에 가까운 것을 고름</td>
+<td>실해역에서 부표 접촉·갇힘·'폴백' 로그가 잦으면, 또는 물 위 확인을 못 했으면 <code>false</code></td>
+</tr>
+<tr>
+<td><code>side_lock_enabled</code> (〃)</td>
+<td><code>false</code></td>
+<td>옆 잠금: 옆 1.5 m 안에 배가 붙으면 그쪽으로 15° 넘게 꺾지 않음</td>
+<td>🚨 <strong>대회도 <code>false</code></strong> (11-09 결정 — 켜면 시뮬 경기 중 경계 이탈 증가)</td>
+</tr>
+<tr>
+<td><code>goal_slow_min_ratio</code> (<code>motor_control_tournament.yaml</code>)</td>
+<td><code>1.0</code></td>
+<td>결승 앞 감속 비율. 1.0 = 감속 없음</td>
+<td>결승 정지가 크게 넘치면 <code>0.5</code></td>
+</tr>
+<tr>
+<td><code>geofence_polygon</code> (<code>north_goal_angle_tournament.yaml</code>)</td>
+<td><code>[]</code></td>
+<td>경기장 경계</td>
+<td>현장 좌표를 넣음 (5-3)</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="8">8. 파라미터 사전 — 노드별 전체 설명</h2>
+<p>"바꿔도 됨" 열: <strong>현장</strong> = 현장 조정 항목 / <strong>실측</strong> = 실측 뒤 한 번 / 🔒 = 바꾸지 마십시오 / — = 보통 그대로.</p>
+<h3 id="8-1-motor_control">8-1. <code>motor_control</code> (모터 출력)</h3>
+<table>
+<thead>
+<tr>
+<th>파라미터</th>
+<th>기본값</th>
+<th>역할</th>
+<th>바꿔도 됨</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>base_pwm</code> · <code>max_diff</code> · <code>reverse_pwm</code></td>
+<td>1360 · 100 · 1590</td>
+<td>순항 전진 · 최대 조향 차 · 후진 PWM (4-2)</td>
+<td>실측</td>
+</tr>
+<tr>
+<td><code>spin_forward_pwm</code> · <code>spin_diff</code></td>
+<td>1500 · 100</td>
+<td>제자리 선회 가운데 PWM · 세기</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>steer_invert</code></td>
+<td>false</td>
+<td>조향 좌우 뒤집기 (4-2)</td>
+<td>실측</td>
+</tr>
+<tr>
+<td><code>slow_start_dist</code></td>
+<td>1.2</td>
+<td>앞 장애물이 이 거리(m)보다 가까우면 감속 시작</td>
+<td>🔒</td>
+</tr>
+<tr>
+<td><code>min_speed_ratio</code></td>
+<td>0.7</td>
+<td>감속 때 최저 속도 비율</td>
+<td>🔒</td>
+</tr>
+<tr>
+<td><code>failsafe_l1_speed</code></td>
+<td>0.7</td>
+<td>센서 경고 단계(레벨1)에서 속도 상한 비율. 1.0 이면 끔</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>goal_slow_start_m</code> · <code>goal_slow_full_m</code></td>
+<td>8.0 · 3.0</td>
+<td>WP 에 가까워지면 이 거리부터 감속, 이 거리 이하에서 최저</td>
+<td>현장</td>
+</tr>
+<tr>
+<td><code>goal_slow_min_ratio</code></td>
+<td>0.5 (토너먼트 1.0)</td>
+<td>WP 근접 감속 최저 비율. 1.0 = 끔. 🚨 0 금지</td>
+<td>현장</td>
+</tr>
+<tr>
+<td><code>goal_dist_stale_sec</code></td>
+<td>2.0</td>
+<td>WP 거리 정보가 이보다 오래되면 감속 해제</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>cmd_timeout_sec</code></td>
+<td>0.5</td>
+<td>조향 명령이 이보다 끊기면 모터 중립(1500/1500)</td>
+<td>🔒</td>
+</tr>
+</tbody>
+</table>
+<h3 id="8-2-ship_direction">8-2. <code>ship_direction</code> (회피·최종 조향·페일세이프)</h3>
+<table>
+<thead>
+<tr>
+<th>파라미터</th>
+<th>기본값</th>
+<th>역할</th>
+<th>바꿔도 됨</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>failsafe_warn_sec</code> · <code>failsafe_stop_sec</code></td>
+<td>0.7 · 3.0</td>
+<td>LiDAR 또는 IMU 체인이 이 시간 끊기면 레벨1(속도 70 %) · 레벨2(정지)</td>
+<td>🔒</td>
+</tr>
+<tr>
+<td><code>failsafe_confirm_n</code></td>
+<td>3</td>
+<td>레벨을 올릴 때 연속 확인 횟수</td>
+<td>🔒</td>
+</tr>
+<tr>
+<td><code>detection_distance_default</code></td>
+<td>3.0</td>
+<td>이 거리(m) 안의 물체를 장애물로 봄</td>
+<td>🔒 (1.8 이면 충돌)</td>
+</tr>
+<tr>
+<td><code>detection_distance_gate</code></td>
+<td>2.0</td>
+<td>게이트 구간(mode 0·1)에서 장애물 거리. 좁아서 짧게</td>
+<td>🔒</td>
+</tr>
+<tr>
+<td><code>half_width</code> · <code>clearance</code></td>
+<td>0.29 · 0.25</td>
+<td>배 반폭 · 여유. 지나갈 틈 폭 = 2×(반폭+여유)</td>
+<td>🔒</td>
+</tr>
+<tr>
+<td><code>min_obstacle_cells</code></td>
+<td>1</td>
+<td>장애물로 볼 최소 점 수. 3 이면 작은 부표를 놓침</td>
+<td>🔒</td>
+</tr>
+<tr>
+<td><code>obst_median_kernel</code></td>
+<td>5</td>
+<td>감속 신호의 물보라 한 점 걸러내기(감속에만, 회피는 그대로). 0 = 끔</td>
+<td>실측(물보라가 군집이면 7·9)</td>
+</tr>
+<tr>
+<td><code>temporal_frames</code> · <code>temporal_votes</code></td>
+<td>1 · 2</td>
+<td>시간 투표 필터. frames 1 = 끔(효과 없음 확인)</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>reverse_duration_sec</code> · <code>reverse_cooldown_sec</code></td>
+<td>0.5 · 3.0</td>
+<td>갈 틈이 없을 때 후진 시간 · 후진 뒤 멈춰 다시 찾는 시간</td>
+<td>현장 (후진을 늘리지 말 것 — 뒤를 못 봄)</td>
+</tr>
+<tr>
+<td><code>rate_limit_max_deg_per_tick</code></td>
+<td>15.0</td>
+<td>조향각이 0.1 초에 바뀔 수 있는 최대폭</td>
+<td>실측</td>
+</tr>
+<tr>
+<td><code>side_hysteresis_deg</code> · <code>cross_penalty_deg</code></td>
+<td>40.0 · 90.0</td>
+<td>피하던 쪽을 유지하는 벌점 · 장애물 앞을 가로지르는 벌점. 0.0 = 끔</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>side_escape_deg</code></td>
+<td>0.0</td>
+<td>갈 틈이 없고 장애물이 옆이면 후진 대신 이만큼 비킴. 0.0 = 끔, 확인 뒤 60.0</td>
+<td>현장</td>
+</tr>
+<tr>
+<td><code>geofence_stale_sec</code></td>
+<td>2.0</td>
+<td>경계 정보가 이보다 오래되면 안 씀</td>
+<td>🔒</td>
+</tr>
+<tr>
+<td><code>geofence_stop_margin_m</code> · <code>geofence_stop_cone_deg</code></td>
+<td>2.0 · 60.0</td>
+<td>도킹 조향(제자리 선회·candidate) 중 경계가 2 m 안·진행 방향 ±60° 이면 정지. mode 8 에는 안 걸림</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>candidate_stale_sec</code></td>
+<td>1.0</td>
+<td>미션 노드 명령이 이보다 끊기면 20000(GPS+회피)으로</td>
+<td>🔒</td>
+</tr>
+<tr>
+<td><code>candidate_reverse_stale_sec</code></td>
+<td>0.5</td>
+<td>후진 명령(180)이 이보다 끊기면 정지</td>
+<td>🔒</td>
+</tr>
+<tr>
+<td><code>dwa_enabled</code> · <code>dwa_modes</code></td>
+<td>false · [8] (토너먼트 true)</td>
+<td>DWA 켜기 · 쓸 mode (5·8 만). 🚨 빈 리스트 <code>[]</code> 금지</td>
+<td>현장</td>
+</tr>
+<tr>
+<td><code>dwa_hull</code></td>
+<td>자동</td>
+<td>4-3</td>
+<td>손대지 않음</td>
+</tr>
+<tr>
+<td><code>dwa_model_agility</code> · <code>dwa_lidar_x_m</code></td>
+<td>1.0 · 0.0</td>
+<td>4-3</td>
+<td>실측</td>
+</tr>
+<tr>
+<td><code>side_lock_enabled</code></td>
+<td>false</td>
+<td>옆 잠금 켜기 (대회 false)</td>
+<td>대회 뒤</td>
+</tr>
+<tr>
+<td><code>side_lock_dist_m</code></td>
+<td>1.5</td>
+<td>옆 구역에 이보다 가까운 물체가 있으면 그쪽 잠금</td>
+<td>대회 뒤</td>
+</tr>
+<tr>
+<td><code>side_lock_min_deg</code> · <code>side_lock_max_deg</code></td>
+<td>45.0 · 135.0</td>
+<td>옆 구역 범위(정면에서 각도, 양쪽)</td>
+<td>대회 뒤</td>
+</tr>
+<tr>
+<td><code>side_lock_turn_deg</code></td>
+<td>15.0</td>
+<td>잠긴 쪽으로 허용하는 최대 꺾음</td>
+<td>대회 뒤</td>
+</tr>
+<tr>
+<td><code>side_lock_wait_max_sec</code></td>
+<td>10.0</td>
+<td>잠금 때문에 갈 곳이 없을 때 멈춰 기다리는 상한</td>
+<td>대회 뒤</td>
+</tr>
+<tr>
+<td><code>side_lock_confirm_frames</code></td>
+<td>3</td>
+<td>잠그기 전 연속 확인 스캔 수. 🚨 정수(3.0 금지)</td>
+<td>대회 뒤</td>
+</tr>
+<tr>
+<td><code>side_lock_release_margin_m</code></td>
+<td>0.3</td>
+<td>풀릴 때 거리 여유 (dist + 이 값)</td>
+<td>대회 뒤</td>
+</tr>
+</tbody>
+</table>
+<h3 id="8-3-north_goal_angle">8-3. <code>north_goal_angle</code> (웨이포인트·경계)</h3>
+<table>
+<thead>
+<tr>
+<th>파라미터</th>
+<th>기본값</th>
+<th>역할</th>
+<th>바꿔도 됨</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>los_min_lookahead_m</code> · <code>los_max_lookahead_m</code> · <code>los_speed_gain</code></td>
+<td>2.0 · 6.0 · 1.2</td>
+<td>경로선 따라가기에서 앞을 보는 거리(속도 × gain, 최소~최대)</td>
+<td>실측</td>
+</tr>
+<tr>
+<td><code>ilos_ki</code> · <code>ilos_integral_max</code></td>
+<td>0.02 · 50.0</td>
+<td>조류·바람 보상 적분 이득 · 상한</td>
+<td>실측</td>
+</tr>
+<tr>
+<td><code>gps_cov_threshold</code></td>
+<td>2.0</td>
+<td>GPS 품질(공분산)이 이보다 나쁘면 그 프레임 버림</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>gps_max_speed_mps</code></td>
+<td>15.0</td>
+<td>두 위치 사이 속도가 이보다 크면 튐으로 보고 버림</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>gps_stale_sec</code></td>
+<td>2.5</td>
+<td>GPS 가 이보다 끊기면 목표 방위·경계 발행 멈춤</td>
+<td>🔒</td>
+</tr>
+<tr>
+<td><code>require_boat_mode_auto</code></td>
+<td>true</td>
+<td>RC AUTO 일 때만 미션 진행. 벤치(아두이노 없음)만 false</td>
+<td>🚨 대회 true</td>
+</tr>
+<tr>
+<td><code>wp_timeout_modes</code> · <code>wp_timeout_sec</code></td>
+<td>[0,1,2,3,5,7] · [120.0,120.0,120.0,90.0,120.0,150.0]</td>
+<td>mode 별 WP 하나 제한시간(초). 넘으면 다음 WP 로. 표에 없는 mode(8) = 제한 없음</td>
+<td>현장. 🚨 원소마다 소수점, "없음"을 0 으로 적지 말 것</td>
+</tr>
+<tr>
+<td><code>arrive_radius_hold_modes_m</code></td>
+<td>3.5</td>
+<td>위치유지·탐색 WP 도착 반경. <code>hold_dist_m + dist_tol_m</code> 보다 커야 함</td>
+<td>현장 (hold 4.0 이면 4.5)</td>
+</tr>
+<tr>
+<td><code>dwell_wait_enabled</code> · <code>dwell_wait_modes</code> · <code>dwell_wait_stale_sec</code></td>
+<td>true · [2,3] · 1.0</td>
+<td>위치유지·탐색 중에는 담당 노드가 손 뗀 뒤에만 머무는 시간을 셈</td>
+<td>— 🚨 <code>[]</code> 금지</td>
+</tr>
+<tr>
+<td><code>geofence_polygon</code></td>
+<td>[]</td>
+<td>경기장 경계 (5-3)</td>
+<td>현장</td>
+</tr>
+<tr>
+<td><code>geofence_ray_min_deg</code> · <code>_max_deg</code> · <code>_inc_deg</code></td>
+<td>−80.0 · 80.0 · 1.0</td>
+<td>경계를 쏘는 각도 범위·간격</td>
+<td>🔒</td>
+</tr>
+<tr>
+<td><code>geofence_max_range_m</code></td>
+<td>30.0</td>
+<td>이보다 먼 경계는 무시</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>imu_stale_sec</code></td>
+<td>0.5</td>
+<td>IMU 가 이보다 끊기면 경계 발행 멈춤</td>
+<td>🔒</td>
+</tr>
+</tbody>
+</table>
+<h3 id="8-4-ship_back">8-4. <code>ship_back</code> (위치유지·탐색)</h3>
+<table>
+<thead>
+<tr>
+<th>파라미터</th>
+<th>기본값</th>
+<th>역할</th>
+<th>바꿔도 됨</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>keep_radius_m</code> · <code>hold_time_sec</code></td>
+<td>5.0 · 5.0</td>
+<td>규정: 부표 5 m 안 5 초</td>
+<td>🔒 (규정값)</td>
+</tr>
+<tr>
+<td><code>hold_dist_m</code></td>
+<td>2.5</td>
+<td>부표 앞에서 버티는 목표 거리</td>
+<td>현장 (2.5 / 3.5 / 4.0 실해역 4-2)</td>
+</tr>
+<tr>
+<td><code>dist_tol_m</code></td>
+<td>0.4</td>
+<td>목표 거리 ± 허용폭</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>lost_sec</code> · <code>reacquire_stop_sec</code></td>
+<td>2.0 · 5.0</td>
+<td>부표를 놓친 시간 → 다시 찾기 · 놓쳤을 때 그 자리에 멈춰 찾는 시간</td>
+<td>현장</td>
+</tr>
+<tr>
+<td><code>hold_max_sec</code></td>
+<td>60.0</td>
+<td>한 WP 에서 버티는 시간 합 상한 → 넘으면 포기하고 다음</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>unknown_giveup_sec</code></td>
+<td>10.0</td>
+<td>LiDAR 가 부표 거리를 못 잡는 시간이 이만큼이면 포기</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>search_timeout_ends</code> · <code>search_timeout_sec</code></td>
+<td>false · 20.0</td>
+<td>찾기 시간 초과로 끝낼지. false = 계속 찾고 진행은 north 시간 초과에 맡김</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>lidar_acquire</code></td>
+<td>false</td>
+<td>LiDAR 최근접으로 부표를 잡을지. false = 카메라 색 확인으로만</td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+<h3 id="8-5-ship_dock">8-5. <code>ship_dock</code> (도킹)</h3>
+<table>
+<thead>
+<tr>
+<th>파라미터</th>
+<th>기본값</th>
+<th>역할</th>
+<th>바꿔도 됨</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>dock_engage_dist_m</code></td>
+<td>12.0</td>
+<td>도킹 WP 까지 이 거리 안이면 도킹 시작</td>
+<td>실측</td>
+</tr>
+<tr>
+<td><code>standoff_dist_m</code></td>
+<td>3.0</td>
+<td>정면 정렬을 마칠 거리</td>
+<td>실측</td>
+</tr>
+<tr>
+<td><code>contact_dist_m</code></td>
+<td>1.0</td>
+<td>접안 완료 거리 (도크 규격 공지 뒤 확정)</td>
+<td>실측</td>
+</tr>
+<tr>
+<td><code>backoff_dist_m</code></td>
+<td>2.5</td>
+<td>후진으로 빠져나올 거리</td>
+<td>실측</td>
+</tr>
+<tr>
+<td><code>realign_min_dist_m</code></td>
+<td>1.5</td>
+<td>이보다 가까우면 다시 정렬(제자리 선회) 안 함. <code>contact_dist_m + 0.5</code> 권장</td>
+<td>실측</td>
+</tr>
+<tr>
+<td><code>align_tol_deg</code> · <code>realign_tol_deg</code></td>
+<td>8.0 · 25.0</td>
+<td>정면으로 볼 각도 · 접근 중 다시 정렬할 각도</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>contact_hold_sec</code></td>
+<td>3.0</td>
+<td>접안 유지 시간</td>
+<td>⚠️ 규정 확인</td>
+</tr>
+<tr>
+<td><code>search_timeout_sec</code> · <code>align_timeout_sec</code> · <code>approach_timeout_sec</code> · <code>backoff_timeout_sec</code></td>
+<td>60 · 15 · 30 · 8</td>
+<td>단계별 시간 상한(초)</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>image_positive_is_left</code></td>
+<td>true</td>
+<td>카메라 각도 양수가 왼쪽인가</td>
+<td>⚠️ 벤치 확인</td>
+</tr>
+<tr>
+<td><code>sweep_right</code></td>
+<td>true</td>
+<td>표식을 찾을 때 도는 방향 (true = 우선회)</td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+<h3 id="8-6-ship_gate">8-6. <code>ship_gate</code> (게이트)</h3>
+<table>
+<thead>
+<tr>
+<th>파라미터</th>
+<th>기본값</th>
+<th>역할</th>
+<th>바꿔도 됨</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>red_on_port</code></td>
+<td>true</td>
+<td>빨강이 좌현(왼쪽). 한쪽만 보일 때 트는 방향 결정</td>
+<td>🚨 규정 기본 true, "고치지" 말 것</td>
+</tr>
+<tr>
+<td><code>single_offset_deg</code></td>
+<td>40.0</td>
+<td>한쪽 부표만 보일 때 게이트 가운데 쪽으로 트는 각</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>pair_min_sep_deg</code> · <code>pair_max_sep_deg</code></td>
+<td>5.0 · 80.0</td>
+<td>같은 게이트로 볼 두 부표 각도 차 범위</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>pass_behind_deg</code></td>
+<td>28.0</td>
+<td>부표가 이 각도 넘게 옆으로 가면 "통과" 로 셈. 🚨 카메라 반화각(31.95°)보다 작아야 함</td>
+<td>실측 (모자라면 27)</td>
+</tr>
+<tr>
+<td><code>cam_hfov_deg</code></td>
+<td>63.9</td>
+<td><code>vision.yaml</code> <code>hfov_deg</code> 와 같아야 함</td>
+<td>카메라 바꿀 때만</td>
+</tr>
+<tr>
+<td><code>rearm_far_margin_m</code></td>
+<td>1.0</td>
+<td>통과 뒤 다음 게이트를 새로 셀 거리 여유</td>
+<td>실측</td>
+</tr>
+</tbody>
+</table>
+<h3 id="8-7-ship_goal_angle-yaw_mux">8-7. <code>ship_goal_angle</code> · <code>yaw_mux</code> · 검출기 공통</h3>
+<table>
+<thead>
+<tr>
+<th>노드</th>
+<th>파라미터</th>
+<th>기본값</th>
+<th>역할</th>
+<th>바꿔도 됨</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ship_goal_angle</code></td>
+<td><code>stale_sec</code> · <code>goal_stale_sec</code></td>
+<td>0.5 · 2.0</td>
+<td>IMU · 목표 방위가 이보다 끊기면 <code>/yaw_error</code> 발행 멈춤 → <code>ship_direction</code> 이 감속·정지</td>
+<td>🔒</td>
+</tr>
+<tr>
+<td><code>yaw_mux</code></td>
+<td><code>heading_source</code></td>
+<td><code>"imu_relative"</code></td>
+<td>헤딩 출처. 지금은 IMU 상대값 + 장착 보정</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>yaw_mux</code></td>
+<td><code>cog_require_reverse_gate</code></td>
+<td>true</td>
+<td>(옵션 B 용) 후진 중 GPS 방향 표본 버림</td>
+<td>🚨 대회 true</td>
+</tr>
+<tr>
+<td>검출기</td>
+<td><code>min_area_px</code> · <code>confirm_frames</code></td>
+<td>40.0 · 1 (도킹 80.0 · 3)</td>
+<td>최소 크기 · 연속 확인 수</td>
+<td>—</td>
+</tr>
+<tr>
+<td>검출기</td>
+<td><code>y_zone_lo</code> · <code>y_zone_hi</code></td>
+<td>0.15 · 0.55 (turn 0.10)</td>
+<td>화면 세로 중 부표를 찾는 띠</td>
+<td>⚠️ 실측 (마스트 각도 확인 뒤)</td>
+</tr>
+<tr>
+<td><code>dock</code> 검출기</td>
+<td><code>circle_circularity_min</code></td>
+<td>0.87</td>
+<td>원/사각 구분 경계</td>
+<td>현장 (0.82~0.90)</td>
+</tr>
+<tr>
+<td><code>dock</code> 검출기</td>
+<td><code>confirm_window</code></td>
+<td>3</td>
+<td>도킹 확인 창 (🚨 정수)</td>
+<td>벤치 뒤 5 후보</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="9">9. 값을 적을 때 지킬 형식</h2>
+<table>
+<thead>
+<tr>
+<th>규칙</th>
+<th>틀린 예</th>
+<th>맞는 예</th>
+<th>틀리면</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>소수 파라미터는 소수점</td>
+<td><code>mount_offset_deg: 37</code></td>
+<td><code>37.0</code></td>
+<td>노드가 부팅 때 죽음</td>
+</tr>
+<tr>
+<td>리스트 원소도 전부 소수점</td>
+<td><code>[120, 90]</code>, <code>[120.0, 90]</code></td>
+<td><code>[120.0, 90.0]</code></td>
+<td>노드 사망 / 파일 전체 못 읽음</td>
+</tr>
+<tr>
+<td>정수 파라미터는 정수</td>
+<td><code>side_lock_confirm_frames: 3.0</code></td>
+<td><code>3</code></td>
+<td>ERROR + 기능 꺼짐</td>
+</tr>
+<tr>
+<td>빈 리스트 금지</td>
+<td><code>dwa_modes: []</code>, <code>dwell_wait_modes: []</code></td>
+<td>끄려면 <code>enabled: false</code></td>
+<td>타입을 못 정해 부팅 실패</td>
+</tr>
+<tr>
+<td>"없음"을 0 으로 쓰지 않기</td>
+<td>WP 제한시간 0</td>
+<td>그 mode 를 표에서 뺌</td>
+<td>틱마다 WP 를 건너뜀</td>
+</tr>
+<tr>
+<td>문자열은 따옴표</td>
+<td><code>turn_color_mode3: red</code></td>
+<td><code>"red"</code></td>
+<td>— (YAML 은 받지만 습관으로)</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="10">10. 문제 해결</h2>
+<table>
+<thead>
+<tr>
+<th>증상</th>
+<th>가능한 원인</th>
+<th>조치</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>launch 가 바로 거부됨</td>
+<td><code>boat</code>·<code>course</code> 빠짐 또는 오타(<code>Main</code>)</td>
+<td><code>boat:=A course:=main</code></td>
+</tr>
+<tr>
+<td>노드가 뜨자마자 죽음 (<code>InvalidParameterTypeException</code>)</td>
+<td>소수 자리에 정수</td>
+<td>9장 형식대로</td>
+</tr>
+<tr>
+<td>배가 출발하지 않음, north ERROR "웨이포인트 내용 오류"</td>
+<td>좌표 오타·위경도 뒤바뀜, 토너먼트에 mode 8 아닌 줄</td>
+<td>로그가 알려 주는 줄 수정</td>
+</tr>
+<tr>
+<td>배가 출발하지 않음, 로그 이상 없음</td>
+<td>RC 가 AUTO 아님(<code>/boat_mode</code> ≠ 2)</td>
+<td>조종기 AUTO</td>
+</tr>
+<tr>
+<td>출발했는데 계속 정지(50000) + 5 초마다 ERROR</td>
+<td><code>/yaw_error</code> 를 한 번도 못 받음 (GPS fix 없음 → 목표 방위 없음)</td>
+<td>GPS fix·RTK 확인</td>
+</tr>
+<tr>
+<td>목표와 반대쪽으로 감</td>
+<td><code>invert_yaw</code> 또는 <code>mount_offset_deg</code> 틀림</td>
+<td>4-1 다시</td>
+</tr>
+<tr>
+<td>조향이 반대로 꺾임 / 5000 에 왼쪽으로 돎</td>
+<td><code>steer_invert</code></td>
+<td>4-2</td>
+</tr>
+<tr>
+<td>시작 WARN "geofence_polygon 이 비어 있다"</td>
+<td>토너먼트 경계 미입력</td>
+<td>5-3</td>
+</tr>
+<tr>
+<td>로그 "DWA 가능한 후보 없음"(폴백)이 잦음</td>
+<td>물보라·가까운 장애물. DWA 가 기존 회피로 넘김</td>
+<td>잦으면 <code>dwa_enabled: false</code></td>
+</tr>
+<tr>
+<td>도킹 중 갑자기 정지 + '🚧🛑'</td>
+<td>경계 2 m 안 하드 정지(정상 동작)</td>
+<td>도크가 경계 가까우면 폴리곤 확인</td>
+</tr>
+<tr>
+<td>탐색 부표를 못 찾음</td>
+<td><code>turn_color_mode3</code> 가 공지 색과 다름, HSV 범위</td>
+<td>5-4</td>
+</tr>
+<tr>
+<td>두 배가 서로 토픽을 받음</td>
+<td><code>ROS_LOCALHOST_ONLY</code> 없음</td>
+<td>3장 ②</td>
+</tr>
+<tr>
+<td>yaml 을 고쳤는데 그대로</td>
+<td>launch 재시작 안 함 / 설치 폴더가 symlink 아님</td>
+<td>재시작, 3장 ③</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="11">11. 현장 기록 (대회 전 채우기)</h2>
+<table>
+<thead>
+<tr>
+<th>항목</th>
+<th>1번배(A)</th>
+<th>2번배(B)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>mount_offset_deg</code> / <code>invert_yaw</code></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>steer_invert</code></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>base_pwm</code> / <code>max_diff</code> / <code>reverse_pwm</code></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>dwa_lidar_x_m</code> / <code>dwa_model_agility</code></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>hold_dist_m</code> (+ <code>arrive_radius_hold_modes_m</code>)</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>side_escape_deg</code></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>토너먼트 <code>dwa_enabled</code></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>토너먼트 <code>goal_slow_min_ratio</code></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>geofence_polygon</code> 입력 (main / tournament)</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>turn_color_mode3</code> / dock <code>target_color</code>·<code>target_shape</code></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>당일 HSV 조정한 색</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>토너먼트 레인별 녹화본 파일</td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<p><strong>참고 (원본 문서)</strong>
+- 현장 조정 범위·시뮬 근거: <code>docs/절차/현장_조정표_20261106.md</code>
+- 코스 분리 적용·부팅 확인: <code>docs/절차/코스분리_적용방법_20261109.md</code>
+- 출발 전 체크: <code>docs/절차/boat_launch_checklist.md</code>
+- 실해역 시험 순서: <code>docs/절차/실해역_시험_정리_20261109.md</code>
+- 벤치·수조 항목: <code>docs/절차/tank_test_plan.html</code>
+- 웨이포인트 녹화: <code>docs/절차/웨이포인트_녹화절차.md</code> · 도킹 칸: <code>docs/절차/도킹_칸별_웨이포인트.md</code></p></main></body></html>
