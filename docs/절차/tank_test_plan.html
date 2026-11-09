@@ -182,7 +182,7 @@ gps_vel(RTK) 로 기록. ★ RTK fix 품질 확인 필수(아래).</pre>
     → Motor_run 15631563, /motor_reverse true, 시리얼 1437/1437, 레벨 0 때보다 약하게 후진. 레벨 0 → 15901590 (+ /obstacle_distance_array [0.5, 80.0] 줘도 1590)
   (/scan·/yaw_error 가 살아 있어야 함 — 아니면 L2 정지가 먼저 덮는다)
 근접 도킹 이탈: 접안(CONTACT) 뒤 BACKOFF 에서 실제로 <b>뒤로 빠져</b> 2.5 m 에서 DONE 되는지. 예전 코드는 여기서 8 s 멈춰 있다 DONE(시뮬 확인).
-  <b>(11-06, 계약서_도킹거리None)</b> 벽에 바짝 붙어 LiDAR 전방 거리가 없어도(최소 측정거리 아래) CONTACT 3 s 뒤 후진이 시작되는지: 벤치에서 /wp_mode 7 + /image_angle 0.0 + 가짜 /scan 전방 0.8 m 로 CONTACT 까지 간 뒤 전방 ranges 를 전부 inf 로 바꾸면 3 s 뒤 'CONTACT → BACKOFF', /candidate_angle 180, Motor_run 15901590. /scan 을 아예 끊으면 후진 대신 50000 + ERROR(LiDAR 없음).
+  <b>(11-06, 계약서_도킹거리None)</b> 벽에 바짝 붙어 LiDAR 전방 거리가 없어도(최소 측정거리 아래) CONTACT 3 s 뒤 후진이 시작되는지: 벤치에서 /wp_mode 7 + /image_angle 0.0 + 가짜 /scan 전방 0.8 m(🚨 11-09 부터 <b>정면 ±15° 섹터 전체 또는 연속 3광선 이상</b> — 한두 광선만 주면 도킹 median 필터가 물보라로 보고 지운다)로 CONTACT 까지 간 뒤 전방 ranges 를 전부 inf 로 바꾸면 3 s 뒤 'CONTACT → BACKOFF', /candidate_angle 180, Motor_run 15901590. /scan 을 아예 끊으면 후진 대신 50000 + ERROR(LiDAR 없음).
   후진은 뒤를 안 본다 → 수조 벽이 선미 쪽 3 m 안이면 하지 말 것. 후진 중 선수 흔들림·속도 기록.
 위치유지 후진: 부표 2.1 m 안으로 밀어 넣으면 후진, 2.1~2.9 m 면 정지(50000) 나오는지.
 <b>웨이포인트 지나침 복귀·dwell 대기 (11-04, 계약서_전체코스 C2)</b> — 벤치: ros2 param get /north_goal_angle dwell_wait_modes → [2, 3], dwell_wait_stale_sec 1.0.
@@ -209,6 +209,13 @@ gps_vel(RTK) 로 기록. ★ RTK fix 품질 확인 필수(아래).</pre>
   실해역(<code>docs/절차/현장_조정표_20261106.md</code>): ① 비키는 방향 부호(steer_invert 미확정) ② 선미–부표 여유 ③ 후진↔비킴 진동 ④ hold 3.0/3.5 에서 부표 검출 연속성·떠날 때 간격. 확인한 배만 yaml 60.0·hold 값 변경, 조정표 기록란에 적기.
 <b>DWA 동적 창 회피 (11-06, 계약서_DWA_20261106 — 기본 끔)</b> — 벤치: <code>ros2 param get /ship_direction dwa_enabled</code> → false. yaml 에서 <code>dwa_enabled: true</code> 로 바꾸고 launch 재시작(<code>dwa_hull</code> 은 11-09 부터 launch 가 boat 인자로 넘김 — yaml 손편집 안 함. course:=tournament 면 yaml 수정 없이 켜짐) → 시작 INFO 'DWA 켬' 1줄(선체·모드·배율·lidar_x). 가짜 <code>/scan</code>(정면 3 m 부표) + <code>/yaw_error 0</code> + <code>/candidate_angle 20000</code> + <code>/wp_mode 8</code> → INFO 'DWA 사용(mode 8)' 1회, <code>/desired_angle</code> 이 80 에서 한쪽으로 벗어남. <code>/wp_mode 7</code>·0 이면 기존과 같음. 부하 확인: 로그에 'DWA 느림'(50 ms 초과) WARN 이 없는지(Mac 1회 p99 약 8 ms).
   실해역: 부표 몇 개를 토너먼트처럼 놓고 끔/켬 번갈아 몇 바퀴 — 접촉 수·소요 시간·비키는 방향·경계선 근처 우회 폭·'폴백' 빈도. 1360 직진 속도와 1286/1434 선회율을 재서 <code>dwa_model_agility</code> 를 정함(모르면 1.2~1.4). 선체 중심→LiDAR 거리를 줄자로 재 <code>dwa_lidar_x_m</code>.
+<b>도킹 물보라 필터 (11-09, 계약서_도킹물보라필터_20261109 — front_median_kernel 5)</b> — 벤치(프로펠러 물 밖):
+  ① 부팅 로그 '전방 거리 필터 [10]: front_median_kernel=5 → 공간 median 실효 창 5점', <code>ros2 param get /ship_dock front_median_kernel</code> → Integer value 5.
+  ② /wp_mode 7 + /image_angle 0.0 + 가짜 /scan(전방 5 m, <b>정면 한 광선만 0.5 m</b>) → CONTACT 로 가지 않고 접근 조향 유지. yaml <code>front_median_kernel: 1</code> 로 바꾸고 재시작하면 같은 스캔에서 바로 CONTACT(롤백 확인) → 다시 5.
+  ③ 정면 연속 3광선 이상 0.8 m → CONTACT.
+  ④ BACKOFF 중 섹터를 고립 반사만으로(🚨 <b>고립점 사이 광선 3개 이상 간격</b>, 예: 10 광선마다 1점 ≈ 2.5° — 2 광선 간격이면 창에 3점이 들어가 필터가 거리로 받는다) → 180 유지, WARN '벽 밀착 또는 고립 반사만(버린 점 N)', 노드가 안 죽는지. APPROACH 중 같은 스캔 → 50000 + WARN '(버린 점 N)'.
+  ⑤ (가능하면) yaml 을 -1 로 → 부팅 ERROR 1줄 + 5 로 대체 → 되돌림. 🚨 정수로(5.0 이면 노드가 안 뜸).
+  실해역: 도킹 접근 중 '도킹 접근 중단(정지)' WARN 이 반복되는지(듬성한 반사), 블랙박스로 접안 거리. 문제면 1 로 롤백.
 <b>코스 분리 부팅 스모크 (11-10 Ubuntu, 계약서_토너먼트분리_20261109 §6·§10)</b> — 벤치(프로펠러 물 밖), colcon build 뒤:
   ① course 없으면 거부: <code>ros2 launch launch_files launch_files.launch.py boat:=A</code> → launch 가 거부(노드 안 뜸).
   ② <code>course:=main</code> param dump 비교: <code>ros2 param dump</code> 를 T1 커밋 전 코드의 dump 와 비교 → A 차이 0, B 는 <code>/ship_direction dwa_hull</code> 만 'B'(launch 가 boat 로 넘김). 코스 끝 50000 은 파라미터가 아니라 동작 차이(⑤).
