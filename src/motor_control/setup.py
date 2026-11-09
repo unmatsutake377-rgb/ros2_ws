@@ -11,7 +11,8 @@ setup(
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
         ('share/' + package_name + '/launch', ['launch/motor_control_launch.py']),  # 추가된 부분
-        ('share/' + package_name + '/config', ['config/motor_control.yaml']),
+        ('share/' + package_name + '/config',
+            ['config/motor_control.yaml', 'config/motor_control_tournament.yaml']),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
