@@ -235,7 +235,8 @@ def test_course_yaml_keys_declared_and_types_match():
         for k, v in p.items():
             assert k in declared, f'{c}: {k} 를 노드가 선언 안 함(조용히 버려진다)'
             assert k in common, f'{c}: {k} 가 공통 yaml 에 없다'
-            assert type(v) is type(common[k]), f'{c}: {k} 타입 {type(v)} ≠ 공통 {type(common[k])}'
+            # bool/int 구분이 목적이라 isinstance 가 아니라 정확한 타입 비교
+            assert type(v) is type(common[k]), f'{c}: {k} 타입 {type(v)} ≠ 공통 {type(common[k])}'  # noqa: E721
 
 
 def test_course_geofence_polygon_empty_like_common():
