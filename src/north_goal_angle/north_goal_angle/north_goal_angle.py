@@ -42,6 +42,17 @@
      🚨 단, mount_offset_deg / invert_yaw 를 **벤치에서 아직 안 쟀다.**
         그 전까지 이 geofence 는 방향이 맞는다는 보장이 없다.
      IMU 가 묵으면 **빈 배열**을 낸다. 틀린 방향으로 '없는 벽'을 세우느니 안 내는 게 낫다.
+
+코스 (계약서_토너먼트분리_20261109 T1-3, §9 팀장 결정):
+  파라미터 `course`(str, 코드 기본 'main') = 'main'(종합임무) | 'tournament'(토너먼트).
+  · 그 밖의 값 → ERROR + 노드 정지(웨이포인트 파일 오류와 같은 방식 — 모르면 출발하지 않는다).
+  · tournament 는 웨이포인트가 **전부 mode 8** 이어야 한다(waypoint_loader.validate_course).
+    main 은 VALID_MODES 전부(WP10 mode 8 그대로).
+  · 코스별 값은 launch 가 config/north_goal_angle_{course}.yaml 을 공통 yaml 뒤에 얹어 준다
+    (지금은 geofence_polygon 자리). tournament 인데 폴리곤이 비면 시작 WARN 1회.
+  · 🚨 토너먼트 동작을 wp_mode 8 로 켜지 않는다 — main 에도 mode 8 이 있다. 코스 yaml 값으로만.
+  · 코스 끝(wp_idx ≥ len): 두 코스 모두 마지막 WP 가 north 담당(5·8)이면 /candidate_angle
+    50000(STOP_HOLD)을 계속 낸다(§9-2 — 결승 뒤 즉시 정지). 코스 끝 INFO 1회. wp_advance 참고.
 """
 
 import math
@@ -58,7 +69,9 @@ from sensor_msgs.msg import NavSatFix
 from geopy import distance
 from ament_index_python.packages import get_package_share_directory
 
-from north_goal_angle.waypoint_loader import parse_waypoints, waypoint_labels, WaypointError
+from north_goal_angle.waypoint_loader import (
+    DEFAULT_COURSE, WaypointError, check_course_name, parse_waypoints, validate_course,
+    waypoint_labels)
 from north_goal_angle.gps_guard import (
     DEFAULT_GPS_STALE_SEC, fix_is_fresh, fix_is_usable, sanitize_stale_sec)
 from north_goal_angle import los_logic          # LOS 유도 (순수, 테스트됨)
@@ -117,8 +130,14 @@ class NorthGoalAngle(Node):
         super().__init__('north_goal_angle')
         qos = QoSProfile(depth=2, reliability=ReliabilityPolicy.RELIABLE)
 
+        # ---- 코스 (main | tournament) — 웨이포인트 검증에 쓰므로 로드보다 먼저 선언 ----
+        # 모르는 이름이면 ERROR + 예외로 노드를 세운다(_load_waypoints 의 WaypointError 와 같은 방식).
+        self.course = self.declare_parameter('course', DEFAULT_COURSE).value
+        self._check_course(self.course)
+
         # ---- 웨이포인트(GPS 좌표) 로드 — config/waypoints.yaml 에서 읽는다 ----
         # 파일 경로는 파라미터로도 바꿀 수 있다(기본: 패키지 share 의 config/waypoints.yaml).
+        # 코스별 기본 파일(tournament → waypoints_tournament.yaml)은 launch 가 골라 넘긴다.
         default_wp = os.path.join(
             get_package_share_directory('north_goal_angle'), 'config', 'waypoints.yaml')
         self.waypoints_file = str(
@@ -145,8 +164,11 @@ class NorthGoalAngle(Node):
         self.require_auto = bool(self.declare_parameter('require_boat_mode_auto', True).value)
         # 경기장 폴리곤: [lat1, lon1, lat2, lon2, ...] 평탄 배열.
         # ⚠️ 실측 필요 — 대회장 경계 좌표를 아직 모른다. 비어 있으면 geofence 는 꺼진다.
+        # 코스별 값은 config/north_goal_angle_{course}.yaml(launch 가 공통 yaml 뒤에 얹는다).
         self.geofence_polygon = list(
             self.declare_parameter('geofence_polygon', []).value or [])
+        if self.course == 'tournament' and len(self.geofence_polygon) < 6:
+            self._log_tournament_no_geofence()
         # 경계를 '가짜 LiDAR'로 쏜다 — 스캔과 같은 각도 격자(상대방위, **좌 양수**:
         #   −80 = 우현 끝, +80 = 좌현 끝. LiDAR a−80·/candidate_angle 과 같은 부호. geofence_rays.py).
         # ★ 왜 광선인가: 벽은 '점'이 아니라 '선'이다. 최근접점 한 방향으로 ±각도 원뿔을 막는 건
@@ -246,6 +268,7 @@ class NorthGoalAngle(Node):
         self.t_start = None
         self.wp_enter_time = None
         self.t0 = time.monotonic()
+        self.course_done_logged = False  # 코스 끝 INFO 1회
 
         # LOS 상태
         self.gps_filter = GPSFilter(
@@ -262,7 +285,7 @@ class NorthGoalAngle(Node):
         gf = "OFF(폴리곤 미설정 — ⚠️ 실측 필요)" if len(self.geofence_polygon) < 6 else \
              f"ON({len(self.geofence_polygon) // 2}점)"
         self.get_logger().info(
-            f"north_goal_angle 시작: 폴백은 mode {FALLBACK_MODES} 에만 발행"
+            f"north_goal_angle 시작(코스 {self.course}): 폴백은 mode {FALLBACK_MODES} 에만 발행"
             f"(mode 7 폴백 제거 — ship_dock 과 충돌했다). geofence {gf}. "
             f"GPS stale 기준 {self.gps_stale_sec:g}s. "
             f"dwell 대기 {'ON' if self.dwell_wait_enabled else 'OFF'}"
@@ -293,18 +316,41 @@ class NorthGoalAngle(Node):
 
         try:
             wps = parse_waypoints(raw)
+            validate_course(self.course, wps)     # tournament = 전부 mode 8
         except WaypointError as e:
             self.get_logger().error(f"🚨 웨이포인트 내용 오류 → {e}")
             raise
 
         modes = [w[2] for w in wps]
         self.get_logger().info(
-            f"웨이포인트 {len(wps)}개 로드: {path}\n   미션 순서(mode): {modes}")
+            f"코스 {self.course}: 웨이포인트 {len(wps)}개 로드: {path}\n   미션 순서(mode): {modes}")
         # 옛 녹화 파일(mode 2·3 dwell 3.0) 경고 — 값은 그대로 쓴다(결정 6 보충 ③).
         stale = los_logic.stale_hold_dwells(wps, waypoint_labels(raw))
         if stale:
             self._log_stale_hold_dwells(stale)
         return wps
+
+    def _check_course(self, course):
+        """course 파라미터 검증. 모르는 값이면 ERROR + 예외로 노드를 세운다(조용히 main 금지)."""
+        try:
+            check_course_name(course)
+        except WaypointError as e:
+            self.get_logger().error(f"🚨 코스 파라미터 오류 → {e}")
+            raise
+
+    def _log_tournament_no_geofence(self):
+        self.get_logger().warn(
+            "⚠️ course=tournament 인데 geofence_polygon 이 비어 있다(3점 미만) → 경계 방어 꺼짐. "
+            "현장 2경기장 좌표를 north_goal_angle_tournament.yaml 에 넣고 launch 재시작"
+            "(결승선 너머까지 포함 — ship_direction 하드 정지 2 m).")
+
+    def _log_course_done(self, after):
+        if after is None:
+            what = "north 는 /candidate_angle 을 내지 않는다(마지막 모드 담당 노드 몫)"
+        else:
+            what = f"/candidate_angle {after:.0f}(STOP_HOLD) 계속 발행 → 정지"
+        self.get_logger().info(
+            f"🏁 코스 {self.course} 끝(WP {len(self.waypoints)}개 완료) → {what}")
 
     def _log_stale_hold_dwells(self, stale):
         where = ", ".join(f"WP{i} '{label}'(mode {m}, dwell {d:g}s)" for i, label, m, d in stale)
@@ -546,9 +592,13 @@ class NorthGoalAngle(Node):
         self._publish_geofence(gps_ok)       # 웨이포인트가 끝나도 경계 감시는 계속한다
 
         if self.wp_idx >= len(self.waypoints):
-            # 코스 끝 — 마지막 WP 가 north 담당(5·8)이면 그 20000 을 계속 낸다(wp_advance 참고).
-            # /wp_mode·tp 는 계속 멈춘다 → yaw_error stale → ship_direction L2 정지는 그대로.
+            # 코스 끝 — 마지막 WP 가 north 담당(5·8)이면 50000(STOP_HOLD)을 계속 낸다(main·tournament
+            # 모두, 계약서_토너먼트분리_20261109 §9-2). 고정주기 타이머에서 매 틱 — wp_advance 참고.
+            # /wp_mode·tp·goal_distance 는 계속 멈춘다(L2 정지는 뒤따르는 이중 안전).
             after = candidate_after_course(self.waypoints[-1][2], FALLBACK_MODES)
+            if not self.course_done_logged:
+                self._log_course_done(after)
+                self.course_done_logged = True
             if after is not None:
                 self.pub_candidate.publish(Float32(data=after))
             return

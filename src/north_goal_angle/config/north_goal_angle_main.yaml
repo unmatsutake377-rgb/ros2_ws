@@ -1,0 +1,8 @@
+# north_goal_angle 코스별 덮어쓰기 — course:=main (종합임무)
+# launch 가 공통 north_goal_angle.yaml **뒤에** 얹는다(뒤 파일이 이긴다). 계약서_토너먼트분리_20261109 T1-3.
+# 여기 적는 키는 공통 yaml 과 같은 이름·타입이어야 한다(test_course_files.py 가 검사).
+# 지금은 공통과 같은 값 — main 동작 불변.
+/north_goal_angle:
+  ros__parameters:
+    # 경기장 폴리곤 [lat1, lon1, lat2, lon2, ...]. ⚠️ 실측 필요 — 비어 있으면 geofence 꺼짐(공통 yaml 과 같음).
+    geofence_polygon: []

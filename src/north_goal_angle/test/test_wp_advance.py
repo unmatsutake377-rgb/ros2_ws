@@ -3,6 +3,7 @@
 
 계약서 docs/문제와작업/계약서_전체코스_20261104.md C2 §2-2 — dwell 은 담당 노드가 손 뗀 동안만,
 시간 초과 진행은 그대로, 코스 종료 후 candidate.
+코스 종료 후 값은 계약서_토너먼트분리_20261109 §9-2 로 20000 → 50000(STOP_HOLD) 으로 바뀌었다.
 """
 
 import math
@@ -16,7 +17,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from north_goal_angle.wp_advance import (  # noqa: E402
     CANDIDATE_RELEASED, DEFAULT_DWELL_WAIT_ENABLED, DEFAULT_DWELL_WAIT_MODES,
-    DEFAULT_DWELL_WAIT_STALE_SEC, candidate_after_course, dwell_may_count,
+    DEFAULT_DWELL_WAIT_STALE_SEC, STOP_HOLD, candidate_after_course, dwell_may_count,
     sanitize_wait_modes, wp_step,
 )
 
@@ -237,10 +238,51 @@ def test_sanitize_wait_modes():
         assert ok is False and modes == tuple(DEFAULT_DWELL_WAIT_MODES), bad
 
 
-# ---------------- 코스 종료 후 candidate (C1 리뷰 권고)
+# ---------------- 코스 종료 후 candidate (C1 리뷰 권고 → 계약서_토너먼트분리_20261109 §9-2 로 갱신)
 def test_after_course_fallback_last_mode():
-    assert candidate_after_course(8, (5, 8)) == CANDIDATE_RELEASED
-    assert candidate_after_course(5, (5, 8)) == CANDIDATE_RELEASED
+    """마지막 WP 가 north 담당(5·8)이면 코스 끝에 50000(STOP_HOLD)을 낸다.
+
+    🚨 기존 계약(20000 계속 — 조향 그대로, L2 정지까지 약 5 s 더 주행)에서 바뀌었다:
+    계약서_토너먼트분리_20261109 §9-2·결정 4 — main·tournament 모두 결승·코스 끝 즉시 정지.
+    """
+    assert candidate_after_course(8, (5, 8)) == STOP_HOLD
+    assert candidate_after_course(5, (5, 8)) == STOP_HOLD
+    assert candidate_after_course(8, (5, 8)) != CANDIDATE_RELEASED
+
+
+def test_stop_hold_value_matches_special_signal():
+    """50000.0 = CLAUDE.md §3 특수 신호 STOP_HOLD = ship_direction STOP_HOLD (공용 모듈 없이 값으로 맞춘다)."""
+    assert type(STOP_HOLD) is float and STOP_HOLD == 50000.0
+    sd = os.path.join(_PKG, '..', 'ship_direction', 'ship_direction', 'ship_direction.py')
+    if os.path.isfile(sd):
+        src = open(sd, encoding='utf-8').read()
+        assert re.search(r"^STOP_HOLD = 50000\.0", src, re.M), "ship_direction STOP_HOLD 값이 다르다"
+
+
+def test_after_course_both_courses_stop():
+    """실제 두 코스 파일의 마지막 WP 로 코스 끝 값이 50000 인지 (main WP10 mode 8, tournament 전부 8).
+
+    FALLBACK_MODES 는 노드 모듈(rclpy import)에 있어 Mac 에서 못 부른다 → 소스에서 읽는다.
+    """
+    from north_goal_angle.waypoint_loader import parse_waypoints
+    src = open(_NODE_SRC, encoding='utf-8').read()
+    m = re.search(r"^FALLBACK_MODES = \(([0-9, ]+)\)", src, re.M)
+    assert m, "FALLBACK_MODES 정의를 못 찾음"
+    fallback = tuple(int(v) for v in m.group(1).split(',') if v.strip())
+    for name in ('waypoints.yaml', 'waypoints_tournament.yaml'):
+        with open(os.path.join(_PKG, 'config', name), encoding='utf-8') as f:
+            wps = parse_waypoints(yaml.safe_load(f))
+        assert candidate_after_course(wps[-1][2], fallback) == STOP_HOLD, name
+
+
+def test_node_course_end_publishes_every_tick():
+    """코스 끝 분기가 timer_cb 안에서 매 틱 발행(고정주기)하고, INFO 는 1회 플래그로만 낸다."""
+    src = open(_NODE_SRC, encoding='utf-8').read()
+    i = src.index("if self.wp_idx >= len(self.waypoints):")
+    block = src[i:src.index("return", i)]
+    assert "candidate_after_course(self.waypoints[-1][2], FALLBACK_MODES)" in block
+    assert "self.pub_candidate.publish(Float32(data=after))" in block
+    assert "if not self.course_done_logged:" in block and "self.course_done_logged = True" in block
 
 
 def test_after_course_owned_last_mode_silent():

@@ -5,6 +5,12 @@
 — 틀린 좌표로 배가 달리는 것보다 출발 전에 멈추는 게 낫다(모르면 침묵 말고 알린다).
 
 파싱은 순수 함수라 배·ROS 없이 테스트한다(test_waypoint_loader.py).
+
+코스(계약서_토너먼트분리_20261109 T1-3): 노드 파라미터 `course` 가 어느 대회 코스인지 정한다.
+  · main       = 종합임무. VALID_MODES 전부 허용(마지막 WP10 mode 8 그대로).
+  · tournament = 토너먼트. **모든 WP 가 mode 8** 이어야 한다 — 종합임무 파일을 잘못 물리면
+                 게이트·도킹 노드가 깨어나 엉뚱한 미션을 돈다 → 출발 전에 거부.
+  그 밖의 이름은 거부(오타가 조용히 main 으로 떨어지지 않게). validate_course.
 """
 
 
@@ -19,6 +25,14 @@ LON_MIN, LON_MAX = 124.0, 132.0
 
 # 미션 번호(wp_mode) — 확정된 값만 허용. 오타(예: 70)를 잡는다.
 VALID_MODES = {0, 1, 2, 3, 5, 7, 8}
+
+# 코스 이름 → 그 코스에서 허용하는 mode. 노드 파라미터 course 의 허용값이 이 키다.
+# 🚨 토너먼트 동작을 mode 8 로 가르지 않는다(main 에도 WP10 mode 8 이 있다) — 이 표는 '파일 검증' 전용.
+DEFAULT_COURSE = 'main'
+COURSE_MODES = {
+    'main': VALID_MODES,
+    'tournament': {8},
+}
 
 
 def parse_waypoints(raw, *, lat_min=LAT_MIN, lat_max=LAT_MAX,
@@ -93,6 +107,30 @@ def parse_waypoints(raw, *, lat_min=LAT_MIN, lat_max=LAT_MAX,
         out.append([lat, lon, mode, dwell])
 
     return out
+
+
+def check_course_name(course):
+    """course 가 허용된 코스 이름인가. 아니면 WaypointError — 노드는 ERROR 후 세운다."""
+    if not isinstance(course, str) or course not in COURSE_MODES:
+        raise WaypointError(
+            f"course={course!r} 는 허용값 {sorted(COURSE_MODES)} 에 없다 "
+            f"(launch 인자 course:=main 또는 course:=tournament).")
+
+
+def validate_course(course, wps):
+    """parse_waypoints 결과(wps)가 그 코스에 맞는가. 틀리면 WaypointError(첫 위반 WP 를 적는다).
+
+    main 은 VALID_MODES 전부(parse 가 이미 검사), tournament 는 전부 mode 8.
+    """
+    check_course_name(course)
+    allowed = COURSE_MODES[course]
+    for i, w in enumerate(wps):
+        mode = w[2]
+        if mode not in allowed:
+            raise WaypointError(
+                f"course={course}: {i}번째 웨이포인트가 mode {mode} 다 — 이 코스는 "
+                f"mode {sorted(allowed)} 만 허용한다. 웨이포인트 파일이 코스와 맞는지 확인하라"
+                f"(waypoints_file:=).")
 
 
 def waypoint_labels(raw):

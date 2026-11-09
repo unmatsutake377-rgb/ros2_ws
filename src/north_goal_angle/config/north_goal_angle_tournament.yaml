@@ -1,0 +1,11 @@
+# north_goal_angle 코스별 덮어쓰기 — course:=tournament (토너먼트)
+# launch 가 공통 north_goal_angle.yaml **뒤에** 얹는다(뒤 파일이 이긴다). 계약서_토너먼트분리_20261109 T1-3.
+# 여기 적는 키는 공통 yaml 과 같은 이름·타입이어야 한다(test_course_files.py 가 검사).
+# 바꾸는 법: 노트북에서 이 파일 수정 → launch 재시작(param set 무효). 현장_조정표 §4 에 기록.
+/north_goal_angle:
+  ros__parameters:
+    # 경기장 폴리곤 [lat1, lon1, lat2, lon2, ...] 평탄 배열, 최소 3점(=6개 수).
+    # ⚠️ 실측 필요 — 현장 2경기장 좌표, 결승선 너머까지 포함(하드 정지 2 m).
+    #    (결승 뒤 정지 지점이 경계 2 m 안이면 ship_direction 하드 정지가 먼저 걸린다.)
+    #    비어 있으면 geofence 꺼짐 + 시작 WARN. 시작 로그 'geofence ON(n점)' 확인.
+    geofence_polygon: []
