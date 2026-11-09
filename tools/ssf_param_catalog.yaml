@@ -3,100 +3,166 @@
 #   pkg/key        : 패키지 폴더 이름 / yaml 키 (필수)
 #   section        : 같은 키가 여러 절에 있을 때 절 이름(비전 노드 등)
 #   label          : 화면 이름 · hint: 무엇을 하는 값인가 · advice: 권장 범위·주의
+#   change         : 언제 바꾸나(화면 표시 배지) — daily(매 경기·당일 교체) · measure(실측해서 넣기)
+#                    · water(물 위 확인 후 조정) · rarely(보통 그대로) · fixed(바꾸지 않음)
+#   when           : 바꾸는 시점·조건 한 줄 · check: 바꾼 뒤 실배에서 볼 것 · revert: 되돌릴 값(현장 조정표 '되돌리기')
 #   limits [lo,hi] : 이 밖이면 적용 거부(노드가 ERROR 내거나 위험한 값) · choices: 넣을 수 있는 값만
 #   unit, step     : 화면 단위 · 숫자 칸 증감
 # 🚨 값 자체는 여기 적지 않는다 — 값은 언제나 각 패키지 config yaml 이 기준.
+# 🚨 when·check·revert 는 현장 조정표에 있는 내용만 옮긴다. 조정표에 없는 값은 '기준 없음'이라고 적는다.
 groups:
   - name: 위치유지·탐색
     items:
       - {pkg: ship_back, key: hold_dist_m, label: 부표 앞 유지 거리, unit: m, step: 0.1, limits: [1.0, 4.5],
          hint: 위치유지·탐색(mode 2·3)에서 부표 앞에 머무는 거리,
-         advice: "2.5~3.5. hold + dist_tol(0.4) 가 규정 5 m 보다 작아야 한다. 3.2 넘게 올리면 도착 반경도 같이 본다"}
+         advice: "2.5~3.5. hold + dist_tol(0.4) 가 규정 5 m 보다 작아야 한다. 3.2 넘게 올리면 도착 반경도 같이 본다",
+         change: water, when: "실배에서 부표 놓침·선미 여유를 보고 2.5 / 3.0 / 3.5 중 고른다",
+         check: "3.0·3.5 에서 카메라가 부표를 놓치지 않는지 · LiDAR 거리 연속 · 조류 중 5 m 안 5 s 유지 · 떠날 때 부표 옆 간격",
+         revert: "2.5"}
       - {pkg: ship_back, key: dist_tol_m, label: 유지 거리 허용 오차, unit: m, step: 0.1, limits: [0.1, 1.5],
-         hint: 이 안이면 제자리로 본다, advice: 기본 0.4}
+         hint: 이 안이면 제자리로 본다, advice: 기본 0.4,
+         change: rarely, when: "조정표에 따로 바꾸는 기준 없음. hold_dist_m + 이 값 < 5.0 을 지킨다", revert: "0.4"}
       - {pkg: north_goal_angle, key: arrive_radius_hold_modes_m, label: 위치유지 웨이포인트 도착 반경, unit: m, step: 0.1,
-         limits: [1.0, 8.0], hint: mode 2·3 웨이포인트에 '도착'으로 보는 거리, advice: "hold_dist + 허용 오차보다 크게(기본 3.5)"}
+         limits: [1.0, 8.0], hint: mode 2·3 웨이포인트에 '도착'으로 보는 거리, advice: "hold_dist + 허용 오차보다 크게(기본 3.5)",
+         change: rarely, when: "hold_dist_m 을 3.2 넘게 올릴 때만 같이 키운다(hold+tol 보다 크게)",
+         check: "부표 앞에서 다음 WP 로 너무 일찍 넘어가는지", revert: "3.5"}
       - {pkg: ship_back, key: lost_sec, label: 부표 놓침 판정 시간, unit: s, step: 0.5, limits: [0.5, 10.0],
-         hint: 이 시간 동안 안 보이면 다시 찾기(SEARCH), advice: "1.5~3.0. 물결로 자주 끊기면 올림"}
+         hint: 이 시간 동안 안 보이면 다시 찾기(SEARCH), advice: "1.5~3.0. 물결로 자주 끊기면 올림",
+         change: water, when: "물결로 검출이 자주 끊길 때 올린다",
+         check: "물결로 검출이 끊길 때 SEARCH 로 너무 빨리 가는지", revert: "2.0"}
       - {pkg: ship_back, key: reacquire_stop_sec, label: 다시 찾기 정지 시간, unit: s, step: 0.5, limits: [0.5, 10.0],
-         hint: 놓친 뒤 멈춰서 기다리는 시간, advice: 3.0~5.0}
+         hint: 놓친 뒤 멈춰서 기다리는 시간, advice: 3.0~5.0,
+         change: water, when: "lost_sec 과 같이 본다",
+         check: "물결로 검출이 끊길 때 SEARCH 로 너무 빨리 가는지", revert: "5.0"}
 
   - name: 회피·DWA
     items:
       - {pkg: ship_direction, key: dwa_enabled, label: DWA 회피 켜기,
          hint: "동적 창 회피. 토너먼트 파일 true, 공통(종합임무) false",
-         advice: "물 위 확인(시작 로그 'DWA 켬: 선체 <그 배>', 부표 접촉·갇힘 없음) 실패하면 끔"}
+         advice: "물 위 확인(시작 로그 'DWA 켬: 선체 <그 배>', 부표 접촉·갇힘 없음) 실패하면 끔",
+         change: water, when: "토너먼트는 true 로 경기, 물 위에서 문제가 보일 때만 false. base_pwm·max_diff·reverse_pwm 을 실측으로 바꾼 배는 false",
+         check: "시작 로그 'DWA 켬: 선체 <그 배>' · 부표 접촉·갇힘 없음 · '폴백' 로그 드묾 · 가상 경계선 근처 우회 폭",
+         revert: "종합임무 false / 토너먼트 true"}
       - {pkg: ship_direction, key: dwa_modes, label: DWA 쓰는 웨이포인트 mode,
-         hint: "5·8 만 유효", advice: "[8] 로 시작, 좋으면 [5, 8]", choices: [[8], [5], [5, 8]]}
+         hint: "5·8 만 유효", advice: "[8] 로 시작, 좋으면 [5, 8]", choices: [[8], [5], [5, 8]],
+         change: water, when: "[8] 로 시작해서 좋으면 [5, 8]",
+         check: "구간 진입 로그 'DWA 사용(mode 8)' 1회 · 정면 부표를 일찍 부드럽게 비키는지", revert: "[8]"}
       - {pkg: ship_direction, key: dwa_model_agility, label: DWA 배 반응 배율, step: 0.1, limits: [0.5, 2.0],
          hint: DWA 가 예측하는 배의 민첩함. 실제보다 작으면 회피가 늦다,
-         advice: "0.7~1.4, 모르면 큰 쪽(1.2~1.4). 실해역 1360 속도·선회율로 정함"}
+         advice: "0.7~1.4, 모르면 큰 쪽(1.2~1.4). 실해역 1360 속도·선회율로 정함",
+         change: measure, when: "실해역에서 속도·선회율을 잰 뒤 넣는다. 못 재면 1.2~1.4",
+         check: "회피 시작이 늦으면 키움, 너무 크게 돌면 줄임", revert: "1.0"}
       - {pkg: ship_direction, key: dwa_lidar_x_m, label: LiDAR 앞쪽 위치, unit: m, step: 0.05, limits: [-1.0, 1.0],
-         hint: 선체 중심에서 LiDAR 까지 앞쪽 거리, advice: 줄자 실측값}
+         hint: 선체 중심에서 LiDAR 까지 앞쪽 거리, advice: 줄자 실측값,
+         change: measure, when: "줄자로 선체 중심 → LiDAR 앞쪽 거리를 잰 값을 넣는다", revert: "0.0"}
       - {pkg: ship_direction, key: side_escape_deg, label: 옆 비킴 각도, unit: "°", step: 5, limits: [0.0, 80.0],
-         hint: 틈이 없고 장애물이 옆이면 후진 대신 비킨다. 0 = 끔, advice: "0.0 또는 60.0"}
+         hint: 틈이 없고 장애물이 옆이면 후진 대신 비킨다. 0 = 끔, advice: "0.0 또는 60.0",
+         change: water, when: "0.0(끔) 또는 60.0. 실배에서 비키는 방향을 확인한 뒤에만 켠다",
+         check: "비키는 방향 부호(장애물 왼쪽이면 오른쪽) · 선미·선수 어깨와 부표 여유 · 후진↔비킴 진동(잦으면 0.0) · 로그 '후진 대신 …° 로 비킴'",
+         revert: "0.0"}
       - {pkg: ship_direction, key: side_hysteresis_deg, label: 회피 편 유지, unit: "°", step: 5, limits: [0.0, 180.0],
-         hint: 처음 고른 쪽으로 계속 피하게 하는 여유, advice: "기본 40.0, 문제면 0.0(끄기)만"}
+         hint: 처음 고른 쪽으로 계속 피하게 하는 여유, advice: "기본 40.0, 문제면 0.0(끄기)만",
+         change: rarely, when: "문제가 있을 때 끄기(0.0)만",
+         check: "단독 부표를 비스듬히 지날 때 처음 튼 쪽으로 계속 비키는지", revert: "40.0"}
       - {pkg: ship_direction, key: cross_penalty_deg, label: 가로지름 벌점, unit: "°", step: 5, limits: [0.0, 180.0],
-         hint: 장애물 앞을 가로지르는 방향에 벌점, advice: "기본 90.0, 문제면 0.0(끄기)만"}
+         hint: 장애물 앞을 가로지르는 방향에 벌점, advice: "기본 90.0, 문제면 0.0(끄기)만",
+         change: rarely, when: "문제가 있을 때 끄기(0.0)만",
+         check: "단독 부표를 비스듬히 지날 때 처음 튼 쪽으로 계속 비키는지", revert: "90.0"}
       - {pkg: ship_direction, key: reverse_duration_sec, label: 틈 없음 후진 시간, unit: s, step: 0.1, limits: [0.1, 2.0],
-         hint: 갈 틈이 없을 때 후진하는 시간, advice: "0.3~1.0. 뒤는 못 보니 늘리지 말 것"}
+         hint: 갈 틈이 없을 때 후진하는 시간, advice: "0.3~1.0. 뒤는 못 보니 늘리지 말 것",
+         change: rarely, when: "뒤는 못 본다 — 늘리지 않는다", check: "후진 거리, 정지 시간", revert: "0.5"}
       - {pkg: ship_direction, key: reverse_cooldown_sec, label: 후진 뒤 재탐색 대기, unit: s, step: 0.5, limits: [0.5, 10.0],
-         hint: 후진 뒤 다시 후진하기 전 대기, advice: 1.5~3.0}
+         hint: 후진 뒤 다시 후진하기 전 대기, advice: 1.5~3.0,
+         change: rarely, when: "조정표 범위 1.5~3.0 안에서만", check: "후진 거리, 정지 시간", revert: "3.0"}
       - {pkg: ship_direction, key: side_lock_enabled, label: 옆 잠금,
-         hint: 옆에 배가 붙으면 그쪽으로 안 튼다, advice: "🚨 대회는 false (11-09 결정)"}
+         hint: 옆에 배가 붙으면 그쪽으로 안 튼다, advice: "🚨 대회는 false (11-09 결정)",
+         change: fixed, when: "대회는 false(11-09 결정). 켜는 건 대회 뒤 — 켜면 경계 이탈이 늘어난다", revert: "false"}
 
   - name: 감속·결승
     items:
       - {pkg: motor_control, key: goal_slow_start_m, label: 감속 시작 거리, unit: m, step: 0.5, limits: [1.0, 30.0],
-         hint: 목표까지 이 거리부터 감속, advice: "기본 8.0. 감속 완료 거리보다 커야 한다"}
+         hint: 목표까지 이 거리부터 감속, advice: "기본 8.0. 감속 완료 거리보다 커야 한다",
+         change: rarely, when: "감속 완료 거리보다 커야 한다", check: "부표 앞 속도·정지 거리, 마지막 WP 선회 반경", revert: "8.0"}
       - {pkg: motor_control, key: goal_slow_full_m, label: 감속 완료 거리, unit: m, step: 0.5, limits: [0.5, 20.0],
-         hint: 이 거리에서 최소 속도 비율, advice: 기본 3.0}
+         hint: 이 거리에서 최소 속도 비율, advice: 기본 3.0,
+         change: rarely, when: "감속 시작 거리보다 작아야 한다", check: "부표 앞 속도·정지 거리, 마지막 WP 선회 반경", revert: "3.0"}
       - {pkg: motor_control, key: goal_slow_min_ratio, label: 최소 속도 비율, step: 0.05, limits: [0.1, 1.0],
-         hint: "1.0 = 감속 끔", advice: "종합임무 0.5 / 토너먼트 1.0(결승 감속 끔). 결승 정지가 넘치면 0.5"}
+         hint: "1.0 = 감속 끔", advice: "종합임무 0.5 / 토너먼트 1.0(결승 감속 끔). 결승 정지가 넘치면 0.5",
+         change: water, when: "토너먼트에서 결승 정지가 경계를 넘치면 1.0 → 0.5",
+         check: "결승 직선 통과 · 맴돌지 않음 · 결승 정지가 경계 안", revert: "종합임무 0.5 / 토너먼트 1.0"}
 
   - name: 도킹
     items:
       - {pkg: ship_dock, key: front_median_kernel, label: 물보라 필터 창, step: 1, limits: [0, 9],
          hint: 정면 거리에서 고립된 점(물보라)을 무시하는 창 크기. 1 = 필터 없음,
-         advice: "5, 문제면 1(롤백). 🚨 정수"}
+         advice: "5, 문제면 1(롤백). 🚨 정수",
+         change: water, when: "5 유지. 도킹 접근이 이상하면 1(롤백). 🚨 정수로만",
+         check: "접근 중 '도킹 접근 중단(정지)' WARN 반복 · 접안 거리 · 후진 이탈이 도크 앞에서 너무 일찍 끝나지 않는지",
+         revert: "1"}
       - {pkg: ship_dock, key: standoff_dist_m, label: 정렬 지점 거리, unit: m, step: 0.1, limits: [1.0, 8.0],
-         hint: 도크 정면 정렬을 마칠 거리}
+         hint: 도크 정면 정렬을 마칠 거리,
+         change: rarely, when: "현장 조정표에 기준 없음 — 바꿀 근거(실측)가 있을 때만"}
       - {pkg: ship_dock, key: contact_dist_m, label: 접안 완료 거리, unit: m, step: 0.1, limits: [0.3, 3.0],
-         hint: 이 거리면 접안으로 본다}
+         hint: 이 거리면 접안으로 본다,
+         change: rarely, when: "현장 조정표에 기준 없음 — 바꿀 근거(실측)가 있을 때만"}
       - {pkg: ship_dock, key: backoff_dist_m, label: 후진 이탈 거리, unit: m, step: 0.1, limits: [0.5, 6.0],
-         hint: 접안 뒤 후진으로 빠지는 거리}
+         hint: 접안 뒤 후진으로 빠지는 거리,
+         change: rarely, when: "현장 조정표에 기준 없음 — 바꿀 근거(실측)가 있을 때만"}
       - {pkg: color_shape_detector, section: image_subscriber_dock, key: target_color, label: 도킹 표식 색,
-         hint: 당일 공지 색, choices: [red, green, blue, orange, yellow, white]}
+         hint: 당일 공지 색, choices: [red, green, blue, orange, yellow, white],
+         change: daily, when: "당일 공지 색으로 교체. 그 색의 HSV 범위도 같이 실측"}
       - {pkg: color_shape_detector, section: image_subscriber_dock, key: target_shape, label: 도킹 표식 모양,
-         hint: 당일 공지 모양}
+         hint: 당일 공지 모양,
+         change: daily, when: "당일 공지 모양으로 교체"}
       - {pkg: color_shape_detector, section: image_subscriber_dock, key: circle_circularity_min, label: 원/사각 경계,
          step: 0.01, limits: [0.5, 0.99], hint: 이보다 둥글면 원,
-         advice: "0.82~0.90. 사각이 원으로 잡히면 올리고, 원이 사각이면 내림"}
+         advice: "0.82~0.90. 사각이 원으로 잡히면 올리고, 원이 사각이면 내림",
+         change: water, when: "실영상에서 사각이 원으로 가면 올리고, 원이 사각으로 가면 내린다(0.82~0.90, 소수)",
+         check: "16 px 이하 45° 마름모는 0.87 에서도 원으로 잡힌다(알려진 한계)", revert: "0.82"}
       - {pkg: color_shape_detector, section: image_subscriber_dock, key: confirm_window, label: 도킹 확인 창,
-         step: 1, limits: [1, 10], hint: 최근 몇 프레임 안에서 확인하나, advice: "3 또는 5. 🚨 정수"}
+         step: 1, limits: [1, 10], hint: 최근 몇 프레임 안에서 확인하나, advice: "3 또는 5. 🚨 정수",
+         change: rarely, when: "도킹 깜빡임 벤치를 한 뒤에만 5. 🚨 정수로만(3.0 이면 부팅 예외)",
+         check: "깜빡일 때 [Dock] 확정이 끊기는지", revert: "3"}
 
   - name: 색 (당일 아침)
     items:
       - {pkg: color_shape_detector, section: image_subscriber_turn, key: turn_color_mode2, label: 위치유지 부표 색,
-         choices: [red, green, blue, orange, yellow, white]}
+         choices: [red, green, blue, orange, yellow, white],
+         change: daily, when: "당일 공지 색과 다르면 교체"}
       - {pkg: color_shape_detector, section: image_subscriber_turn, key: turn_color_mode3, label: 탐색 부표 색,
-         hint: 공지 색으로 교체, choices: [red, green, blue, orange, yellow, white]}
-      - {pkg: color_shape_detector, key: hsv.red, label: 빨강 HSV 범위, hint: "[H저,S저,V저,H고,S고,V고] ×1~2 구간 — 그 시각 실측값", advice: 🚨 정수 6개 또는 12개}
-      - {pkg: color_shape_detector, key: hsv.green, label: 초록 HSV 범위, advice: 🚨 정수 6개}
-      - {pkg: color_shape_detector, key: hsv.blue, label: 파랑 HSV 범위, advice: 🚨 정수 6개}
-      - {pkg: color_shape_detector, key: hsv.orange, label: 주황 HSV 범위, advice: 🚨 정수 6개}
-      - {pkg: color_shape_detector, key: hsv.yellow, label: 노랑 HSV 범위, advice: 🚨 정수 6개}
-      - {pkg: color_shape_detector, key: hsv.white, label: 흰색 HSV 범위, advice: 🚨 정수 6개}
+         hint: 공지 색으로 교체, choices: [red, green, blue, orange, yellow, white],
+         change: daily, when: "당일 공지 색으로 교체. 그 색의 HSV 범위도 같이 실측"}
+      - {pkg: color_shape_detector, key: hsv.red, label: 빨강 HSV 범위, hint: "[H저,S저,V저,H고,S고,V고] ×1~2 구간 — 그 시각 실측값", advice: 🚨 정수 6개 또는 12개,
+         change: daily, when: "공지 색일 때만, 경기 시각·그 해 방향에서 실측(basic_image_subscriberhsv, p 키 = yaml 줄)",
+         check: "역광이면 V 하한, 광택이면 S 하한이 먼저 깨진다 · 하늘·물·선체가 같이 잡히지 않는지", revert: 저장소 값}
+      - {pkg: color_shape_detector, key: hsv.green, label: 초록 HSV 범위, advice: 🚨 정수 6개,
+         change: daily, when: "공지 색일 때만, 경기 시각·그 해 방향에서 실측(basic_image_subscriberhsv, p 키 = yaml 줄)",
+         check: "역광이면 V 하한, 광택이면 S 하한이 먼저 깨진다 · 하늘·물·선체가 같이 잡히지 않는지", revert: 저장소 값}
+      - {pkg: color_shape_detector, key: hsv.blue, label: 파랑 HSV 범위, advice: 🚨 정수 6개,
+         change: daily, when: "공지 색일 때만, 경기 시각·그 해 방향에서 실측(basic_image_subscriberhsv, p 키 = yaml 줄)",
+         check: "역광이면 V 하한, 광택이면 S 하한이 먼저 깨진다 · 하늘·물·선체가 같이 잡히지 않는지", revert: 저장소 값}
+      - {pkg: color_shape_detector, key: hsv.orange, label: 주황 HSV 범위, advice: 🚨 정수 6개,
+         change: daily, when: "공지 색일 때만, 경기 시각·그 해 방향에서 실측(basic_image_subscriberhsv, p 키 = yaml 줄)",
+         check: "역광이면 V 하한, 광택이면 S 하한이 먼저 깨진다 · 하늘·물·선체가 같이 잡히지 않는지", revert: 저장소 값}
+      - {pkg: color_shape_detector, key: hsv.yellow, label: 노랑 HSV 범위, advice: 🚨 정수 6개,
+         change: daily, when: "공지 색일 때만, 경기 시각·그 해 방향에서 실측(basic_image_subscriberhsv, p 키 = yaml 줄)",
+         check: "역광이면 V 하한, 광택이면 S 하한이 먼저 깨진다 · 하늘·물·선체가 같이 잡히지 않는지", revert: 저장소 값}
+      - {pkg: color_shape_detector, key: hsv.white, label: 흰색 HSV 범위, advice: 🚨 정수 6개,
+         change: daily, when: "공지 색일 때만, 경기 시각·그 해 방향에서 실측(basic_image_subscriberhsv, p 키 = yaml 줄)",
+         check: "역광이면 V 하한, 광택이면 S 하한이 먼저 깨진다 · 하늘·물·선체가 같이 잡히지 않는지", revert: 저장소 값}
 
   - name: 토너먼트 경계
     items:
       - {pkg: north_goal_angle, key: geofence_polygon, label: 경기장 경계 폴리곤,
          hint: "[위도, 경도, 위도, 경도, …] 3점 이상. 비우면([]) 경계 방어 꺼짐",
-         advice: "결승선 너머까지 포함. 원소마다 소수점. 적용 뒤 시작 로그 'geofence ON(n점)'"}
+         advice: "결승선 너머까지 포함. 원소마다 소수점. 적용 뒤 시작 로그 'geofence ON(n점)'",
+         change: daily, when: "경기장마다 실제 경계 좌표로 교체. 안쪽으로 줄이지 않는다(시뮬상 효과 없음)",
+         check: "시작 로그 'geofence ON(n점)' · 경계 근처에서 부표를 피할 때 선체가 경계를 넘지 않는지", revert: "[]"}
 
   - name: 헤딩 (배마다 다름)
     items:
       - {pkg: ssf_heading, key: mount_offset_deg, label: IMU 장착 각도 보정, unit: "°", step: 0.5, limits: [-360.0, 360.0],
-         hint: /imu/yaw 가 진북 기준 뱃머리를 가리키게 맞추는 값, advice: "🚨 소수(37.0). 이 배 파일(_A/_B)에 저장"}
-      - {pkg: ssf_heading, key: invert_yaw, label: IMU 회전 방향 뒤집기, hint: 시계방향으로 돌렸는데 값이 줄면 true}
+         hint: /imu/yaw 가 진북 기준 뱃머리를 가리키게 맞추는 값, advice: "🚨 소수(37.0). 이 배 파일(_A/_B)에 저장",
+         change: measure, when: "배마다 실측해서 넣는다"}
+      - {pkg: ssf_heading, key: invert_yaw, label: IMU 회전 방향 뒤집기, hint: 시계방향으로 돌렸는데 값이 줄면 true,
+         change: measure, when: "시계방향으로 돌려 보고 값이 줄면 true"}

@@ -90,6 +90,21 @@ h2.group:first-child{margin-top:4px}
 .more .adv{color:var(--warn);font-weight:600}
 .more ul{margin:4px 0 0;padding-left:18px}
 .more code{font-family:var(--mono);font-size:12px}
+.guide{grid-column:1/-1;font-size:13px;color:var(--ink2);line-height:1.45;display:grid;gap:2px;
+  border-left:3px solid var(--line);padding:2px 0 2px 10px}
+.guide p{margin:0}
+.guide .k{color:var(--ink3);font-size:12px;margin-right:4px}
+.guide .adv{color:var(--warn);font-weight:600}
+.when{display:inline-block;font-size:11.5px;font-weight:700;padding:1px 8px;border-radius:6px;margin-right:6px;white-space:nowrap}
+.when.daily{background:var(--bad-soft);color:var(--bad)}
+.when.measure{background:var(--warn-soft);color:var(--warn)}
+.when.water{background:var(--accent-soft);color:var(--accent)}
+.when.rarely{background:var(--chip);color:var(--ink2)}
+.when.fixed{background:var(--ink2);color:var(--panel)}
+.legend{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:0 0 6px}
+.legend button{border:1px solid transparent;cursor:pointer;font:inherit;font-size:12px}
+.legend button.off{opacity:.45}
+.legend button.sel{border-color:currentColor}
 .err{grid-column:1/-1;color:var(--bad);font-size:13px;font-weight:600}
 .hint{font-size:12px;color:var(--ink3)}
 table{border-collapse:collapse;width:100%;font-size:13.5px}
@@ -166,8 +181,11 @@ pre.out{font-family:var(--mono);font-size:12px;background:var(--bg);padding:10px
 <script>
 "use strict";
 const S = {state:null, params:[], groups:[], errors:[], diff:[], log:[], course:"main", tab:"field",
-           q:"", pending:new Map(), open:new Set(), applied:[], buildPkgs:new Set()};
+           q:"", pending:new Map(), open:new Set(), applied:[], buildPkgs:new Set(), chg:null};
 const COURSE_KO = {main:"종합임무", tournament:"토너먼트"};
+// 카탈로그 change → 배지 (언제 바꾸나)
+const CHANGE_KO = {daily:"매 경기 교체", measure:"실측해서 넣기", water:"물 위 확인 후 조정", rarely:"보통 그대로", fixed:"바꾸지 않음"};
+const CHANGE_ICON = {daily:"🔴", measure:"📏", water:"🌊", rarely:"⚪", fixed:"🔒"};
 const $ = (s, el=document) => el.querySelector(s);
 const h = (tag, attrs={}, ...kids) => {
   const e = document.createElement(tag);
@@ -267,13 +285,23 @@ function paramRow(p) {
     h("button", {class:"linkbtn", text:"취소", onclick:() => { S.pending.delete(pk); render(); }}));
   else if (e && e.changed) side.append(h("span", {class:"repo", text:"저장소: " + (e.head ?? "없음")}),
     e.head != null && !p.readonly ? h("button", {class:"linkbtn", text:"저장소 값으로", onclick:() => setv(e.head)}) : null);
-  side.append(h("button", {class:"linkbtn", text:S.open.has(p.id) ? "설명 닫기" : "설명",
+  side.append(h("button", {class:"linkbtn", text:S.open.has(p.id) ? "파일 정보 닫기" : "파일 정보",
     onclick:() => { S.open.has(p.id) ? S.open.delete(p.id) : S.open.add(p.id); render(); }}));
   row.append(side);
+  // 늘 보이는 안내: 언제 바꾸나 · 무엇인가 · 권장 · 실배에서 볼 것 · 되돌릴 값 (카탈로그에 있는 것만)
+  if (c.change || c.hint || c.advice || c.when) {
+    const g = h("div", {class:"guide"});
+    const line1 = h("p", {}, c.change ? h("span", {class:"when " + c.change, text:CHANGE_ICON[c.change] + " " + CHANGE_KO[c.change]}) : null,
+      c.when || c.hint || "");
+    g.append(line1);
+    if (c.when && c.hint) g.append(h("p", {}, h("span", {class:"k", text:"무엇"}), c.hint));
+    if (c.advice) g.append(h("p", {class:"adv"}, h("span", {class:"k", text:"권장"}), c.advice));
+    if (c.check) g.append(h("p", {}, h("span", {class:"k", text:"확인"}), c.check));
+    if (c.revert) g.append(h("p", {}, h("span", {class:"k", text:"되돌리기"}), h("code", {text:c.revert})));
+    row.append(g);
+  }
   if (S.open.has(p.id)) {
     const m = h("div", {class:"more"});
-    if (c.hint) m.append(h("p", {text:c.hint}));
-    if (c.advice) m.append(h("p", {class:"adv", text:"권장: " + c.advice}));
     if (c.limits) m.append(h("p", {text:`허용 범위 ${c.limits[0]} ~ ${c.limits[1]} (밖이면 적용 거부)`}));
     if (p.readonly) m.append(h("p", {class:"adv", text:"🔒 " + p.readonly}));
     if (p.note) m.append(h("p", {text:"ℹ️ " + p.note}));
@@ -291,8 +319,15 @@ function paramRow(p) {
 // ------------------------------------------------------------ 탭
 function viewField() {
   const out = [];
+  const cnt = {};
+  for (const p of S.params) if (p.catalog?.change) cnt[p.catalog.change] = (cnt[p.catalog.change] || 0) + 1;
+  out.push(h("div", {class:"legend"}, h("span", {class:"hint", text:"언제 바꾸나:"}),
+    Object.keys(CHANGE_KO).filter(k => cnt[k]).map(k => h("button", {
+      class:"when " + k + (S.chg === k ? " sel" : S.chg ? " off" : ""),
+      text:`${CHANGE_ICON[k]} ${CHANGE_KO[k]} ${cnt[k]}`, title:"눌러서 이것만 보기 (다시 누르면 전부)",
+      onclick:() => { S.chg = S.chg === k ? null : k; render(); }}))));
   const byGroup = new Map();
-  for (const p of S.params) if (p.catalog) {
+  for (const p of S.params) if (p.catalog && (!S.chg || p.catalog.change === S.chg)) {
     const g = p.catalog.group;
     if (!byGroup.has(g)) byGroup.set(g, []);
     byGroup.get(g).push(p);

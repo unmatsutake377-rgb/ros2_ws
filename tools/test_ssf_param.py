@@ -233,6 +233,21 @@ def test_catalog_items_exist(boat):
             assert (pkg, key) in have_any, (pkg, key)
 
 
+def test_catalog_guide_fields():
+    """현장 조정 항목마다 '언제 바꾸나'(change·when) 가 있고, 되돌릴 값(숫자)은 허용 범위 안이다."""
+    kinds = {"daily", "measure", "water", "rarely", "fixed"}
+    for (pkg, key, _sec), it in core.catalog_index(core.load_catalog()).items():
+        assert it.get("change") in kinds, (pkg, key, it.get("change"))
+        assert isinstance(it.get("when"), str) and it["when"].strip(), (pkg, key)
+        rv, lim = it.get("revert"), it.get("limits")
+        if rv is not None and lim:
+            try:
+                x = float(str(rv))
+            except ValueError:
+                continue
+            assert lim[0] <= x <= lim[1], (key, rv, lim)
+
+
 def test_catalog_limits_contain_current_values(boat):
     data = boat.params()
     for p in data["params"]:
