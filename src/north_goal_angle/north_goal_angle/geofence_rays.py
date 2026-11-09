@@ -12,9 +12,91 @@ geopy·rclpy 없이 돌아가므로 Mac 에서도 테스트한다 (test/test_geo
         absolute = yaw − rel          ← 🚨 `-` 가 맞다. `+` 로 "고치면" 좌우가 거울이 된다.
     (2026-11-04 전까지 `yaw + rel` 이었고, 그래서 소비자 쪽에서 좌우가 뒤집혀 있었다.
      avoid_sim "실코드 + 경계" 가 36/40 에 그친(4 런 정체) 원인. test_geofence_rays.py 비대칭 케이스가 이걸 고정한다.)
+
+폴리곤 파라미터 검증 `sanitize_geofence_polygon` (계약서_지오펜스폴리곤타입_20261109 C1):
+  노드는 geofence_polygon 을 dynamic_typing 으로 선언한다(Humble 은 기본값 [] 을 BYTE_ARRAY 로 정해
+  소수 폴리곤을 넣으면 부팅 때 죽었다 — 11-09 S0 실측). 그래서 어떤 타입이든 노드까지 오고,
+  여기서 판정한다. 틀리면 ([], False, 이유) → 노드가 ERROR 1회 + geofence 꺼짐(노드는 계속).
 """
 
+import array
 import math
+
+from north_goal_angle.waypoint_loader import LAT_MAX, LAT_MIN, LON_MAX, LON_MIN
+
+# 폴리곤 최소 원소 수 = 3점 × (위도, 경도)
+GEOFENCE_MIN_VALUES = 6
+
+
+def _in_lat(v):
+    return LAT_MIN <= v <= LAT_MAX
+
+
+def _in_lon(v):
+    return LON_MIN <= v <= LON_MAX
+
+
+def sanitize_geofence_polygon(raw):
+    """geofence_polygon 파라미터 값 → (새 float 목록, ok, 이유).
+
+    · None(yaml `[]` = NOT_SET) · 길이 0 → ([], True, '')   폴리곤 미설정, 꺼짐(ERROR 없음)
+    · 정상 [위도1, 경도1, 위도2, 경도2, ...] (3점 이상, 원소마다 소수)
+                                         → (새 float 목록, True, '')
+    · 그 밖 → ([], False, 이유)  이유에 원소 위치(0부터)를 담는다. 거부 조건:
+        값 전체가 문자열·bytes, 숫자 하나, 목록이 아님 /
+        원소가 bool·str·bytes·None·정수(결정 2 — `35` 는 1° 격자 약 100 km 폴리곤이 된다)·NaN·inf /
+        홀수 개 / 비어 있지 않은데 6개(3점) 미만(결정 3) /
+        위도 LAT_MIN~LAT_MAX · 경도 LON_MIN~LON_MAX 밖(위경도 뒤바뀜 포함, waypoint_loader 와 같은 범위)
+    list·tuple·array.array 를 받는다(Humble 실측은 list).
+    """
+    if raw is None:
+        return [], True, ''
+    if isinstance(raw, (str, bytes, bytearray)):
+        return [], False, (f"값 전체가 문자열이다({raw!r}) — "
+                           f"[위도, 경도, ...] 소수 목록으로 적어라")
+    if isinstance(raw, (bool, int, float)):
+        return [], False, (f"값이 숫자 하나다({raw!r}) — "
+                           f"[위도1, 경도1, 위도2, 경도2, ...] 목록이어야 한다")
+    if not isinstance(raw, (list, tuple, array.array)):
+        return [], False, f"목록이 아니다({type(raw).__name__})"
+    if len(raw) == 0:
+        return [], True, ''
+
+    out = []
+    for i, v in enumerate(raw):
+        where = f"원소 {i}({v!r})"
+        if isinstance(v, bool):
+            return [], False, f"{where} 가 참/거짓이다 — 소수 좌표여야 한다"
+        if v is None or isinstance(v, (str, bytes, bytearray)):
+            return [], False, f"{where} 가 숫자가 아니다 — 소수 좌표여야 한다"
+        if isinstance(v, int):
+            return [], False, (f"{where} 가 정수다 — 원소마다 소수로 적어라"
+                               f"(예 35 → 35.0, 좌표는 소수 넷째 자리 이상)")
+        if not isinstance(v, float):
+            return [], False, f"{where} 가 숫자가 아니다({type(v).__name__})"
+        if not math.isfinite(v):
+            return [], False, f"{where} 가 NaN/inf 다"
+        out.append(float(v))
+
+    n = len(out)
+    if n % 2 != 0:
+        return [], False, (f"원소 {n}개 — 홀수다. [위도, 경도] 짝이 안 맞는다"
+                           f"(마지막 원소 {n - 1} 확인)")
+    if n < GEOFENCE_MIN_VALUES:
+        return [], False, (f"원소 {n}개({n // 2}점) — 폴리곤은 최소 3점"
+                           f"({GEOFENCE_MIN_VALUES}개)이어야 한다")
+
+    for k in range(0, n, 2):
+        lat, lon = out[k], out[k + 1]
+        where = f"{k // 2}번째 점(원소 {k}·{k + 1}) [{lat!r}, {lon!r}]"
+        if not (_in_lat(lat) and _in_lon(lon)):
+            if _in_lat(lon) and _in_lon(lat):
+                return [], False, f"{where}: 위도·경도 순서가 뒤바뀌었다 — [위도, 경도] 순서로 적어라"
+            if not _in_lat(lat):
+                return [], False, (f"{where}: 위도 {lat!r} 가 범위({LAT_MIN}~{LAT_MAX}) 밖이다"
+                                   f"(오타·위경도 뒤바뀜 확인)")
+            return [], False, f"{where}: 경도 {lon!r} 가 범위({LON_MIN}~{LON_MAX}) 밖이다"
+    return out, True, ''
 
 
 def _ray_polygon_dist(o, d, pts):

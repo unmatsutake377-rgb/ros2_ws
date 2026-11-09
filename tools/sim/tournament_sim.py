@@ -93,9 +93,9 @@ STOP_HOLD = 50000.0
 _orig_declare = rosstub.Node.declare_parameter
 
 
-def _declare_recording(self, name, default=None):
+def _declare_recording(self, name, default=None, descriptor=None, ignore_override=False):
     self.__dict__.setdefault("_declared", set()).add(name)
-    return _orig_declare(self, name, default)
+    return _orig_declare(self, name, default, descriptor, ignore_override)
 
 
 rosstub.Node.declare_parameter = _declare_recording

@@ -1,7 +1,7 @@
 """rclpy 스텁 — 실제 노드 파일을 ROS 없이 import 해 콜백·타이머를 손으로 돌리기 위한 것.
 
   from rosstub import install, Clock, load_params, load_node
-  install()                                  # sys.modules 에 rclpy/std_msgs/sensor_msgs 스텁 등록
+  install()                                  # sys.modules 에 rclpy/std_msgs/sensor_msgs/rcl_interfaces 스텁 등록
   P = load_params('src/x/config/x.yaml', '/x')
   mod = load_node('src/x/x/x.py', 'x_real', extra_path='src/x')   # time.monotonic 을 Clock 으로 바꿔 준다
   node = mod.SomeNode(params=P)  ← Node 스텁은 생성 직후 declare_parameter 에 PARAMS[name] 을 준다
@@ -61,7 +61,9 @@ class Node:
         self._logger = Logger()
         self.pubs = {}
 
-    def declare_parameter(self, name, default=None):
+    def declare_parameter(self, name, default=None, descriptor=None, ignore_override=False):
+        # descriptor(ParameterDescriptor)·ignore_override 는 rclpy 시그니처만 맞춘다 — 스텁은 타입 검사를
+        # 안 하므로 받아서 버린다(계약서_지오펜스폴리곤타입_20261109 C0).
         return Param(self._params.get(name, default))
 
     def create_publisher(self, typ, topic, qos):
@@ -85,6 +87,13 @@ class Node:
         pass
 
 
+class ParameterDescriptor:
+    """rcl_interfaces.msg.ParameterDescriptor 스텁 — 키워드 인자를 속성으로 담기만 한다."""
+
+    def __init__(self, **kw):
+        self.__dict__.update(kw)
+
+
 class Msg:
     def __init__(self, data=None):
         self.data = [] if data is None else data
@@ -105,8 +114,11 @@ def install():
     for n in ("Float32", "Float64", "Int32", "Bool", "Float32MultiArray", "String", "Int32MultiArray", "Float64MultiArray"):
         setattr(stdm, n, type(n, (Msg,), {}))
     sen = types.ModuleType("sensor_msgs"); senm = types.ModuleType("sensor_msgs.msg"); senm.LaserScan = type("LaserScan", (), {})
+    rcli = types.ModuleType("rcl_interfaces"); rclim = types.ModuleType("rcl_interfaces.msg")
+    rclim.ParameterDescriptor = ParameterDescriptor; rcli.msg = rclim
     for k, v in {"rclpy": rclpy, "rclpy.node": node, "rclpy.executors": ex, "rclpy.qos": qos,
-                 "std_msgs": std, "std_msgs.msg": stdm, "sensor_msgs": sen, "sensor_msgs.msg": senm}.items():
+                 "std_msgs": std, "std_msgs.msg": stdm, "sensor_msgs": sen, "sensor_msgs.msg": senm,
+                 "rcl_interfaces": rcli, "rcl_interfaces.msg": rclim}.items():
         sys.modules[k] = v
 
 

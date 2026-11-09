@@ -49,7 +49,16 @@
   · tournament 는 웨이포인트가 **전부 mode 8** 이어야 한다(waypoint_loader.validate_course).
     main 은 VALID_MODES 전부(WP10 mode 8 그대로).
   · 코스별 값은 launch 가 config/north_goal_angle_{course}.yaml 을 공통 yaml 뒤에 얹어 준다
-    (지금은 geofence_polygon 자리). tournament 인데 폴리곤이 비면 시작 WARN 1회.
+    (지금은 geofence_polygon 자리). tournament 인데 폴리곤이 비었거나 거부되면 시작 WARN 1회.
+  · tournament 인데 웨이포인트 파일이 패키지 템플릿(share 의 config/waypoints_tournament.yaml,
+    realpath 비교)이면 시작 WARN 1회 — 거부하지 않는다(계약서_지오펜스폴리곤타입_20261109 결정 4).
+
+geofence_polygon (계약서_지오펜스폴리곤타입_20261109):
+  · dynamic_typing 으로 선언한다. 🚨 정적 타입이면 Humble 이 기본값 [] 을 BYTE_ARRAY 로 정해,
+    소수 폴리곤(DOUBLE_ARRAY)을 넣으면 InvalidParameterTypeException 으로 부팅 때 죽었다(11-09 S0 실측).
+  · 받은 값은 geofence_rays.sanitize_geofence_polygon 이 판정한다. 비었거나 yaml `[]`(NOT_SET → None)
+    → 조용히 꺼짐. 틀린 값(홀수·3점 미만·정수·문자열·NaN·범위 밖·위경도 뒤바뀜 등) → ERROR 1회 + 꺼짐,
+    노드는 계속(웨이포인트 FSM 은 돈다). 원소마다 소수, [위도, 경도] 순서.
   · 🚨 토너먼트 동작을 wp_mode 8 로 켜지 않는다 — main 에도 mode 8 이 있다. 코스 yaml 값으로만.
   · 코스 끝(wp_idx ≥ len): 두 코스 모두 마지막 WP 가 north 담당(5·8)이면 /candidate_angle
     50000(STOP_HOLD)을 계속 낸다(§9-2 — 결승 뒤 즉시 정지). 코스 끝 INFO 1회. wp_advance 참고.
@@ -64,6 +73,7 @@ import yaml
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import ReliabilityPolicy, QoSProfile
+from rcl_interfaces.msg import ParameterDescriptor
 from std_msgs.msg import Float32, Float32MultiArray, Int32, Float64
 from sensor_msgs.msg import NavSatFix
 from geopy import distance
@@ -77,7 +87,7 @@ from north_goal_angle.gps_guard import (
 from north_goal_angle import los_logic          # LOS 유도 (순수, 테스트됨)
 # geofence 광선은 순수 모듈로 분리 (계약서_geofence부호_20261104). 기존 이름은 호환용 재수출.
 from north_goal_angle.geofence_rays import (  # noqa: F401
-    cast_rays, _ray_polygon_dist, _point_in_polygon)
+    cast_rays, _ray_polygon_dist, _point_in_polygon, sanitize_geofence_polygon)
 from north_goal_angle.gps_filter import GPSFilter  # 공분산·점프·스무딩 (순수, 테스트됨)
 from north_goal_angle.wp_timeout import (            # WP 타임아웃 표 (순수, 테스트됨)
     DEFAULT_WP_TIMEOUT_MODES, DEFAULT_WP_TIMEOUT_SEC, WpTimeoutError,
@@ -143,6 +153,12 @@ class NorthGoalAngle(Node):
         self.waypoints_file = str(
             self.declare_parameter('waypoints_file', default_wp).value)
         self.waypoints = self._load_waypoints(self.waypoints_file)
+        # tournament 인데 패키지 템플릿 파일 그대로면 WARN 1회(거부 안 함) — 현장 녹화 파일로 바꿨는지.
+        template_wp = os.path.join(
+            get_package_share_directory('north_goal_angle'), 'config', 'waypoints_tournament.yaml')
+        if self.course == 'tournament' and \
+                os.path.realpath(self.waypoints_file) == os.path.realpath(template_wp):
+            self._log_tournament_template_waypoints(template_wp)
 
         # ---- 파라미터 (config/north_goal_angle.yaml, CLAUDE.md 1-4) ----
         self.period_sec = float(self.declare_parameter('period_sec', 0.5).value)
@@ -162,11 +178,18 @@ class NorthGoalAngle(Node):
         # 🚀 자율 시작 게이트: True 면 RC 모드가 AUTO(/boat_mode==2) 여야 미션이 전진한다.
         #    기본 True = 안전(수동 이동 중 미션 스킵 방지). 벤치(아두이노 없음)는 false 로.
         self.require_auto = bool(self.declare_parameter('require_boat_mode_auto', True).value)
-        # 경기장 폴리곤: [lat1, lon1, lat2, lon2, ...] 평탄 배열.
+        # 경기장 폴리곤: [lat1, lon1, lat2, lon2, ...] 평탄 배열(원소마다 소수, [위도, 경도] 순서).
         # ⚠️ 실측 필요 — 대회장 경계 좌표를 아직 모른다. 비어 있으면 geofence 는 꺼진다.
         # 코스별 값은 config/north_goal_angle_{course}.yaml(launch 가 공통 yaml 뒤에 얹는다).
-        self.geofence_polygon = list(
-            self.declare_parameter('geofence_polygon', []).value or [])
+        # 🚨 dynamic_typing — 정적 타입이면 기본값 [] 이 BYTE_ARRAY 로 잡혀 소수 폴리곤에서 부팅 사망
+        #    (11-09 S0 실측). 값 판정은 sanitize_geofence_polygon: 틀리면 ERROR 1회 + 꺼짐.
+        raw_polygon = self.declare_parameter(
+            'geofence_polygon', [], ParameterDescriptor(dynamic_typing=True)).value
+        self.geofence_polygon, self.geofence_polygon_ok, polygon_reason = \
+            sanitize_geofence_polygon(raw_polygon)
+        if not self.geofence_polygon_ok:
+            self._log_geofence_invalid(polygon_reason)
+        # tournament 경고는 검증 뒤 실효 길이로(거부된 폴리곤도 '없음').
         if self.course == 'tournament' and len(self.geofence_polygon) < 6:
             self._log_tournament_no_geofence()
         # 경계를 '가짜 LiDAR'로 쏜다 — 스캔과 같은 각도 격자(상대방위, **좌 양수**:
@@ -282,8 +305,12 @@ class NorthGoalAngle(Node):
 
         self.create_timer(self.period_sec, self.timer_cb)
 
-        gf = "OFF(폴리곤 미설정 — ⚠️ 실측 필요)" if len(self.geofence_polygon) < 6 else \
-             f"ON({len(self.geofence_polygon) // 2}점)"
+        if len(self.geofence_polygon) >= 6:
+            gf = f"ON({len(self.geofence_polygon) // 2}점)"
+        elif self.geofence_polygon_ok:
+            gf = "OFF(폴리곤 미설정 — ⚠️ 실측 필요)"
+        else:
+            gf = "OFF(폴리곤 오류 — 위 ERROR)"
         self.get_logger().info(
             f"north_goal_angle 시작(코스 {self.course}): 폴백은 mode {FALLBACK_MODES} 에만 발행"
             f"(mode 7 폴백 제거 — ship_dock 과 충돌했다). geofence {gf}. "
@@ -338,9 +365,19 @@ class NorthGoalAngle(Node):
             self.get_logger().error(f"🚨 코스 파라미터 오류 → {e}")
             raise
 
+    def _log_geofence_invalid(self, reason):
+        self.get_logger().error(
+            f"🚨 geofence_polygon 오류 → {reason}. geofence 꺼짐(경계 방어 없음, /geofence_state 빈 배열). "
+            f"[위도1, 경도1, 위도2, 경도2, ...] 원소마다 소수(.0)로 적고 launch 재시작.")
+
+    def _log_tournament_template_waypoints(self, template):
+        self.get_logger().warn(
+            f"⚠️ course=tournament 인데 웨이포인트 파일이 패키지 템플릿 그대로다({template}). "
+            f"현장 좌표로 녹화한 파일인지 확인하라(waypoints_file:=...). 값은 그대로 쓴다.")
+
     def _log_tournament_no_geofence(self):
         self.get_logger().warn(
-            "⚠️ course=tournament 인데 geofence_polygon 이 비어 있다(3점 미만) → 경계 방어 꺼짐. "
+            "⚠️ course=tournament 인데 geofence_polygon 이 비었거나 오류로 거부됐다 → 경계 방어 꺼짐. "
             "현장 2경기장 좌표를 north_goal_angle_tournament.yaml 에 넣고 launch 재시작"
             "(결승선 너머까지 포함 — ship_direction 하드 정지 2 m).")
 
