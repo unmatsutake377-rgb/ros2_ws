@@ -8,6 +8,7 @@
 | `fastworld.py` | 부표 월드 + 가짜 LiDAR 스캔 |
 | `kaboat_full_course_sim.py` | 2025 규정 코스 70×20m 전 구간 (`python3 kaboat_full_course_sim.py`) |
 | `sweep_s1.py` | half_width × clearance 스윕 (`python3 tools/sim/sweep_s1.py --seeds 20`) |
+| `tournament_sim.py` | 토너먼트 1:1 — 실제 노드 4개(north·ship_goal·ship_direction·motor_control) + 대본 상대 배(none·side_by_side·slow_ahead·fast_behind·cut_in). `--param`, `--fence-inset`(지오펜스 좌우 안쪽, 이탈은 실제 경기장 기준). 결과: 계약서_토너먼트분리_20261109 §11 |
 
 ## 노드와 다른 점 (알고 쓸 것)
 - 시간 투표 [G], geofence 병합 [H] 없음. 물보라 오탐이 없는 월드라 회피 결과엔 영향 적음.
@@ -21,6 +22,7 @@
 `side_hysteresis_deg`·`cross_penalty_deg`(11-06, (C) 편 유지·가로지름 벌점, 발견 8)는 `ssf_sim.py`·`tools/gap_selection_figure.py` 의 (C) 사본에 **미반영**(옛 규칙 그대로, 계약서_회피편선택_20261106 결정 4).
 `side_escape_deg`(11-06, (C) 후보 0 개 + 옆 장애물 → 후진 대신 비킴, 발견 9)도 `ssf_sim.py` 사본에
 **미반영**(옛 규칙 = 무조건 후진, 계약서_옆비킴_현장조정_20261106 결정 ⑥).
+`side_lock_*`(11-09, 토너먼트 옆 잠금, 기본 끔)는 `ssf_sim.py` 사본에 **갭 경로만** 반영(DWA·탈출 경로 없음). 실노드 시뮬(`tournament_sim.py`·`full_course_sim.py --param ship_direction.side_lock_enabled=true`)은 전부 반영.
 회피 성능 기준은 `full_course_sim.py`(실제 노드 코드 `SD.ShipDirection()` 사용 — `avoid_sim`·`gate_sim`·`l1_dropout_sim`·`mission_figs` 도 실노드라 자동 반영). `sweep_s1`·`kaboat`·`avoid_figure` 결과는 옛 규칙 수치다.
 `full_course_sim.py --param 노드.키=값`(반복 가능)으로 노드 파라미터를 덮어써 끈 기능을 켜 볼 수 있다. 예: `--param ship_direction.side_escape_deg=60.0`, `--param ship_direction.dwa_enabled=true`. 결과 요약에 '직사각형 선체 접촉(선미 포함)' 줄이 함께 나온다(기존 접촉 수치는 중심 원 기준 그대로).
 
