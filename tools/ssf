@@ -1,0 +1,93 @@
+#!/usr/bin/env bash
+# ssf — MacBook 에서 배 노트북 파라미터를 보고 고친다 (SSH 로 배 노트북의 tools/ssf_param_core.py · ssf_param_app.py 를 부름)
+#
+#   ssf app a            1번배 파라미터 앱 (SSH 터널 + 서버 + 브라우저). 끄기 Ctrl+C
+#   ssf app b            2번배 (포트 8766)
+#   ssf app both         두 배 동시에 (탭 두 개)
+#   ssf a init           이 별명(boat-a)이 붙는 노트북을 1번배로 등록 (처음 한 번)
+#   ssf a get hold       이름 일부로 값 보기
+#   ssf a set hold_dist_m 3.5 [--course main|tournament] [--node ship_back]
+#   ssf a undo hold_dist_m
+#   ssf a diff           저장소와 다른 값
+#   ssf a log            바꾼 기록
+#   ssf both set side_lock_enabled false --course tournament      두 배에 같이
+#
+# 설치(MacBook, 한 번):  저장소가 있으면  echo 'alias ssf=~/ros2_ws/tools/ssf' >> ~/.zshrc
+#                        없으면          scp boat-a:ros2_ws/tools/ssf ~/ssf && chmod +x ~/ssf && echo 'alias ssf=~/ssf' >> ~/.zshrc
+# 바꿀 수 있는 환경변수: SSF_HOST_A(기본 boat-a) SSF_HOST_B(boat-b) SSF_REMOTE_REPO(~/ros2_ws)
+#                        SSF_SSH(기본 ssh — 연습용 가짜 배는 tools/ssf_practice.sh 가 알려 줌)
+#                        SSF_NO_OPEN=1 (브라우저 자동으로 안 열기)
+set -u
+SSH=${SSF_SSH:-ssh}
+REMOTE_REPO=${SSF_REMOTE_REPO:-'~/ros2_ws'}
+
+host_of() { case "$1" in A) echo "${SSF_HOST_A:-boat-a}";; B) echo "${SSF_HOST_B:-boat-b}";; esac; }
+port_of() { case "$1" in A) echo 8765;; B) echo 8766;; esac; }
+boats_of() {
+  case "$(echo "$1" | tr '[:lower:]' '[:upper:]')" in
+    A|1) echo A;; B|2) echo B;; BOTH|AB|ALL) echo "A B";; *) return 1;;
+  esac
+}
+usage() { sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
+
+quote_args() { local out="" a; for a in "$@"; do out+=" $(printf '%q' "$a")"; done; echo "$out"; }
+
+run_cli() {   # boat, args...
+  local b=$1; shift
+  local h; h=$(host_of "$b")
+  echo "━━ $( [ "$b" = A ] && echo 1번배 || echo 2번배 ) ($h)"
+  # shellcheck disable=SC2029  — 원격에서 펼치는 게 맞다
+  $SSH "$h" "cd $REMOTE_REPO && python3 tools/ssf_param_core.py --boat $b$(quote_args "$@")"
+}
+
+open_url() {
+  [ "${SSF_NO_OPEN:-0}" = 1 ] && return
+  if command -v open >/dev/null; then open "$1"; elif command -v xdg-open >/dev/null; then xdg-open "$1" >/dev/null 2>&1; fi
+}
+
+run_app() {   # boats...
+  local pids=() b h p
+  for b in "$@"; do
+    h=$(host_of "$b"); p=$(port_of "$b")
+    echo "━━ $( [ "$b" = A ] && echo 1번배 || echo 2번배 ) 앱: $h → http://localhost:$p"
+    # -L 로컬 포트 → 배 노트북 127.0.0.1 포트. -n: 키보드 입력 안 받음(두 배 동시 실행).
+    # BatchMode: 비밀번호를 물으면 멈추지 말고 실패 → 키 등록(맥북_원격조작_설명서 1-3).
+    # --exit-with-parent: SSH 가 끊기면 배 노트북 서버도 끝난다.
+    $SSH -n -o BatchMode=yes -o ExitOnForwardFailure=yes -L "$p:127.0.0.1:$p" "$h" \
+      "cd $REMOTE_REPO && exec python3 tools/ssf_param_app.py --boat $b --port $p --exit-with-parent" &
+    pids+=($!)
+  done
+  trap 'kill "${pids[@]}" 2>/dev/null; exit 0' INT TERM
+  for b in "$@"; do
+    p=$(port_of "$b")
+    ok=0
+    for _ in $(seq 1 60); do
+      if curl -s -o /dev/null "http://localhost:$p/api/ping"; then ok=1; break; fi
+      sleep 0.25
+    done
+    if [ $ok = 1 ]; then open_url "http://localhost:$p"
+    else echo "⚠️ $(host_of "$b") 앱이 15 초 안에 안 떴다 — 위 SSH 오류 확인(ssh $(host_of "$b") 이 비밀번호 없이 되는지, git pull 했는지)"; fi
+  done
+  echo "끄기: Ctrl+C"
+  wait
+}
+
+[ $# -ge 1 ] || usage
+if [ "$1" = app ]; then
+  boats=$(boats_of "${2:-a}") || usage
+  # shellcheck disable=SC2086
+  run_app $boats
+  exit
+fi
+boats=$(boats_of "$1") || usage
+shift
+[ $# -ge 1 ] || usage
+if [ "$1" = app ]; then
+  # shellcheck disable=SC2086
+  run_app $boats; exit
+fi
+rc=0
+for b in $boats; do
+  if [ "$1" = init ]; then run_cli "$b" init "$b" || rc=1; else run_cli "$b" "$@" || rc=1; fi
+done
+exit $rc
