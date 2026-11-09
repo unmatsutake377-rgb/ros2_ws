@@ -784,6 +784,23 @@ class Repo:
             raise ParamError(str(e))
         return {"boat": b, "out": out, "template": template, "backup": wpm.backup(out, self.home)}
 
+    def wp_rec(self, action, **kw):
+        """앱에서 녹화: status / start(course, lane) / send(kind, arg) / kill. 배 확인 뒤에만."""
+        import ssf_waypoints as wpm
+        b = self.boat() if action != "status" else self.view_boat()
+        try:
+            if action == "status":
+                return wpm.rec_status(b)
+            if action == "start":
+                return wpm.rec_start(self.repo, b, kw.get("course") or "main", kw.get("lane") or None, self.home)
+            if action == "send":
+                return wpm.rec_send(b, kw.get("kind"), kw.get("arg"))
+            if action == "kill":
+                return wpm.rec_kill(b)
+        except (RuntimeError, ValueError) as e:
+            raise ParamError(str(e))
+        raise ParamError(f"모르는 동작 {action!r}")
+
     def state(self):
         mk = self.marker()
         err = None

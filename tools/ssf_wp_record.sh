@@ -12,6 +12,8 @@ boat=${1:?A 또는 B}
 course=${2:?main 또는 tournament}
 lane=${3:-}
 cd "$(dirname "$0")/.." || exit 1
+# tmux 안이면 마우스 모드: 트랙패드 스크롤이 화살표 키로 입력 줄에 들어가지 않고 화면을 올려 본다(빠져나오기 q)
+[ -n "${TMUX:-}" ] && tmux set-option mouse on >/dev/null 2>&1
 PAUSED=0
 pause() { PAUSED=1; echo; read -rp "엔터를 누르면 이 창을 닫는다 " _; }
 # 어디서 끝나든 창이 말없이 닫히지 않게(tmux 창이 닫히면 SSH 도 바로 끊겨 오류를 못 본다)

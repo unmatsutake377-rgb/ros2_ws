@@ -376,16 +376,89 @@ function copyBtn(text) {
 function cmdLine(label, text) {
   return h("p", {}, h("span", {class:"k", text:label}), h("code", {text}), " ", copyBtn(text));
 }
+// ---- 앱에서 녹화: tmux 안의 녹화 도구 화면을 보여 주고 키를 대신 눌러 준다(입력 칸이 안 지워지게 이 부분만 따로 갱신)
+const PROMPT_KO = {main:"명령을 기다리는 중", mode:"mode(미션번호)를 묻는 중", dwell:"dwell(머무는 초)을 묻는 중",
+  name:"구역 이름을 묻는 중", closing:"끝 — 검사 결과를 보고 창 닫기", busy:"녹화 도구가 일하는 중…", empty:"시작하는 중…"};
+const R = {el:null, st:null, busy:false};
+async function recCall(path, body) {
+  if (R.busy) return; R.busy = true;
+  try {
+    const r = await api(path, body);
+    R.msg = r.ok === false ? "❌ " + r.error : (r.sent ? "보냄: " + r.sent : "");
+  } catch (e) { R.msg = "❌ " + e; }
+  R.busy = false;
+  await recPoll();
+}
+const recSend = (kind, arg) => recCall("/api/wp/rec/send", {kind, arg});
+function recPanel() {
+  if (R.el) return R.el;
+  const course = h("select", {}, h("option", {value:"tournament", text:"토너먼트"}), h("option", {value:"main", text:"종합임무"}));
+  const lane = h("input", {type:"text", class:"mono", placeholder:"레인 (예: 1)", style:"max-width:120px"});
+  course.onchange = () => { lane.disabled = course.value === "main"; };
+  const answer = h("input", {type:"text", class:"mono", placeholder:"답 입력", style:"max-width:200px",
+    onkeydown:e => { if (e.key === "Enter") { recSend("answer", answer.value); answer.value = ""; } }});
+  const idx = h("input", {type:"text", class:"mono num", placeholder:"번호", inputmode:"numeric", style:"max-width:70px"});
+  const btn = (text, cls, fn) => h("button", {class:"btn " + (cls || ""), text, onclick:fn});
+  R.parts = {
+    status: h("div", {class:"label"}),
+    start: h("div", {class:"tools", style:"margin:8px 0 0"}, course, lane,
+      btn("녹화 시작", "primary", () => recCall("/api/wp/rec/start", {course:course.value, lane:course.value === "main" ? null : lane.value.trim()})),
+      h("span", {class:"hint", text:"배를 띄우고 RTK FIXED 확인 뒤"})),
+    screen: h("pre", {class:"out", style:"max-height:340px;min-height:120px;white-space:pre-wrap"}),
+    ask: h("div", {class:"banner warn", style:"margin:8px 0"}),
+    main: h("div", {class:"tools"},
+      btn("📍 지금 위치 찍기", "go", () => recSend("capture")),
+      btn("목록", "", () => recSend("list")), idx,
+      btn("번호 삭제", "", () => { if (confirm(idx.value + "번 웨이포인트를 지울까요?")) recSend("delete", idx.value.trim()); }),
+      btn("번호 다시 찍기", "", () => { if (confirm(idx.value + "번을 지금 위치로 다시 찍을까요? (mode·dwell 유지)")) recSend("recapture", idx.value.trim()); }),
+      btn("💾 저장·종료 (q)", "primary", () => { if (confirm("녹화를 끝내고 저장할까요?")) recSend("save"); })),
+    answer: h("div", {class:"tools"}, answer,
+      btn("보내기", "primary", () => { recSend("answer", answer.value); answer.value = ""; }),
+      btn("⏎ 기본값 그대로", "", () => recSend("accept"))),
+    close: h("div", {class:"tools"}, btn("창 닫기 ⏎", "primary", async () => { await recSend("close"); loadWp(); })),
+    kill: h("div", {class:"right", style:"margin-top:4px"},
+      btn("강제 종료 (저장 안 함)", "", () => { if (confirm("녹화 도구를 끕니다. 아직 저장(q) 안 한 점은 버려집니다. 끌까요?")) recCall("/api/wp/rec/kill", {}); })),
+    msg: h("div", {class:"small"}),
+  };
+  R.answerInput = answer;
+  R.el = h("div", {class:"card", style:"padding:12px 14px;margin-bottom:12px"}, R.parts.status, R.parts.start, R.parts.ask,
+    R.parts.screen, R.parts.main, R.parts.answer, R.parts.close, R.parts.msg, R.parts.kill);
+  return R.el;
+}
+function recUpdate() {
+  const st = R.st, P = R.parts; if (!P) return;
+  const run = !!st?.running, pr = st?.prompt;
+  P.status.textContent = st?.error ? "❌ " + st.error : run ? `🔴 녹화 중 — tmux ${st.session}` : "📍 앱에서 웨이포인트 찍기";
+  P.start.hidden = run; P.screen.hidden = !run; P.kill.hidden = !run;
+  P.ask.hidden = !run; P.ask.textContent = run ? "지금: " + (PROMPT_KO[pr] || pr) +
+    (pr === "mode" ? " — 숫자 입력, 템플릿 값이면 '기본값 그대로'" : pr === "dwell" ? " — 초(예 0.5), 템플릿 값이면 '기본값 그대로'" :
+     pr === "name" ? " — 이름 입력, 비우면 템플릿 이름" : pr === "main" ? " — 지점에 배를 대고 몇 초 머문 뒤 '지금 위치 찍기'" : "") : "";
+  P.main.hidden = !(run && pr === "main"); P.answer.hidden = !(run && ["mode", "dwell", "name"].includes(pr));
+  P.close.hidden = !(run && pr === "closing");
+  for (const b of R.el.querySelectorAll("button")) b.disabled = R.busy;
+  const atBottom = P.screen.scrollTop + P.screen.clientHeight >= P.screen.scrollHeight - 20;
+  if (P.screen.textContent !== (st?.screen || "")) { P.screen.textContent = st?.screen || ""; if (atBottom) P.screen.scrollTop = P.screen.scrollHeight; }
+  P.msg.textContent = R.msg || "";
+  if (run && ["mode", "dwell", "name"].includes(pr) && document.activeElement !== R.answerInput) R.answerInput.focus();
+}
+async function recPoll() {
+  try { const r = await api("/api/wp/rec"); R.st = r.ok === false ? {error:r.error} : r; }
+  catch (e) { R.st = {error:String(e)}; }
+  recUpdate();
+}
+setInterval(() => { if (S.tab === "wp" && !document.hidden) recPoll(); }, 1000);
+
 function viewWp() {
   const b = (S.wpBoat || S.state?.boat || "A").toLowerCase();
-  const out = [h("div", {class:"card", style:"padding:12px 14px"},
-    h("div", {class:"label", text:"웨이포인트 찍기 — Mac 터미널에서"}),
+  const out = [recPanel(), h("div", {class:"card", style:"padding:12px 14px"},
+    h("div", {class:"label", text:"웨이포인트 찍기 — 방법·주의 (터미널로 할 때: 아래 명령)"}),
     h("div", {class:"guide", style:"margin-top:6px"},
       cmdLine("종합임무", `ssf ${b} wp main`),
       cmdLine("토너먼트", `ssf ${b} wp tournament 1`),
       h("p", {}, h("span", {class:"k", text:"방법"}),
-        "배 노트북 tmux 안에서 녹화 도구가 뜬다. 조종기로 지점에 대고 몇 초 머문 뒤 Enter → mode → dwell → 이름, q 로 저장. ",
-        "SSH 가 끊기면 같은 명령을 다시 치면 이어 붙는다. 기존 녹화본은 덮기 전에 ~/ssf_logs/waypoint_backup/ 에 복사된다."),
+        "위 '녹화 시작' 또는 터미널 명령 — 둘 다 배 노트북의 같은 tmux 녹화 도구라 어느 쪽에서든 이어서 할 수 있다. ",
+        "조종기로 지점에 대고 몇 초 머문 뒤 찍기 → mode → dwell → 이름, 다 찍으면 저장(q). ",
+        "브라우저를 닫거나 SSH 가 끊겨도 녹화는 계속된다. 기존 녹화본은 덮기 전에 ~/ssf_logs/waypoint_backup/ 에 복사된다."),
       h("p", {class:"adv"}, h("span", {class:"k", text:"먼저"}),
         "RTK FIXED 확인(ros2 topic echo /ublox_gps_node/navpvt --once → carrSoln 2). 단독 GPS 로 찍으면 쓸 수 없다."),
       h("p", {class:"adv"}, h("span", {class:"k", text:"종합임무"}),
@@ -580,7 +653,7 @@ async function refresh() {
 
 $("#course").addEventListener("click", e => { const c = e.target.dataset?.c; if (c) { S.course = c; render(); } });
 $("#tabs").addEventListener("click", e => { const t = e.target.closest("button")?.dataset.t;
-  if (t) { S.tab = t; render(); if (t === "wp") loadWp(); } });
+  if (t) { S.tab = t; render(); if (t === "wp") { loadWp(); recPoll(); } } });
 $("#discard").addEventListener("click", () => { S.pending.clear(); render(); });
 $("#review").addEventListener("click", review);
 $("#modal").addEventListener("click", e => { if (e.target.id === "modal") { $("#modal").hidden = true; render(); } });

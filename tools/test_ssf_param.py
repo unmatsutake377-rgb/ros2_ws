@@ -414,3 +414,144 @@ def test_server_waypoints_readonly(server):
     assert st == 200 and d["ok"] and d["files"][0]["name"] == "waypoints_tournament_A_1.yaml"
     st, _ = _req(port, "/api/waypoints", {"x": 1}, {"X-SSF": "1"})
     assert st == 404
+
+
+# ---------------------------------------------------------------- 앱에서 녹화 (tmux) — tmux 있는 컴퓨터에서만
+
+import shutil as _sh  # noqa: E402
+import time as _time  # noqa: E402
+
+FAKE_RECORDER = r'''#!/usr/bin/env python3
+# 가짜 waypoint_recorder — 진짜와 같은 프롬프트 문구로 묻고, q 면 out 에 저장
+import sys
+out = sys.argv[sys.argv.index("waypoint_recorder") + 1]
+pts = []
+while True:
+    cmd = input("[Enter=추가 / l=목록 / d N=삭제 / r N=재캡처 / q=종료] > ").strip()
+    if cmd == "q":
+        break
+    if cmd == "l":
+        for i, p in enumerate(pts):
+            print(f"  [{i}] {p}")
+        continue
+    if cmd.startswith("d "):
+        pts.pop(int(cmd[2:])); print("  삭제"); continue
+    if cmd == "":
+        print("  표본 20개 평균 → lat 35.1862000, lon 128.5655000 (최대 공분산 0.01)")
+        m = input("  mode(미션번호)? [엔터=8] ").strip() or "8"
+        d = input("  dwell(머무는 초)? [엔터=0.5] ").strip() or "0.5"
+        n = input("  구역 이름(엔터=T0)? ").strip() or "T0"
+        pts.append((35.1862 + 0.0001 * len(pts), 128.5655, int(m), float(d), n))
+        print(f"  ✔ WP{len(pts) - 1} 추가됨 (총 {len(pts)}개)")
+        continue
+    print("  알 수 없는 명령")
+if pts:
+    import os
+    os.makedirs(os.path.dirname(out), exist_ok=True)   # 진짜 녹화 도구도 ~/ssf_logs 를 만든다
+    with open(out, "w", encoding="utf-8") as f:
+        f.write("waypoints:\n")
+        for la, lo, m, d, n in pts:
+            f.write(f'  - {{구역: "{n}", lat: {la:.7f}, lon: {lo:.7f}, mode: {m}, dwell: {d}}}\n')
+    print(f"💾 {len(pts)}개 저장 완료")
+'''
+
+
+@pytest.fixture
+def recboat(boat, tmp_path, monkeypatch):
+    if not _sh.which("tmux"):
+        pytest.skip("tmux 없음")
+    root = tmp_path / "fakeros"
+    (root / "opt" / "ros" / "x").mkdir(parents=True)
+    (root / "bin").mkdir()
+    # set -u 로 부르면 죽는 진짜 ROS setup 흉내(정의 안 된 변수 사용)
+    (root / "opt" / "ros" / "x" / "setup.bash").write_text(
+        f': "$AMENT_TRACE_SETUP_FILES"\nexport PATH={root}/bin:$PATH\n')
+    (root / "bin" / "ros2").write_text("#!/usr/bin/env bash\nexec python3 %s/rec.py \"$@\"\n" % root)
+    (root / "bin" / "ros2").chmod(0o755)
+    (root / "rec.py").write_text(FAKE_RECORDER)
+    # 기록 스크립트·도구를 임시 저장소로(그 안의 /opt/ros 경로를 가짜로)
+    tools = os.path.join(boat.repo, "tools")
+    os.makedirs(tools, exist_ok=True)
+    for f in ("ssf_param_core.py", "ssf_waypoints.py", "ssf_param_catalog.yaml", "param_check.py"):
+        if os.path.exists(os.path.join(HERE, f)):
+            shutil.copy(os.path.join(HERE, f), tools)
+    src = open(os.path.join(HERE, "ssf_wp_record.sh"), encoding="utf-8").read()
+    open(os.path.join(tools, "ssf_wp_record.sh"), "w", encoding="utf-8").write(
+        src.replace("/opt/ros/*/setup.bash", f"{root}/opt/ros/*/setup.bash"))
+    os.makedirs(os.path.join(boat.repo, "install"), exist_ok=True)
+    open(os.path.join(boat.repo, "install", "setup.bash"), "w").write(': "$UNSET_TOO"\n')
+    ngdir = os.path.join(boat.repo, "src", "north_goal_angle", "north_goal_angle")
+    if not os.path.isdir(ngdir):
+        shutil.copytree(os.path.join(REPO, "src", "north_goal_angle", "north_goal_angle"), ngdir)
+    sock = f"ssf_wp_test{os.getpid()}"
+    monkeypatch.setenv("SSF_WP_TMUX_SOCKET", sock)        # 사용자 tmux 서버와 분리
+    yield boat
+    subprocess.run(["tmux", "-L", sock, "kill-server"], capture_output=True)
+
+
+def _wait(boat, prompt, sec=8):
+    end = _time.time() + sec
+    st = None
+    while _time.time() < end:
+        st = boat.wp_rec("status")
+        if st["running"] and st["prompt"] == prompt:
+            return st
+        _time.sleep(0.2)
+    raise AssertionError(f"{prompt} 를 못 기다림: {st}")
+
+
+def test_rec_full_flow(recboat):
+    b = recboat
+    with pytest.raises(core.ParamError, match="녹화 중이 아니다"):
+        b.wp_rec("send", kind="capture")
+    b.wp_rec("start", course="tournament", lane="9")
+    _wait(b, "main")
+    with pytest.raises(core.ParamError, match="이미 녹화 중"):
+        b.wp_rec("start", course="tournament", lane="9")
+    with pytest.raises(core.ParamError, match="mode·dwell"):
+        b.wp_rec("send", kind="answer", arg="8")
+    b.wp_rec("send", kind="capture")
+    _wait(b, "mode")
+    with pytest.raises(core.ParamError, match="다른 걸 묻고"):
+        b.wp_rec("send", kind="save")
+    b.wp_rec("send", kind="accept")
+    _wait(b, "dwell")
+    b.wp_rec("send", kind="answer", arg="0.5")
+    _wait(b, "name")
+    b.wp_rec("send", kind="answer", arg="T0 출발")
+    st = _wait(b, "main")
+    assert "WP0 추가됨" in st["screen"]
+    b.wp_rec("send", kind="capture")
+    _wait(b, "mode")
+    with pytest.raises(core.ParamError, match="쓸 수 없는 글자"):
+        b.wp_rec("send", kind="answer", arg="8; rm -rf ~")
+    b.wp_rec("send", kind="accept"); _wait(b, "dwell")
+    b.wp_rec("send", kind="accept"); _wait(b, "name")
+    b.wp_rec("send", kind="answer", arg="T1 결승선 너머")
+    _wait(b, "main")
+    b.wp_rec("send", kind="save")
+    st = _wait(b, "closing")
+    assert "검사" in st["screen"], st["screen"]
+    out = os.path.join(b.home, "ssf_logs", "waypoints_tournament_A_9.yaml")
+    text = open(out, encoding="utf-8").read()
+    assert "T0 출발" in text and "T1 결승선 너머" in text and text.count("mode: 8") == 2
+    b.wp_rec("send", kind="close")
+    end = _time.time() + 5
+    while b.wp_rec("status")["running"] and _time.time() < end:
+        _time.sleep(0.2)
+    assert not b.wp_rec("status")["running"]
+    f = [x for x in b.waypoints() if x["name"] == "waypoints_tournament_A_9.yaml"][0]
+    assert f["modes"] == [8, 8] and not f["errors"]
+
+
+def test_rec_kill_and_wrong_boat(recboat):
+    b = recboat
+    b.wp_rec("start", course="main")
+    _wait(b, "main")
+    b.wp_rec("kill")
+    assert not b.wp_rec("status")["running"]
+    other = core.Repo(b.repo, "B", home=b.home)
+    with pytest.raises(core.ParamError, match="배가 다르다"):
+        other.wp_rec("start", course="main")
+    with pytest.raises(core.ParamError, match="레인"):
+        b.wp_rec("start", course="tournament")

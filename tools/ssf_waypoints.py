@@ -150,6 +150,115 @@ def plan(repo, home, boat, course="main", lane=None):
     return out, template
 
 
+# ---------------------------------------------------------------- 앱에서 녹화 (tmux 안의 녹화 도구를 대신 눌러 준다)
+# 터미널 'ssf b wp …' 와 같은 tmux 세션(ssf_wp_<배>)을 쓴다 — 어느 쪽에서 시작해도 다른 쪽에서 이어서 할 수 있다.
+# 보낼 수 있는 키는 녹화 도구 명령(Enter·l·d N·r N·q)과 mode·dwell·이름 답뿐이다.
+
+PROMPTS = (   # (화면 마지막 줄에 있으면, 지금 묻는 것) — waypoint_recorder / recorder_prompts / ssf_wp_record.sh 문구
+    ("[Enter=추가", "main"),
+    ("mode(미션번호)?", "mode"),
+    ("dwell(머무는 초)?", "dwell"),
+    ("구역 이름(엔터=", "name"),
+    ("엔터를 누르면", "closing"),
+)
+ANSWER_RE = re.compile(r"^[0-9A-Za-z가-힣 ._()+:/#-]{0,40}$")   # mode·dwell·이름 답
+IDX_RE = re.compile(r"^[0-9]{1,3}$")
+
+
+def session_name(boat):
+    return os.environ.get("SSF_WP_SESSION_PREFIX", "ssf_wp_") + boat
+
+
+def _tmux(*args, timeout=5):
+    import subprocess
+    sock = os.environ.get("SSF_WP_TMUX_SOCKET")          # 테스트용 별도 tmux 서버(-L)
+    base = ["tmux", "-L", sock] if sock else ["tmux"]
+    try:
+        return subprocess.run([*base, *args], capture_output=True, text=True, timeout=timeout)
+    except FileNotFoundError:
+        raise RuntimeError("이 노트북에 tmux 가 없다")
+
+
+def detect_prompt(screen):
+    """화면 마지막 글자 줄로 지금 무엇을 묻는지."""
+    lines = [ln for ln in screen.rstrip().split("\n") if ln.strip()]
+    last = lines[-1] if lines else ""
+    for key, kind in PROMPTS:
+        if key in last:
+            return kind
+    return "busy" if lines else "empty"
+
+
+def rec_status(boat, lines=60):
+    s = session_name(boat)
+    if _tmux("has-session", "-t", s).returncode != 0:
+        return {"running": False, "session": s, "screen": "", "prompt": None}
+    cap = _tmux("capture-pane", "-p", "-J", "-t", s, "-S", f"-{lines}")
+    screen = cap.stdout.rstrip("\n") if cap.returncode == 0 else ""
+    return {"running": True, "session": s, "screen": screen, "prompt": detect_prompt(screen)}
+
+
+def rec_start(repo, boat, course, lane=None, home=None):
+    """tmux 세션에서 tools/ssf_wp_record.sh 시작(배 확인·백업은 그 스크립트가 한다)."""
+    plan(repo, home or os.path.expanduser("~"), boat, course, lane)   # 코스·레인 검사만(경로는 스크립트가 다시 정함)
+    s = session_name(boat)
+    if _tmux("has-session", "-t", s).returncode == 0:
+        raise RuntimeError(f"이미 녹화 중(tmux {s}) — 화면에서 이어서 하거나 저장·종료 뒤 다시")
+    cmd = ["bash", os.path.join(repo, "tools", "ssf_wp_record.sh"), boat, course] + ([lane] if lane else [])
+    # HOME 을 넘긴다 — 이미 떠 있는 tmux 서버의 환경을 물려받지 않게(~/.ssf_boat·~/ssf_logs 기준)
+    home = home or os.path.expanduser("~")
+    r = _tmux("new-session", "-d", "-s", s, "-x", "110", "-y", "45", "-c", repo, "-e", f"HOME={home}", *cmd)
+    if r.returncode != 0:
+        raise RuntimeError("tmux 시작 실패: " + (r.stderr or r.stdout).strip())
+    _tmux("set-option", "-t", s, "mouse", "on")
+    return rec_status(boat)
+
+
+def rec_send(boat, kind, arg=None):
+    """kind: capture|accept(Enter) · list(l) · delete/recapture(d N / r N) · save(q) · answer(mode·dwell·이름) · close."""
+    st = rec_status(boat)
+    if not st["running"]:
+        raise RuntimeError("녹화 중이 아니다")
+    p = st["prompt"]
+    if kind in ("capture", "list", "delete", "recapture", "save") and p != "main":
+        raise RuntimeError("녹화 도구가 다른 걸 묻고 있다 — 화면 마지막 줄의 질문에 먼저 답하세요")
+    if kind == "answer" and p not in ("mode", "dwell", "name"):
+        raise RuntimeError("지금은 mode·dwell·이름을 묻는 중이 아니다")
+    if kind == "close" and p != "closing":
+        raise RuntimeError("아직 끝나지 않았다 — 저장(q) 먼저")
+    if kind in ("capture", "accept", "close"):
+        text = ""
+    elif kind == "list":
+        text = "l"
+    elif kind == "save":
+        text = "q"
+    elif kind in ("delete", "recapture"):
+        if not IDX_RE.match(str(arg or "")):
+            raise RuntimeError("번호(0, 1, 2 …)를 넣으세요")
+        text = ("d " if kind == "delete" else "r ") + str(arg)
+    elif kind == "answer":
+        text = str(arg or "").strip()
+        if not ANSWER_RE.match(text):
+            raise RuntimeError("답에 쓸 수 없는 글자가 있다(40자 이내 한글·영문·숫자·공백·. _ ( ) + : / # -)")
+    else:
+        raise RuntimeError(f"모르는 동작 {kind!r}")
+    s = st["session"]
+    _tmux("send-keys", "-t", s, "C-u")      # 입력 줄에 남은 글자(스크롤로 들어간 화살표 등) 지우기 — tty 줄 지우기
+    if text:
+        _tmux("send-keys", "-t", s, "-l", text)
+    _tmux("send-keys", "-t", s, "Enter")
+    return {"sent": text or "⏎"}
+
+
+def rec_kill(boat):
+    """녹화 도구를 저장 없이 끈다(찍은 점은 버려진다 — 화면이 확인을 받는다)."""
+    s = session_name(boat)
+    if _tmux("has-session", "-t", s).returncode != 0:
+        raise RuntimeError("녹화 중이 아니다")
+    _tmux("kill-session", "-t", s)
+    return {"killed": s}
+
+
 def backup(out, home):
     """기존 녹화본이 있으면 ~/ssf_logs/waypoint_backup/ 에 복사(녹화 도구는 q 때 그냥 덮어쓴다)."""
     if not os.path.isfile(out):
