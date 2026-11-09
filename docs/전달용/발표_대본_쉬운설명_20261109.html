@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>설계심사 발표 대본 쉬운 설명판</title>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--fg:#1b2230;--mut:#5d6778;--line:#dfe3ea;--accent:#1f3a68;--a:#0f6e8c;--b:#9a4a14;--abg:#e6f3f7;--bbg:#fbefe5;--say:#f2f5fa;color-scheme:light}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#11151c;--card:#1a2029;--fg:#e6e9ef;--mut:#9aa4b5;--line:#2c3542;--accent:#8fb2ec;--a:#5cc3e0;--b:#f0a66e;--abg:#12303a;--bbg:#3a2616;--say:#1f2733;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#11151c;--card:#1a2029;--fg:#e6e9ef;--mut:#9aa4b5;--line:#2c3542;--accent:#8fb2ec;--a:#5cc3e0;--b:#f0a66e;--abg:#12303a;--bbg:#3a2616;--say:#1f2733;color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.7 -apple-system,"Apple SD Gothic Neo","Malgun Gothic","Noto Sans KR",sans-serif;word-break:keep-all}
+.wrap{max-width:880px;margin:0 auto;padding:0 max(16px,env(safe-area-inset-left,0px)) 80px max(16px,env(safe-area-inset-right,0px))}
+.bar{position:sticky;top:0;z-index:5;background:var(--bg);border-bottom:1px solid var(--line);padding:10px max(16px,env(safe-area-inset-left,0px));display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:center}
+.bar button{font:inherit;font-size:14px;padding:6px 14px;border-radius:999px;border:1px solid var(--line);background:var(--card);color:var(--fg);cursor:pointer}
+.bar button.on{background:var(--accent);border-color:var(--accent);color:var(--bg)}
+.bar .timer{font-variant-numeric:tabular-nums;font-weight:700;min-width:58px;text-align:center}
+.bar .sep{width:1px;height:22px;background:var(--line)}
+header.top h1{font-size:1.5rem;line-height:1.35;margin:28px 0 8px;text-wrap:balance;color:var(--accent)}
+h2{font-size:1.25rem;margin:40px 0 14px;padding-bottom:6px;border-bottom:2px solid var(--accent)}
+h3{font-size:1.05rem;margin:0}
+p{margin:8px 0}
+.ref{color:var(--accent)}
+pre{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13.5px;background:var(--say);border:1px solid var(--line);border-radius:8px;padding:10px 12px;overflow-x:auto;white-space:pre}
+ol{padding-left:1.4em;margin:8px 0}
+ol li{margin:4px 0}
+code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.88em;background:var(--say);padding:1px 5px;border-radius:4px}
+ul{padding-left:1.2em;margin:8px 0}
+.slide,.part{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin:14px 0}
+.shead{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.shead .num{flex:none;width:30px;height:30px;border-radius:50%;background:var(--accent);color:var(--bg);display:grid;place-items:center;font-weight:700;font-size:14px}
+.shead h3{flex:1}
+.shead .sec{flex:none;font-size:13px;color:var(--mut);border:1px solid var(--line);border-radius:999px;padding:1px 10px}
+.say{background:var(--say);border-radius:8px;padding:6px 14px}
+.say p{font-size:1.06rem;line-height:1.85}
+.boat .tag{display:inline-block;font-size:11px;font-weight:700;line-height:1;padding:3px 6px;border-radius:4px;margin:0 6px 0 2px;vertical-align:2px;color:#fff}
+.ba .tag{background:var(--a)} .bb .tag{background:var(--b)}
+.ba{background:var(--abg);border-radius:4px} .bb{background:var(--bbg);border-radius:4px}
+body.show-a .bb, body.show-a .only-b{display:none}
+body.show-b .ba, body.show-b .only-a{display:none}
+body.show-a .ba, body.show-b .bb{background:none}
+body.show-a .tag, body.show-b .tag{display:none}
+.tw{overflow-x:auto;margin:10px 0}
+table{border-collapse:collapse;width:100%;font-size:14.5px;background:var(--card)}
+th,td{border:1px solid var(--line);padding:7px 9px;text-align:left;vertical-align:top}
+th{background:var(--say);font-weight:700;white-space:nowrap}
+td:nth-child(2){white-space:nowrap}
+@media (max-width:600px){body{font-size:15px}.say p{font-size:1rem}td:nth-child(2){white-space:normal}}
+</style></head>
+<body class="show-all">
+<div class="bar">
+<button data-b="all" class="on">A·B 모두</button><button data-b="a">A만</button><button data-b="b">B만</button>
+<span class="sep"></span>
+<span class="timer" id="t">0:00</span><button id="go">시작</button><button id="rs">초기화</button>
+</div>
+<main class="wrap">
+<header class="top"><h1>설계심사 발표 대본 — 쉬운 설명판 (11-09)</h1></header>
+<p>기준: 발표자료 S.S.F A·B 12장(11-04 판). 숫자는 발표자료 화면에 있는 값만 쓴다. 기존 대본(<span class="ref">발표_대본_20261105.md</span>)을 <strong>처음 듣는 사람도 알아듣게</strong> 다시 쓴 것이다.</p>
+<p>설계심사 11-13(금): 대표자 5분 발표 + 10분 내외 질의.</p>
+<section id="s3"><h2>0. 쓰는 법</h2>
+<ul>
+<li>A와 B가 다른 문장은 <span class="boat ba"><span class="tag">A</span>·</span><span class="boat bb"><span class="tag">B</span>표시로 나눠 두었다. HTML 에서는 위 버튼으로 자기 배만 보이게 한다.</span></li>
+<li><strong>한 장에 하고 싶은 말은 하나.</strong> 각 장 맨 아래 "이 장 한 줄"만 기억해도 발표가 된다.</li>
+<li><strong>쉬운 말 먼저, 정식 이름은 괄호로 한 번만.</strong> 예: "기울어져도 다시 서는 힘(GM)".</li>
+<li>숫자는 장마다 1~3개만 말한다. 나머지는 화면 표에 있으니 손으로 가리킨다.</li>
+<li>시뮬레이션 숫자 앞에는 꼭 "시뮬레이션에서"를 붙인다. 바다 시험은 아직이다.</li>
+<li>1분에 약 300자 속도다. 5분이 넘을 것 같으면 2·4·5·12장은 첫 문장만 말한다.</li>
+</ul>
+<div class="tw"><table><thead><tr><th>장</th><th>제목</th><th>시간</th><th>누계</th></tr></thead><tbody>
+<tr class=""><td>1</td><td>표지</td><td>15 s</td><td>0:15</td></tr>
+<tr class=""><td>2</td><td>설계 요구조건</td><td>20 s</td><td>0:35</td></tr>
+<tr class=""><td>3</td><td>크기·복원성</td><td>40 s</td><td>1:15</td></tr>
+<tr class=""><td>4</td><td>추진기·저항·방수</td><td>20 s</td><td>1:35</td></tr>
+<tr class=""><td>5</td><td>제작 과정</td><td>15 s</td><td>1:50</td></tr>
+<tr class=""><td>6</td><td>시스템 구성</td><td>40 s</td><td>2:30</td></tr>
+<tr class=""><td>7</td><td>임무 순서</td><td>25 s</td><td>2:55</td></tr>
+<tr class=""><td>8</td><td>눈·피하기·조종</td><td>35 s</td><td>3:30</td></tr>
+<tr class=""><td>9</td><td>안전장치·시뮬레이션</td><td>30 s</td><td>4:00</td></tr>
+<tr class=""><td>10</td><td>회로·비상정지</td><td>20 s</td><td>4:20</td></tr>
+<tr class=""><td>11</td><td>시험 결과</td><td>25 s</td><td>4:45</td></tr>
+<tr class=""><td>12</td><td>비용·마무리</td><td>15 s</td><td>5:00</td></tr>
+</tbody></table></div>
+</section>
+<section id="s27"><h2>1. 5분 발표 대본</h2>
+<article class="slide"><div class="shead"><span class="num">1</span><h3>표지</h3><span class="sec">15 s</span></div>
+<div class="say">
+<p class="line">안녕하십니까. 홍익대학교 조선해양모빌리티공학과 팀 S.S.F <span class="boat ba"><span class="tag">A</span>A</span><span class="boat bb"><span class="tag">B</span>B</span>, 발표자 ○○○입니다.</p>
+<p class="line">저희 배는 사람이 조종하지 않아도 스스로 보고, 판단하고, 움직입니다.</p>
+</div>
+<ul>
+<li>이 장 한 줄: <strong>스스로 보고 판단하는 배.</strong></li>
+</ul>
+</article>
+<article class="slide"><div class="shead"><span class="num">2</span><h3>설계 요구조건과 설계 반영</h3><span class="sec">20 s</span></div>
+<div class="say">
+<p class="line only-a"><span class="boat ba"><span class="tag">A</span>몸통이 하나인 배(단동선)이고, 뒤쪽 추진기 두 개의 힘 차이로 방향을 바꿉니다.</span></p>
+<p class="line only-b"><span class="boat bb"><span class="tag">B</span>몸통이 하나인 배(단동선)이고, 추진기 네 개를 V자로 달아 왼쪽 두 개, 오른쪽 두 개씩 묶어 씁니다.</span></p>
+<p class="line">경기장 장애물 사이는 1 m인데 배가 지나가려면 0.83 m가 필요합니다. 그래서 거의 똑바로 들어가도록 설계했습니다.</p>
+</div>
+<ul>
+<li>👉 화면: 오른쪽 아래 "장애물 간격 1.0 m" 줄을 가리킨다.</li>
+<li>이 장 한 줄: <strong>좁은 틈을 똑바로 지나가는 배.</strong></li>
+</ul>
+</article>
+<article class="slide"><div class="shead"><span class="num">3</span><h3>주요 제원 및 초기 복원성</h3><span class="sec">40 s</span></div>
+<div class="say">
+<p class="line only-a"><span class="boat ba"><span class="tag">A</span>길이 1.66 m, 폭 0.55 m, 무게 34 kg입니다.</span></p>
+<p class="line only-b"><span class="boat bb"><span class="tag">B</span>길이 1.77 m, 폭 0.522 m, 무게 30 kg입니다.</span></p>
+<p class="line">배가 기울어져도 다시 서는 힘을 GM이라고 합니다. 계산만 믿지 않고 직접 쟀습니다. 2.1 kg 추를 옆으로 옮겨 배가 얼마나 기우는지 보는 경사시험입니다.</p>
+<p class="line">결과는 <span class="boat ba"><span class="tag">A</span>0.17 m</span><span class="boat bb"><span class="tag">B</span>0.18 m</span>로 양수라서, 기울어져도 다시 섭니다.</p>
+<p class="line only-a"><span class="boat ba"><span class="tag">A</span>실제 무게중심이 예상보다 낮아서 계산보다 더 안정적이었습니다.</span></p>
+<p class="line only-b"><span class="boat bb"><span class="tag">B</span>무게중심은 예상보다 높았지만, 눌렀다 놓는 시험에서 흔들림이 10초 안팎에 잦아드는 것을 확인했습니다.</span></p>
+</div>
+<ul>
+<li>👉 화면: 오른쪽 아래 경사시험 식(GM = w·d / (W·tan θ))을 가리킨다.</li>
+<li>이 장 한 줄: <strong>복원력을 계산이 아니라 시험으로 확인했다.</strong></li>
+</ul>
+</article>
+<article class="slide"><div class="shead"><span class="num">4</span><h3>추진기 배치·저항 추정·침몰방지</h3><span class="sec">20 s</span></div>
+<div class="say">
+<p class="line">추진기 힘은 <span class="boat ba"><span class="tag">A</span>약 94 N</span><span class="boat bb"><span class="tag">B</span>약 188 N</span>이고, 물과 마찰하는 저항은 초속 2 m에서도 그 <span class="boat ba"><span class="tag">A</span>6 %</span><span class="boat bb"><span class="tag">B</span>3 %</span> 정도라 힘은 충분합니다.</p>
+<p class="line">너무 빨라지면 파도를 만드는 저항이 갑자기 커지므로 초속 <span class="boat ba"><span class="tag">A</span>1.5 m</span><span class="boat bb"><span class="tag">B</span>1.6 m</span> 아래로 다닙니다. 전기 장치는 전부 방수박스 하나에 넣었습니다.</p>
+</div>
+<ul>
+<li>👉 화면: 저항 그래프에서 선이 위로 꺾이는 곳을 가리킨다.</li>
+<li>이 장 한 줄: <strong>힘은 충분하고, 속도는 일부러 아래로.</strong></li>
+</ul>
+</article>
+<article class="slide"><div class="shead"><span class="num">5</span><h3>제작 과정</h3><span class="sec">15 s</span></div>
+<div class="say">
+<p class="line">3D 프린터로 틀을 만들고, 그 위에 <span class="boat ba"><span class="tag">A</span>유리섬유(FRP)를</span><span class="boat bb"><span class="tag">B</span>카본섬유를</span> 겹겹이 붙인 뒤, 방수 처리를 하고 부품을 달았습니다.</p>
+</div>
+<ul>
+<li>👉 화면: 사진 4장을 왼쪽부터 순서대로 짚는다.</li>
+<li>이 장 한 줄: <strong>틀 → 적층 → 방수 → 부착.</strong></li>
+</ul>
+</article>
+<article class="slide"><div class="shead"><span class="num">6</span><h3>시스템 구성 및 센서</h3><span class="sec">40 s</span></div>
+<div class="say">
+<p class="line">이제 소프트웨어입니다. 두뇌는 노트북 한 대이고, 손발은 아두이노입니다.</p>
+<p class="line">센서는 역할을 나눴습니다. 카메라는 "어느 쪽에 있나", 라이다는 "얼마나 먼가", GPS는 "다음 구역이 어느 쪽인가", 방향 센서(IMU)는 "배가 지금 어디를 보고 있나"를 맡습니다.</p>
+<p class="line">자동·수동 전환은 조종기 스위치로만 하고, 명령이 0.5초 끊기면 모터가 저절로 멈춥니다.</p>
+</div>
+<ul>
+<li>👉 화면: 왼쪽 센서 표를 위에서 아래로 짚는다.</li>
+<li>이 장 한 줄: <strong>센서마다 맡은 질문이 하나씩.</strong></li>
+</ul>
+</article>
+<article class="slide"><div class="shead"><span class="num">7</span><h3>임무 상태기계</h3><span class="sec">25 s</span></div>
+<div class="say">
+<p class="line">코스의 점마다 "여기서는 게이트, 여기서는 위치유지" 같은 임무 번호가 붙어 있습니다.</p>
+<p class="line">번호가 바뀌면 그 임무를 맡은 프로그램이 배를 맡고, 도착하거나 시간이 다 되면 다음 임무로 넘어갑니다. 그림은 실제 코드로 돌린 전체 코스 시뮬레이션입니다.</p>
+</div>
+<ul>
+<li>👉 화면: 표의 mode 번호 열 → 그림 순서로.</li>
+<li>이 장 한 줄: <strong>번호표를 따라 담당이 바뀐다.</strong></li>
+</ul>
+</article>
+<article class="slide"><div class="shead"><span class="num">8</span><h3>영상 처리·장애물 회피·제어기</h3><span class="sec">35 s</span></div>
+<div class="say">
+<p class="line">카메라는 색으로 먼저 거르고, 꼭짓점 개수와 둥근 정도로 원·삼각형·사각형을 가립니다. 표식이 단순해서 딥러닝 없이도 되고, 왜 그렇게 판단했는지 설명할 수 있습니다.</p>
+<p class="line">장애물은 배 폭만큼 부풀려서 보고, 배가 지나갈 수 있는 틈 가운데 가려는 방향에 가장 가까운 틈으로 갑니다. 틈이 없으면 살짝 물러나 다시 찾습니다.</p>
+</div>
+<ul>
+<li>👉 화면: 왼쪽 영상 처리 그림 → 오른쪽 회피 그림.</li>
+<li>이 장 한 줄: <strong>색과 모양으로 보고, 틈을 골라 지나간다.</strong></li>
+</ul>
+</article>
+<article class="slide"><div class="shead"><span class="num">9</span><h3>페일세이프 및 시뮬레이션</h3><span class="sec">30 s</span></div>
+<div class="say">
+<p class="line">원칙은 "모르면 움직이지 않는다"입니다. 센서가 끊기면 0.7초에 속도를 줄이고, 3초면 멈추고, 돌아오면 바로 다시 갑니다. 실제로 라이다를 뽑아서 확인했습니다.</p>
+<p class="line">설정값은 시뮬레이션 2,400번으로 골랐고, 실제 코드로 전체 코스를 200번 돌린 시뮬레이션에서 모두 완주했습니다.</p>
+</div>
+<ul>
+<li>👉 화면: 단계 표(0 정상 → 1 경고 → 2 정지)를 위에서 아래로.</li>
+<li>이 장 한 줄: <strong>모르면 멈추고, 돌아오면 다시 간다.</strong></li>
+</ul>
+</article>
+<article class="slide"><div class="shead"><span class="num">10</span><h3>회로 구성 및 비상정지</h3><span class="sec">20 s</span></div>
+<div class="say">
+<p class="line">비상정지는 버튼이나 무선 리모컨을 누르면 큰 전기 스위치(전자접촉기)가 모터 전원을 직접 끊습니다. 컴퓨터를 거치지 않으니 소프트웨어 상태와 상관없이 끊깁니다.</p>
+</div>
+<ul>
+<li>👉 화면: 오른쪽 비상정지 구성도의 접촉기를 가리킨다.</li>
+<li>이 장 한 줄: <strong>비상정지는 컴퓨터가 아니라 스위치가 끊는다.</strong></li>
+</ul>
+</article>
+<article class="slide"><div class="shead"><span class="num">11</span><h3>시험 결과</h3><span class="sec">25 s</span></div>
+<div class="say">
+<p class="line">벤치와 수조에서 방향 센서, 라이다 끊김 대처, RTK GPS, 색 검출, 비상정지, 흘수와 복원성을 확인했습니다.</p>
+<p class="line">직진 속도나 회전 크기처럼 수조가 좁아서 못 잰 것은 대회 전 바다에서 확인하겠습니다.</p>
+</div>
+<ul>
+<li>👉 화면: 왼쪽 표 → 아래 "대회 전 실해역에서 확인할 것" 줄.</li>
+<li>이 장 한 줄: <strong>한 것과 아직 못 한 것을 나눠서 말한다.</strong></li>
+</ul>
+</article>
+<article class="slide"><div class="shead"><span class="num">12</span><h3>최종 소모 금액·마무리</h3><span class="sec">15 s</span></div>
+<div class="say">
+<p class="line only-a"><span class="boat ba"><span class="tag">A</span>총 구매 금액은 약 389만 원이고, 센서 네 종류가 약 58 %입니다.</span></p>
+<p class="line only-b"><span class="boat bb"><span class="tag">B</span>총 구매 금액은 약 364만 원이고, 추진기와 ESC가 약 43 %입니다.</span></p>
+<p class="line">틀린 값으로 움직이느니 멈추는 배를 만들었습니다. 감사합니다.</p>
+</div>
+<ul>
+<li>이 장 한 줄: <strong>돈은 어디에 썼고, 우리 배의 성격은 이것.</strong></li>
+</ul>
+</article>
+</section>
+<section id="s152"><h2>2. 어려운 말 한 줄 풀이 (질문 받으면 이렇게)</h2>
+<div class="tw"><table><thead><tr><th>정식 이름</th><th>쉬운 말</th><th>한 줄 풀이</th></tr></thead><tbody>
+<tr class=""><td>단동선</td><td>몸통 하나인 배</td><td>쌍동선(몸통 둘)보다 구조가 단순하고 만들기 쉽다</td></tr>
+<tr class=""><td>GM (메타센터 높이)</td><td>다시 서는 힘의 크기</td><td>양수면 기울어도 다시 선다. 클수록 빨리 선다</td></tr>
+<tr class=""><td>경사시험</td><td>추 옮기기 시험</td><td>추를 옆으로 옮겨 기운 각도로 GM 을 거꾸로 계산</td></tr>
+<tr class=""><td>롤 감쇠</td><td>흔들림 줄어들기</td><td>눌렀다 놓았을 때 흔들림이 얼마나 빨리 멎는지</td></tr>
+<tr class=""><td>흘수 / 건현</td><td>잠긴 깊이 / 물 위 높이</td><td>흘수는 물에 잠긴 깊이, 건현은 물 위로 남은 높이</td></tr>
+<tr class=""><td>점성 저항</td><td>물과 비비는 저항</td><td>배 표면과 물이 마찰해서 생기는 힘</td></tr>
+<tr class=""><td>조파 저항, 프루드 수(Fn)</td><td>파도 만드는 저항, 속도 눈금</td><td>Fn 0.4 근처부터 배가 만드는 파도 때문에 저항이 급히 커진다</td></tr>
+<tr class=""><td>차동추력</td><td>좌우 힘 차이로 돌기</td><td>탱크처럼 한쪽을 세게 밀어 방향을 바꾼다</td></tr>
+<tr class=""><td>ROS2, 노드</td><td>프로그램 묶음, 작은 프로그램 하나</td><td>일을 나눠 맡은 작은 프로그램들이 메시지로 대화한다</td></tr>
+<tr class=""><td>라이다(LiDAR)</td><td>레이저 거리계</td><td>레이저를 360° 돌려 주변까지 거리를 잰다</td></tr>
+<tr class=""><td>IMU, 헤딩</td><td>방향 센서, 배가 보는 방향</td><td>나침반 같은 센서로 배 머리가 어디를 향하는지</td></tr>
+<tr class=""><td>RTK GPS</td><td>아주 정확한 GPS</td><td>기준국 보정을 받아 cm 단위로 위치를 잡는다</td></tr>
+<tr class=""><td>웨이포인트</td><td>코스 위의 점</td><td>배가 차례로 찾아가는 GPS 점, 점마다 임무 번호</td></tr>
+<tr class=""><td>HSV 색 마스크</td><td>색 거르기</td><td>화면에서 정해 둔 색 범위만 남기고 지운다</td></tr>
+<tr class=""><td>원형도</td><td>둥근 정도</td><td>1 에 가까우면 원, 낮으면 각진 도형</td></tr>
+<tr class=""><td>갭 선택</td><td>틈 고르기</td><td>장애물 사이 빈틈 중 지나갈 수 있는 곳을 고른다</td></tr>
+<tr class=""><td>반폭 + 여유(clearance)</td><td>배 반쪽 폭 + 안전 거리</td><td>0.29 m + 0.25 m — 장애물을 이만큼 부풀려 본다</td></tr>
+<tr class=""><td>페일세이프</td><td>고장 났을 때 안전 동작</td><td>센서가 끊기면 감속 → 정지로 단계를 밟는다</td></tr>
+<tr class=""><td>워치독</td><td>명령 끊김 감시</td><td>0.5초 동안 명령이 안 오면 모터를 멈춘다</td></tr>
+<tr class=""><td>전자접촉기</td><td>큰 전기 스위치</td><td>비상정지 때 모터 전원을 물리적으로 끊는다</td></tr>
+<tr class=""><td>ESC</td><td>모터 속도 조절기</td><td>아두이노 신호를 받아 추진기 세기를 조절한다</td></tr>
+</tbody></table></div>
+</section>
+<section id="s177"><h2>3. 자주 나올 질문 — 쉬운 답</h2>
+<ul>
+<li>결론부터 한 문장, 이유 한 문장. 30초를 넘기지 않는다. 길어지면 "보고서에 정리돼 있습니다."</li>
+<li>모르는 건 지어내지 않는다. <strong>"확인해서 말씀드리겠습니다."</strong></li>
+<li>더 자세한 답: <span class="ref">발표_설명서_예상질문_20261105.md</span>, <span class="ref">발표_대본_20261105.md</span> 2절.</li>
+</ul>
+<div class="tw"><table><thead><tr><th>질문</th><th>펼칠 장</th><th>쉬운 답</th></tr></thead><tbody>
+<tr class=""><td>왜 몸통 하나인 배로 했나요?</td><td>2</td><td>몸통 둘(쌍동선)은 연결 구조와 방수 관리가 늘어납니다. 하나가 만들고 고치기 쉽고, 길이를 늘려 똑바로 잘 가게 했습니다.</td></tr>
+<tr class=""><td>계산한 GM 과 시험한 GM 이 왜 다른가요?</td><td>3</td><td>계산은 무게중심 높이를 0.15 m로 가정했기 때문입니다. 시험으로 거꾸로 구하면 <span class="boat ba"><span class="tag">A</span>0.13 m로 더 낮았습니다.</span><span class="boat bb"><span class="tag">B</span>0.27 m로 더 높았지만 GM은 양수입니다.</span> 설계에는 시험값을 씁니다.</td></tr>
+<tr class=""><td>실제 속도는 몇인가요?</td><td>11</td><td>아직 못 쟀습니다. 수조가 6×6 m라 가속하고 나면 일정한 속도로 갈 거리가 없습니다. 바다 시험 목록 첫 줄에 있습니다.</td></tr>
+<tr class=""><td>부표 위치를 모르는데 GPS 로 어떻게 하나요?</td><td>6</td><td>GPS는 "다음 구역이 어느 쪽인지"만 줍니다. 부표·게이트·도크는 카메라와 라이다로 직접 찾습니다.</td></tr>
+<tr class=""><td>왜 딥러닝(AI)을 안 썼나요?</td><td>8</td><td>표식이 색과 단순한 도형이라 규칙으로 충분하고, 학습 데이터가 필요 없고, 틀렸을 때 이유를 바로 찾아 고칠 수 있습니다.</td></tr>
+<tr class=""><td>카메라로 거리는 왜 안 재나요?</td><td>8</td><td>카메라 한 대로 거리를 추정하면 물 위에서 오차가 큽니다. 카메라는 방향, 거리는 라이다로 나눴습니다.</td></tr>
+<tr class=""><td>햇빛이 세거나 역광이면요?</td><td>8</td><td>색 범위가 설정 파일 한 곳에 있어서, 대회 당일 아침 그 시간 햇빛에서 찍어 보고 바로 맞춥니다.</td></tr>
+<tr class=""><td>장애물 피하기를 한 문장으로 하면요?</td><td>8</td><td>장애물을 배 폭만큼 부풀려 보고, 지나갈 수 있는 틈 중 가려는 쪽에 가장 가까운 틈으로 갑니다.</td></tr>
+<tr class=""><td>틈이 하나도 없으면요?</td><td>8</td><td>0.5초 물러났다가 3초 멈춰 다시 찾습니다. 뒤는 못 보니까 계속 후진하지는 않습니다.</td></tr>
+<tr class=""><td>위치유지는 어떻게 하나요?</td><td>7</td><td>부표 2.5 m 앞에 서도록 앞뒤로 조금씩 움직입니다. 규정은 5 m 안이라 여유가 있고, 부표에 닿으면 벌점이라 정확한 거리는 바다 시험에서 정합니다.</td></tr>
+<tr class=""><td>탐색은 규정에 원을 그리며 도는 걸로 나오는데요?</td><td>7</td><td>올해 안내문 코스가 "지정 색 부표 앞에서 위치유지"라 그렇게 정했습니다. 원 선회 방식도 만들어 두어서, 설정 하나로 바꿀 수 있습니다.</td></tr>
+<tr class=""><td>센서가 고장 나면요?</td><td>9</td><td>0.7초면 속도를 줄이고 3초면 멈춥니다. 센서가 돌아오면 바로 다시 갑니다. 벤치에서 라이다를 뽑아 확인했습니다.</td></tr>
+<tr class=""><td>비상정지랑 소프트웨어 정지는 뭐가 다른가요?</td><td>10</td><td>소프트웨어 정지는 프로그램이 판단해서 멈추는 것이고, 비상정지는 스위치가 모터 전원을 직접 끊습니다. 프로그램이 멈춰도 비상정지는 됩니다.</td></tr>
+<tr class=""><td>두 배가 같이 뛰면 신호가 섞이지 않나요?</td><td>6</td><td>배마다 노트북이 따로 있고, 각 노트북이 자기 배 안에서만 통신하도록 설정합니다. 조종기도 배마다 따로입니다.</td></tr>
+<tr class=""><td>도킹은 어떻게 하나요?</td><td>7·9</td><td>제자리에서 돌며 지정 표식을 찾아 정면에 놓고 앞으로 갑니다. 라이다로 1.0 m가 되면 닿은 것으로 보고, 잠시 뒤 후진해 빠져나옵니다.</td></tr>
+<tr class=""><td>시뮬레이션 결과를 믿을 수 있나요?</td><td>9</td><td>배 움직임은 가정한 값이라 숫자보다 경향으로 봅니다. 대신 판단하는 코드는 실제 배에 올라가는 코드 그대로입니다.</td></tr>
+</tbody></table></div>
+</section>
+<section id="s202"><h2>4. 발표자료(11-04) 뒤에 바뀐 것 — 질문이 나올 때만</h2>
+<p>발표에서 먼저 꺼내지 않는다. 질문이 이쪽으로 오면 사실대로 짧게 말한다.</p>
+<ul>
+<li><strong>도킹 도형 판정(11-08):</strong> 멀리 있는 작은 사각형을 원으로 잘못 보는 경우를 합성 시험에서 찾아, 원으로 보는 기준(원형도)을 0.82 → 0.87로 올렸습니다. 실제 영상 확인은 바다 시험에서 합니다.</li>
+<li><strong>파란 표식 색 범위(11-08):</strong> 예전 값이 파랑이 아니라 보라색 쪽이어서 바꿨습니다.</li>
+<li><strong>장애물 피하기 개선(DWA):</strong> 배의 움직임까지 계산해 길을 고르는 방식을 만들어 두었습니다. 시뮬레이션에서 접촉이 크게 줄었지만, 기본은 꺼 두었고 바다에서 확인한 뒤 켭니다.</li>
+<li><strong>위치유지 거리:</strong> 시뮬레이션에서 2.5 m는 끝나고 떠날 때 부표를 스치는 경우가 있어, 바다에서 3.5 m와 비교해 정합니다.</li>
+<li><span class="boat bb"><span class="tag">B</span><strong>무선 비상정지:</strong> 11-01 시험에서 반응이 없어 11-09에 수리했고, 수리 뒤 리모컨 차단을 다시 확인했습니다(팀장 확인). 11장 "무선 단독 차단 확인" 그대로 말해도 된다.</span></li>
+</ul>
+</section>
+</main>
+<script>
+(function(){
+var bs=document.querySelectorAll('[data-b]');
+function set(b){document.body.className='show-'+b;bs.forEach(function(x){x.classList.toggle('on',x.dataset.b===b)});try{localStorage.setItem('ssf-boat',b)}catch(e){}}
+bs.forEach(function(x){x.addEventListener('click',function(){set(x.dataset.b)})});
+try{var s=localStorage.getItem('ssf-boat');if(s)set(s)}catch(e){}
+var t0=0,acc=0,run=false,id=null,el=document.getElementById('t'),go=document.getElementById('go');
+function fmt(ms){var s=Math.floor(ms/1000);return Math.floor(s/60)+':'+String(s%60).padStart(2,'0')}
+function tick(){var ms=acc+(run?Date.now()-t0:0);el.textContent=fmt(ms);el.style.color=ms>300000?'#d23':''}
+go.addEventListener('click',function(){if(run){acc+=Date.now()-t0;run=false;clearInterval(id);go.textContent='계속'}else{t0=Date.now();run=true;id=setInterval(tick,250);go.textContent='멈춤'}tick()});
+document.getElementById('rs').addEventListener('click',function(){run=false;clearInterval(id);acc=0;go.textContent='시작';tick()});
+})();
+</script>
+</body></html>
