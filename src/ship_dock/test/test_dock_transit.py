@@ -21,6 +21,11 @@
     /scan 없음·stale → 50000 + ERROR 2 s. 거리가 돌아와 >= 2.5 m 면 그 틱에 DONE(backoff) → 20000.
   · None 만들기: `_Scan(inf)`(원인 ② 신선·반환 없음) / last_scan_t 없음·묵음(원인 ① LiDAR 부재).
 
+계약서 docs/문제와작업/계약서_도킹물보라필터_20261109.md (전방 거리 공간 median, 검증 계획 (c)):
+  · 섹터 한 광선만 0.5 m(나머지 5 m) → APPROACH 가 CONTACT 안 감 / front_median_kernel 1 이면 CONTACT(롤백).
+  · BACKOFF 에서 고립 반사 점만 → 180 발행·DONE 아님(8 s 뒤 backoff_timeout), WARN '고립 반사' + 버린 점 수.
+  · kernel 이상값(음수·9 초과) → 부팅 ERROR 1회 + 5 대체. 짝수 kernel 은 부팅 로그에 실효 창 k+1.
+
 스텁 방식은 test_dock_steer_clamp.py 와 같다(import 동안만 sys.modules 에 넣고 되돌림).
 """
 
@@ -915,6 +920,177 @@ def test_approach_distance_known_steers_as_before():
     fresh_sensors(n, T0 + 20.0, dist=2.0, image=5.0)
     assert tick(n, T0 + 20.0) == [5.0] and n.state == 'APPROACH'
     assert lidar_lines(n, 'WARN') == []
+
+
+# ---------------- 전방 거리 공간 median (계약서_도킹물보라필터_20261109) — 검증 계획 (c)
+FWD = int(SD.LIDAR_FORWARD_DEG)        # _Scan 은 1° 간격, 0° 시작 → 인덱스 80 = 정면
+
+
+def new_node_with(**over):
+    """new_node 와 같되 파라미터를 덮어쓴다(new_node 는 OVERRIDES 를 비운다)."""
+    OVERRIDES.clear()
+    OVERRIDES.update(over)
+    CLOCK.t = T0 - 5.0
+    n = SD.ShipDock()
+    n.wp_mode_cb(_Float32(5))
+    return n
+
+
+def spike_scan(n, t, base, points):
+    """전부 base 인 스캔에 {인덱스: 거리} 만 바꿔 넣는다. 신선(t)."""
+    sc = _Scan(base)
+    for i, d in points.items():
+        sc.ranges[i] = float(d)
+    n.latest_scan = sc
+    n.last_scan_t = t
+
+
+def boot_info(n):
+    return [x[1] for x in lines(n, 'INFO') if 'ship_dock 시작' in x[1]]
+
+
+def test_median_kernel_default_5_in_code_and_yaml():
+    OVERRIDES.clear()
+    n = SD.ShipDock()
+    y = _yaml_params()
+    assert DECLARED['front_median_kernel'] == 5 and type(DECLARED['front_median_kernel']) is int
+    assert y['front_median_kernel'] == 5 and type(y['front_median_kernel']) is int   # 정수(5.0 이면 노드 안 뜸)
+    assert n.front_median_kernel == 5 and n.front_median_window == 5
+    assert lines(n, 'ERROR') == []
+    b = boot_info(n)
+    assert len(b) == 1 and 'front_median_kernel=5' in b[0] and '실효 창 5점' in b[0], b
+
+
+def test_approach_single_spike_does_not_contact():
+    """정면 섹터 한 광선만 0.5 m(물보라), 나머지 5 m → front_min_dist 5.0, CONTACT 안 감·조향 계속."""
+    n = new_node()
+    enter(n)
+    n.state, n.state_t, n.standoff_aligned = 'APPROACH', T0 + 20.0, True
+    for k in range(20):
+        t = T0 + 20.0 + k / 10.0
+        spike_scan(n, t, 5.0, {FWD + (k % 7) - 3: 0.5})      # 스파이크 위치를 섹터 안에서 옮겨 본다
+        marker(n, t, 0.0)
+        assert n.front_min_dist(t) == 5.0, k
+        assert tick(n, t) == [0.0], k
+        assert n.state == 'APPROACH', k
+    assert lidar_lines(n, 'WARN') == [] and lines(n, 'ERROR') == []
+
+
+def test_approach_single_spike_kernel1_contacts_rollback():
+    """롤백 확인: front_median_kernel 1(또는 0) = raw → 같은 한 광선 0.5 m 에 CONTACT(옛 동작)."""
+    for k in (1, 0):
+        n = new_node_with(front_median_kernel=k)
+        assert n.front_median_window == 1 and lines(n, 'ERROR') == [], k
+        b = boot_info(n)
+        assert len(b) == 1 and f'front_median_kernel={k}' in b[0] and 'raw' in b[0], (k, b)
+        enter(n)
+        n.state, n.state_t, n.standoff_aligned = 'APPROACH', T0 + 20.0, True
+        spike_scan(n, T0 + 20.0, 5.0, {FWD: 0.5})
+        marker(n, T0 + 20.0, 0.0)
+        assert n.front_min_dist(T0 + 20.0) == 0.5, k
+        tick(n, T0 + 20.0)
+        assert n.state == 'CONTACT', k
+
+
+def test_approach_three_point_object_still_contacts():
+    """연속 3 광선 0.8 m(실제 물체·벤치 가짜 /scan 최소 폭)는 median 에서도 남는다 → CONTACT."""
+    n = new_node()
+    enter(n)
+    n.state, n.state_t, n.standoff_aligned = 'APPROACH', T0 + 20.0, True
+    spike_scan(n, T0 + 20.0, 5.0, {FWD - 1: 0.8, FWD: 0.8, FWD + 1: 0.8})
+    marker(n, T0 + 20.0, 0.0)
+    assert n.front_min_dist(T0 + 20.0) == 0.8
+    tick(n, T0 + 20.0)
+    assert n.state == 'CONTACT'
+
+
+def test_backoff_isolated_points_only_reverses_not_done():
+    """BACKOFF 중 전방이 전부 inf + 고립 반사 3.0 m 3 점: raw 면 3.0 ≥ 2.5 → DONE 이었지만 median 은 None.
+    스캔 신선 → 매 틱 180(DONE 아님), WARN 은 '고립 반사' + 버린 점 수. 8 s 초과 → backoff_timeout(50000)."""
+    iso = {FWD - 10: 3.0, FWD: 3.0, FWD + 10: 3.0}
+    n = new_node()
+    enter(n)
+    n.state, n.state_t = 'BACKOFF', T0 + 20.0
+    for k in range(81):                                       # 0.0 ~ 8.0 s
+        t = T0 + 20.0 + k / 10.0
+        spike_scan(n, t, INF, iso)
+        assert n.front_min_dist(t) is None and n.front_rejected == 3, k
+        assert tick(n, t) == [REV], k
+        assert n.state == 'BACKOFF', k
+    assert lines(n, 'ERROR') == []
+    w = lidar_lines(n, 'WARN')
+    assert w and all(x[2].get('throttle_duration_sec') == 2.0 for x in w), w
+    assert all('고립 반사' in x[1] and '버린 점 3' in x[1] and '후진' in x[1] for x in w), w
+    t = T0 + 20.0 + 8.1
+    spike_scan(n, t, INF, iso)
+    tick(n, t)
+    assert n.state == 'DONE' and n.done_reason == 'backoff_timeout'
+    assert tick(n, t + 0.1) == [STOP]
+    assert GPS not in n.pub_candidate.values[-3:]
+
+
+def test_backoff_isolated_points_kernel1_done_backoff():
+    """대조(롤백): kernel 1 이면 같은 고립 반사 3.0 m 로 그 틱에 DONE(backoff) → 20000(옛 동작)."""
+    n = new_node_with(front_median_kernel=1)
+    enter(n)
+    n.state, n.state_t = 'BACKOFF', T0 + 20.0
+    spike_scan(n, T0 + 20.0, INF, {FWD - 10: 3.0, FWD: 3.0, FWD + 10: 3.0})
+    tick(n, T0 + 20.0)
+    assert n.state == 'DONE' and n.done_reason == 'backoff'
+    assert tick(n, T0 + 20.1) == [GPS]
+
+
+def test_approach_isolated_points_only_stops_with_rejected_count():
+    """APPROACH 중 섹터가 전부 고립 반사(inf + 떨어진 0.5 m 3 점) + 표식 유효 → 거리 None = STOP_BLIND.
+    매 틱 50000, WARN(2 s throttle)에 '버린 점 3' — LiDAR 고장(버린 점 0)과 현장에서 가른다."""
+    iso = {FWD - 10: 0.5, FWD: 0.5, FWD + 10: 0.5}
+    n = new_node()
+    enter(n)
+    n.state, n.state_t, n.standoff_aligned = 'APPROACH', T0 + 20.0, True
+    for k in range(10):
+        t = T0 + 20.0 + k / 10.0
+        spike_scan(n, t, INF, iso)
+        marker(n, t, 0.0)
+        assert tick(n, t) == [STOP], k
+        assert n.state == 'APPROACH', k
+    w = lidar_lines(n, 'WARN')
+    assert w and all(x[2].get('throttle_duration_sec') == 2.0 for x in w), w
+    assert all('버린 점 3' in x[1] and '접근 중단' in x[1] for x in w), w
+    assert lines(n, 'ERROR') == []
+    # 대조: /scan 이 전부 inf(반환 없음)면 버린 점 0
+    n = new_node()
+    enter(n)
+    n.state, n.state_t, n.standoff_aligned = 'APPROACH', T0 + 20.0, True
+    no_return_scan(n, T0 + 20.0)
+    marker(n, T0 + 20.0, 0.0)
+    assert tick(n, T0 + 20.0) == [STOP]
+    w = lidar_lines(n, 'WARN')
+    assert len(w) == 1 and '버린 점 0' in w[0][1], w
+
+
+def test_median_kernel_bad_values_error_and_fallback_5():
+    for bad in (-1, -5, 10, 100):
+        n = new_node_with(front_median_kernel=bad)
+        assert n.front_median_kernel == 5 and n.front_median_window == 5, bad
+        e = [x for x in lines(n, 'ERROR') if 'front_median_kernel' in x[1]]
+        assert len(e) == 1 and str(bad) in e[0][1] and '5' in e[0][1], (bad, e)
+        assert len(lines(n, 'ERROR')) == 1, bad
+        b = boot_info(n)
+        assert len(b) == 1 and 'front_median_kernel=5' in b[0] and '실효 창 5점' in b[0], (bad, b)
+        # 대체값 5 가 실제로 쓰인다: 한 광선 스파이크를 지운다
+        spike_scan(n, T0, 5.0, {FWD: 0.5})
+        assert n.front_min_dist(T0) == 5.0, bad
+    OVERRIDES.clear()
+
+
+def test_median_kernel_even_logs_effective_window():
+    for k, win in ((2, 3), (4, 5), (8, 9), (9, 9), (3, 3)):
+        n = new_node_with(front_median_kernel=k)
+        assert lines(n, 'ERROR') == [], k
+        assert n.front_median_kernel == k and n.front_median_window == win, k
+        b = boot_info(n)
+        assert len(b) == 1 and f'front_median_kernel={k}' in b[0] and f'실효 창 {win}점' in b[0], (k, b)
+    OVERRIDES.clear()
 
 
 if __name__ == '__main__':

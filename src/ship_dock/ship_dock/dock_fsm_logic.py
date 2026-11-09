@@ -1,7 +1,8 @@
 """ship_dock 의 상태 판정 — **ROS 비의존 순수 파이썬** (rclpy 임포트 없음).
 
     from ship_dock.dock_fsm_logic import (
-        approach_decision, check_realign_min, approach_gate, contact_step, backoff_step)
+        approach_decision, check_realign_min, approach_gate, contact_step, backoff_step,
+        median_min, median_kernel_window, MEDIAN_MIN_VALID)
 
 APPROACH 의 '접안 / 재정렬(ALIGN) / 조향 접근' 판단(approach_decision)과, LiDAR 전방 거리가
 None 일 때 APPROACH·CONTACT·BACKOFF 가 무엇을 하는지(approach_gate·contact_step·backoff_step)를
@@ -19,7 +20,15 @@ approach_decision 은 **dist 가 숫자일 때만** 부른다(None 을 넣지 �
 왜 뗐나: dock_sim 500 런 중 실패 3 런이 전부 접안 직전(약 1.0 m)에 APPROACH→ALIGN 제자리 선회
 → 관성 전진 → 표식 유실 → SEARCH 였다. 재정렬 전이에 거리 하한(realign_min_dist)을 넣으면서
 판단을 ROS 없이 테스트할 수 있게 했다(test/test_dock_fsm_logic.py).
+
+전방 거리 공간 median (docs/문제와작업/계약서_도킹물보라필터_20261109.md, 11-09 승인):
+  · median_min 은 ship_direction/failsafe.py median_min 의 **사본**이다(ship_direction import 금지 —
+    package.xml 의존 추가·tools/sim 단독 실행이 깨진다). 원본을 고치면 여기도 같이 고친다.
+    어긋남은 test/test_dock_median_min.py 가 원본을 경로 로드해 무작위 입력 수천 건으로 잡는다.
+  · 노드는 front_min_dist 에서 median_min(kernel=front_median_kernel, min_valid=MEDIAN_MIN_VALID)을 부른다.
 """
+
+import math
 
 CONTACT = "CONTACT"                 # 접안 판정 (dist <= contact)
 ALIGN_STANDOFF = "ALIGN_STANDOFF"   # standoff 안에서 1회 정밀 재정렬
@@ -148,3 +157,71 @@ def backoff_step(dist, scan_fresh, elapsed, backoff_dist, timeout_sec):
     if dist is not None or scan_fresh:
         return REVERSE
     return STOP_NO_SCAN
+
+
+# ─────────────── 전방 거리 공간 median (11-09) — 물보라 한 점의 거짓 CONTACT 방지 ───────────────
+MEDIAN_MIN_VALID = 3                # 창 안 유효점이 이보다 적으면 그 인덱스는 고립 반사로 버린다(결정 2, 고정)
+MEDIAN_KERNEL_MAX = 9               # front_median_kernel 허용 상한(결정 3). 0·1 = raw, 2~9 = median
+
+
+def median_kernel_window(kernel):
+    """front_median_kernel → 실효 창 점 수. 순수 함수. 부팅 검증·로그용.
+
+    → 1    : kernel 0·1 (필터 없음 = raw 최소, 옛 동작)
+      2h+1 : kernel 2~9 (h = kernel // 2 → 짝수 k 는 창 k+1. median_min 이 ±(k//2) 를 보기 때문)
+      None : 정수가 아니거나 음수·MEDIAN_KERNEL_MAX 초과 (노드는 ERROR + 기본값 대체)
+    """
+    if isinstance(kernel, bool) or not isinstance(kernel, int):
+        return None
+    if kernel < 0 or kernel > MEDIAN_KERNEL_MAX:
+        return None
+    if kernel <= 1:
+        return 1
+    return 2 * (kernel // 2) + 1
+
+
+def median_min(ranges, lo, hi, kernel=5, min_valid=3, return_rejected=False):
+    """[lo,hi] 구간에 **공간 median** 을 걸고 최소거리를 찾는다. → (거리, 인덱스) 또는 (None, None).
+
+    ★ ship_direction/failsafe.py median_min 의 사본 — 의미를 바꾸지 말 것(동일성 테스트가 잡는다).
+
+    return_rejected=True 면 (거리, 인덱스, 기각수). 기각수 = raw 로는 유효한 점(finite, >0)인데
+      median 창의 유효점이 min_valid 미만이라 고립 스파이크로 버려진 인덱스 개수(로그 전용).
+
+    각 인덱스의 ±(kernel//2) 창에서 유효점(finite, >0)의 median 을 그 인덱스 값으로 쓴다.
+    유효점이 min_valid 미만이면 그 인덱스는 **무시**한다 (주변에 아무것도 없는 고립 반사 = 물보라).
+    kernel 이 0/1 이면 필터 없이 raw min (폴백).
+    ※ 짝수 개일 때 위쪽 median 을 쓴다 → 거리가 더 크게 나온다(접안 판정이 물보라 쪽으로 안 기운다).
+    """
+    n = len(ranges)
+    lo = max(0, lo)
+    hi = min(n - 1, hi)
+    if lo > hi:
+        return (None, None, 0) if return_rejected else (None, None)
+
+    half = (kernel // 2) if (kernel and kernel > 1) else 0
+
+    best_d, best_i = None, None
+    rejected = 0
+    for i in range(lo, hi + 1):
+        if half == 0:
+            r = ranges[i]
+            v = r if (math.isfinite(r) and r > 0.0) else None
+        else:
+            w = []
+            for j in range(max(0, i - half), min(n - 1, i + half) + 1):
+                r = ranges[j]
+                if math.isfinite(r) and r > 0.0:
+                    w.append(r)
+            if len(w) < min_valid:
+                ri = ranges[i]
+                if math.isfinite(ri) and ri > 0.0:
+                    rejected += 1
+                continue
+            w.sort()
+            v = w[len(w) // 2]           # median (짝수면 위쪽)
+        if v is None:
+            continue
+        if best_d is None or v < best_d:
+            best_d, best_i = v, i
+    return (best_d, best_i, rejected) if return_rejected else (best_d, best_i)

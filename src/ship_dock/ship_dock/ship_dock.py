@@ -35,6 +35,14 @@
       벽 밀착 추정) 거리 없이 후진·/scan 이 없거나 stale 이면 정지+ERROR. 판단은 dock_fsm_logic 의
       approach_gate / contact_step / backoff_step. (이전엔 셋 다 None 이면 공통 가드가 전이 평가를
       통째로 막아 거리 복귀까지 CONTACT·BACKOFF 가 멈췄다 — 시뮬3자유도_발견_20261106 발견 1.)
+  [10] 전방 거리 = 공간 median 최소 (계약서_도킹물보라필터_20261109). raw 최소는 물보라 반사 한 점이
+      1.0 m 아래로 튀면 그 틱에 CONTACT → BACKOFF → DONE 이었다(합성 잡음 시뮬 197/200 판).
+      front_min_dist 의 raw 루프만 dock_fsm_logic.median_min(kernel=front_median_kernel,
+      min_valid=3) 로 바꿨다(섹터 lo/hi·stale·inc 가드 그대로). APPROACH·standoff·contact·BACKOFF 가
+      모두 이 값 하나를 쓴다. median ≥ 섹터 raw 라 접안 판정은 같거나 늦고 BACKOFF 이탈은 같거나 빠르다
+      (예외: 창이 섹터 밖 ±kernel//2 점까지 보므로 섹터 끝 안쪽이 무효점이면 바로 밖 값이 들어올 수 있다).
+      고립 반사만 있으면 None → [9] 의 상태별 처리(APPROACH 정지 / BACKOFF 신선하면 후진).
+      kernel 0·1 = raw(옛 동작, 롤백은 yaml 에서 1 + 노드 재시작). ⚠️ 3 점 이상 덩어리 물보라는 못 거른다.
 
 ⚠️ 이 노드는 mode 7 에서 /candidate_angle 의 **유일한 발행자**다.
    (6a 에서 north_goal_angle 의 mode-7 폴백을 제거했다 — 안 그러면 발행자가 둘이라 조향이 튄다.)
@@ -60,6 +68,7 @@ from sensor_msgs.msg import LaserScan
 
 from ship_dock.dock_fsm_logic import (
     approach_decision, check_realign_min, approach_gate, contact_step, backoff_step,
+    median_min, median_kernel_window, MEDIAN_MIN_VALID, MEDIAN_KERNEL_MAX,
     CONTACT, ALIGN_STANDOFF, ALIGN, SEARCH, BACKOFF, STOP_BLIND,
     DONE_BACKOFF, DONE_TIMEOUT, STOP_NO_SCAN)
 
@@ -156,6 +165,19 @@ class ShipDock(Node):
         # 거리 (전부 LiDAR 전방 섹터 최소거리 기준)
         self.front_sector_half_deg = float(
             self.declare_parameter("front_sector_half_deg", 15.0).value)
+        # [10] 전방 섹터 공간 median 창. 0·1 = raw 최소(옛 동작·롤백), 2~9 = median(짝수 k 는 창 k+1).
+        #   정수로 줄 것 — yaml 에 5.0 처럼 쓰면 rclpy 타입 불일치로 노드가 안 뜬다.
+        #   🚨 대회 launch 가 yaml 을 넘긴다 → config/ship_dock.yaml 값이 대회값. 코드 기본값과 같게 유지.
+        self.front_median_kernel = self.declare_parameter("front_median_kernel", 5).value
+        self.front_median_window = median_kernel_window(self.front_median_kernel)
+        if self.front_median_window is None:
+            # 침묵 금지(CLAUDE.md 1-6) — 부팅은 계속, 기본값으로.
+            self.get_logger().error(
+                f"front_median_kernel={self.front_median_kernel!r} 이상(정수 0~{MEDIAN_KERNEL_MAX} 만 허용) "
+                "→ 기본값 5 사용")
+            self.front_median_kernel = 5
+            self.front_median_window = median_kernel_window(self.front_median_kernel)
+        self.front_rejected = 0     # 마지막 front_min_dist 에서 고립 반사로 버린 점 수(로그 전용, 토픽 없음)
         self.standoff_dist_m = float(self.declare_parameter("standoff_dist_m", 3.0).value)  # ⚠️ 실측 필요
         self.contact_dist_m = float(self.declare_parameter("contact_dist_m", 1.0).value)    # ⚠️ 실측 필요(도크 규격 공지 후)
         self.backoff_dist_m = float(self.declare_parameter("backoff_dist_m", 2.5).value)    # ⚠️ 실측 필요
@@ -248,9 +270,15 @@ class ShipDock(Node):
 
         self.create_timer(self.period_sec, self.timer_cb)
 
+        if self.front_median_window == 1:
+            median_desc = "raw 최소(필터 없음, 옛 동작)"
+        else:
+            median_desc = (f"공간 median 실효 창 {self.front_median_window}점, "
+                           f"유효 {MEDIAN_MIN_VALID}점 미만 창은 고립 반사로 버림")
         self.get_logger().info(
             f"ship_dock 시작: active_wp_mode={self.active_wp_mode} (작년엔 9 라 1년간 침묵했다).\n"
             f"   거리는 LiDAR 전방 ±{self.front_sector_half_deg}° 최소거리만 사용 (카메라 뎁스 안 씀).\n"
+            f"   전방 거리 필터 [10]: front_median_kernel={self.front_median_kernel} → {median_desc}\n"
             f"   standoff={self.standoff_dist_m}m contact={self.contact_dist_m}m "
             f"realign_min={self.realign_min_dist_m}m (이 안에서는 재정렬 선회 없음)\n"
             f"   mode 7 진입 = TRANSIT(20000, GPS 주행) → /goal_distance < "
@@ -347,10 +375,13 @@ class ShipDock(Node):
         return (now - self.last_scan_t) <= self.scan_stale_sec
 
     def front_min_dist(self, now):
-        """전방 섹터(정면 ±half)의 LiDAR 최소거리. 모르면 None.
+        """전방 섹터(정면 ±half)의 LiDAR 최소거리(공간 median, [10]). 모르면 None.
 
         ★ 표식 방위로 매칭하지 않는다. 도크는 넓어서 표식 방위와 LiDAR 최근접점이 최대 15° 어긋난다.
-          "전방에 뭔가 얼마나 가까운가"만 알면 접안에는 충분하다."""
+          "전방에 뭔가 얼마나 가까운가"만 알면 접안에는 충분하다.
+        [10] 섹터 안에서 유효점이 min_valid(3) 미만인 창은 고립 반사(물보라)로 버린다. 다 버려지면 None.
+             버린 점 수는 self.front_rejected 에 남긴다(BACKOFF None 로그용)."""
+        self.front_rejected = 0
         if not self.scan_fresh(now):
             return None
         scan = self.latest_scan
@@ -370,12 +401,9 @@ class ShipDock(Node):
         if lo > hi:
             return None
 
-        best = float('inf')
-        for i in range(lo, hi + 1):
-            r = scan.ranges[i]
-            if math.isfinite(r) and r > 0.0 and r < best:
-                best = r
-        return best if math.isfinite(best) else None
+        best, _idx, self.front_rejected = median_min(
+            scan.ranges, lo, hi, self.front_median_kernel, MEDIAN_MIN_VALID, return_rejected=True)
+        return best
 
     def spin_toward(self, angle):
         """표식 쪽으로 제자리 선회하는 SPIN 코드를 고른다."""
@@ -490,8 +518,10 @@ class ShipDock(Node):
                     return
                 if gate == STOP_BLIND:
                     # 눈 감고 접근하지 않는다. 정지하되 접근 타임아웃 시계는 그대로 흐른다.
+                    #   버린 점 0 = 반환 없음·/scan 없음(LiDAR 고장 쪽) / >0 = 고립 반사만 [10] — 현장에서 가른다.
                     self.get_logger().warn(
-                        "LiDAR 거리 없음 → 도킹 접근 중단(정지)", throttle_duration_sec=2.0)
+                        f"LiDAR 거리 없음(버린 점 {self.front_rejected}) → 도킹 접근 중단(정지)",
+                        throttle_duration_sec=2.0)
                     self.publish(STOP_HOLD)
                     return
 
@@ -547,9 +577,11 @@ class ShipDock(Node):
                     self.publish(STOP_HOLD)
                     return
                 if dist is None:
-                    # /scan 은 신선한데 전방 ±front_sector 에 유한 반환이 없다 = 최소 측정거리 안(벽 밀착) 추정
+                    # /scan 은 신선한데 전방 ±front_sector 에 쓸 반환이 없다: 유한 반환이 아예 없음(최소 측정거리
+                    #   안 = 벽 밀착 추정) 또는 [10] 유효점이 전부 고립 반사로 버려짐. 행동은 같다(후진).
                     self.get_logger().warn(
-                        "전방 LiDAR 반환 없음(스캔은 신선) — 벽 밀착 추정, 거리 없이 후진",
+                        "전방 LiDAR 유효 반환 없음(스캔은 신선) — 벽 밀착 또는 고립 반사만"
+                        f"(버린 점 {self.front_rejected}), 거리 없이 후진",
                         throttle_duration_sec=2.0)
                 self.publish(REVERSE_REL)    # 상대 180° = 후진
                 return
