@@ -150,9 +150,9 @@ USB autosuspend 로 LiDAR/IMU/GPS 시리얼이 끊기는 **실재 이슈**를 �
 
 ### ② 메인 launch — 터미널 1
 ```bash
-ros2 launch launch_files launch_files.launch.py boat:=A   # 🚨 필수 — 1번배 A / 2번배 B. 없거나 소문자면 launch 가 거부한다(10-29)
+ros2 launch launch_files launch_files.launch.py boat:=A course:=main   # 🚨 둘 다 필수 — boat: 1번배 A / 2번배 B(없거나 소문자면 거부, 10-29). course: 종합임무 main / 토너먼트 tournament(없으면 거부, 11-09)
 ```
-`boat` 는 IMU 배별 값(`ssf_heading_A/B.yaml`)을 고른다. GPS 수신기는 따로 `gps_config:=…`(기본 `zed_f9p_rover.yaml`).
+`boat` 는 IMU 배별 값(`ssf_heading_A/B.yaml`)과 ship_direction `dwa_hull` 을 고른다. `course:=tournament` 는 코스별 yaml(DWA 켬·결승 감속 끔·경계 폴리곤)을 공통 yaml 뒤에 붙이고, 레인 녹화본을 `waypoints_file:=<레인별 녹화본.yaml>` 로 준다(`boat_launch_checklist.md` 코스 절). GPS 수신기는 따로 `gps_config:=…`(기본 `zed_f9p_rover.yaml`).
 이 하나로 다음이 전부 뜬다:
 
 | # | 뜨는 것 |

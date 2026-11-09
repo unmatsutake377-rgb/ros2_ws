@@ -132,9 +132,10 @@ td:nth-child(2){white-space:nowrap}
 </ol>
 </article>
 <article class="part"><h3>3.2 노트북에서 실행</h3>
-<pre>ros2 launch launch_files launch_files.launch.py boat:=A     (B 배는 boat:=B)</pre>
+<pre>ros2 launch launch_files launch_files.launch.py boat:=A course:=main     (B 배는 boat:=B)</pre>
 <ul>
 <li><strong><code>boat:=</code> 는 반드시 써야 한다.</strong> 빠뜨리거나 A·B가 아니면 아무것도 안 켜고 거부한다.</li>
+<li><strong><code>course:=</code> 도 반드시 써야 한다(11-09).</strong> 종합임무는 <code>main</code>, 토너먼트는 <code>tournament</code>. 빠뜨리면(<code>boat:=A</code> 만) 거부한다. 아래 3.2a.</li>
 <li>그 배의 IMU 장착값 파일(<code>ssf_heading_A.yaml</code> 또는 <code>_B</code>)이 없으면 역시 아무것도 안 켜고 멈춘다.</li>
 <li>켜지는 노드(거의 동시에 뜬다):</li>
 </ul>
@@ -157,6 +158,25 @@ td:nth-child(2){white-space:nowrap}
 <ul>
 <li><code>ssf_bridge</code>는 포트를 연 뒤 <strong>2초 기다린다</strong>(포트를 열면 아두이노가 재부팅되기 때문). 그다음 정지 명령(1500/1500)부터 보낸다.</li>
 <li>기록 도구 blackbox는 대회 실행에 <strong>들어 있다</strong>(11-05부터). 진단 도구 healthcheck·mission_monitor는 <strong>없다</strong> — 필요하면 따로 켠다(5.13).</li>
+</ul>
+</article>
+<article class="part"><h3>3.2a 코스(course) — 종합임무와 토너먼트 (11-09 추가)</h3>
+<pre>ros2 launch launch_files launch_files.launch.py boat:=A course:=main                  (종합임무)
+ros2 launch launch_files launch_files.launch.py boat:=B course:=tournament \
+    waypoints_file:=&lt;레인별 녹화본.yaml&gt;                                               (토너먼트)</pre>
+<ul>
+<li><strong>main:</strong> 지금까지와 같은 설정 파일 그대로. 웨이포인트는 <code>config/waypoints.yaml</code>.</li>
+<li><strong>tournament:</strong> 공통 설정 뒤에 토너먼트 전용 파일 3개가 덧붙는다(뒤 파일이 이긴다).
+<ul>
+<li><code>ship_direction_tournament.yaml</code> — DWA 켬(<code>dwa_enabled: true</code>, 임무 [8]).</li>
+<li><code>motor_control_tournament.yaml</code> — 결승 앞 감속 끔(<code>goal_slow_min_ratio: 1.0</code>).</li>
+<li><code>north_goal_angle_tournament.yaml</code> — 경기장 경계(<code>geofence_polygon</code>). 지금은 비어 있다 → 시작할 때 WARN. 현장 2경기장 좌표(결승선 너머 포함)를 넣는다.</li>
+</ul></li>
+<li>토너먼트 웨이포인트는 <strong>전부 임무 8</strong>이어야 한다. 하나라도 다르면(종합임무 파일을 잘못 준 경우 등) north가 ERROR를 내고 멈춘다. 모르는 course 값도 같다.</li>
+<li><code>waypoints_file</code> 을 비우면 <code>config/waypoints_tournament.yaml</code> 템플릿으로 뜬다. 자리표시 좌표라 <strong>반드시 레인 녹화본을 준다.</strong></li>
+<li><code>dwa_hull</code>(DWA가 쓰는 선체 글자)은 launch가 <code>boat</code> 에서 정한다. 손으로 고치지 않는다.</li>
+<li>한 판 끝나면 <strong>launch를 다시 켠다.</strong> MANUAL→AUTO로 다시 들어가도 웨이포인트 순번이 처음으로 안 돌아간다.</li>
+<li>north만 따로 켜는 launch(<code>north_goal_angle_launch.py</code>)는 course를 안 주면 <code>main</code> 이고, <code>waypoints_file</code> 인자를 받는다.</li>
 </ul>
 </article>
 <article class="part"><h3>3.3 조종기를 켜고 MANUAL로 출발점까지</h3>
@@ -258,9 +278,10 @@ td:nth-child(2){white-space:nowrap}
 <li><code>/geofence_state</code> — 경계선. ⚠️ <strong>대회장 경계 좌표가 없어 지금은 꺼져 있다(빈 값).</strong></li>
 <li><code>/wp_remaining_time</code> — 남은 시간.</li>
 </ul>
-<p><strong>⑦ 마지막 웨이포인트를 지나면</strong></p>
+<p><strong>⑦ 마지막 웨이포인트를 지나면</strong> (11-09 바뀜)</p>
 <ul>
-<li><code>/wp_mode</code>·방위·거리를 멈춘다. 마지막이 임무 8이라 20000은 계속 낸다. 방위가 끊기니 5.3 → 5.9로 이어져 배는 정지 쪽으로 간다.</li>
+<li><code>/wp_mode</code>·방위·거리를 멈춘다. 마지막 WP가 임무 5·8이면(main·tournament 모두) <code>/candidate_angle = 50000</code>(멈춤)을 계속 내 <strong>바로 멈춘다.</strong> 코스 끝 INFO 1회.</li>
+<li>예전에는 20000을 계속 내서 방위가 끊긴 뒤 5.3 → 5.9 페일세이프로 멈출 때까지 약 5초(추정) 더 갔다.</li>
 </ul>
 </article>
 <article class="part"><h3>5.3 ship_goal_angle — 방향 오차 계산 담당 (<code>src/ship_goal_angle</code>)</h3>
@@ -454,7 +475,7 @@ td:nth-child(2){white-space:nowrap}
 <li><strong>WP6~7 회피(임무 5):</strong> 담당 노드가 없어 north가 20000을 낸다. ship_direction이 LiDAR 틈을 골라 장애물 사이를 지난다.</li>
 <li><strong>도킹(임무 7):</strong> 5.8 표대로. (규정 확인 전까지 웨이포인트 배치는 보류)</li>
 <li><strong>WP10 토너먼트(임무 8):</strong> 시간 초과 없이 20000으로 자율 회피.</li>
-<li><strong>끝:</strong> 마지막 WP를 지나면 방위가 끊겨 페일세이프로 멈춘다. 조종기로 MANUAL 전환해 회수.</li>
+<li><strong>끝:</strong> 마지막 WP(임무 8)를 지나면 north가 50000을 내 바로 멈춘다(11-09 바뀜 — 예전엔 페일세이프로 멈출 때까지 약 5초(추정) 더 갔다). 조종기로 MANUAL 전환해 회수.</li>
 </ol>
 <p>어느 임무든 <strong>시간 초과</strong>가 지나면 위치와 상관없이 다음으로 넘어간다.</p>
 </section>

@@ -65,7 +65,7 @@ FS-i6 는 켤 때 아래가 안 맞으면 **송신을 시작하지 않는다.** 
 
 **자율 운용 순서 (대회)**
 ```
-① 노트북: sudo tools/boat_boot.sh → ros2 launch launch_files launch_files.launch.py boat:=A|B (🚨 boat 필수 — 10-29. 브릿지 포트 여는 리셋을 배터리 전에 끝낸다 — §1)
+① 노트북: sudo tools/boat_boot.sh → ros2 launch launch_files launch_files.launch.py boat:=A|B course:=main|tournament (🚨 boat·course 둘 다 필수 — boat 10-29, course 11-09. 브릿지 포트 여는 리셋을 배터리 전에 끝낸다 — §1)
    탐색(wp_mode 3)은 기본 위치유지(search_behavior 기본 hold, 2026 안내문·팀장 11-04 확정). 선회로 돌릴 때만 뒤에 search_behavior:=orbit
 ② 아두이노는 노트북 직결 (§2)
 ③ 조종기 ON — 스위치 전부 [위] + 왼쪽 스틱 맨 아래 → 수동 상태로 켜진다. 스틱에서 손 뗀다
@@ -75,6 +75,36 @@ FS-i6 는 켤 때 아래가 안 맞으면 **송신을 시작하지 않는다.** 
 ```
 ⚠️ ⑤ 가 수동 상태에서 시동되므로 **조종기 중심값이 데드밴드(±60µs) 안**이어야 한다.
 조종기 AA 전압이 낮으면(10-27: 4.6V) 중심이 ±100 넘게 밀린다 → **출발 전 조종기 건전지 새것**.
+
+#### 코스(course) 인자 — 🚨 필수 (11-09, 계약서_토너먼트분리_20261109)
+
+대회 launch 는 `boat` 와 함께 `course:=main|tournament` 를 **반드시** 받는다. 기본값이 없다 — `boat:=A` 만 주면 launch 가 거부한다.
+
+```bash
+# 종합임무
+ros2 launch launch_files launch_files.launch.py boat:=A course:=main
+# 토너먼트 (2번배면 boat:=B) — waypoints_file 에 그 레인 녹화본
+ros2 launch launch_files launch_files.launch.py boat:=B course:=tournament waypoints_file:=<레인별 녹화본.yaml>
+```
+
+- `course:=main` = 공통 yaml 그대로(종합임무 웨이포인트 `config/waypoints.yaml`).
+- `course:=tournament` = 공통 yaml 뒤에 `ship_direction_tournament.yaml`(DWA 켬, mode [8]) · `motor_control_tournament.yaml`(결승 감속 끔 `goal_slow_min_ratio: 1.0`) · `north_goal_angle_tournament.yaml`(`geofence_polygon`) 이 붙는다.
+- 🚨 토너먼트에서 `waypoints_file` 을 비우면 `config/waypoints_tournament.yaml` **템플릿**(자리표시 좌표)으로 뜬다 → 반드시 레인 녹화본을 준다(녹화는 `웨이포인트_녹화절차.md`).
+- `dwa_hull` 은 launch 가 `boat` 인자에서 정한다(손편집 불필요).
+
+**토너먼트 출발 전 체크**
+
+| # | 확인 | 어디서 |
+|---|---|---|
+| T1 | `waypoints_file:=` 이 **이 배·이 레인** 녹화본인가 | launch 명령 |
+| T2 | 시작 로그 `course=tournament: 코스 파일 …` · `north_goal_angle: course=tournament, 웨이포인트=<녹화본 경로>` | launch 창 |
+| T3 | `코스 tournament: 웨이포인트 N개 로드` 다음 `미션 순서(mode): [8, 8, …]` — 전부 8 | north 로그 |
+| T4 | `DWA 켬: 선체 <이 배 글자>` (1번배 A / 2번배 B) | ship_direction 로그 |
+| T5 | `geofence ON(n점)`. `OFF` 거나 `geofence_polygon 이 비어 있다` WARN 이면 경계 방어 꺼짐 → 현장 2경기장 좌표를 넣고 재시작 | north 로그 |
+| T6 | ERROR `웨이포인트 내용 오류` 가 뜨면 mode 8 아닌 WP 가 있는 파일(종합임무 파일을 물렸는지) → north 가 안 나간다 | north 로그 |
+
+- 🚨 **판 사이에는 launch 를 재시작**한다(Ctrl+C → 다시 launch). MANUAL→AUTO 로 다시 들어가도 웨이포인트 순번을 처음으로 안 되돌린다.
+- 코스 끝(마지막 WP 가 mode 5·8)에서는 main·tournament 모두 north 가 `/candidate_angle` 50000 을 내 즉시 정지한다.
 
 **벤치 / 수동 순서**: ① 아두이노 USB → ② 조종기 ON → ③ SwD [아래] 자율 → ④ 배터리 1·2→5·6 → ⑤ 삑·15~25초 → ⑥ 수동으로 쓸 때 SwD [위].
 
