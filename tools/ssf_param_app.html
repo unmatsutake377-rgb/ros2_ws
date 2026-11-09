@@ -421,6 +421,7 @@ function recPanel() {
     msg: h("div", {class:"small"}),
   };
   R.answerInput = answer;
+  recWatchScroll();
   R.el = h("div", {class:"card", style:"padding:12px 14px;margin-bottom:12px"}, R.parts.status, R.parts.start, R.parts.ask,
     R.parts.screen, R.parts.main, R.parts.answer, R.parts.close, R.parts.msg, R.parts.kill);
   return R.el;
@@ -436,15 +437,24 @@ function recUpdate() {
   P.main.hidden = !(run && pr === "main"); P.answer.hidden = !(run && ["mode", "dwell", "name"].includes(pr));
   P.close.hidden = !(run && pr === "closing");
   for (const b of R.el.querySelectorAll("button")) b.disabled = R.busy;
-  // 처음 채울 때·화면이 숨어 있다 나올 때는 맨 아래(지금 묻는 줄)부터. 사용자가 위로 올려 보는 중이면 그대로 둔다
-  const atBottom = !P.screen.textContent || P.screen.clientHeight === 0 ||
-    P.screen.scrollTop + P.screen.clientHeight >= P.screen.scrollHeight - 20;
-  const back = R.el.isConnected && !R.shown;      // 다른 탭에 갔다 돌아옴(스크롤 위치가 0 으로 돌아가 있다)
-  R.shown = R.el.isConnected;
   if (P.screen.textContent !== (st?.screen || "")) P.screen.textContent = st?.screen || "";
-  if (atBottom || back) P.screen.scrollTop = P.screen.scrollHeight;
+  recScroll();
   P.msg.textContent = R.msg || "";
   if (run && ["mode", "dwell", "name"].includes(pr) && document.activeElement !== R.answerInput) R.answerInput.focus();
+}
+// 녹화 화면 스크롤: 기본은 맨 아래(지금 묻는 줄). 사용자가 위로 올려 보면 그 자리 유지.
+// 화면 전체를 다시 그릴 때(render) 상자를 뗐다 붙이면 스크롤이 0 이 되므로 기억해 둔 값으로 되돌린다.
+function recScroll() {
+  const s = R.parts?.screen; if (!s || !s.isConnected) return;
+  s.scrollTop = R.stick === false ? (R.keepTop || 0) : s.scrollHeight;
+}
+function recWatchScroll() {
+  const s = R.parts.screen;
+  s.addEventListener("scroll", () => {
+    if (!s.isConnected || s.clientHeight === 0) return;
+    R.stick = s.scrollTop + s.clientHeight >= s.scrollHeight - 20;
+    R.keepTop = s.scrollTop;
+  });
 }
 async function recPoll() {
   try { const r = await api("/api/wp/rec"); R.st = r.ok === false ? {error:r.error} : r; }
@@ -644,6 +654,7 @@ function render(keepFocus) {
     kids.push(h("p", {class:"hint", text:`보는 코스: ${COURSE_KO[S.course]} — 칸의 값 = 이 배가 이 코스에서 실제로 읽는 값. 바꾸면 그 값을 정하는 파일이 고쳐진다.`}));
   const v = {field:viewField, all:viewAll, diff:viewDiff, wp:viewWp, log:viewLog}[S.tab]();
   m.replaceChildren(...kids, ...v);
+  if (S.tab === "wp") requestAnimationFrame(recScroll);   // 다시 붙인 녹화 화면의 스크롤 되돌리기
   if (keepFocus && selStart != null) { const s = $(".search"); s.focus(); s.setSelectionRange(selStart, selStart); }
   $("#bar").hidden = !S.pending.size;
   $("#pcount").textContent = S.pending.size;
