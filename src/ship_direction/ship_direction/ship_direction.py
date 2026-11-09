@@ -1283,11 +1283,13 @@ class ShipDirection(Node):
         새 스캔(메시지 객체가 바뀜)만 연속 프레임으로 센다 — 제어 10 Hz 가 같은 스캔을 두 번 볼 수 있다.
 
         한 바퀴 스캔 전체를 본다(0~160 창 밖). 스캔이 그 구역을 못 덮으면 '모름' → 안 잠금 + WARN 1회.
-        직전 틱이 잠금 평가 (C) 틱이 아니었으면((0)(A)(B)·레벨2·스캔 없음) 대기 상태를 조용히 처음으로.
+        직전 틱이 잠금 평가 (C) 틱이 아니었으면((0)(A)(B)·레벨2·스캔 없음) 대기 상태만 조용히 처음으로
+        (잠금 필터·잠김 상태는 유지).
         """
         if not lock_seen:
+            # 대기 시간만 처음부터. 잠금 필터는 유지 — 한 틱 끊겼다고 잠금을 풀면 재출발 직후
+            # 확인 프레임 동안(0.3 s) 잠금 공백이 생긴다. '모름' 초기화는 필터가 따로 한다.
             self._side_lock_wait.reset()
-            self._side_lock_filter.reset()
         self._side_lock_seen = True
         new_frame = msg is not self._side_lock_last_scan
         self._side_lock_last_scan = msg

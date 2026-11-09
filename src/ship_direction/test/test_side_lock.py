@@ -523,10 +523,11 @@ def test_check_params():
     for k, v in (('confirm_frames', 0), ('confirm_frames', -1), ('confirm_frames', 2.5),
                  ('confirm_frames', 3.0), ('confirm_frames', True), ('confirm_frames', None),
                  ('release_margin_m', -0.1), ('release_margin_m', math.nan),
-                 ('release_margin_m', math.inf), ('release_margin_m', True)):
+                 ('release_margin_m', math.inf), ('release_margin_m', True),
+                 ('confirm_frames', 21), ('release_margin_m', 2.01)):
         assert check_params(**dict(GOOD, **{k: v})), (k, v)
-    for k, v in (('confirm_frames', 1), ('confirm_frames', 10), ('release_margin_m', 0.0),
-                 ('release_margin_m', 1.0)):
+    for k, v in (('confirm_frames', 1), ('confirm_frames', 20), ('release_margin_m', 0.0),
+                 ('release_margin_m', 2.0)):
         assert check_params(**dict(GOOD, **{k: v})) == [], (k, v)
     assert check_params(**dict(GOOD, enabled=False)) == []
     for k, v in (('enabled', 'true'), ('enabled', 1), ('dist_m', 0.0), ('dist_m', -1.0),
@@ -612,7 +613,8 @@ def test_node_on_start_info():
     {'side_lock_turn_deg': math.inf}, {'side_lock_wait_max_sec': -1.0},
     {'side_lock_wait_max_sec': math.nan}, {'side_lock_confirm_frames': 0},
     {'side_lock_confirm_frames': 3.0}, {'side_lock_confirm_frames': True},
-    {'side_lock_release_margin_m': -0.1}, {'side_lock_release_margin_m': math.nan}])
+    {'side_lock_release_margin_m': -0.1}, {'side_lock_release_margin_m': math.nan},
+    {'side_lock_confirm_frames': 21}, {'side_lock_release_margin_m': 2.5}])
 def test_node_bad_param_error_once_and_off(bad):
     node, log = _construct(dict(ON, **bad))
     assert node.side_lock_enabled is False and node._side_lock_wait is None
@@ -924,6 +926,36 @@ def test_on_dwa_picked_matches_actual_choice():
             assert outs[-1] == want, (wait, outs)
             assert on._dwa_picked is (want == 120.0)
             assert not log.of('INFO', 'DWA 가능한 후보 없음'), log.lines
+    with_env(run)
+
+
+def test_on_gap_tick_keeps_lock_resets_wait_timer():
+    """(C) 가 한 틱 끊겨도(L2·candidate 50000) 잠금 필터는 유지 → 돌아온 첫 틱부터 잠금(확인 3프레임
+    다시 안 기다림). 대기 타이머만 처음부터."""
+    def run(clk):
+        for gap in ('level2', 'stop_hold'):
+            on, log = _node(ON3)
+            assert [_tick(on, clk, BESIDE_L, YAW_L) for _ in range(4)] == \
+                [120.0, 120.0, 105.0, 95.0]
+            if gap == 'level2':
+                on.failsafe_level = 2
+                assert _tick(on, clk, BESIDE_L, YAW_L) == STOP_HOLD
+                on.failsafe_level = 0
+            else:
+                assert _tick(on, clk, BESIDE_L, YAW_L, candidate=STOP_HOLD) == STOP_HOLD
+            assert _tick(on, clk, BESIDE_L, YAW_L) == 95.0, gap     # 잠금 공백 없음
+            # 대기 중 한 틱 끊김 → 대기 INFO 다시, 타이머 처음부터(이어 셌으면 5 + 9.5 s > 10 s 폴백)
+            for _ in range(50):
+                assert _tick(on, clk, GAP_L, YAW_0) == STOP_HOLD    # 이미 잠김 → 바로 대기
+            if gap == 'level2':
+                on.failsafe_level = 2
+                _tick(on, clk, GAP_L, YAW_0)
+                on.failsafe_level = 0
+            else:
+                _tick(on, clk, GAP_L, YAW_0, candidate=STOP_HOLD)
+            assert [_tick(on, clk, GAP_L, YAW_0) for _ in range(95)] == [STOP_HOLD] * 95, gap
+            assert len(log.of('INFO', '50000 대기')) == 2, gap
+            assert not log.of('WARN', '폴백'), gap
     with_env(run)
 
 

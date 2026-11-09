@@ -29,6 +29,8 @@ DIST_MAX_M = 5.0       # side_lock_dist_m: 0 < d ≤ 5 (DWA 점 필터 상한과
 DEG_MAX = 180.0        # side_lock_min/max_deg: 0 ≤ min < max ≤ 180
 TURN_MAX_DEG = 80.0    # side_lock_turn_deg: 0 ≤ t ≤ 80 (조향 0~160 안)
 WAIT_MAX_SEC = 60.0    # side_lock_wait_max_sec: 0 ≤ w ≤ 60 (0 = 대기 없이 바로 기존 동작)
+CONFIRM_MAX_FRAMES = 20     # side_lock_confirm_frames: 1 ≤ n ≤ 20 정수 (20 장 ≈ 2 s)
+RELEASE_MARGIN_MAX_M = 2.0  # side_lock_release_margin_m: 0 ≤ m ≤ 2.0
 
 
 def check_params(enabled, dist_m, min_deg, max_deg, turn_deg, wait_max_sec,
@@ -55,11 +57,13 @@ def check_params(enabled, dist_m, min_deg, max_deg, turn_deg, wait_max_sec,
     num('side_lock_turn_deg', turn_deg, 0.0, TURN_MAX_DEG)
     num('side_lock_wait_max_sec', wait_max_sec, 0.0, WAIT_MAX_SEC)
     if isinstance(confirm_frames, bool) or not isinstance(confirm_frames, int) or \
-            confirm_frames < 1:
-        bad.append(f"side_lock_confirm_frames={confirm_frames!r} 1 이상 정수 아님")
+            not 1 <= confirm_frames <= CONFIRM_MAX_FRAMES:
+        bad.append(f"side_lock_confirm_frames={confirm_frames!r} 1~{CONFIRM_MAX_FRAMES} 정수 아님")
     if isinstance(release_margin_m, bool) or not isinstance(release_margin_m, (int, float)) or \
-            not math.isfinite(release_margin_m) or release_margin_m < 0.0:
-        bad.append(f"side_lock_release_margin_m={release_margin_m!r} 0 이상 유한값 아님")
+            not math.isfinite(release_margin_m) or \
+            not 0.0 <= release_margin_m <= RELEASE_MARGIN_MAX_M:
+        bad.append(f"side_lock_release_margin_m={release_margin_m!r} "
+                   f"0~{RELEASE_MARGIN_MAX_M} 유한값 아님")
     return bad
 
 

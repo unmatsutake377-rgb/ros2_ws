@@ -132,7 +132,7 @@
     # 스캔이 옆 구역을 못 덮으면 그쪽은 안 잠금(+ WARN 1회). 상대 배·부표 구분 안 함.
     # 켜짐은 side_lock_enabled 하나로만(wp_mode 로 안 가름). 끔(기본) = 기존과 같다.
     # 코스별로는 ship_direction_tournament.yaml 에서 켠다(물 위 확인 뒤, 계약서 §10 현장 스위치 표).
-    # 이상값(비유한·범위 밖: 0<dist≤5, 0≤min<max≤180, 0≤turn≤80, 0≤wait≤60, confirm 정수≥1, margin≥0)
+    # 이상값(비유한·범위 밖: 0<dist≤5, 0≤min<max≤180, 0≤turn≤80, 0≤wait≤60, confirm 정수 1~20, 0≤margin≤2)
     # → ERROR 1회 + 끔. confirm_frames 만 정수(소수점 금지), 나머지는 소수점 필수.
     # 🚨 코드 기본값과 같은 값으로 둘 것(test_side_lock 이 본다).
     # ⚠️ RPLIDAR 옆·뒤 가림·자기 선체 반사 미확인 — 가리면 그쪽이 늘 잠긴다(정면 회피는 남음).
