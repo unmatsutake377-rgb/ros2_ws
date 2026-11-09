@@ -12,7 +12,10 @@ boat=${1:?A 또는 B}
 course=${2:?main 또는 tournament}
 lane=${3:-}
 cd "$(dirname "$0")/.." || exit 1
-pause() { echo; read -rp "엔터를 누르면 이 창을 닫는다 " _; }
+PAUSED=0
+pause() { PAUSED=1; echo; read -rp "엔터를 누르면 이 창을 닫는다 " _; }
+# 어디서 끝나든 창이 말없이 닫히지 않게(tmux 창이 닫히면 SSH 도 바로 끊겨 오류를 못 본다)
+trap 'rc=$?; if [ "$PAUSED" = 0 ]; then echo; echo "❌ 중간에 끝났다(코드 $rc) — 위 문구를 확인"; read -rp "엔터를 누르면 닫는다 " _; fi' EXIT
 
 prep=$(python3 tools/ssf_param_core.py --boat "$boat" wp-prep "$course" $lane 2>&1)
 rc=$?
@@ -26,8 +29,11 @@ if [ -z "$setup" ] || [ ! -f install/setup.bash ]; then
   echo "❌ ROS 환경이 없다(/opt/ros/*/setup.bash 또는 ~/ros2_ws/install/setup.bash) — 녹화 도구를 못 띄운다"
   pause; exit 1
 fi
+# ROS setup.bash 는 정의 안 된 변수(AMENT_TRACE_SETUP_FILES 등)를 쓴다 — set -u 인 채로 부르면 바로 죽는다
+set +u
 # shellcheck disable=SC1090
 source "$setup"; source install/setup.bash
+if ! command -v ros2 >/dev/null; then echo "❌ ROS 환경을 불러왔는데 ros2 명령이 없다"; pause; exit 1; fi
 
 echo
 echo "━━ 웨이포인트 녹화 — $( [ "$boat" = A ] && echo 1번배 || echo 2번배 ) · $( [ "$course" = tournament ] && echo "토너먼트 레인 $lane" || echo 종합임무 )"
