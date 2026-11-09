@@ -62,6 +62,18 @@ echo "source /opt/ros/humble/setup.bash" >> ~/.bashrc
 source ~/.bashrc
 ```
 
+🚨 **배 노트북은 ROS 를 노트북 안에만 가둔다 (2026-11-09, 두 배 동시 운용)** — 대회 스택은 `ROS_DOMAIN_ID` 를 정하지 않아
+두 배 노트북이 모두 도메인 0 이다. 두 노트북이 같은 와이파이·핫스팟·공유기에 붙으면(피트·실험실) DDS 가 서로를 찾아
+**상대 배의 `Motor_run`·`/imu/yaw`·`/scan`·`/wp_mode` 를 받는다.** 배 노트북마다 한 번:
+```bash
+echo "export ROS_LOCALHOST_ONLY=1" >> ~/.bashrc
+source ~/.bashrc && ros2 daemon stop      # 데몬이 옛 설정을 쥐고 있으니 한 번 내린다
+echo $ROS_LOCALHOST_ONLY                  # → 1
+```
+- 잃는 것 없음: 물가 영상(`cam_stream.sh`)은 ROS 가 아닌 UDP, MacBook 은 SSH 로 배 노트북 안에서 명령을 돌린다(Tailscale 은 원래 DDS 를 못 넘음).
+- 노트북 두 대 사이로 ROS 토픽을 일부러 주고받아야 할 때만 그 터미널에서 `unset ROS_LOCALHOST_ONLY`.
+- 확인: `tools/boat_boot.sh --check` 의 [6]. launch 뒤 `ros2 node list | sort | uniq -d` 가 비어야 한다(상대 배 노드가 보이면 중복으로 뜬다).
+
 ---
 
 ## 3. 빌드 도구 + rosdep
@@ -364,6 +376,7 @@ colcon test && colcon test-result --all
 - [ ] Ubuntu 22.04 설치 (Secure Boot off)
 - [ ] `apt update && upgrade`
 - [ ] ROS2 Humble (`ros-humble-desktop`) + `.bashrc` 소싱
+- [ ] (배 노트북) `.bashrc` 에 `export ROS_LOCALHOST_ONLY=1` — 두 배 토픽 섞임 방지(§2)
 - [ ] colcon / vcstool / rosdep
 - [ ] `git clone` 저장소
 - [ ] RealSense SDK (`librealsense2`)

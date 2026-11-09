@@ -153,6 +153,30 @@ serial_safety(){
   fi
 }
 
+# ─────────────────────────────────────────── 6) ROS 네트워크 격리 확인 (2026-11-09, 변경 아님)
+#   대회 스택은 ROS_DOMAIN_ID 를 정하지 않는다 → 두 배 노트북 모두 도메인 0.
+#   두 노트북이 같은 와이파이·핫스팟에 붙으면 DDS 가 서로를 찾아 Motor_run·/imu/yaw·/scan 이 섞인다.
+#   막는 법: 각 배 노트북 ~/.bashrc 에 export ROS_LOCALHOST_ONLY=1 (ubuntu_setup.md §2).
+#   여기선 확인만 한다(.bashrc 를 고치지 않음). sudo 로 돌면 환경변수가 지워지므로 .bashrc 를 읽는다.
+ros_isolation(){
+  echo "[6] ROS 네트워크 격리 (두 배 토픽 섞임 방지)"
+  if [ "$(id -u)" -ne 0 ]; then
+    if [ "${ROS_LOCALHOST_ONLY:-0}" = "1" ]; then
+      ok "ROS_LOCALHOST_ONLY=1 (이 터미널)"
+    else
+      warn "이 터미널 ROS_LOCALHOST_ONLY=${ROS_LOCALHOST_ONLY:-없음}, ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-없음(0)} — 다른 배와 같은 망이면 토픽이 섞인다. ubuntu_setup.md §2"
+    fi
+    return
+  fi
+  local u="${SUDO_USER:-}" rc=""
+  [ -n "$u" ] && rc="$(getent passwd "$u" | cut -d: -f6)/.bashrc"
+  if [ -n "$rc" ] && [ -r "$rc" ] && grep -Eq '^[[:space:]]*export[[:space:]]+ROS_LOCALHOST_ONLY=1' "$rc"; then
+    ok "$rc 에 ROS_LOCALHOST_ONLY=1 (launch 터미널에서 echo \$ROS_LOCALHOST_ONLY 로 재확인)"
+  else
+    warn "${rc:-~/.bashrc} 에 'export ROS_LOCALHOST_ONLY=1' 없음 — 다른 배와 같은 망이면 토픽이 섞인다. ubuntu_setup.md §2"
+  fi
+}
+
 echo "=== boat_boot $([ "$CHECK_ONLY" -eq 1 ] && echo '(상태 확인만)') ==="
 need_root
 cpu_governor
@@ -160,6 +184,7 @@ usb_autosuspend
 screen_sleep
 power_note
 serial_safety
+ros_isolation
 echo
 if [ "$CHECK_ONLY" -eq 1 ]; then
   echo "상태 확인 완료. 적용하려면: sudo $0"

@@ -19,6 +19,7 @@
 #   ./tools/cam_stream.sh 100.101.102.103 oak        # OAK 온보드 인코더 직접 (CPU 0, 시각 각인 없음)
 #   ./tools/cam_stream.sh 100.101.102.103 v4l2 640 480 30 1500   # 기본(424x240·1000)보다 크게
 #   CAM_TOPIC=/oak/rgb/image_raw ./tools/cam_stream.sh 100.101.102.103 ros   # OAK(depthai-ros) 토픽
+#   CAM_PORT=5601 ./tools/cam_stream.sh …   # 🚨 2번배 — 두 배가 같은 MacBook 으로 쏘면 5600 에서 섞인다. 수신도 CAM_PORT=5601 ./tools/cam_view.sh
 #   CAM_DEV=/dev/video6 ./tools/cam_stream.sh …   # 장치 고정(번호는 다시 꽂으면 바뀐다 — 평소엔 빼고 자동 탐색)
 #   CAM_ANY=1 ./tools/cam_stream.sh …             # RealSense 가 없을 때 내장 웹캠이라도 (시험용)
 #
