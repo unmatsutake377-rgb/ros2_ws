@@ -436,8 +436,13 @@ function recUpdate() {
   P.main.hidden = !(run && pr === "main"); P.answer.hidden = !(run && ["mode", "dwell", "name"].includes(pr));
   P.close.hidden = !(run && pr === "closing");
   for (const b of R.el.querySelectorAll("button")) b.disabled = R.busy;
-  const atBottom = P.screen.scrollTop + P.screen.clientHeight >= P.screen.scrollHeight - 20;
-  if (P.screen.textContent !== (st?.screen || "")) { P.screen.textContent = st?.screen || ""; if (atBottom) P.screen.scrollTop = P.screen.scrollHeight; }
+  // 처음 채울 때·화면이 숨어 있다 나올 때는 맨 아래(지금 묻는 줄)부터. 사용자가 위로 올려 보는 중이면 그대로 둔다
+  const atBottom = !P.screen.textContent || P.screen.clientHeight === 0 ||
+    P.screen.scrollTop + P.screen.clientHeight >= P.screen.scrollHeight - 20;
+  const back = R.el.isConnected && !R.shown;      // 다른 탭에 갔다 돌아옴(스크롤 위치가 0 으로 돌아가 있다)
+  R.shown = R.el.isConnected;
+  if (P.screen.textContent !== (st?.screen || "")) P.screen.textContent = st?.screen || "";
+  if (atBottom || back) P.screen.scrollTop = P.screen.scrollHeight;
   P.msg.textContent = R.msg || "";
   if (run && ["mode", "dwell", "name"].includes(pr) && document.activeElement !== R.answerInput) R.answerInput.focus();
 }
