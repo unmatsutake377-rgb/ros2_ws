@@ -326,3 +326,91 @@ def test_server_set_and_undo(server):
     assert r["ok"]
     st, d = _req(port, "/api/diff")
     assert d["rows"] == []
+
+
+# ---------------------------------------------------------------- 웨이포인트 (보기·검사·녹화 준비)
+
+import ssf_waypoints as wpm  # noqa: E402
+
+GOOD_T = ("waypoints:\n"
+          "  - {구역: \"T0\", lat: 35.18620, lon: 128.56550, mode: 8, dwell: 0.5}\n"
+          "  - {구역: \"T1\", lat: 35.18640, lon: 128.56550, mode: 8, dwell: 0.5}\n")
+
+
+def _wp(boat, name, text):
+    d = os.path.join(boat.home, "ssf_logs")
+    os.makedirs(d, exist_ok=True)
+    p = os.path.join(d, name)
+    with open(p, "w", encoding="utf-8") as f:
+        f.write(text)
+    return p
+
+
+def test_wp_list_templates_and_recorded(boat):
+    _wp(boat, "waypoints_tournament_A_1.yaml", GOOD_T)
+    files = boat.waypoints()
+    kinds = [(f["kind"], f["name"]) for f in files]
+    assert kinds[0] == ("녹화본(노트북)", "waypoints_tournament_A_1.yaml")
+    assert ("저장소 템플릿", "waypoints.yaml") in kinds and ("저장소 템플릿", "waypoints_tournament.yaml") in kinds
+    rec = files[0]
+    assert rec["course"] == "tournament" and rec["modes"] == [8, 8] and not rec["errors"]
+    main_t = [f for f in files if f["name"] == "waypoints.yaml"][0]
+    assert not main_t["errors"] and main_t["modes"][-1] == 8
+
+
+def test_wp_errors_and_warnings(boat):
+    _wp(boat, "waypoints_recorded.yaml",
+        "waypoints:\n  - {lat: 35.1862, lon: 128.5655, mode: 9, dwell: 1.0}\n")
+    _wp(boat, "waypoints_tournament_A_2.yaml",
+        "waypoints:\n  - {lat: 35.1862, lon: 128.5655, mode: 5, dwell: 1.0}\n")
+    _wp(boat, "waypoints_old.yaml",
+        "waypoints:\n  - {lat: 35.1862, lon: 128.5655, mode: 3, dwell: 3.0}\n"
+        "  - {lat: 35.1863, lon: 128.5656, mode: 8, dwell: 3.0}\n")
+    by = {f["name"]: f for f in boat.waypoints()}
+    assert "미션번호 9" in by["waypoints_recorded.yaml"]["errors"][0]
+    assert "mode 5" in by["waypoints_tournament_A_2.yaml"]["errors"][0]
+    assert any("dwell" in w for w in by["waypoints_old.yaml"]["warnings"])
+
+
+def test_wp_geofence_check(boat):
+    poly = [35.1860, 128.5650, 35.1860, 128.5660, 35.1870, 128.5660, 35.1870, 128.5650]
+    boat.apply("geofence_polygon", "[" + ", ".join(map(str, poly)) + "]", course="tournament")
+    assert boat.geofence() == poly
+    _wp(boat, "waypoints_tournament_A_1.yaml", GOOD_T)
+    _wp(boat, "waypoints_tournament_A_3.yaml", GOOD_T.replace("35.18640", "35.18800"))
+    by = {f["name"]: f for f in boat.waypoints()}
+    assert not by["waypoints_tournament_A_1.yaml"]["warnings"]
+    assert any("경계" in w and "WP 1" in w for w in by["waypoints_tournament_A_3.yaml"]["warnings"])
+
+
+def test_wp_prepare_paths_backup_and_boat_check(boat):
+    p = boat.wp_prepare("tournament", "1")
+    assert p["out"].endswith("ssf_logs/waypoints_tournament_A_1.yaml") and p["backup"] is None
+    assert p["template"].endswith("waypoints_tournament.yaml")
+    _wp(boat, "waypoints_tournament_A_1.yaml", GOOD_T)
+    p = boat.wp_prepare("tournament", "1")
+    assert p["backup"] and open(p["backup"], encoding="utf-8").read() == GOOD_T
+    m = boat.wp_prepare("main")
+    assert m["out"].endswith("ssf_logs/waypoints_recorded.yaml") and m["template"] is None
+    with pytest.raises(core.ParamError, match="레인"):
+        boat.wp_prepare("tournament")
+    with pytest.raises(core.ParamError, match="레인"):
+        boat.wp_prepare("tournament", "../x")
+    other = core.Repo(boat.repo, "B", home=boat.home)
+    with pytest.raises(core.ParamError, match="배가 다르다"):
+        other.wp_prepare("main")
+
+
+def test_point_in_polygon():
+    sq = [0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 0.0]
+    assert wpm.point_in_polygon(0.5, 0.5, sq)
+    assert not wpm.point_in_polygon(1.5, 0.5, sq)
+
+
+def test_server_waypoints_readonly(server):
+    port, boat = server
+    _wp(boat, "waypoints_tournament_A_1.yaml", GOOD_T)
+    st, d = _req(port, "/api/waypoints")
+    assert st == 200 and d["ok"] and d["files"][0]["name"] == "waypoints_tournament_A_1.yaml"
+    st, _ = _req(port, "/api/waypoints", {"x": 1}, {"X-SSF": "1"})
+    assert st == 404

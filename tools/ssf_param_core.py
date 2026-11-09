@@ -760,6 +760,30 @@ class Repo:
         tail = (r.stdout + r.stderr).strip().split("\n")[-25:]
         return {"ok": r.returncode == 0, "code": r.returncode, "tail": tail, "pkgs": pkgs}
 
+    # ---- 웨이포인트(보기·검사·녹화 준비만 — 파일은 고치지 않는다. tools/ssf_waypoints.py)
+    def geofence(self):
+        """토너먼트에서 실제로 읽는 geofence_polygon(6개 이상일 때만), 없으면 None."""
+        for p in self.params()["params"]:
+            if p["key"] == "geofence_polygon":
+                e = p["effective"].get("tournament")
+                if e and isinstance(e["value"], list) and len(e["value"]) >= 6:
+                    return e["value"]
+        return None
+
+    def waypoints(self):
+        import ssf_waypoints as wpm
+        return wpm.list_files(self.repo, self.home, self.geofence())
+
+    def wp_prepare(self, course="main", lane=None):
+        """녹화 전: 배 확인 → 출력·템플릿 경로 → 기존 녹화본 백업."""
+        import ssf_waypoints as wpm
+        b = self.boat()
+        try:
+            out, template = wpm.plan(self.repo, self.home, b, course, lane)
+        except ValueError as e:
+            raise ParamError(str(e))
+        return {"boat": b, "out": out, "template": template, "backup": wpm.backup(out, self.home)}
+
     def state(self):
         mk = self.marker()
         err = None
@@ -824,6 +848,8 @@ def main(argv=None):
     s = sub.add_parser("undo"); s.add_argument("key"); s.add_argument("--course", choices=COURSES); s.add_argument("--node")
     sub.add_parser("diff")
     sub.add_parser("log")
+    sub.add_parser("wp-list")
+    s = sub.add_parser("wp-prep"); s.add_argument("course", choices=COURSES); s.add_argument("lane", nargs="?")
     a = ap.parse_args(argv)
     r = Repo(a.repo, a.boat)
     try:
@@ -874,6 +900,26 @@ def main(argv=None):
         if a.cmd == "log":
             for x in r.read_log(30):
                 print(f"  {x['time']} {x['key']} {x['old']} → {x['new']} ({x['rel']}, {x['source']})")
+            return 0
+        if a.cmd == "wp-list":
+            for f in r.waypoints():
+                bad = "❌" if f["errors"] else ("⚠️" if f["warnings"] else "✅")
+                print(f"  {bad} {f['kind']}  {f['path']}  [{COURSE_KO[f['course']]}]  {f.get('mtime', '')}")
+                if f["modes"]:
+                    print(f"       {len(f['modes'])}점, mode 순서 {f['modes']}")
+                for m in f["errors"]:
+                    print("       ❌ " + m)
+                for m in f["warnings"]:
+                    print("       ⚠️ " + m)
+                for m in f["notes"]:
+                    print("       ℹ️ " + m)
+            return 0
+        if a.cmd == "wp-prep":
+            p = r.wp_prepare(a.course, a.lane)
+            if p["backup"]:
+                print(f"  💾 기존 녹화본 백업: {p['backup']}")
+            print(f"WP_OUT={p['out']}")
+            print(f"WP_TEMPLATE={p['template'] or ''}")
             return 0
     except ParamError as e:
         print("  ❌ " + str(e))

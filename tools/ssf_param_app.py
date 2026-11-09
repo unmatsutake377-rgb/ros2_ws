@@ -10,7 +10,7 @@
   · 127.0.0.1 에만 묶는다 — 밖에서는 SSH 터널(-L)로만 들어온다. Tailscale 주소로 직접 못 연다.
   · Host 헤더가 localhost/127.0.0.1 이 아니면 거부(DNS 리바인딩 방지).
   · 쓰기(POST)는 'X-SSF: 1' 헤더가 있어야 한다(다른 사이트가 브라우저로 몰래 보내는 요청 차단).
-  · NTRIP·웨이포인트 파일은 엔진이 아예 목록에 안 올린다.
+  · NTRIP 파일은 엔진이 아예 목록에 안 올린다. 웨이포인트 파일은 '웨이포인트' 탭에서 보기·검사만(쓰기 API 없음).
 ROS 없이 돈다(파이썬 3.8+ · PyYAML). launch 는 건드리지 않는다.
 """
 import argparse
@@ -72,6 +72,10 @@ def make_handler(repo, port):
                         return self._send(200, {"ok": True, "rows": repo.diff()})
                 if path == "/api/log":
                     return self._send(200, {"ok": True, "rows": repo.read_log(100)})
+                if path == "/api/waypoints":       # 보기·검사만(웨이포인트 파일은 고치지 않는다)
+                    with LOCK:
+                        return self._send(200, {"ok": True, "files": repo.waypoints(),
+                                                "boat": repo.view_boat()})
             except core.ParamError as e:
                 return self._send(200, {"ok": False, "error": str(e)})
             return self._send(404, {"ok": False, "error": "없는 주소"})

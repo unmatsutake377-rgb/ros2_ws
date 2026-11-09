@@ -160,6 +160,7 @@ pre.out{font-family:var(--mono);font-size:12px;background:var(--bg);padding:10px
       <button data-t="field" class="sel">현장 조정</button>
       <button data-t="all">전체 파라미터</button>
       <button data-t="diff">저장소와 다른 값<span class="count" id="diffcount" hidden>0</span></button>
+      <button data-t="wp">웨이포인트</button>
       <button data-t="log">바꾼 기록</button>
     </nav>
   </div>
@@ -365,6 +366,74 @@ function viewDiff() {
     h("div", {class:"right"}, h("button", {class:"btn", text:"전부 저장소 값으로", onclick:undoAll}))];
 }
 
+const MODE_KO = {0:"게이트 시작", 1:"게이트 끝", 2:"위치유지", 3:"탐색 부표", 5:"회피·도킹 접근", 7:"도킹", 8:"토너먼트 회피"};
+function copyBtn(text) {
+  return h("button", {class:"linkbtn", text:"복사", onclick:async e => {
+    try { await navigator.clipboard.writeText(text); e.target.textContent = "복사됨"; }
+    catch (_) { e.target.textContent = "직접 선택해 복사"; }
+  }});
+}
+function cmdLine(label, text) {
+  return h("p", {}, h("span", {class:"k", text:label}), h("code", {text}), " ", copyBtn(text));
+}
+function viewWp() {
+  const b = (S.wpBoat || S.state?.boat || "A").toLowerCase();
+  const out = [h("div", {class:"card", style:"padding:12px 14px"},
+    h("div", {class:"label", text:"웨이포인트 찍기 — Mac 터미널에서"}),
+    h("div", {class:"guide", style:"margin-top:6px"},
+      cmdLine("종합임무", `ssf ${b} wp main`),
+      cmdLine("토너먼트", `ssf ${b} wp tournament 1`),
+      h("p", {}, h("span", {class:"k", text:"방법"}),
+        "배 노트북 tmux 안에서 녹화 도구가 뜬다. 조종기로 지점에 대고 몇 초 머문 뒤 Enter → mode → dwell → 이름, q 로 저장. ",
+        "SSH 가 끊기면 같은 명령을 다시 치면 이어 붙는다. 기존 녹화본은 덮기 전에 ~/ssf_logs/waypoint_backup/ 에 복사된다."),
+      h("p", {class:"adv"}, h("span", {class:"k", text:"먼저"}),
+        "RTK FIXED 확인(ros2 topic echo /ublox_gps_node/navpvt --once → carrSoln 2). 단독 GPS 로 찍으면 쓸 수 없다."),
+      h("p", {class:"adv"}, h("span", {class:"k", text:"종합임무"}),
+        "mode 0·1·2·3·5·7·8 만. mode 2·3 은 부표 좌표에서. WP7 다음 점은 엔터 금지 — mode 8 · dwell 3 · 'WP10 토너먼트 회피' 직접 입력. 도킹 네 줄은 tools/dock_wp.py 출력으로 끼운다."),
+      h("p", {class:"adv"}, h("span", {class:"k", text:"토너먼트"}),
+        "레인마다 다른 파일. 전부 mode 8. 마지막 점 = 결승선 너머 약 3 m · dwell 0.5 · 경기장 경계 안."),
+      h("p", {}, h("span", {class:"k", text:"쓰기"}),
+        "저장소 파일에 복사하지 말고 launch 인자 waypoints_file:=<녹화본> 으로. 어느 파일을 썼는지 현장 조정표 §4 에 기록. 절차: docs/절차/웨이포인트_녹화절차.md")))];
+  out.push(h("div", {class:"tools", style:"margin-top:12px"},
+    h("button", {class:"btn", text:"↻ 다시 검사", onclick:loadWp}),
+    h("span", {class:"hint", text:"이 화면은 보기·검사만 한다 — 웨이포인트 파일을 고치지 않는다"})));
+  if (!S.wp) { out.push(h("div", {class:"empty", text:"읽는 중…"})); return out; }
+  if (S.wp.error) { out.push(h("div", {class:"banner bad", text:"❌ " + S.wp.error})); return out; }
+  if (!S.wp.files.length) out.push(h("div", {class:"card"}, h("div", {class:"empty", text:"웨이포인트 파일 없음"})));
+  for (const f of S.wp.files) {
+    const st = f.errors.length ? "bad" : f.warnings.length ? "warn" : "ok";
+    const card = h("div", {class:"card", style:"margin-bottom:10px"});
+    const head = h("div", {class:"p", style:"grid-template-columns:minmax(0,1fr) auto"},
+      h("div", {class:"name"}, h("div", {class:"label", text:f.name}), h("div", {class:"key", text:f.path}),
+        h("div", {class:"chips"}, h("span", {class:"chip " + (f.kind.startsWith("녹화") ? "b" : ""), text:f.kind}),
+          h("span", {class:"chip c", text:COURSE_KO[f.course]}), f.mtime ? h("span", {class:"chip", text:f.mtime}) : null,
+          f.points.length ? h("span", {class:"chip t", text:f.points.length + "점"}) : null)),
+      h("div", {class:"side"}, h("span", {class:"when " + (st === "bad" ? "daily" : st === "warn" ? "measure" : "water"),
+        text: st === "bad" ? "❌ 오류" : st === "warn" ? "⚠️ 경고" : "✅ 통과"})));
+    card.append(head);
+    const g = h("div", {class:"guide", style:"margin:0 14px 10px"});
+    for (const m of f.errors) g.append(h("p", {style:"color:var(--bad);font-weight:600", text:"❌ " + m}));
+    for (const m of f.warnings) g.append(h("p", {class:"adv", text:"⚠️ " + m}));
+    for (const m of f.notes) g.append(h("p", {text:"ℹ️ " + m}));
+    if (f.modes.length) g.append(h("p", {}, h("span", {class:"k", text:"mode 순서"}), h("code", {text:"[" + f.modes.join(", ") + "]"})));
+    if (f.kind.startsWith("녹화")) g.append(cmdLine("launch 인자", "waypoints_file:=" + f.path));
+    if (g.children.length) card.append(g);
+    if (f.points.length) card.append(h("div", {class:"tablewrap", style:"padding:0 14px 10px"}, h("table", {},
+      h("thead", {}, h("tr", {}, ["#", "이름", "mode", "dwell", "위도", "경도"].map(t => h("th", {text:t})))),
+      h("tbody", {}, f.points.map(p => h("tr", {}, h("td", {class:"m", text:p.i}), h("td", {text:p.label}),
+        h("td", {text:p.mode + " " + (MODE_KO[p.mode] || "")}), h("td", {class:"m", text:p.dwell}),
+        h("td", {class:"m", text:p.lat.toFixed(7)}), h("td", {class:"m", text:p.lon.toFixed(7)})))))));
+    out.push(card);
+  }
+  return out;
+}
+async function loadWp() {
+  S.wp = null; render();
+  try { const r = await api("/api/waypoints"); S.wp = r.ok === false ? {error:r.error} : r; }
+  catch (e) { S.wp = {error:String(e)}; }
+  render();
+}
+
 function viewLog() {
   if (!S.log.length) return [h("div", {class:"card"}, h("div", {class:"empty", text:"아직 바꾼 기록 없음 (~/ssf_logs/param_changes.tsv)"}))];
   return [h("div", {class:"card tablewrap"}, h("table", {},
@@ -493,8 +562,9 @@ function render(keepFocus) {
   if (st?.boat_error) kids.push(h("div", {class:"banner bad", text:"🚨 " + st.boat_error + " — 보기만 되고 고치기는 거부된다"}));
   for (const e of S.errors) kids.push(h("div", {class:"banner bad", text:`❌ ${e.rel}: ${e.error}`}));
   if (S.applied.length && S.tab !== "log") kids.push(restartBanner());
-  kids.push(h("p", {class:"hint", text:`보는 코스: ${COURSE_KO[S.course]} — 칸의 값 = 이 배가 이 코스에서 실제로 읽는 값. 바꾸면 그 값을 정하는 파일이 고쳐진다.`}));
-  const v = {field:viewField, all:viewAll, diff:viewDiff, log:viewLog}[S.tab]();
+  if (S.tab === "field" || S.tab === "all")
+    kids.push(h("p", {class:"hint", text:`보는 코스: ${COURSE_KO[S.course]} — 칸의 값 = 이 배가 이 코스에서 실제로 읽는 값. 바꾸면 그 값을 정하는 파일이 고쳐진다.`}));
+  const v = {field:viewField, all:viewAll, diff:viewDiff, wp:viewWp, log:viewLog}[S.tab]();
   m.replaceChildren(...kids, ...v);
   if (keepFocus && selStart != null) { const s = $(".search"); s.focus(); s.setSelectionRange(selStart, selStart); }
   $("#bar").hidden = !S.pending.size;
@@ -509,7 +579,8 @@ async function refresh() {
 }
 
 $("#course").addEventListener("click", e => { const c = e.target.dataset?.c; if (c) { S.course = c; render(); } });
-$("#tabs").addEventListener("click", e => { const t = e.target.closest("button")?.dataset.t; if (t) { S.tab = t; render(); } });
+$("#tabs").addEventListener("click", e => { const t = e.target.closest("button")?.dataset.t;
+  if (t) { S.tab = t; render(); if (t === "wp") loadWp(); } });
 $("#discard").addEventListener("click", () => { S.pending.clear(); render(); });
 $("#review").addEventListener("click", review);
 $("#modal").addEventListener("click", e => { if (e.target.id === "modal") { $("#modal").hidden = true; render(); } });

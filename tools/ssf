@@ -11,6 +11,9 @@
 #   ssf a diff           저장소와 다른 값
 #   ssf a log            바꾼 기록
 #   ssf both set side_lock_enabled false --course tournament      두 배에 같이
+#   ssf b wp             웨이포인트 파일 목록·검사 (보기만)
+#   ssf b wp main        종합임무 웨이포인트 녹화 (배 노트북 tmux 안에서 녹화 도구). 끊기면 같은 명령으로 다시 붙음
+#   ssf b wp tournament 1   토너먼트 레인 1 녹화 → ~/ssf_logs/waypoints_tournament_B_1.yaml   [--dry-run]
 #
 # 설치(MacBook, 한 번):  저장소가 있으면  echo 'alias ssf=~/ros2_ws/tools/ssf' >> ~/.zshrc
 #                        없으면          scp boat-a:ros2_ws/tools/ssf ~/ssf && chmod +x ~/ssf && echo 'alias ssf=~/ssf' >> ~/.zshrc
@@ -28,7 +31,7 @@ boats_of() {
     A|1) echo A;; B|2) echo B;; BOTH|AB|ALL) echo "A B";; *) return 1;;
   esac
 }
-usage() { sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
+usage() { sed -n '2,23p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
 
 quote_args() { local out="" a; for a in "$@"; do out+=" $(printf '%q' "$a")"; done; echo "$out"; }
 
@@ -72,6 +75,25 @@ run_app() {   # boats...
   wait
 }
 
+run_wp() {    # boat, [main|tournament <레인>] [--dry-run]
+  local b=$1; shift
+  local h dry=0 args=()
+  h=$(host_of "$b"); local lb; lb=$(echo "$b" | tr AB ab)
+  for x in "$@"; do [ "$x" = --dry-run ] && dry=1 || args+=("$x"); done
+  if [ ${#args[@]} -eq 0 ]; then run_cli "$b" wp-list; return; fi
+  case "${args[0]}" in
+    main) [ ${#args[@]} -eq 1 ] || { echo "종합임무는 레인 없이: ssf $lb wp main" >&2; return 2; } ;;
+    tournament) [ ${#args[@]} -eq 2 ] || { echo "레인 이름 필요: ssf $lb wp tournament 1" >&2; return 2; } ;;
+    *) echo "모르는 코스 '${args[0]}' — main 또는 tournament <레인>" >&2; return 2 ;;
+  esac
+  local sess="ssf_wp_$b"
+  # tmux: SSH 가 끊겨도 녹화 도구가 살아 있다. -A = 이미 있으면 거기에 다시 붙는다(새로 안 띄움).
+  local cmd="cd $REMOTE_REPO && tmux new-session -A -s $sess$(quote_args bash tools/ssf_wp_record.sh "$b" "${args[@]}")"
+  echo "━━ $( [ "$b" = A ] && echo 1번배 || echo 2번배 ) ($h) 웨이포인트 녹화 — tmux 세션 $sess"
+  if [ $dry = 1 ]; then echo "  (시험) $SSH -t $h \"$cmd\""; return 0; fi
+  $SSH -t "$h" "$cmd"
+}
+
 [ $# -ge 1 ] || usage
 if [ "$1" = app ]; then
   boats=$(boats_of "${2:-a}") || usage
@@ -85,6 +107,17 @@ shift
 if [ "$1" = app ]; then
   # shellcheck disable=SC2086
   run_app $boats; exit
+fi
+if [ "$1" = wp ]; then
+  shift
+  # shellcheck disable=SC2086
+  set -- $boats "$@"
+  # 목록은 두 배 같이 볼 수 있지만, 녹화는 한 배씩
+  if [ "$(echo $boats | wc -w)" -gt 1 ]; then
+    for x in "$@"; do case "$x" in main|tournament) echo "녹화는 한 배씩: ssf a wp … 또는 ssf b wp …" >&2; exit 2;; esac; done
+    rc=0; for b in $boats; do run_cli "$b" wp-list || rc=1; done; exit $rc
+  fi
+  run_wp "$@"; exit
 fi
 rc=0
 for b in $boats; do

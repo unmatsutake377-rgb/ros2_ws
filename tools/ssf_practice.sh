@@ -31,7 +31,7 @@ for b in a b; do
     git clone -q "$REPO" "$home/ros2_ws"
   fi
   # 아직 커밋 안 한 앱 파일도 연습에 쓰이게 복사(커밋 뒤에는 clone 에 이미 있다)
-  for f in ssf_param_core.py ssf_param_app.py ssf_param_app.html ssf_param_catalog.yaml param_check.py ssf; do
+  for f in ssf_param_core.py ssf_param_app.py ssf_param_app.html ssf_param_catalog.yaml param_check.py ssf ssf_waypoints.py ssf_wp_record.sh; do
     cp "$REPO/tools/$f" "$home/ros2_ws/tools/$f"
   done
   echo "$B" > "$home/.ssf_boat"
