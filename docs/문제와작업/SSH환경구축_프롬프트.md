@@ -125,6 +125,7 @@ xset을 건너뛰게 돼 있다.
 - `openssh-client`만 설치됨. **`openssh-server`는 없음**, ssh 서비스 inactive
 - `ufw` 방화벽 active
 - `avahi-daemon` active (mDNS 가능 → `호스트명.local` 접속 여지 있음)
+- ✅ 11-10 1번배 갱신: `openssh-server` 설치(ssh active), hostname **`ssfa`** 로 변경(`/etc/hosts` 127.0.1.1 도 `ssfa`), Tailscale `100.84.57.20` 으로 MacBook 접속(호스트 키 ED25519 `SHA256:pg6KUln6…42/yVZo` 일치 확인). 사용자는 그대로 `ssfb`. MacBook 키 등록·비밀번호 로그인 끄기는 아직
 - 무선만 사용(유선 포트 없음). 실내는 공유기, 야외는 휴대폰 핫스팟
 - 워크스페이스 `~/ros2_ws`, ROS2 Humble, 빌드 완료 상태
 - sudo는 비밀번호가 필요하고 CLI로는 입력이 안 된다 → `pkexec`로 GUI 인증 창을 띄워 처리할 것
