@@ -94,6 +94,7 @@ import random
 import re
 import subprocess
 import sys
+import tempfile
 import time as _walltime
 import traceback
 import types
@@ -104,7 +105,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(HERE, "..", ".."))
 SRC = os.path.join(ROOT, "src")
 OUT_DIR = os.path.join(HERE, "out")
-SCRATCH_B = "/private/tmp/claude-501/-Users-leesongeon-Desktop-SSF------/2f38bfd9-14de-463e-9b5f-06f132318c47/scratchpad/fullcourse"
+# 변형 B 웨이포인트(자동 생성) 임시 폴더 — OS 임시 폴더 기준(옛 값은 Mac 세션 scratchpad 절대 경로라 Ubuntu 에서 PermissionError)
+SCRATCH_B = os.path.join(tempfile.gettempdir(), "ssf_full_course_sim")
 WP_DEFAULT = os.path.join(SRC, "north_goal_angle", "config", "waypoints.yaml")
 sys.path.insert(0, HERE)
 
