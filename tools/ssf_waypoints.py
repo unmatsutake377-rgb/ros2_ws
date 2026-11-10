@@ -109,6 +109,16 @@ def check_file(repo, path, course=None, template_modes=None, geofence=None):
     return out
 
 
+def launch_arg(path, home):
+    """launch 인자 글자 — 집 폴더 안이면 $HOME/… 로(노트북 계정이 달라도 그대로 쓰게).
+    🚨 ~/ 는 안 된다: ':=' 뒤라 bash 가 안 풀고 노드가 '~' 를 글자 그대로 연다(north_goal_angle_launch.py 주석)."""
+    home = os.path.abspath(home)
+    p = os.path.abspath(path)
+    if p.startswith(home + os.sep):
+        return "waypoints_file:=$HOME/" + os.path.relpath(p, home)
+    return "waypoints_file:=" + p
+
+
 def list_files(repo, home, geofence=None):
     """저장소 템플릿 2개 + 노트북 녹화본(~/ssf_logs/waypoints*.yaml). 녹화본 먼저, 최신 순."""
     tmpl_modes = None
@@ -125,6 +135,7 @@ def list_files(repo, home, geofence=None):
             continue
         r = check_file(repo, p, None, tmpl_modes, geofence)
         r["kind"] = "녹화본(노트북)"
+        r["launch_arg"] = launch_arg(p, home)
         rows.append(r)
     for rel in (MAIN_TEMPLATE_REL, TOURNAMENT_TEMPLATE_REL):
         p = os.path.join(repo, rel)

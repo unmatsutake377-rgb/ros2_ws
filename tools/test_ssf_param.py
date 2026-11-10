@@ -395,6 +395,8 @@ def test_wp_list_templates_and_recorded(boat):
     files = boat.waypoints()
     kinds = [(f["kind"], f["name"]) for f in files]
     assert kinds[0] == ("녹화본(노트북)", "waypoints_tournament_A_1.yaml")
+    # launch 인자는 $HOME 형식(~/ 는 노드가 못 연다)
+    assert files[0]["launch_arg"] == "waypoints_file:=$HOME/ssf_logs/waypoints_tournament_A_1.yaml"
     assert ("저장소 템플릿", "waypoints.yaml") in kinds and ("저장소 템플릿", "waypoints_tournament.yaml") in kinds
     rec = files[0]
     assert rec["course"] == "tournament" and rec["modes"] == [8, 8] and not rec["errors"]

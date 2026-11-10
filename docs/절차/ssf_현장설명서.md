@@ -109,7 +109,11 @@ ssf b set hold_dist_m 3.0 --dry-run
    - 녹화 패널 맨 위에 RTK 상태가 크게 보인다. **FIXED 가 아닐 때 📍 찍기를 누르면 확인 창**("RTK FIXED 가 아니다 — 그래도 찍을까요?")이 뜬다.
    - 녹화 시작 화면 ①에도 그 순간의 GPS 상태가 한 줄 찍힌다.
 5. 저장 뒤 **"✅ 이번 녹화를 저장했다"** 를 확인. `⚠️ 이번에 저장된 것이 없다` 면 그 파일은 이전 것 — 쓰지 않는다.
-6. 아래 파일 목록에서 ✅/⚠️/❌ 와 mode 순서를 보고, 화면의 `waypoints_file:=…` 를 launch 인자로 쓴다. 어느 파일을 썼는지 현장_조정표 §4 에.
+6. 아래 파일 목록에서 ✅/⚠️/❌ 와 mode 순서를 보고, 화면의 `waypoints_file:=$HOME/ssf_logs/…` 를 launch 인자로 그대로 쓴다. 어느 파일을 썼는지 현장_조정표 §4 에.
+   🚨 `~/ssf_logs/…` 로 쓰면 안 된다 — `:=` 뒤라 bash 가 `~` 를 안 풀고, 노드가 파일을 못 연다. `$HOME/…` 은 풀린다.
+   ```bash
+   ros2 launch launch_files launch_files.launch.py boat:=B course:=tournament waypoints_file:=$HOME/ssf_logs/waypoints_tournament_B_1.yaml
+   ```
 
 규칙(상세 `웨이포인트_녹화절차.md`):
 - mode 는 0·1·2·3·5·7·8 만. mode 2·3 은 부표 좌표에서.

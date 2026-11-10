@@ -74,7 +74,8 @@ echo
 [ $rec_rc -ne 0 ] && echo "❌ 녹화 도구가 오류로 끝났다(코드 $rec_rc) — 위 문구 확인"
 if [ $saved = 1 ]; then
   echo "✅ 이번 녹화를 저장했다: $OUT"
-  echo "다음: launch 할 때 waypoints_file:=$OUT  (저장소 파일에 복사하지 않는다 · 현장 조정표 §4 에 기록)"
+  # $HOME 형식 — ~/ 는 ':=' 뒤라 bash 가 안 풀고 노드가 글자 그대로 연다(north_goal_angle_launch.py 주석)
+  echo "다음: launch 할 때 waypoints_file:=${OUT/#$HOME/\$HOME}  (~/ 로 쓰지 않는다 · 저장소 파일에 복사하지 않는다 · 현장 조정표 §4 에 기록)"
 else
   echo "⚠️ 이번에 저장된 것이 없다 — $OUT 은 이전 파일이거나 없다. 이 파일을 이번 녹화로 쓰지 말 것"
 fi

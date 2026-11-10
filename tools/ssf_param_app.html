@@ -601,7 +601,7 @@ function viewWp() {
       h("p", {class:"adv"}, h("span", {class:"k", text:"토너먼트"}),
         "레인마다 다른 파일. 전부 mode 8. 마지막 점 = 결승선 너머 약 3 m · dwell 0.5 · 경기장 경계 안."),
       h("p", {}, h("span", {class:"k", text:"쓰기"}),
-        "저장소 파일에 복사하지 말고 launch 인자 waypoints_file:=<녹화본> 으로. 어느 파일을 썼는지 현장 조정표 §4 에 기록. 절차: docs/절차/웨이포인트_녹화절차.md")))];
+        "저장소 파일에 복사하지 말고 launch 인자 waypoints_file:=$HOME/ssf_logs/<녹화본> 으로(~/ 는 안 된다). 어느 파일을 썼는지 현장 조정표 §4 에 기록. 절차: docs/절차/웨이포인트_녹화절차.md")))];
   out.push(h("div", {class:"tools", style:"margin-top:12px"},
     h("button", {class:"btn", text:"↻ 다시 검사", onclick:loadWp}),
     h("span", {class:"hint", text:"이 화면은 보기·검사만 한다 — 웨이포인트 파일을 고치지 않는다"})));
@@ -624,7 +624,10 @@ function viewWp() {
     for (const m of f.warnings) g.append(h("p", {class:"adv", text:"⚠️ " + m}));
     for (const m of f.notes) g.append(h("p", {text:"ℹ️ " + m}));
     if (f.modes.length) g.append(h("p", {}, h("span", {class:"k", text:"mode 순서"}), h("code", {text:"[" + f.modes.join(", ") + "]"})));
-    if (f.kind.startsWith("녹화")) g.append(cmdLine("launch 인자", "waypoints_file:=" + f.path));
+    if (f.kind.startsWith("녹화")) {
+      g.append(cmdLine("launch 인자", f.launch_arg || ("waypoints_file:=" + f.path)));
+      g.append(h("p", {class:"small", text:"$HOME 그대로 붙여 넣는다 — ~/ 로 쓰면 노드가 파일을 못 연다"}));
+    }
     if (g.children.length) card.append(g);
     if (f.points.length) card.append(h("div", {class:"tablewrap", style:"padding:0 14px 10px"}, h("table", {},
       h("thead", {}, h("tr", {}, ["#", "이름", "mode", "dwell", "위도", "경도"].map(t => h("th", {text:t})))),
