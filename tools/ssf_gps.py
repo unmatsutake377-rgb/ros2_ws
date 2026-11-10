@@ -16,6 +16,7 @@ import os
 import time
 
 STALE_SEC = 3.0
+ERROR_STALE_SEC = 30.0   # 감시 실패는 10 s 마다 다시 시도하며 새로 쓴다 — 이보다 오래된 오류는 지난 일(11-10 점검: /tmp 시험 사본이 남긴 오류가 계속 보였다)
 START_RETRY_SEC = 10.0
 _last_start = {}
 
@@ -39,9 +40,13 @@ def classify(data, now=None):
     now = time.time() if now is None else now
     if not data:
         return "none", "⚫ GPS 데이터 없음"
-    if data.get("error"):
-        return "none", "⚫ GPS 감시 실패: " + str(data["error"])
     age = now - float(data.get("t", 0))
+    if data.get("error"):
+        if age > ERROR_STALE_SEC:
+            return "none", "⚫ GPS 데이터 없음"
+        return "none", "⚫ GPS 감시 실패: " + str(data["error"])
+    if data.get("waiting"):
+        return "none", "⚫ GPS 데이터 없음 — 감시 중, navpvt 를 기다린다(launch·GPS 드라이버 확인)"
     if age > STALE_SEC:
         return "none", f"⚫ GPS 데이터 없음({int(age)} s 전이 마지막 — launch·GPS 드라이버 확인)"
     acc = data.get("h_acc_m")
@@ -98,7 +103,7 @@ def status(repo, boat, home):
     if err and level == "none":
         text = "⚫ " + err
     out = {"level": level, "text": text, "fixed": level == "fixed"}
-    if data and not data.get("error"):
+    if data and not data.get("error") and not data.get("waiting"):
         out.update({k: data.get(k) for k in ("h_acc_m", "num_sv", "lat", "lon", "carr", "fix_type")})
         out["age"] = round(time.time() - float(data.get("t", 0)), 1)
     return out

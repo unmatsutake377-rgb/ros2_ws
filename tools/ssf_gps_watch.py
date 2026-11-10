@@ -32,6 +32,7 @@ class GpsWatch(Node):
         self.out = os.path.join(d, f"gps_status_{boat}.json")
         self.hb = os.path.join(d, f".gps_watch_{boat}.hb")
         self.last_write = 0.0
+        self._write({"t": time.time(), "waiting": True})   # 지난 오류·옛 값을 지운다(첫 navpvt 전까지 '기다리는 중')
         topic = os.environ.get("SSF_GPS_TOPIC", "/ublox_gps_node/navpvt")
         qos = QoSProfile(depth=5, reliability=ReliabilityPolicy.BEST_EFFORT, history=HistoryPolicy.KEEP_LAST)
         self.create_subscription(NavPVT, topic, self._cb, qos)
@@ -46,11 +47,14 @@ class GpsWatch(Node):
         carr = 2 if carr_bits & m.CARRIER_PHASE_FIXED else (1 if carr_bits & m.CARRIER_PHASE_FLOAT else 0)
         data = {"t": now, "carr": carr, "fix_ok": bool(m.flags & m.FLAGS_GNSS_FIX_OK), "fix_type": int(m.fix_type),
                 "h_acc_m": m.h_acc / 1000.0, "num_sv": int(m.num_sv), "lat": m.lat * 1e-7, "lon": m.lon * 1e-7}
+        self._write(data)
+        self.last_write = now
+
+    def _write(self, data):
         tmp = self.out + f".tmp{os.getpid()}"
         with open(tmp, "w", encoding="utf-8") as f:
             json.dump(data, f)
         os.replace(tmp, self.out)
-        self.last_write = now
 
     def _check_hb(self):
         try:

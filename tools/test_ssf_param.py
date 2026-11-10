@@ -856,6 +856,10 @@ def test_gps_classify():
     base = {"t": now - 0.5, "fix_ok": True, "fix_type": 3, "h_acc_m": 0.015, "num_sv": 18}
     assert ssf_gps.classify(None, now)[0] == "none"
     assert ssf_gps.classify({"t": now, "error": "x"}, now)[0] == "none"
+    assert "감시 실패" in ssf_gps.classify({"t": now - 5, "error": "x"}, now)[1]
+    assert "감시 실패" not in ssf_gps.classify({"t": now - 3600, "error": "x"}, now)[1]   # 지난 오류는 안 보인다
+    lv, txt = ssf_gps.classify({"t": now, "waiting": True}, now)
+    assert lv == "none" and "기다린다" in txt
     assert ssf_gps.classify(dict(base, carr=2, t=now - 5), now)[0] == "none"          # 오래됨
     lv, txt = ssf_gps.classify(dict(base, carr=2), now)
     assert lv == "fixed" and "±1.5 cm" in txt and "위성 18" in txt
