@@ -111,6 +111,7 @@ ssf b set hold_dist_m 3.0 --dry-run
 5. 저장 뒤 **"✅ 이번 녹화를 저장했다"** 를 확인. `⚠️ 이번에 저장된 것이 없다` 면 그 파일은 이전 것 — 쓰지 않는다.
 6. 아래 파일 목록에서 ✅/⚠️/❌ 와 mode 순서를 보고, 화면의 `waypoints_file:=$HOME/ssf_logs/…` 를 launch 인자로 그대로 쓴다. 어느 파일을 썼는지 현장_조정표 §4 에.
    🚨 `~/ssf_logs/…` 로 쓰면 안 된다 — `:=` 뒤라 bash 가 `~` 를 안 풀고, 노드가 파일을 못 연다. `$HOME/…` 은 풀린다.
+   (1번배 Ubuntu 실측 11-10: `$HOME/ssf_logs/…` → '웨이포인트 13개 로드', `~/ssf_logs/…` → `🚨 웨이포인트 파일이 없다: ~/ssf_logs/…` ERROR 로 노드 사망)
    ```bash
    ros2 launch launch_files launch_files.launch.py boat:=B course:=tournament waypoints_file:=$HOME/ssf_logs/waypoints_tournament_B_1.yaml
    ```
