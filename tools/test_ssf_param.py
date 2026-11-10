@@ -401,6 +401,27 @@ def test_wp_prepare_paths_backup_and_boat_check(boat):
         other.wp_prepare("main")
 
 
+def test_wp_unreadable_file_does_not_break_list(boat):
+    p = _wp(boat, "waypoints_noperm.yaml", GOOD_T)
+    os.chmod(p, 0)
+    try:
+        if os.access(p, os.R_OK):
+            pytest.skip("root 라 권한 시험 불가")
+        by = {f["name"]: f for f in boat.waypoints()}
+        assert "못 읽음" in by["waypoints_noperm.yaml"]["errors"][0]
+        assert "waypoints.yaml" in by          # 나머지 목록은 그대로
+    finally:
+        os.chmod(p, 0o644)
+
+
+def test_wp_lane_names():
+    for ok in ("1", "A-1", "lane_2"):
+        wpm.plan(REPO, "/tmp", "B", "tournament", ok)
+    for bad in ("-x", "_1", "../x", "a b", "", "x" * 17, "레인1", "1;rm"):
+        with pytest.raises(ValueError):
+            wpm.plan(REPO, "/tmp", "B", "tournament", bad)
+
+
 def test_point_in_polygon():
     sq = [0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 0.0]
     assert wpm.point_in_polygon(0.5, 0.5, sq)
@@ -435,7 +456,12 @@ while True:
             print(f"  [{i}] {p}")
         continue
     if cmd.startswith("d "):
-        pts.pop(int(cmd[2:])); print("  삭제"); continue
+        i = int(cmd[2:])
+        if 0 <= i < len(pts):
+            pts.pop(i); print("  삭제")
+        else:
+            print(f"  범위 밖 — 0~{len(pts) - 1} 사이")   # 진짜 녹화 도구(parse_idx)와 같게
+        continue
     if cmd == "":
         print("  표본 20개 평균 → lat 35.1862000, lon 128.5655000 (최대 공분산 0.01)")
         m = input("  mode(미션번호)? [엔터=8] ").strip() or "8"
@@ -472,7 +498,7 @@ def recboat(boat, tmp_path, monkeypatch):
     # 기록 스크립트·도구를 임시 저장소로(그 안의 /opt/ros 경로를 가짜로)
     tools = os.path.join(boat.repo, "tools")
     os.makedirs(tools, exist_ok=True)
-    for f in ("ssf_param_core.py", "ssf_waypoints.py", "ssf_param_catalog.yaml", "param_check.py"):
+    for f in ("ssf_param_core.py", "ssf_waypoints.py", "ssf_param_catalog.yaml", "param_check.py", "ssf_ros_net.sh"):
         if os.path.exists(os.path.join(HERE, f)):
             shutil.copy(os.path.join(HERE, f), tools)
     src = open(os.path.join(HERE, "ssf_wp_record.sh"), encoding="utf-8").read()
@@ -576,7 +602,7 @@ def camboat(boat, tmp_path, monkeypatch):
         pytest.skip("tmux 없음")
     tools = os.path.join(boat.repo, "tools")
     os.makedirs(tools, exist_ok=True)
-    for f in ("ssf_cam_send.sh", "ssf_cam.py"):
+    for f in ("ssf_cam_send.sh", "ssf_cam.py", "ssf_ros_net.sh"):
         shutil.copy(os.path.join(HERE, f), tools)
     with open(os.path.join(tools, "cam_stream.sh"), "w") as f:
         f.write(FAKE_STREAM)
@@ -644,3 +670,32 @@ def test_server_cam_routes(server):
     assert st == 403          # 헤더 없음
     st, d = _req(port, "/api/cam/start", {"ip": "not-ip"}, {"X-SSF": "1"})
     assert d["ok"] is False and "IP" in d["error"]
+
+
+# ---------------------------------------------------------------- 검토(11-10)에서 나온 경우들
+
+def test_detect_prompt_skips_ros_log_lines():
+    s = ("[Enter=추가 / l=목록 / d N=삭제 / r N=재캡처 / q=종료] > \n"
+         "[WARN] [1794249093.9] [waypoint_recorder]: New publisher discovered on topic, offering incompatible QoS\n")
+    assert wpm.detect_prompt(s) == "main"
+    assert wpm.detect_prompt("  표본 20개 평균 → lat 35.1\n") == "busy"
+
+
+def test_rec_accept_gated_copy_mode_and_saved_check(recboat):
+    b = recboat
+    b.wp_rec("start", course="tournament", lane="7")
+    _wait(b, "main")
+    st = b.wp_rec("status")
+    assert st["what"] == "tournament:7"
+    with pytest.raises(core.ParamError, match="mode·dwell"):
+        b.wp_rec("send", kind="accept")            # 명령 줄의 Enter = 찍기 — 막혀야
+    # 화면 올려 보기(copy-mode) 중에 저장 → copy-mode 먼저 빠져나와 저장돼야('찍기'가 되면 안 됨)
+    import ssf_waypoints as w
+    sess = w.session_name("A")
+    subprocess.run(["tmux", "-L", os.environ["SSF_WP_TMUX_SOCKET"], "copy-mode", "-t", sess], check=True)
+    b.wp_rec("send", kind="save")
+    st = _wait(b, "closing")
+    assert "WP0 추가됨" not in st["screen"]
+    assert "이번에 저장된 것이 없다" in st["screen"]   # 0점 → 이전 파일을 이번 녹화로 쓰지 말라
+    assert "ROS_LOCALHOST_ONLY=1" in st["screen"]      # 비대화형에서도 ROS 격리
+    b.wp_rec("send", kind="close")

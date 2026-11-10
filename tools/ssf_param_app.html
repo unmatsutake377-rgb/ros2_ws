@@ -430,7 +430,8 @@ function recPanel() {
 function recUpdate() {
   const st = R.st, P = R.parts; if (!P) return;
   const run = !!st?.running, pr = st?.prompt;
-  P.status.textContent = st?.error ? "❌ " + st.error : run ? `🔴 녹화 중 — tmux ${st.session}` : "📍 앱에서 웨이포인트 찍기";
+  const what = st?.what ? (st.what.startsWith("tournament:") ? "토너먼트 레인 " + st.what.slice(11) : st.what.startsWith("main") ? "종합임무" : st.what) : "";
+  P.status.textContent = st?.error ? "❌ " + st.error : run ? `🔴 녹화 중 — ${what || "tmux " + st.session}` : "📍 앱에서 웨이포인트 찍기";
   P.start.hidden = run; P.screen.hidden = !run; P.kill.hidden = !run;
   P.ask.hidden = !run; P.ask.textContent = run ? "지금: " + (PROMPT_KO[pr] || pr) +
     (pr === "mode" ? " — 숫자 입력, 템플릿 값이면 '기본값 그대로'" : pr === "dwell" ? " — 초(예 0.5), 템플릿 값이면 '기본값 그대로'" :

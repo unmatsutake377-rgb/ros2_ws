@@ -34,7 +34,7 @@ boats_of() {
     A|1) echo A;; B|2) echo B;; BOTH|AB|ALL) echo "A B";; *) return 1;;
   esac
 }
-usage() { sed -n '2,26p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
+usage() { awk 'NR==1{next} /^#/{sub(/^# ?/,""); print; next} {exit}' "$0"; exit 2; }   # 맨 위 주석 덩어리
 
 quote_args() { local out="" a; for a in "$@"; do out+=" $(printf '%q' "$a")"; done; echo "$out"; }
 
@@ -89,9 +89,12 @@ run_wp() {    # boat, [main|tournament <레인>] [--dry-run]
     tournament) [ ${#args[@]} -eq 2 ] || { echo "레인 이름 필요: ssf $lb wp tournament 1" >&2; return 2; } ;;
     *) echo "모르는 코스 '${args[0]}' — main 또는 tournament <레인>" >&2; return 2 ;;
   esac
-  local sess="ssf_wp_$b"
+  local sess="ssf_wp_$b" want
+  want="${args[0]}:${args[1]:-}"
   # tmux: SSH 가 끊겨도 녹화 도구가 살아 있다. -A = 이미 있으면 거기에 다시 붙는다(새로 안 띄움).
-  local cmd="cd $REMOTE_REPO && tmux new-session -A -s $sess$(quote_args bash tools/ssf_wp_record.sh "$b" "${args[@]}")"
+  #   이미 있는 세션이 다른 코스·레인이면 붙지 않는다(레인 2 를 레인 1 파일에 찍는 사고 방지).
+  local chk="cur=\$(tmux show-options -qv -t $sess @ssf_wp 2>/dev/null); if tmux has-session -t $sess 2>/dev/null && [ \"\$cur\" != $(printf %q "$want") ]; then echo \"❌ 다른 녹화가 열려 있다(\${cur:-표시 없음 — 이전 버전으로 연 녹화}) — 그 녹화를 저장·종료(또는 앱 웨이포인트 탭)한 뒤 다시\"; exit 3; fi"
+  local cmd="cd $REMOTE_REPO || exit 1; $chk; tmux new-session -A -s $sess$(quote_args bash tools/ssf_wp_record.sh "$b" "${args[@]}")"
   echo "━━ $( [ "$b" = A ] && echo 1번배 || echo 2번배 ) ($h) 웨이포인트 녹화 — tmux 세션 $sess"
   if [ $dry = 1 ]; then echo "  (시험) $SSH -t $h \"$cmd\""; return 0; fi
   $SSH -t "$h" "$cmd"
@@ -131,7 +134,10 @@ run_cam() {   # boat [view|stop|status]
       ip=$(mac_ip)
       [ -n "$ip" ] || { echo "❌ 이 Mac 의 Tailscale 주소를 못 찾았다 — tailscale status 확인" >&2; return 1; }
       run_cli "$b" cam start "$ip" || return 1
+      # 터미널 창을 그냥 닫아도(HUP) 배 송신이 남지 않게
+      trap 'run_cli "$b" cam stop >/dev/null 2>&1; exit 1' HUP TERM
       cam_view "$b"
+      trap - HUP TERM
       echo; echo "수신 창을 닫았다 — 배 송신도 끈다"
       run_cli "$b" cam stop ;;
     *) echo "ssf $b cam [view|stop|status]" >&2; return 2 ;;

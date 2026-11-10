@@ -75,7 +75,7 @@ def start(repo, boat, home, host_ip):
     ip = check_ip(host_ip)
     s = session_name(boat)
     if _tmux("has-session", "-t", s).returncode == 0:
-        raise RuntimeError(f"이미 송신 중(tmux {s}) — 끄고 다시 켜세요")
+        raise RuntimeError(f"이미 송신 중(tmux {s}) — 보기만: ssf {boat.lower()} cam view · 끄기: ssf {boat.lower()} cam stop")
     cmd = ["bash", os.path.join(repo, "tools", "ssf_cam_send.sh"), boat, ip]
     r = _tmux("new-session", "-d", "-s", s, "-x", "120", "-y", "30", "-c", repo, "-e", f"HOME={home}", *cmd)
     if r.returncode != 0:

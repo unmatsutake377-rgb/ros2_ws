@@ -14,6 +14,8 @@ lane=${3:-}
 cd "$(dirname "$0")/.." || exit 1
 # tmux 안이면 마우스 모드: 트랙패드 스크롤이 화살표 키로 입력 줄에 들어가지 않고 화면을 올려 본다(빠져나오기 q)
 [ -n "${TMUX:-}" ] && tmux set-option mouse on >/dev/null 2>&1
+# 이 세션이 어느 녹화인지 표시 — 다른 코스·레인 명령이 이 세션에 잘못 다시 붙지 않게(ssf 가 확인)
+[ -n "${TMUX:-}" ] && tmux set-option @ssf_wp "${course}:${lane}" >/dev/null 2>&1
 PAUSED=0
 pause() { PAUSED=1; echo; read -rp "엔터를 누르면 이 창을 닫는다 " _; }
 # 어디서 끝나든 창이 말없이 닫히지 않게(tmux 창이 닫히면 SSH 도 바로 끊겨 오류를 못 본다)
@@ -36,6 +38,8 @@ set +u
 # shellcheck disable=SC1090
 source "$setup"; source install/setup.bash
 if ! command -v ros2 >/dev/null; then echo "❌ ROS 환경을 불러왔는데 ros2 명령이 없다"; pause; exit 1; fi
+# shellcheck disable=SC1091
+source tools/ssf_ros_net.sh && ssf_ros_net      # 두 배 GPS 섞임 방지 — ~/.bashrc 와 같은 ROS 격리
 
 echo
 echo "━━ 웨이포인트 녹화 — $( [ "$boat" = A ] && echo 1번배 || echo 2번배 ) · $( [ "$course" = tournament ] && echo "토너먼트 레인 $lane" || echo 종합임무 )"
@@ -51,15 +55,26 @@ else
 fi
 echo "   SSH 가 끊겨도 tmux 안이라 녹화는 계속된다 — Mac 에서 같은 ssf 명령을 다시 치면 이어 붙는다"
 echo
+sig() { cksum "$1" 2>/dev/null || echo "없음"; }
+before=$(sig "$OUT")
 if [ -n "$TEMPLATE" ]; then
   ros2 run north_goal_angle waypoint_recorder "$OUT" --template="$TEMPLATE"
 else
   ros2 run north_goal_angle waypoint_recorder "$OUT"
 fi
+rec_rc=$?
+saved=1
+[ "$(sig "$OUT")" = "$before" ] && saved=0
 
 echo
 echo "━━ 검사 (앱 '웨이포인트' 탭에서도 보인다)"
 python3 tools/ssf_param_core.py --boat "$boat" wp-list | grep -v '^\['
 echo
-echo "다음: launch 할 때 waypoints_file:=$OUT  (저장소 파일에 복사하지 않는다 · 현장 조정표 §4 에 기록)"
+[ $rec_rc -ne 0 ] && echo "❌ 녹화 도구가 오류로 끝났다(코드 $rec_rc) — 위 문구 확인"
+if [ $saved = 1 ]; then
+  echo "✅ 이번 녹화를 저장했다: $OUT"
+  echo "다음: launch 할 때 waypoints_file:=$OUT  (저장소 파일에 복사하지 않는다 · 현장 조정표 §4 에 기록)"
+else
+  echo "⚠️ 이번에 저장된 것이 없다 — $OUT 은 이전 파일이거나 없다. 이 파일을 이번 녹화로 쓰지 말 것"
+fi
 pause

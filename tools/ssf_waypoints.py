@@ -18,7 +18,7 @@ import yaml
 TOURNAMENT_TEMPLATE_REL = "src/north_goal_angle/config/waypoints_tournament.yaml"
 MAIN_TEMPLATE_REL = "src/north_goal_angle/config/waypoints.yaml"
 INSTALL_SHARE = "install/north_goal_angle/share/north_goal_angle/config"
-LANE_RE = re.compile(r"^[A-Za-z0-9_-]{1,16}$")
+LANE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,15}$")   # 첫 글자 영문·숫자('-x' 는 옵션으로 오인)
 
 
 def _loader(repo):
@@ -68,6 +68,9 @@ def check_file(repo, path, course=None, template_modes=None, geofence=None):
     try:
         with open(path, encoding="utf-8") as f:
             raw = yaml.safe_load(f)
+    except (OSError, UnicodeDecodeError) as e:      # 권한 없음·글자 깨진 파일 하나 때문에 목록 전체가 죽지 않게
+        out["errors"].append(f"파일을 못 읽음: {e.__class__.__name__}: {getattr(e, 'strerror', None) or e}")
+        return out
     except yaml.YAMLError as e:
         mark = getattr(e, "problem_mark", None)
         out["errors"].append(f"YAML 문법 오류({mark.line + 1}번째 줄)" if mark else f"YAML 문법 오류: {e}")
@@ -179,9 +182,13 @@ def _tmux(*args, timeout=5):
         raise RuntimeError("이 노트북에 tmux 가 없다")
 
 
+ROS_LOG_RE = re.compile(r"^\s*\[(INFO|WARN|ERROR|DEBUG|FATAL)\] \[\d")
+
+
 def detect_prompt(screen):
-    """화면 마지막 글자 줄로 지금 무엇을 묻는지."""
-    lines = [ln for ln in screen.rstrip().split("\n") if ln.strip()]
+    """화면 마지막 글자 줄로 지금 무엇을 묻는지. 프롬프트 뒤에 찍힌 ROS 로그 줄([WARN] [123.4] …)은 건너뛴다
+    (rclpy·DDS 경고가 비동기로 찍혀도 '일하는 중'으로 굳지 않게)."""
+    lines = [ln for ln in screen.rstrip().split("\n") if ln.strip() and not ROS_LOG_RE.match(ln)]
     last = lines[-1] if lines else ""
     for key, kind in PROMPTS:
         if key in last:
@@ -195,7 +202,8 @@ def rec_status(boat, lines=60):
         return {"running": False, "session": s, "screen": "", "prompt": None}
     cap = _tmux("capture-pane", "-p", "-J", "-t", s, "-S", f"-{lines}")
     screen = cap.stdout.rstrip("\n") if cap.returncode == 0 else ""
-    return {"running": True, "session": s, "screen": screen, "prompt": detect_prompt(screen)}
+    tag = _tmux("show-options", "-qv", "-t", s, "@ssf_wp").stdout.strip()     # "tournament:1" / "main:"
+    return {"running": True, "session": s, "screen": screen, "prompt": detect_prompt(screen), "what": tag}
 
 
 def rec_start(repo, boat, course, lane=None, home=None):
@@ -222,8 +230,8 @@ def rec_send(boat, kind, arg=None):
     p = st["prompt"]
     if kind in ("capture", "list", "delete", "recapture", "save") and p != "main":
         raise RuntimeError("녹화 도구가 다른 걸 묻고 있다 — 화면 마지막 줄의 질문에 먼저 답하세요")
-    if kind == "answer" and p not in ("mode", "dwell", "name"):
-        raise RuntimeError("지금은 mode·dwell·이름을 묻는 중이 아니다")
+    if kind in ("answer", "accept") and p not in ("mode", "dwell", "name"):
+        raise RuntimeError("지금은 mode·dwell·이름을 묻는 중이 아니다")       # accept(Enter)가 명령 줄에 가면 '찍기'가 된다
     if kind == "close" and p != "closing":
         raise RuntimeError("아직 끝나지 않았다 — 저장(q) 먼저")
     if kind in ("capture", "accept", "close"):
@@ -243,6 +251,10 @@ def rec_send(boat, kind, arg=None):
     else:
         raise RuntimeError(f"모르는 동작 {kind!r}")
     s = st["session"]
+    # 화면 올려 보기(tmux copy-mode, 마우스 스크롤로 들어감) 중이면 키가 녹화 도구 대신 copy-mode 로 간다
+    #   — 'q' 는 copy-mode 만 끄고 뒤의 Enter 가 '찍기'가 된다. 먼저 빠져나온다.
+    if _tmux("display-message", "-p", "-t", s, "#{pane_in_mode}").stdout.strip() == "1":
+        _tmux("send-keys", "-t", s, "-X", "cancel")
     _tmux("send-keys", "-t", s, "C-u")      # 입력 줄에 남은 글자(스크롤로 들어간 화살표 등) 지우기 — tty 줄 지우기
     if text:
         _tmux("send-keys", "-t", s, "-l", text)

@@ -12,12 +12,13 @@ set -u
 boat=${1:?A 또는 B}
 host=${2:?MacBook Tailscale IP}
 cd "$(dirname "$0")/.." || exit 1
+mkdir -p "$HOME/ssf_logs"
+log="$HOME/ssf_logs/cam_stream_${boat}.log"
+fail() { echo "❌ $(date '+%F %T') $*" | tee "$log"; exit 1; }   # 창이 바로 닫혀도 앱·status 에서 보이게 로그에
 
 mk=$(tr -d '[:space:]' < "$HOME/.ssf_boat" 2>/dev/null | tr ab AB)
-if [ "$mk" != "$boat" ]; then
-  echo "❌ 🚨 배가 다르다: 요청 ${boat}, 이 노트북 등록 '${mk:-없음}'(~/.ssf_boat) — SSH 별명을 확인"; exit 1
-fi
-case "$host" in *[!0-9.]*|"") echo "❌ IP 형식이 아니다: $host"; exit 1;; esac
+[ "$mk" = "$boat" ] || fail "🚨 배가 다르다: 요청 ${boat}, 이 노트북 등록 '${mk:-없음}'(~/.ssf_boat) — SSH 별명을 확인"
+case "$host" in *[!0-9.]*|"") fail "IP 형식이 아니다: $host";; esac
 
 port=5600; [ "$boat" = B ] && port=5601
 mode=v4l2
@@ -29,9 +30,13 @@ if pgrep -f realsense2_camera >/dev/null 2>&1; then
   [ -n "$setup" ] && source "$setup" && [ -f install/setup.bash ] && source install/setup.bash
   set -u
 fi
-mkdir -p "$HOME/ssf_logs"
-log="$HOME/ssf_logs/cam_stream_${boat}.log"
+# ros 모드 구독이 다른 배 카메라를 받지 않게 — ~/.bashrc 와 같은 ROS 격리(이 셸에 export, 안내 문구는 로그로)
+# shellcheck disable=SC1091
+source tools/ssf_ros_net.sh
+netmsg=$(ssf_ros_net)      # 문구만 받는다(서브셸)
+ssf_ros_net >/dev/null     # 이 셸에 실제로 export
 {
+  echo "$netmsg"
   echo "━━ $(date '+%F %T') D455 영상 송신 — $( [ "$boat" = A ] && echo 1번배 || echo 2번배 ) → ${host}:${port} (${mode})"
   echo "   🚨 출항 전 흔들기 시험: dmesg -w 띄우고 카메라·케이블을 흔들어 disconnect 0 (케이블 불량이면 허브째 끊겨 IMU 도 끊긴다)"
   echo "   MacBook 수신: ssf $(echo "$boat" | tr AB ab) cam view   (또는 CAM_PORT=${port} ./tools/cam_view.sh)"
