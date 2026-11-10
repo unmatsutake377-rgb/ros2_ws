@@ -4,7 +4,8 @@
       → course=main, config/waypoints.yaml (실전 파일)
 
   ros2 launch north_goal_angle north_goal_angle_launch.py \
-      waypoints_file:=/home/ssfb/ssf_logs/waypoints_recorded.yaml
+      waypoints_file:=$HOME/ssf_logs/waypoints_recorded.yaml
+      (🚨 ~/ 는 안 된다 — ':=' 뒤라 bash 가 안 풀고, 노드는 경로를 그대로 연다)
       → 방금 녹화한 파일을 **복사 없이** 바로 사용
 
   ros2 launch north_goal_angle north_goal_angle_launch.py course:=tournament \
