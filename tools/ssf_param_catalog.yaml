@@ -112,7 +112,7 @@ groups:
          hint: 당일 공지 색, choices: [red, green, blue, orange, yellow, white],
          change: daily, when: "당일 공지 색으로 교체. 그 색의 HSV 범위도 같이 실측"}
       - {pkg: color_shape_detector, section: image_subscriber_dock, key: target_shape, label: 도킹 표식 모양,
-         hint: 당일 공지 모양,
+         hint: 당일 공지 모양 (대소문자 그대로), choices: [Triangle, Square, Circle],
          change: daily, when: "당일 공지 모양으로 교체"}
       - {pkg: color_shape_detector, section: image_subscriber_dock, key: circle_circularity_min, label: 원/사각 경계,
          step: 0.01, limits: [0.5, 0.99], hint: 이보다 둥글면 원,
