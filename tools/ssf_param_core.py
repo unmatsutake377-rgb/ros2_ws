@@ -346,6 +346,30 @@ def same(a, b):
 
 # ---------------------------------------------------------------- 특수 검사
 
+HSV_RANGES_REL = "src/color_shape_detector/color_shape_detector/hsv_ranges.py"
+
+
+def _hsv_check(repo, v, color):
+    """hsv.<색> 값 → 거부 이유 또는 None. 노드가 쓰는 hsv_ranges.parse_flat 을 그대로 부른다(규칙 한 곳).
+    🚨 노드는 틀린 HSV 를 만나면 오류 로그만 남기고 **기본값으로 돌아간다** — 앱이 '적용됨'인데 다른 값을 쓰게 된다."""
+    path = os.path.join(repo, HSV_RANGES_REL)
+    if os.path.exists(path):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("ssf_hsv_ranges", path)
+        mod = importlib.util.module_from_spec(spec)
+        try:
+            spec.loader.exec_module(mod)
+            mod.parse_flat(v, color)
+            return None
+        except getattr(mod, "HsvRangeError", ValueError) as e:
+            return str(e)
+        except Exception:      # noqa: BLE001 — 모듈이 바뀌어 못 부르면 아래 최소 규칙
+            pass
+    if not v or len(v) % 6:
+        return f"길이가 6의 배수여야 한다(범위당 lo H,S,V + hi H,S,V). 지금 {len(v)}개"
+    return None
+
+
 def _geofence_check(v):
     sys.path.insert(0, os.path.join(DEFAULT_REPO, "src", "north_goal_angle"))
     try:
@@ -621,6 +645,10 @@ class Repo:
             if reason:
                 raise ParamError(f"geofence_polygon: {reason}")
             warn.append(f"폴리곤 {len(new) // 2}점 — 시작 로그 'geofence ON({len(new) // 2}점)' 확인")
+        if gid[2].startswith("hsv.") and isinstance(new, list):
+            reason = _hsv_check(self.repo, new, gid[2][4:])
+            if reason:
+                raise ParamError(f"{gid[2]}: {reason} — 이런 값이면 노드가 기본값으로 돌아간다(hsv_ranges)")
         if len(impacts) == 2 and t["layer"] == "common":
             warn.append("공통 파일 — 종합임무·토너먼트 둘 다 바뀐다")
         return {"gid": gid, "target": t, "impacts": impacts, "old": t["value"], "new": new,
@@ -661,11 +689,20 @@ class Repo:
         res = {"ok": True, "key": p["gid"][2], "section": p["gid"][1], "pkg": p["gid"][0], "rel": t["rel"],
                "old": show(p["old"]), "new": show(p["new"]), "impacts": p["impacts"], "warn": p["warn"],
                "noop": p["noop"], "dry_run": dry_run}
-        if p["noop"] or dry_run:
+        if dry_run:
             return res
         path = os.path.join(self.repo, t["rel"])
         text = self._read(t["rel"])
-        new_text = self.edit_text(text, t["section"], p["gid"][2], p["new"])
+        if p["noop"]:
+            # 값은 같은데 줄 모양만 저장소와 다르면(예: 되돌리기 전 버전이 칸을 바꿔 씀) 저장소 줄로 맞춘다 —
+            # 남겨 두면 git status 가 '바뀜'이라 현장 git pull 이 막힐 수 있다
+            new_text = self._head_line(t["rel"], t["section"], p["gid"][2], p["new"], text)
+            if new_text == text:
+                return res
+            res["note"] = "값은 같다 — 줄 모양을 저장소와 같게 맞췄다"
+        else:
+            new_text = self.edit_text(text, t["section"], p["gid"][2], p["new"])
+            new_text = self._head_line(t["rel"], t["section"], p["gid"][2], p["new"], new_text)
         bdir = os.path.join(self.home, "ssf_logs", "param_backup")
         os.makedirs(bdir, exist_ok=True)
         stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S.%f")   # 마이크로초 — 이름순 = 시간순
@@ -690,6 +727,30 @@ class Repo:
         res.update(backup=backup, install=self.install_state(t["pkg"], t["rel"]),
                    launch_running=launch_running())
         return res
+
+    def _head_line(self, rel, section, key, new, text):
+        """new 가 저장소(HEAD) 값과 같으면 그 줄을 HEAD 줄 그대로(칸·주석 포함) 쓴 text. 아니면 text 그대로.
+        되돌리기 뒤 파일이 글자까지 저장소와 같아야 git 이 '안 바뀜'으로 본다(hsv.red 의 '255,  165' 두 칸 — 11-10 시뮬레이션)."""
+        head = self.head_text(rel)
+        if head is None:
+            return text
+        hm, cm = scan_lines(head).get((section, key)), scan_lines(text).get((section, key))
+        if not hm or not cm or hm["multiline"] or cm["multiline"]:
+            return text
+        try:
+            hv = parse_params(head)[section][key]
+        except (KeyError, yaml.YAMLError):
+            return text
+        if not same(hv, new):
+            return text
+        lines = text.split("\n")
+        lines[cm["line"]] = head.split("\n")[hm["line"]]
+        out = "\n".join(lines)
+        try:
+            ok = json.dumps(parse_params(out), sort_keys=True) == json.dumps(parse_params(text), sort_keys=True)
+        except yaml.YAMLError:
+            ok = False
+        return out if ok else text
 
     def undo(self, key, course=None, node=None, source="cli", rel=None):
         gid, t, _ = self.resolve(key, course, node, rel)

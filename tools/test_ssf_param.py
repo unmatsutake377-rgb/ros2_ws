@@ -201,6 +201,50 @@ def test_undo_restores_head_text(boat):
     assert boat.diff() == []
 
 
+def test_undo_restores_exact_text_hsv_red_double_space(boat):
+    """hsv.red 원본 '255,  165'(두 칸) — 되돌리기가 칸까지 저장소와 같아야 git 이 '안 바뀜'으로 본다(11-10 시뮬레이션)."""
+    rel = "src/color_shape_detector/config/vision.yaml"
+    red = [x for x in boat.params()["params"] if x["key"] == "hsv.red"][0]
+    v = red["effective"]["main"]["value"]
+    nv = [v[0] + 1] + v[1:]
+    boat.apply(red["id"], "[" + ", ".join(map(str, nv)) + "]", course="main")
+    assert _text(boat, rel) != _head(boat, rel)
+    boat.undo(red["id"], course="main")
+    assert _text(boat, rel) == _head(boat, rel)
+
+
+def test_noop_with_different_spacing_restores_head_line(boat):
+    """값은 같고 줄 모양만 다르면(옛 버전이 칸을 바꿔 씀) 같은 값 적용·되돌리기로 저장소 줄을 되찾는다."""
+    rel = "src/color_shape_detector/config/vision.yaml"
+    t = _text(boat, rel)
+    assert "255,  165" in t
+    with open(os.path.join(boat.repo, rel), "w", encoding="utf-8") as f:
+        f.write(t.replace("255,  165", "255, 165"))
+    red = [x for x in boat.params()["params"] if x["key"] == "hsv.red"][0]
+    r = boat.undo(red["id"], course="main")
+    assert r["noop"] and r.get("note")
+    assert _text(boat, rel) == _head(boat, rel)
+
+
+@pytest.mark.parametrize("raw", ["[1, 2, 3, 4, 5]", "[0, 140, 80, 5, 255]", "[0, 300, 80, 5, 255, 255]",
+                                 "[0, 200, 80, 5, 100, 255]", "[0, 140, 80, 190, 255, 255]"])
+def test_hsv_rule_rejected_like_node(boat, raw):
+    """노드(hsv_ranges.parse_flat)가 기본값으로 돌아갈 HSV 는 도구가 미리 거부한다."""
+    src = os.path.join(REPO, core.HSV_RANGES_REL)
+    if os.path.exists(src):
+        dst = os.path.join(boat.repo, core.HSV_RANGES_REL)
+        os.makedirs(os.path.dirname(dst), exist_ok=True)
+        shutil.copy(src, dst)
+    elif raw != "[1, 2, 3, 4, 5]":
+        pytest.skip("hsv_ranges.py 없음(최소 규칙만)")
+    rel = "src/color_shape_detector/config/vision.yaml"
+    before = _text(boat, rel)
+    blue = [x for x in boat.params()["params"] if x["key"] == "hsv.blue"][0]
+    with pytest.raises(core.ParamError, match="hsv.blue"):
+        boat.apply(blue["id"], raw, course="main")
+    assert _text(boat, rel) == before
+
+
 def test_backup_log_and_diff(boat):
     boat.apply("hold_dist_m", "3.5")
     boat.apply("hold_dist_m", "3.0")
