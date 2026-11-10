@@ -45,7 +45,8 @@ echo
 echo "━━ 웨이포인트 녹화 — $( [ "$boat" = A ] && echo 1번배 || echo 2번배 ) · $( [ "$course" = tournament ] && echo "토너먼트 레인 $lane" || echo 종합임무 )"
 echo "   저장 파일: $OUT"
 [ -n "$TEMPLATE" ] && echo "   템플릿:   $TEMPLATE"
-echo "   ① 먼저 RTK FIXED 확인(다른 창): ros2 topic echo /ublox_gps_node/navpvt --once  → carrSoln 2"
+echo "   ① 지금 GPS: $(python3 tools/ssf_param_core.py --boat "$boat" gps --wait 4 2>/dev/null | grep -v '^\[' | head -1 | sed 's/^ *//')"
+echo "      🟢 RTK FIXED 일 때 찍는다(앱 위쪽 'RTK' 불 · ssf $(echo "$boat" | tr AB ab) gps)"
 echo "   ② 조종기로 지점에 대고 몇 초 머문 뒤 Enter → mode → dwell → 이름. l=목록 d N=삭제 r N=재캡처 q=저장"
 if [ "$course" = tournament ]; then
   echo "   ③ 🚨 전부 mode 8. 마지막 점 = 결승선 너머 약 3 m, dwell 0.5 — 경기장 경계 안"

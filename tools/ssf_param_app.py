@@ -76,6 +76,8 @@ def make_handler(repo, port):
                     with LOCK:
                         return self._send(200, {"ok": True, "files": repo.waypoints(),
                                                 "boat": repo.view_boat()})
+                if path == "/api/gps":             # GPS·RTK 상태(보기 전용)
+                    return self._send(200, dict(repo.gps(), ok=True))
                 if path == "/api/cam":             # D455 영상 송신 상태
                     return self._send(200, dict(repo.cam("status"), ok=True))
                 if path == "/api/wp/rec":          # 녹화 화면(tmux) 읽기

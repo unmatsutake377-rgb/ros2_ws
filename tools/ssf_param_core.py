@@ -793,6 +793,11 @@ class Repo:
             raise ParamError(str(e))
         return {"boat": b, "out": out, "template": template, "backup": wpm.backup(out, self.home)}
 
+    def gps(self):
+        """GPS·RTK 상태(보기 전용). 감시 노드는 필요할 때 tmux 로 뜨고, 앱이 안 보면 2 분 뒤 스스로 끝난다."""
+        import ssf_gps
+        return ssf_gps.status(self.repo, self.view_boat(), self.home)
+
     def cam(self, action, ip=None):
         """D455 영상 송신: status / start(ip) / stop. 켜고 끄기는 배 확인 뒤에만. tools/ssf_cam.py"""
         import ssf_cam
@@ -895,6 +900,7 @@ def main(argv=None):
     sub.add_parser("diff")
     sub.add_parser("log")
     s = sub.add_parser("cam"); s.add_argument("action", choices=["status", "start", "stop"]); s.add_argument("ip", nargs="?")
+    s = sub.add_parser("gps"); s.add_argument("--wait", type=float, default=6.0)
     sub.add_parser("wp-list")
     s = sub.add_parser("wp-prep"); s.add_argument("course", choices=COURSES); s.add_argument("lane", nargs="?")
     a = ap.parse_args(argv)
@@ -948,6 +954,17 @@ def main(argv=None):
             for x in r.read_log(30):
                 print(f"  {x['time']} {x['key']} {x['old']} → {x['new']} ({x['rel']}, {x['source']})")
             return 0
+        if a.cmd == "gps":
+            import time as _t
+            end = _t.time() + a.wait        # 감시 노드가 막 떴으면 첫 값까지 잠깐 기다린다
+            g = r.gps()
+            while g["level"] == "none" and _t.time() < end:
+                _t.sleep(0.5)
+                g = r.gps()
+            print("  " + g["text"])
+            if g.get("lat") is not None and g["level"] != "none":
+                print(f"     lat {g['lat']:.7f}  lon {g['lon']:.7f}  ({g.get('age')} s 전)")
+            return 0 if g["level"] == "fixed" else 3
         if a.cmd == "cam":
             c = r.cam(a.action, a.ip)
             print(f"  영상 송신: {'🔴 켜짐' if c['running'] else '꺼짐'} (tmux {c['session']}, 포트 {c['port']}, 모드 {c['mode']})")

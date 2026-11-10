@@ -498,7 +498,8 @@ def recboat(boat, tmp_path, monkeypatch):
     # 기록 스크립트·도구를 임시 저장소로(그 안의 /opt/ros 경로를 가짜로)
     tools = os.path.join(boat.repo, "tools")
     os.makedirs(tools, exist_ok=True)
-    for f in ("ssf_param_core.py", "ssf_waypoints.py", "ssf_param_catalog.yaml", "param_check.py", "ssf_ros_net.sh"):
+    for f in ("ssf_param_core.py", "ssf_waypoints.py", "ssf_param_catalog.yaml", "param_check.py", "ssf_ros_net.sh",
+              "ssf_gps.py", "ssf_gps_watch.sh", "ssf_gps_watch.py", "ssf_lock.py"):
         if os.path.exists(os.path.join(HERE, f)):
             shutil.copy(os.path.join(HERE, f), tools)
     src = open(os.path.join(HERE, "ssf_wp_record.sh"), encoding="utf-8").read()
@@ -515,7 +516,7 @@ def recboat(boat, tmp_path, monkeypatch):
     subprocess.run(["tmux", "-L", sock, "kill-server"], capture_output=True)
 
 
-def _wait(boat, prompt, sec=8):
+def _wait(boat, prompt, sec=15):
     end = _time.time() + sec
     st = None
     while _time.time() < end:
@@ -799,3 +800,44 @@ def test_cam_concurrent_start_one_wins(camboat):
     assert sorted(res.values(), key=lambda v: v != "ok")[0] == "ok"
     assert any("이미 송신 중" in v for v in res.values()), res
     b.cam("stop")
+
+
+# ---------------------------------------------------------------- GPS·RTK 불
+
+import ssf_gps  # noqa: E402
+
+
+def test_gps_classify():
+    now = 1000.0
+    base = {"t": now - 0.5, "fix_ok": True, "fix_type": 3, "h_acc_m": 0.015, "num_sv": 18}
+    assert ssf_gps.classify(None, now)[0] == "none"
+    assert ssf_gps.classify({"t": now, "error": "x"}, now)[0] == "none"
+    assert ssf_gps.classify(dict(base, carr=2, t=now - 5), now)[0] == "none"          # 오래됨
+    lv, txt = ssf_gps.classify(dict(base, carr=2), now)
+    assert lv == "fixed" and "±1.5 cm" in txt and "위성 18" in txt
+    assert ssf_gps.classify(dict(base, carr=1, h_acc_m=0.4), now)[0] == "float"
+    lv, txt = ssf_gps.classify(dict(base, carr=0, h_acc_m=2.3), now)
+    assert lv == "single" and "±2.3 m" in txt
+    assert ssf_gps.classify(dict(base, carr=0, fix_ok=False), now)[0] == "nofix"
+    assert ssf_gps.classify(dict(base, carr=2, fix_type=1), now)[0] == "nofix"
+
+
+def test_gps_status_reads_file_and_touches_heartbeat(boat, monkeypatch):
+    import json as js
+    import time as t
+    monkeypatch.setattr(ssf_gps, "_ensure_watch", lambda *a: None)      # 감시 노드는 따로 시험(배)
+    st = boat.gps()
+    assert st["level"] == "none"
+    assert os.path.exists(os.path.join(boat.home, "ssf_logs", ".gps_watch_A.hb"))
+    with open(os.path.join(boat.home, "ssf_logs", "gps_status_A.json"), "w") as f:
+        js.dump({"t": t.time(), "carr": 2, "fix_ok": True, "fix_type": 3, "h_acc_m": 0.02, "num_sv": 20,
+                 "lat": 35.1, "lon": 128.5}, f)
+    st = boat.gps()
+    assert st["level"] == "fixed" and st["fixed"] and st["num_sv"] == 20
+
+
+def test_server_gps_route(server, monkeypatch):
+    monkeypatch.setattr(ssf_gps, "_ensure_watch", lambda *a: None)
+    port, _ = server
+    st, d = _req(port, "/api/gps")
+    assert st == 200 and d["ok"] and d["level"] == "none"

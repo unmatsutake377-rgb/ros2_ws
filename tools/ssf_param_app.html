@@ -37,6 +37,13 @@ header .row{display:flex;flex-wrap:wrap;align-items:center;gap:10px 16px;padding
 .spacer{flex:1}
 .pill{font-size:12.5px;padding:3px 10px;border-radius:99px;background:#ffffff1f;color:#fff;white-space:nowrap}
 .pill.on{background:#f0b04c;color:#241600;font-weight:700}
+.pill.g-fixed,.gps.g-fixed{background:#1f9d55;color:#fff;font-weight:700}
+.pill.g-float,.gps.g-float{background:#e6b800;color:#241600;font-weight:700}
+.pill.g-single,.gps.g-single{background:#e8772e;color:#fff;font-weight:700}
+.pill.g-nofix,.gps.g-nofix{background:#c62f37;color:#fff;font-weight:700}
+.pill.g-none,.gps.g-none{background:#ffffff1f;color:#d4dfeb}
+.gps{border-radius:10px;padding:10px 14px;font-size:18px;margin:8px 0}
+.gps.g-none{background:var(--chip);color:var(--ink2)}
 .seg{display:inline-flex;background:#ffffff1a;border-radius:10px;padding:3px}
 .seg button{border:0;background:transparent;color:#d4dfeb;padding:6px 14px;border-radius:8px;cursor:pointer;font-weight:600}
 .seg button.sel{background:#fff;color:var(--navy)}
@@ -151,6 +158,7 @@ pre.out{font-family:var(--mono);font-size:12px;background:var(--bg);padding:10px
       <span class="badge" id="badge">…</span>
       <div class="meta" id="meta"></div>
       <span class="spacer"></span>
+      <span class="pill g-none" id="gps" title="GPS·RTK 상태(배 노트북 /ublox_gps_node/navpvt)">RTK …</span>
       <span class="pill" id="launch">launch ?</span>
       <div class="seg" id="course" role="tablist" aria-label="코스">
         <button data-c="main" class="sel">종합임무</button><button data-c="tournament">토너먼트</button>
@@ -400,7 +408,15 @@ function recPanel() {
     onkeydown:e => { if (e.key === "Enter") { recSend("answer", answer.value); answer.value = ""; } }});
   const idx = h("input", {type:"text", class:"mono num", placeholder:"번호", inputmode:"numeric", style:"max-width:70px"});
   const btn = (text, cls, fn) => h("button", {class:"btn " + (cls || ""), text, onclick:fn});
+  const capture = () => {
+    const g = S.gps;
+    if (!g || g.level !== "fixed") {
+      if (!confirm(`RTK FIXED 가 아니다 — 지금: ${g ? g.text : "GPS 상태 모름"}\n단독 GPS(±수 m)로 찍은 점은 부표 간격보다 오차가 클 수 있다.\n그래도 찍을까요?`)) return;
+    }
+    recSend("capture");
+  };
   R.parts = {
+    gps: h("div", {class:"gps g-none", text:"RTK …"}),
     status: h("div", {class:"label"}),
     start: h("div", {class:"tools", style:"margin:8px 0 0"}, course, lane,
       btn("녹화 시작", "primary", () => recCall("/api/wp/rec/start", {course:course.value, lane:course.value === "main" ? null : lane.value.trim()})),
@@ -408,7 +424,7 @@ function recPanel() {
     screen: h("pre", {class:"out", style:"max-height:340px;min-height:120px;white-space:pre-wrap"}),
     ask: h("div", {class:"banner warn", style:"margin:8px 0"}),
     main: h("div", {class:"tools"},
-      btn("📍 지금 위치 찍기", "go", () => recSend("capture")),
+      btn("📍 지금 위치 찍기", "go", capture),
       btn("목록", "", () => recSend("list")), idx,
       btn("번호 삭제", "", () => { if (confirm(idx.value + "번 웨이포인트를 지울까요?")) recSend("delete", idx.value.trim()); }),
       btn("번호 다시 찍기", "", () => { if (confirm(idx.value + "번을 지금 위치로 다시 찍을까요? (mode·dwell 유지)")) recSend("recapture", idx.value.trim()); }),
@@ -423,7 +439,7 @@ function recPanel() {
   };
   R.answerInput = answer;
   recWatchScroll();
-  R.el = h("div", {class:"card", style:"padding:12px 14px;margin-bottom:12px"}, R.parts.status, R.parts.start, R.parts.ask,
+  R.el = h("div", {class:"card", style:"padding:12px 14px;margin-bottom:12px"}, R.parts.status, R.parts.gps, R.parts.start, R.parts.ask,
     R.parts.screen, R.parts.main, R.parts.answer, R.parts.close, R.parts.msg, R.parts.kill);
   return R.el;
 }
@@ -458,6 +474,20 @@ function recWatchScroll() {
     R.keepTop = s.scrollTop;
   });
 }
+// ---- GPS·RTK 불 (모든 탭 위쪽 + 웨이포인트 탭 크게). 2 s 마다
+async function gpsPoll() {
+  try { const r = await api("/api/gps"); S.gps = r.ok === false ? {level:"none", text:"⚫ " + r.error} : r; }
+  catch (e) { S.gps = {level:"none", text:"⚫ 연결 끊김"}; }
+  const g = S.gps, el = $("#gps");
+  const short = {fixed:"RTK FIXED", float:"RTK FLOAT", single:"GPS 단독", nofix:"위치 없음", none:"GPS 없음"}[g.level] || "RTK ?";
+  el.className = "pill g-" + g.level;
+  el.textContent = short + (g.level === "fixed" || g.level === "float" ? (g.h_acc_m != null ? ` ±${(g.h_acc_m * 100).toFixed(1)}cm` : "") : "");
+  el.title = g.text;
+  if (R.parts) { R.parts.gps.className = "gps g-" + g.level; R.parts.gps.textContent = g.text +
+    (g.level === "fixed" ? " — 찍어도 됨" : g.level === "float" ? " — FIXED 기다림" : g.level === "single" ? " — NTRIP·인터넷(핫스팟) 확인" : ""); }
+}
+setInterval(() => { if (!document.hidden) gpsPoll(); }, 2000);
+
 async function recPoll() {
   try { const r = await api("/api/wp/rec"); R.st = r.ok === false ? {error:r.error} : r; }
   catch (e) { R.st = {error:String(e)}; }
@@ -741,6 +771,7 @@ setInterval(async () => {
   try { const st = await api("/api/state"); const ch = !S.state || st.launch_running !== S.state.launch_running; S.state = st; if (ch) render(); }
   catch (e) { $("#launch").textContent = "연결 끊김"; $("#launch").className = "pill on"; }
 }, 5000);
+gpsPoll();
 refresh().catch(e => { $("#main").replaceChildren(h("div", {class:"banner bad", text:"서버에 못 붙었다: " + e})); });
 </script>
 </body>

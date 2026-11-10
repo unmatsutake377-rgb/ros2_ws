@@ -17,9 +17,14 @@ ssf_ros_net() {
 $(grep -oE '^[[:space:]]*export[[:space:]]+(ROS_LOCALHOST_ONLY|ROS_DOMAIN_ID)=[A-Za-z0-9_]+' "$HOME/.bashrc" 2>/dev/null \
    | sed -E 's/^[[:space:]]*export[[:space:]]+//')
 EOF_SSF_NET
-  if [ -z "${ROS_LOCALHOST_ONLY:-}" ]; then
+  # 🚨 환경 값이 아니라 '.bashrc 에서 찾았나'로 본다 — /opt/ros/humble/setup.bash 가 ROS_LOCALHOST_ONLY=0 을
+  #    먼저 넣어 두므로 '비었으면 1' 로는 대비책이 동작하지 않았다(11-10 GPS 감시 시험에서 확인).
+  case "$found" in
+    *ROS_LOCALHOST_ONLY=*) ;;
+    *)
     export ROS_LOCALHOST_ONLY=1
     echo "   ⚠️ ~/.bashrc 에 ROS_LOCALHOST_ONLY 가 없다 — 1 로 둔다(두 배 섞임 방지). 스택도 같은 설정인지 tools/boat_boot.sh [6]"
-  fi
+    ;;
+  esac
   echo "   ROS 격리: ROS_LOCALHOST_ONLY=${ROS_LOCALHOST_ONLY}${ROS_DOMAIN_ID:+ ROS_DOMAIN_ID=$ROS_DOMAIN_ID}  (~/.bashrc 와 같게${found:+ —$found})"
 }
