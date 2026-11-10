@@ -25,7 +25,9 @@
 #                        SSF_SSH(기본 ssh — 연습용 가짜 배는 tools/ssf_practice.sh 가 알려 줌)
 #                        SSF_NO_OPEN=1 (브라우저 자동으로 안 열기)
 set -u
-SSH=${SSF_SSH:-ssh}
+# ServerAlive: 5 초마다 확인, 20 초 무응답이면 SSH 를 끊는다 — 와이파이·LTE 가 끊겼을 때 얼어붙은 채로
+#   남아 포트를 잡고 있지 않게(남으면 'ssf app' 다시 켜기가 Address already in use 로 실패 — 11-10 시험)
+SSH=${SSF_SSH:-ssh -o ServerAliveInterval=5 -o ServerAliveCountMax=4}
 REMOTE_REPO=${SSF_REMOTE_REPO:-'~/ros2_ws'}
 
 host_of() { case "$1" in A) echo "${SSF_HOST_A:-boat-a}";; B) echo "${SSF_HOST_B:-boat-b}";; esac; }
@@ -52,28 +54,46 @@ open_url() {
   if command -v open >/dev/null; then open "$1"; elif command -v xdg-open >/dev/null; then xdg-open "$1" >/dev/null 2>&1; fi
 }
 
+app_link() {  # boat — SSH 로 앱 서버를 띄우고 포트를 잇는다. 끊기면 5 초 뒤 다시(Ctrl+C 까지)
+  local b=$1 h p sp n=0 t0
+  h=$(host_of "$b"); p=$(port_of "$b")
+  trap 'kill $sp 2>/dev/null; exit 0' INT TERM
+  while :; do
+    t0=$(date +%s)
+    # -L 로컬 포트 → 배 노트북 127.0.0.1 포트. -n: 키보드 입력 안 받음(두 배 동시 실행).
+    # BatchMode: 비밀번호를 물으면 멈추지 말고 실패 → 키 등록(맥북_원격조작_설명서 1-3).
+    # --exit-with-parent: SSH 가 끊기면 배 노트북 서버도 끝난다(남아도 다음 접속 때 stop_old 가 끈다).
+    $SSH -n -o BatchMode=yes -o ExitOnForwardFailure=yes -L "$p:127.0.0.1:$p" "$h" \
+      "cd $REMOTE_REPO && exec python3 tools/ssf_param_app.py --boat $b --port $p --exit-with-parent" &
+    sp=$!
+    wait $sp
+    # 오래 붙어 있다 끊긴 것이면 처음부터 다시 센다
+    [ $(( $(date +%s) - t0 )) -gt 60 ] && n=0
+    n=$((n + 1))
+    echo "⚠️ $(date +%H:%M:%S) $h 앱 연결이 끊겼다 — 5 초 뒤 다시 붙는다($n 번째). 브라우저 창은 그대로 두면 된다(아직 적용 안 한 값도 남아 있다). 그만: Ctrl+C"
+    [ $n -ge 3 ] && echo "   계속 끊기면: ssh $h 가 되는지(tailscale status), 포트 $p 를 다른 창이 쓰는지(lsof -nP -iTCP:$p)"
+    sleep 5
+  done
+}
+
 run_app() {   # boats...
   local pids=() b h p
   for b in "$@"; do
     h=$(host_of "$b"); p=$(port_of "$b")
     echo "━━ $( [ "$b" = A ] && echo 1번배 || echo 2번배 ) 앱: $h → http://localhost:$p"
-    # -L 로컬 포트 → 배 노트북 127.0.0.1 포트. -n: 키보드 입력 안 받음(두 배 동시 실행).
-    # BatchMode: 비밀번호를 물으면 멈추지 말고 실패 → 키 등록(맥북_원격조작_설명서 1-3).
-    # --exit-with-parent: SSH 가 끊기면 배 노트북 서버도 끝난다.
-    $SSH -n -o BatchMode=yes -o ExitOnForwardFailure=yes -L "$p:127.0.0.1:$p" "$h" \
-      "cd $REMOTE_REPO && exec python3 tools/ssf_param_app.py --boat $b --port $p --exit-with-parent" &
+    app_link "$b" &
     pids+=($!)
   done
-  trap 'kill "${pids[@]}" 2>/dev/null; exit 0' INT TERM
+  trap 'kill "${pids[@]}" 2>/dev/null; wait; exit 0' INT TERM
   for b in "$@"; do
     p=$(port_of "$b")
     ok=0
     for _ in $(seq 1 60); do
-      if curl -s -o /dev/null "http://localhost:$p/api/ping"; then ok=1; break; fi
+      if curl -s -m 2 -o /dev/null "http://localhost:$p/api/ping"; then ok=1; break; fi
       sleep 0.25
     done
     if [ $ok = 1 ]; then open_url "http://localhost:$p"
-    else echo "⚠️ $(host_of "$b") 앱이 15 초 안에 안 떴다 — 위 SSH 오류 확인(ssh $(host_of "$b") 이 비밀번호 없이 되는지, git pull 했는지)"; fi
+    else echo "⚠️ $(host_of "$b") 앱이 15 초 안에 안 떴다 — 위 SSH 오류 확인(ssh $(host_of "$b") 이 비밀번호 없이 되는지, git pull 했는지). 계속 다시 시도한다"; fi
   done
   echo "끄기: Ctrl+C"
   wait

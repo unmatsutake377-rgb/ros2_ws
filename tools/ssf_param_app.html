@@ -59,6 +59,8 @@ main{padding-block:16px 120px}
 .banner.warn{background:var(--warn-soft);border-color:var(--warn);color:var(--warn)}
 .banner.ok{background:var(--ok-soft);border-color:var(--ok);color:var(--ok)}
 .banner code{font-family:var(--mono);font-size:13px}
+.netbar{position:sticky;top:0;z-index:20;background:var(--bad);color:#fff;padding:10px 16px;font-weight:600;line-height:1.5}
+.netbar small{display:block;font-weight:400;opacity:.92}
 .tools{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
 .search{flex:1;min-width:200px;padding:9px 12px;border:1px solid var(--line);border-radius:10px;background:var(--panel)}
 h2.group{font-size:13px;letter-spacing:.06em;color:var(--ink2);margin:22px 0 8px;font-weight:700}
@@ -175,6 +177,7 @@ pre.out{font-family:var(--mono);font-size:12px;background:var(--bg);padding:10px
   </div>
 </header>
 
+<div class="netbar" id="net" role="alert" hidden></div>
 <main class="wrap" id="main"></main>
 
 <div class="bar" id="bar" hidden>
@@ -209,10 +212,33 @@ const h = (tag, attrs={}, ...kids) => {
 };
 
 const fill = (el, ...kids) => el.replaceChildren(...kids.flat().filter(k => k != null && k !== false));
-async function api(path, body) {
+// ---- 연결: 모든 요청에 시간 제한(없으면 와이파이가 끊겼을 때 버튼이 영영 '처리 중'으로 남는다 — 11-10 시험)
+const NET = {down:false, since:null};
+function netMark(ok) {
+  if (ok && NET.down) {
+    NET.down = false; $("#net").hidden = true; $("#review").disabled = false;
+    refresh().catch(() => {}); gpsPoll();
+  } else if (!ok && !NET.down) {
+    NET.down = true; NET.since = new Date(); $("#review").disabled = true;
+    const n = $("#net"); n.hidden = false;
+    fill(n, `⚠️ 배 노트북과 연결 끊김 (${NET.since.toLocaleTimeString()} 부터) — 다시 붙으면 이 줄이 저절로 사라진다`,
+      h("small", {text:"이 창은 닫지 말고 그대로: 아직 적용 안 한 값은 남아 있다. Mac 터미널의 ssf app 이 5 초마다 다시 붙는다" +
+        "(터미널을 닫았으면 다시 ssf " + (S.state?.boat === "A" ? "a" : "b") + " app). 녹화·launch·영상 송신은 배에서 계속 돈다."}));
+  }
+}
+async function api(path, body, ms = 10000) {
   const opt = body ? {method:"POST", headers:{"Content-Type":"application/json","X-SSF":"1"}, body:JSON.stringify(body)} : {};
-  const r = await fetch(path, opt);
-  return r.json();
+  const ctl = new AbortController();
+  const tm = setTimeout(() => ctl.abort(), ms);
+  opt.signal = ctl.signal;
+  let out;
+  try { const r = await fetch(path, opt); out = await r.json(); }
+  catch (e) {
+    netMark(false);
+    throw new Error(e.name === "AbortError" ? `응답 없음(${ms / 1000} s) — 배와 연결 끊김` : "배와 연결 끊김");
+  } finally { clearTimeout(tm); }
+  netMark(true);
+  return out;
 }
 
 function pkey(p) { return p.id + "@" + S.course; }
@@ -392,9 +418,9 @@ const R = {el:null, st:null, busy:false};
 async function recCall(path, body) {
   if (R.busy) return; R.busy = true;
   try {
-    const r = await api(path, body);
+    const r = await api(path, body, 30000);
     R.msg = r.ok === false ? "❌ " + r.error : (r.sent ? "보냄: " + r.sent : "");
-  } catch (e) { R.msg = "❌ " + e; }
+  } catch (e) { R.msg = "❌ " + e.message + " — 키가 들어갔는지 녹화 화면으로 확인한 뒤 다시(그냥 다시 누르면 두 번 들어갈 수 있다)"; }
   R.busy = false;
   await recPoll();
 }
@@ -499,7 +525,7 @@ setInterval(() => { if (S.tab === "wp" && !document.hidden) recPoll(); }, 1000);
 const C = {el:null, st:null, busy:false, msg:""};
 async function camCall(path, body) {
   if (C.busy) return; C.busy = true; camUpdate();
-  try { const r = await api(path, body); C.msg = r.ok === false ? "❌ " + r.error : ""; if (r.ok !== false) C.st = r; }
+  try { const r = await api(path, body, 30000); C.msg = r.ok === false ? "❌ " + r.error : ""; if (r.ok !== false) C.st = r; }
   catch (e) { C.msg = "❌ " + e; }
   C.busy = false; await camPoll();
 }
@@ -633,7 +659,9 @@ async function review() {
   $("#modal").hidden = false;
   let bad = 0;
   for (const it of items) {
-    const r = await api("/api/set", {id:it.p.id, value:it.value, course:it.course, dry_run:true});
+    let r;
+    try { r = await api("/api/set", {id:it.p.id, value:it.value, course:it.course, dry_run:true}, 30000); }
+    catch (e) { r = {ok:false, error:e.message + " — 검사 못 함. 다시 붙은 뒤 다시 '확인하고 적용'"}; }
     it.check = r; it.error = r.ok === false ? r.error : null; if (it.error) bad++;
   }
   const list = items.map(it => {
@@ -663,13 +691,22 @@ async function review() {
 async function applyAll(items) {
   const sheet = $("#sheet");
   const res = [];
+  let lost = null;
   for (const it of items) {
-    const r = await api("/api/set", {id:it.p.id, value:it.value, course:it.course});
+    if (lost) { res.push({it, r:{ok:false, error:"안 보냄(연결 끊김) — 다시 붙은 뒤 다시 적용"}}); continue; }
+    let r;
+    // 잠금 대기(최대 20 s)가 있어 30 s
+    try { r = await api("/api/set", {id:it.p.id, value:it.value, course:it.course}, 30000); }
+    catch (e) {
+      lost = e;
+      r = {ok:false, error:e.message + " — 이 값이 들어갔는지 모른다. 다시 붙은 뒤 '저장소와 다른 값' 탭에서 확인" +
+        "(같은 값을 다시 적용해도 안전 — '바꿀 것 없음'으로 나온다)"};
+    }
     res.push({it, r});
     if (r.ok !== false) { S.pending.delete(pkey2(it)); if (r.install && r.install !== "symlink") S.buildPkgs.add(r.pkg); S.applied.push(r); }
     else it.error = r.error;
   }
-  await refresh();
+  try { await refresh(); } catch (_) { /* 연결 끊김 — 위 줄(netbar)이 알린다 */ }
   const ok = res.filter(x => x.r.ok !== false);
   fill(sheet, h("h3", {text:"적용 결과"}),
     ...res.map(({it, r}) => h("div", {class:"chg " + (r.ok === false ? "bad" : "done")},
@@ -693,7 +730,9 @@ function restartBanner() {
       h("code", {text:"colcon build --symlink-install --packages-select " + pk.join(" ")}), " ",
       h("button", {class:"btn", text:"지금 빌드", onclick:async e => {
         e.target.disabled = true; e.target.textContent = "빌드 중…";
-        const r = await api("/api/build", {pkgs:pk});
+        let r;
+        try { r = await api("/api/build", {pkgs:pk}, 900000); }
+        catch (e) { r = {ok:false, error:e.message + " — 빌드가 배에서 계속 도는지 모른다. 다시 붙은 뒤 확인"}; }
         e.target.replaceWith(h("pre", {class:"out", text:(r.ok ? "✅ 빌드 성공\n" : "❌ " + (r.error || "빌드 실패") + "\n") + (r.tail || []).join("\n")}));
         if (r.ok) S.buildPkgs.clear();
       }})));
@@ -702,9 +741,12 @@ function restartBanner() {
 }
 
 async function undo(d) {
-  const r = await api("/api/undo", {id:d.id, rel:d.rel});
+  let r;
+  try { r = await api("/api/undo", {id:d.id, rel:d.rel}, 30000); }
+  catch (e) { alertBox("❌ " + e.message + " — 되돌려졌는지 모른다. 다시 붙은 뒤 이 탭을 다시 확인(다시 눌러도 안전)"); return false; }
   if (r.ok === false) alertBox("❌ " + r.error); else { S.applied.push(r); if (r.install && r.install !== "symlink") S.buildPkgs.add(r.pkg); }
-  await refresh();
+  try { await refresh(); } catch (_) {}
+  return r.ok !== false;
 }
 async function undoAll() {
   const sheet = $("#sheet");
@@ -712,7 +754,7 @@ async function undoAll() {
     h("p", {class:"small", text:`${S.diff.length}개 값을 git HEAD 값으로 되돌린다(바꾸기 전 파일은 백업됨).`}),
     h("div", {class:"right"}, h("button", {class:"btn", text:"아니오", onclick:() => { $("#modal").hidden = true; }}),
       h("button", {class:"btn go", text:"되돌리기", onclick:async () => {
-        for (const d of [...S.diff]) if (d.head != null) await undo(d);
+        for (const d of [...S.diff]) if (d.head != null && !(await undo(d))) return;   // 실패하면 거기서 멈춤(알림 창 유지)
         $("#modal").hidden = true; render(); }})));
   $("#modal").hidden = false;
 }
@@ -769,7 +811,7 @@ $("#review").addEventListener("click", review);
 $("#modal").addEventListener("click", e => { if (e.target.id === "modal") { $("#modal").hidden = true; render(); } });
 setInterval(async () => {
   try { const st = await api("/api/state"); const ch = !S.state || st.launch_running !== S.state.launch_running; S.state = st; if (ch) render(); }
-  catch (e) { $("#launch").textContent = "연결 끊김"; $("#launch").className = "pill on"; }
+  catch (e) { $("#launch").textContent = "launch ?"; $("#launch").className = "pill"; }   // 끊김은 위쪽 빨간 줄이 알린다
 }, 5000);
 gpsPoll();
 refresh().catch(e => { $("#main").replaceChildren(h("div", {class:"banner bad", text:"서버에 못 붙었다: " + e})); });
