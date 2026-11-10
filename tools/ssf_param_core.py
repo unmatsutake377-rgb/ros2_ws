@@ -784,6 +784,21 @@ class Repo:
             raise ParamError(str(e))
         return {"boat": b, "out": out, "template": template, "backup": wpm.backup(out, self.home)}
 
+    def cam(self, action, ip=None):
+        """D455 영상 송신: status / start(ip) / stop. 켜고 끄기는 배 확인 뒤에만. tools/ssf_cam.py"""
+        import ssf_cam
+        try:
+            if action == "status":
+                return ssf_cam.status(self.view_boat(), self.home)
+            b = self.boat()
+            if action == "start":
+                return ssf_cam.start(self.repo, b, self.home, ip or ssf_cam.ssh_client_ip() or "")
+            if action == "stop":
+                return ssf_cam.stop(b, self.home)
+        except RuntimeError as e:
+            raise ParamError(str(e))
+        raise ParamError(f"모르는 동작 {action!r}")
+
     def wp_rec(self, action, **kw):
         """앱에서 녹화: status / start(course, lane) / send(kind, arg) / kill. 배 확인 뒤에만."""
         import ssf_waypoints as wpm
@@ -865,6 +880,7 @@ def main(argv=None):
     s = sub.add_parser("undo"); s.add_argument("key"); s.add_argument("--course", choices=COURSES); s.add_argument("--node")
     sub.add_parser("diff")
     sub.add_parser("log")
+    s = sub.add_parser("cam"); s.add_argument("action", choices=["status", "start", "stop"]); s.add_argument("ip", nargs="?")
     sub.add_parser("wp-list")
     s = sub.add_parser("wp-prep"); s.add_argument("course", choices=COURSES); s.add_argument("lane", nargs="?")
     a = ap.parse_args(argv)
@@ -917,6 +933,14 @@ def main(argv=None):
         if a.cmd == "log":
             for x in r.read_log(30):
                 print(f"  {x['time']} {x['key']} {x['old']} → {x['new']} ({x['rel']}, {x['source']})")
+            return 0
+        if a.cmd == "cam":
+            c = r.cam(a.action, a.ip)
+            print(f"  영상 송신: {'🔴 켜짐' if c['running'] else '꺼짐'} (tmux {c['session']}, 포트 {c['port']}, 모드 {c['mode']})")
+            print("  D455 USB: " + (" / ".join(c["usb"]) if c["usb"] else "❌ 안 잡힘 — lsusb | grep -i realsense, 케이블·허브 포트"))
+            for ln in c["log"][-8:]:
+                print("    " + ln)
+            print(f"PORT={c['port']}")
             return 0
         if a.cmd == "wp-list":
             for f in r.waypoints():

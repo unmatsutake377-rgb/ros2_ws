@@ -76,6 +76,8 @@ def make_handler(repo, port):
                     with LOCK:
                         return self._send(200, {"ok": True, "files": repo.waypoints(),
                                                 "boat": repo.view_boat()})
+                if path == "/api/cam":             # D455 영상 송신 상태
+                    return self._send(200, dict(repo.cam("status"), ok=True))
                 if path == "/api/wp/rec":          # 녹화 화면(tmux) 읽기
                     return self._send(200, dict(repo.wp_rec("status"), ok=True))
             except core.ParamError as e:
@@ -102,6 +104,10 @@ def make_handler(repo, port):
                     if path == "/api/undo":
                         return self._send(200, repo.undo(body["id"], body.get("course") or None, source="app",
                                                          rel=body.get("rel")))
+                    if path == "/api/cam/start":
+                        return self._send(200, dict(repo.cam("start", body.get("ip")), ok=True))
+                    if path == "/api/cam/stop":
+                        return self._send(200, dict(repo.cam("stop"), ok=True))
                     if path == "/api/wp/rec/start":
                         return self._send(200, dict(repo.wp_rec("start", course=body.get("course"),
                                                                 lane=body.get("lane")), ok=True))

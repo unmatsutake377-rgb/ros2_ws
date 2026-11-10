@@ -14,6 +14,9 @@
 #   ssf b wp             웨이포인트 파일 목록·검사 (보기만)
 #   ssf b wp main        종합임무 웨이포인트 녹화 (배 노트북 tmux 안에서 녹화 도구). 끊기면 같은 명령으로 다시 붙음
 #   ssf b wp tournament 1   토너먼트 레인 1 녹화 → ~/ssf_logs/waypoints_tournament_B_1.yaml   [--dry-run]
+#   ssf b cam            D455 실시간 영상: 배 송신(tmux) + 이 Mac 수신 창. Ctrl+C 한 번이면 둘 다 끔
+#   ssf b cam view|stop|status   수신 창만 / 배 송신 끄기 / 상태(D455 USB·로그)
+#                        포트 1번배 5600 · 2번배 5601 — 영상은 조종과 따로(꺼져도 RC 조종 그대로)
 #
 # 설치(MacBook, 한 번):  저장소가 있으면  echo 'alias ssf=~/ros2_ws/tools/ssf' >> ~/.zshrc
 #                        없으면          scp boat-a:ros2_ws/tools/ssf ~/ssf && chmod +x ~/ssf && echo 'alias ssf=~/ssf' >> ~/.zshrc
@@ -31,7 +34,7 @@ boats_of() {
     A|1) echo A;; B|2) echo B;; BOTH|AB|ALL) echo "A B";; *) return 1;;
   esac
 }
-usage() { sed -n '2,23p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
+usage() { sed -n '2,26p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
 
 quote_args() { local out="" a; for a in "$@"; do out+=" $(printf '%q' "$a")"; done; echo "$out"; }
 
@@ -94,6 +97,47 @@ run_wp() {    # boat, [main|tournament <레인>] [--dry-run]
   $SSH -t "$h" "$cmd"
 }
 
+mac_ip() {   # 이 Mac 의 Tailscale 주소(배가 영상을 보낼 곳)
+  local ip="" t
+  for t in tailscale /Applications/Tailscale.app/Contents/MacOS/Tailscale; do
+    command -v "$t" >/dev/null 2>&1 || [ -x "$t" ] || continue
+    ip=$("$t" ip -4 2>/dev/null | head -1); [ -n "$ip" ] && break
+  done
+  echo "$ip"
+}
+
+cam_view() {   # boat — 이 Mac 에서 수신 창(cam_view.sh 를 배에서 받아 ~/.ssf_cam_view.sh 로 둔다)
+  local b=$1 h port=5600 v="$HOME/.ssf_cam_view.sh"
+  h=$(host_of "$b"); [ "$b" = B ] && port=5601
+  if $SSH -n -o BatchMode=yes "$h" "cat $REMOTE_REPO/tools/cam_view.sh" > "$v.new" 2>/dev/null && [ -s "$v.new" ]; then
+    mv "$v.new" "$v"
+  else
+    rm -f "$v.new"; [ -s "$v" ] || { echo "❌ 배에서 cam_view.sh 를 못 받았다 — ssh $h 확인" >&2; return 1; }
+  fi
+  command -v gst-launch-1.0 >/dev/null 2>&1 || { echo "❌ 이 Mac 에 gstreamer 가 없다: brew install gstreamer" >&2; return 1; }
+  echo "━━ 수신 창 — UDP ${port} ($( [ "$b" = A ] && echo 1번배 || echo 2번배 )). 끄기 Ctrl+C. 좌상단 시계(배 시각)가 멈추면 화면을 믿지 말 것"
+  trap 'true' INT
+  CAM_PORT=$port bash "$v"
+  trap - INT
+}
+
+run_cam() {   # boat [view|stop|status]
+  local b=$1 sub=${2:-} ip
+  case "$sub" in
+    status) run_cli "$b" cam status ;;
+    stop) run_cli "$b" cam stop ;;
+    view) cam_view "$b" ;;
+    "")
+      ip=$(mac_ip)
+      [ -n "$ip" ] || { echo "❌ 이 Mac 의 Tailscale 주소를 못 찾았다 — tailscale status 확인" >&2; return 1; }
+      run_cli "$b" cam start "$ip" || return 1
+      cam_view "$b"
+      echo; echo "수신 창을 닫았다 — 배 송신도 끈다"
+      run_cli "$b" cam stop ;;
+    *) echo "ssf $b cam [view|stop|status]" >&2; return 2 ;;
+  esac
+}
+
 [ $# -ge 1 ] || usage
 if [ "$1" = app ]; then
   boats=$(boats_of "${2:-a}") || usage
@@ -118,6 +162,13 @@ if [ "$1" = wp ]; then
     rc=0; for b in $boats; do run_cli "$b" wp-list || rc=1; done; exit $rc
   fi
   run_wp "$@"; exit
+fi
+if [ "$1" = cam ]; then
+  shift
+  # shellcheck disable=SC2086
+  [ "$(echo $boats | wc -w)" -eq 1 ] || { echo "영상은 한 배씩: ssf a cam … 또는 ssf b cam …" >&2; exit 2; }
+  # shellcheck disable=SC2086
+  run_cam $boats "$@"; exit
 fi
 rc=0
 for b in $boats; do

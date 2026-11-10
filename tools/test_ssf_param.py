@@ -555,3 +555,92 @@ def test_rec_kill_and_wrong_boat(recboat):
         other.wp_rec("start", course="main")
     with pytest.raises(core.ParamError, match="레인"):
         b.wp_rec("start", course="tournament")
+
+
+# ---------------------------------------------------------------- D455 영상 송신 (tmux) — tmux 있는 컴퓨터에서만
+
+import ssf_cam  # noqa: E402
+
+FAKE_STREAM = '''#!/usr/bin/env bash
+trap 'echo "■ 중지 (Ctrl-C)"; exit 0' INT TERM
+echo "=== 카메라 송신 ==="
+echo "  대상    : $1:${CAM_PORT} (UDP/RTP H.264)"
+echo "  모드    : $2"
+while true; do sleep 0.2; done
+'''
+
+
+@pytest.fixture
+def camboat(boat, tmp_path, monkeypatch):
+    if not _sh.which("tmux"):
+        pytest.skip("tmux 없음")
+    tools = os.path.join(boat.repo, "tools")
+    os.makedirs(tools, exist_ok=True)
+    for f in ("ssf_cam_send.sh", "ssf_cam.py"):
+        shutil.copy(os.path.join(HERE, f), tools)
+    with open(os.path.join(tools, "cam_stream.sh"), "w") as f:
+        f.write(FAKE_STREAM)
+    os.chmod(os.path.join(tools, "cam_stream.sh"), 0o755)
+    sock = f"ssf_cam_test{os.getpid()}"
+    monkeypatch.setenv("SSF_WP_TMUX_SOCKET", sock)
+    monkeypatch.delenv("SSH_CLIENT", raising=False)
+    monkeypatch.delenv("SSH_CONNECTION", raising=False)
+    yield boat
+    subprocess.run(["tmux", "-L", sock, "kill-server"], capture_output=True)
+
+
+def _cam_wait(boat, text, sec=5):
+    end = _time.time() + sec
+    st = None
+    while _time.time() < end:
+        st = boat.cam("status")
+        if any(text in ln for ln in st["log"]):
+            return st
+        _time.sleep(0.2)
+    raise AssertionError(f"로그에 {text!r} 없음: {st}")
+
+
+def test_cam_start_stop(camboat):
+    b = camboat
+    st = b.cam("status")
+    assert not st["running"] and st["port"] == 5600 and st["mac_ip"] is None
+    with pytest.raises(core.ParamError, match="IP 형식"):
+        b.cam("start", "")
+    with pytest.raises(core.ParamError, match="MacBook 주소"):
+        b.cam("start", "127.0.0.1")
+    with pytest.raises(core.ParamError, match="IP 형식"):
+        b.cam("start", "1.2.3.4; rm -rf ~")
+    b.cam("start", "100.93.158.11")
+    st = _cam_wait(b, "대상    : 100.93.158.11:5600")
+    assert st["running"]
+    assert any("→ 100.93.158.11:5600 (v4l2)" in ln for ln in st["log"])
+    assert any("흔들기 시험" in ln for ln in st["log"])
+    with pytest.raises(core.ParamError, match="이미 송신 중"):
+        b.cam("start", "100.93.158.11")
+    st = b.cam("stop")
+    assert not st["running"]
+    with pytest.raises(core.ParamError, match="송신 중이 아니다"):
+        b.cam("stop")
+
+
+def test_cam_wrong_boat_and_ssh_client(camboat, monkeypatch):
+    b = camboat
+    other = core.Repo(b.repo, "B", home=b.home)
+    with pytest.raises(core.ParamError, match="배가 다르다"):
+        other.cam("start", "100.93.158.11")
+    assert other.cam("status")["port"] == 5600   # 보기는 등록된 배(이 노트북 = 1번배) 기준
+    monkeypatch.setenv("SSH_CLIENT", "100.93.158.11 51234 22")
+    assert ssf_cam.ssh_client_ip() == "100.93.158.11"
+    b.cam("start")            # IP 를 안 주면 SSH 접속 상대(= MacBook)
+    st = _cam_wait(b, "대상    : 100.93.158.11:5600")
+    b.cam("stop")
+
+
+def test_server_cam_routes(server):
+    port, _ = server
+    st, d = _req(port, "/api/cam")
+    assert st == 200 and d["ok"] and d["running"] is False
+    st, d = _req(port, "/api/cam/start", {"ip": "x"})
+    assert st == 403          # 헤더 없음
+    st, d = _req(port, "/api/cam/start", {"ip": "not-ip"}, {"X-SSF": "1"})
+    assert d["ok"] is False and "IP" in d["error"]

@@ -161,6 +161,7 @@ pre.out{font-family:var(--mono);font-size:12px;background:var(--bg);padding:10px
       <button data-t="all">전체 파라미터</button>
       <button data-t="diff">저장소와 다른 값<span class="count" id="diffcount" hidden>0</span></button>
       <button data-t="wp">웨이포인트</button>
+      <button data-t="cam">영상</button>
       <button data-t="log">바꾼 기록</button>
     </nav>
   </div>
@@ -463,6 +464,68 @@ async function recPoll() {
 }
 setInterval(() => { if (S.tab === "wp" && !document.hidden) recPoll(); }, 1000);
 
+// ---- D455 영상 송신 (배 tmux ssf_cam_<배>). 영상 자체는 Mac 수신 창(ssf b cam view)으로 본다
+const C = {el:null, st:null, busy:false, msg:""};
+async function camCall(path, body) {
+  if (C.busy) return; C.busy = true; camUpdate();
+  try { const r = await api(path, body); C.msg = r.ok === false ? "❌ " + r.error : ""; if (r.ok !== false) C.st = r; }
+  catch (e) { C.msg = "❌ " + e; }
+  C.busy = false; await camPoll();
+}
+function camPanel() {
+  if (C.el) return C.el;
+  const ip = h("input", {type:"text", class:"mono", placeholder:"MacBook Tailscale IP (100.x.x.x)", style:"max-width:220px"});
+  const btn = (text, cls, fn) => h("button", {class:"btn " + (cls || ""), text, onclick:fn});
+  C.ip = ip;
+  C.parts = {
+    status: h("div", {class:"label"}),
+    facts: h("div", {class:"guide", style:"margin:8px 0"}),
+    on: h("div", {class:"tools"}, ip, btn("▶ 송신 켜기", "go", () => camCall("/api/cam/start", {ip:ip.value.trim()}))),
+    off: h("div", {class:"tools"}, btn("■ 송신 끄기", "primary", () => camCall("/api/cam/stop", {}))),
+    log: h("pre", {class:"out", style:"max-height:300px;white-space:pre-wrap"}),
+    msg: h("div", {class:"small"}),
+  };
+  const b = () => (S.state?.boat || "B").toLowerCase();
+  C.el = h("div", {},
+    h("div", {class:"card", style:"padding:12px 14px;margin-bottom:12px"}, C.parts.status, C.parts.facts, C.parts.on, C.parts.off,
+      C.parts.msg, h("div", {class:"small", style:"margin-top:8px", text:"송신 로그 (~/ssf_logs/cam_stream_<배>.log 끝)"}), C.parts.log),
+    h("div", {class:"card", style:"padding:12px 14px"},
+      h("div", {class:"label", text:"영상 보기 — Mac 터미널에서"}),
+      h("div", {class:"guide", style:"margin-top:6px"},
+        cmdLine("한 번에", `ssf ${b()} cam`),
+        h("p", {}, h("span", {class:"k", text:"설명"}), "배 송신 켜기 + 이 Mac 수신 창. 창 터미널에서 Ctrl+C 한 번이면 둘 다 꺼진다."),
+        cmdLine("수신 창만", `ssf ${b()} cam view`),
+        h("p", {}, h("span", {class:"k", text:"설명"}), "여기서 송신을 켰다면 수신 창만 띄운다. 좌상단 시계 = 배 시각 — 멈추면 화면을 믿지 말 것."),
+        h("p", {class:"adv"}, h("span", {class:"k", text:"출항 전"}),
+          "흔들기 시험: 배 노트북에서 dmesg -w 를 띄우고 카메라·케이블·커넥터를 흔들어 disconnect 0. 케이블 불량이면 허브째 끊겨 IMU(헤딩)도 끊긴다."),
+        h("p", {}, h("span", {class:"k", text:"참고"}),
+          "영상은 조종과 완전히 따로 — 꺼지거나 죽어도 RC 조종은 그대로. 자율 launch 가 D455 를 쥐고 있으면 자동으로 ros 모드. 문제 해결: docs/절차/실시간영상_빠른설명서.md"))));
+  return C.el;
+}
+function camUpdate() {
+  const st = C.st, P = C.parts; if (!P) return;
+  const run = !!st?.running;
+  P.status.textContent = st?.error ? "❌ " + st.error : run ? `🔴 송신 중 — tmux ${st.session} → 포트 ${st.port}` : "D455 실시간 영상 송신 — 꺼짐";
+  fill(P.facts,
+    h("p", {}, h("span", {class:"k", text:"D455 USB"}), st?.usb?.length ? "✅ " + st.usb.join(" / ") :
+      h("span", {style:"color:var(--bad);font-weight:600", text:"❌ 안 잡힘 — 꽂고 5 초 뒤. 케이블·허브 포트 전원·USB3(파란) 포트 확인"})),
+    h("p", {}, h("span", {class:"k", text:"모드"}), st ? (st.mode === "ros" ? "ros (카메라 노드가 D455 를 쥐고 있음 — 토픽 경유)" : "v4l2 (D455 직접)") : "—"),
+    h("p", {}, h("span", {class:"k", text:"포트"}), st ? `UDP ${st.port} (1번배 5600 · 2번배 5601)` : "—"));
+  P.on.hidden = run; P.off.hidden = !run;
+  if (!C.ip.value && st?.mac_ip) C.ip.value = st.mac_ip;
+  const t = (st?.log || []).join("\n");
+  if (P.log.textContent !== t) { P.log.textContent = t || "(로그 없음)"; P.log.scrollTop = P.log.scrollHeight; }
+  P.msg.textContent = C.busy ? "처리 중…" : C.msg;
+  for (const x of C.el.querySelectorAll("button.btn")) x.disabled = C.busy;
+}
+async function camPoll() {
+  try { const r = await api("/api/cam"); C.st = r.ok === false ? {error:r.error} : r; }
+  catch (e) { C.st = {error:String(e)}; }
+  camUpdate();
+}
+setInterval(() => { if (S.tab === "cam" && !document.hidden) camPoll(); }, 2000);
+function viewCam() { return [camPanel()]; }
+
 function viewWp() {
   const b = (S.wpBoat || S.state?.boat || "A").toLowerCase();
   const out = [recPanel(), h("div", {class:"card", style:"padding:12px 14px"},
@@ -652,7 +715,7 @@ function render(keepFocus) {
   if (S.applied.length && S.tab !== "log") kids.push(restartBanner());
   if (S.tab === "field" || S.tab === "all")
     kids.push(h("p", {class:"hint", text:`보는 코스: ${COURSE_KO[S.course]} — 칸의 값 = 이 배가 이 코스에서 실제로 읽는 값. 바꾸면 그 값을 정하는 파일이 고쳐진다.`}));
-  const v = {field:viewField, all:viewAll, diff:viewDiff, wp:viewWp, log:viewLog}[S.tab]();
+  const v = {field:viewField, all:viewAll, diff:viewDiff, wp:viewWp, cam:viewCam, log:viewLog}[S.tab]();
   m.replaceChildren(...kids, ...v);
   if (S.tab === "wp") requestAnimationFrame(recScroll);   // 다시 붙인 녹화 화면의 스크롤 되돌리기
   if (keepFocus && selStart != null) { const s = $(".search"); s.focus(); s.setSelectionRange(selStart, selStart); }
@@ -669,7 +732,7 @@ async function refresh() {
 
 $("#course").addEventListener("click", e => { const c = e.target.dataset?.c; if (c) { S.course = c; render(); } });
 $("#tabs").addEventListener("click", e => { const t = e.target.closest("button")?.dataset.t;
-  if (t) { S.tab = t; render(); if (t === "wp") { loadWp(); recPoll(); } } });
+  if (t) { S.tab = t; render(); if (t === "wp") { loadWp(); recPoll(); } if (t === "cam") camPoll(); } });
 $("#discard").addEventListener("click", () => { S.pending.clear(); render(); });
 $("#review").addEventListener("click", review);
 $("#modal").addEventListener("click", e => { if (e.target.id === "modal") { $("#modal").hidden = true; render(); } });
