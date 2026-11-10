@@ -567,7 +567,7 @@ function camUpdate() {
     h("p", {}, h("span", {class:"k", text:"D455 USB"}), st?.usb?.length ? "✅ " + st.usb.join(" / ") :
       h("span", {style:"color:var(--bad);font-weight:600", text:"❌ 안 잡힘 — 꽂고 5 초 뒤. 케이블·허브 포트 전원·USB3(파란) 포트 확인"})),
     h("p", {}, h("span", {class:"k", text:"모드"}), st ? (st.mode === "ros" ? "ros (카메라 노드가 D455 를 쥐고 있음 — 토픽 경유)" : "v4l2 (D455 직접)") : "—"),
-    h("p", {}, h("span", {class:"k", text:"포트"}), st ? `UDP ${st.port} (1번배 5600 · 2번배 5601)` : "—"));
+    h("p", {}, h("span", {class:"k", text:"포트"}), st ? `UDP ${st.port} (A번배 5600 · B번배 5601)` : "—"));
   P.on.hidden = run; P.off.hidden = !run;
   if (!C.ip.value && st?.mac_ip) C.ip.value = st.mac_ip;
   const t = (st?.log || []).join("\n");

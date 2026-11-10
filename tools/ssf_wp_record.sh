@@ -42,7 +42,7 @@ if ! command -v ros2 >/dev/null; then echo "❌ ROS 환경을 불러왔는데 ro
 source tools/ssf_ros_net.sh && ssf_ros_net      # 두 배 GPS 섞임 방지 — ~/.bashrc 와 같은 ROS 격리
 
 echo
-echo "━━ 웨이포인트 녹화 — $( [ "$boat" = A ] && echo 1번배 || echo 2번배 ) · $( [ "$course" = tournament ] && echo "토너먼트 레인 $lane" || echo 종합임무 )"
+echo "━━ 웨이포인트 녹화 — $( [ "$boat" = A ] && echo A번배 || echo B번배 ) · $( [ "$course" = tournament ] && echo "토너먼트 레인 $lane" || echo 종합임무 )"
 echo "   저장 파일: $OUT"
 [ -n "$TEMPLATE" ] && echo "   템플릿:   $TEMPLATE"
 echo "   ① 지금 GPS: $(python3 tools/ssf_param_core.py --boat "$boat" gps --wait 4 2>/dev/null | grep -v '^\[' | head -1 | sed 's/^ *//')"

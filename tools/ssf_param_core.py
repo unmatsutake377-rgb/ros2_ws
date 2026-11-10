@@ -6,7 +6,7 @@
 왜:   손으로 고치면 3 ↔ 3.0, 빈 리스트, 엉뚱한 배 파일 같은 실수로 노드가 부팅 때 죽는다.
 
 고칠 때마다
-  1. 배 확인: ~/.ssf_boat (A/B) 와 요청한 배가 다르면 거부(1번배에 붙어 2번배 값을 고치는 사고 방지)
+  1. 배 확인: ~/.ssf_boat (A/B) 와 요청한 배가 다르면 거부(A번배에 붙어 B번배 값을 고치는 사고 방지)
   2. 어느 파일인가: 공통 → 코스(_main/_tournament) → 배(_A/_B) 순서로 덮어쓴다(launch 와 같음).
      선택한 코스에서 실제로 이기는 파일을 고친다. 그 파일을 읽는 코스를 '영향'으로 알려 준다.
   3. 타입 유지: 소수 자리에 3 → 3.0, 정수 자리에 5.0 → 5, 5.5 는 거부, 참/거짓·문자열·리스트 원소 타입
@@ -18,7 +18,7 @@
 ROS 없이 돈다(파이썬 3.8+ · PyYAML). 연습용 가짜 배에서도 그대로 돈다(tools/ssf_practice.sh).
 
 터미널 사용 (배 노트북 ~/ros2_ws 에서. MacBook 에선 tools/ssf 가 SSH 로 이걸 부른다)
-  python3 tools/ssf_param_core.py init A                     # 이 노트북 = 1번배 (한 번)
+  python3 tools/ssf_param_core.py init A                     # 이 노트북 = A번배 (한 번)
   python3 tools/ssf_param_core.py get hold_dist              # 이름 일부로 찾기
   python3 tools/ssf_param_core.py set hold_dist_m 3.5 [--course main|tournament] [--node ship_back]
   python3 tools/ssf_param_core.py undo hold_dist_m           # 저장소(git HEAD) 값으로
@@ -42,7 +42,7 @@ DEFAULT_REPO = os.path.abspath(os.path.join(HERE, ".."))
 COURSES = ("main", "tournament")
 COURSE_KO = {"main": "종합임무", "tournament": "토너먼트"}
 BOATS = ("A", "B")
-BOAT_KO = {"A": "1번배", "B": "2번배"}
+BOAT_KO = {"A": "A번배", "B": "B번배"}
 
 # [] 가 정상인 키(빈 값 = 꺼짐). 비어 있을 때 원소 타입.
 EMPTY_LIST_OK = {"geofence_polygon": float}
@@ -422,7 +422,7 @@ class Repo:
         """편집해도 되는 배 이름. 안 되면 ParamError."""
         mk = self.marker()
         if mk is None:
-            raise ParamError(f"이 노트북이 몇 번 배인지 등록 안 됨 — 'ssf a init'(1번배) 또는 'ssf b init'(2번배). "
+            raise ParamError(f"이 노트북이 어느 배(A/B)인지 등록 안 됨 — 'ssf a init'(A번배) 또는 'ssf b init'(B번배). "
                              f"hostname={socket.gethostname()}")
         if self.requested_boat and self.requested_boat != mk:
             raise ParamError(f"🚨 배가 다르다: 요청 {BOAT_KO.get(self.requested_boat, self.requested_boat)}, "

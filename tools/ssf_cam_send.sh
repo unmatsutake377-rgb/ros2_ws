@@ -4,7 +4,7 @@
 #   tools/ssf_cam_send.sh <A|B> <MacBook Tailscale IP>
 #
 # 하는 일: 배 확인(~/.ssf_boat) → 모드 고르기(카메라 노드가 D455 를 쥐고 있으면 ros, 아니면 v4l2)
-#          → 배별 포트(1번배 5600 · 2번배 5601 — 두 배를 같은 MacBook 으로 보내도 안 섞이게)
+#          → 배별 포트(A번배 5600 · B번배 5601 — 두 배를 같은 MacBook 으로 보내도 안 섞이게)
 #          → tools/cam_stream.sh 를 그대로 실행, 출력은 ~/ssf_logs/cam_stream_<배>.log 에도 남긴다.
 # 영상은 조종과 완전히 따로다 — 이 스크립트가 죽어도 RC 조종은 그대로. 설정 파일은 건드리지 않는다.
 # 절차·문제 해결: docs/절차/실시간영상_빠른설명서.md
@@ -37,7 +37,7 @@ netmsg=$(ssf_ros_net)      # 문구만 받는다(서브셸)
 ssf_ros_net >/dev/null     # 이 셸에 실제로 export
 {
   echo "$netmsg"
-  echo "━━ $(date '+%F %T') D455 영상 송신 — $( [ "$boat" = A ] && echo 1번배 || echo 2번배 ) → ${host}:${port} (${mode})"
+  echo "━━ $(date '+%F %T') D455 영상 송신 — $( [ "$boat" = A ] && echo A번배 || echo B번배 ) → ${host}:${port} (${mode})"
   echo "   🚨 출항 전 흔들기 시험: dmesg -w 띄우고 카메라·케이블을 흔들어 disconnect 0 (케이블 불량이면 허브째 끊겨 IMU 도 끊긴다)"
   echo "   MacBook 수신: ssf $(echo "$boat" | tr AB ab) cam view   (또는 CAM_PORT=${port} ./tools/cam_view.sh)"
 } | tee "$log"

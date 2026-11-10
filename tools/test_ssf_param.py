@@ -26,7 +26,7 @@ def _git(d, *a):
 
 @pytest.fixture
 def boat(tmp_path):
-    """임시 저장소(진짜 config yaml 사본 + git 커밋) + 집 폴더(1번배 등록)."""
+    """임시 저장소(진짜 config yaml 사본 + git 커밋) + 집 폴더(A번배 등록)."""
     repo = tmp_path / "ros2_ws"
     for rel in subprocess.run(["git", "-C", REPO, "ls-files", "src/*/config/*.yaml"],
                               capture_output=True, text=True, check=True).stdout.split():
@@ -655,7 +655,7 @@ def test_cam_wrong_boat_and_ssh_client(camboat, monkeypatch):
     other = core.Repo(b.repo, "B", home=b.home)
     with pytest.raises(core.ParamError, match="배가 다르다"):
         other.cam("start", "100.93.158.11")
-    assert other.cam("status")["port"] == 5600   # 보기는 등록된 배(이 노트북 = 1번배) 기준
+    assert other.cam("status")["port"] == 5600   # 보기는 등록된 배(이 노트북 = A번배) 기준
     monkeypatch.setenv("SSH_CLIENT", "100.93.158.11 51234 22")
     assert ssf_cam.ssh_client_ip() == "100.93.158.11"
     b.cam("start")            # IP 를 안 주면 SSH 접속 상대(= MacBook)

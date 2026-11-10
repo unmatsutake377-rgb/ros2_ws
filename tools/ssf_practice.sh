@@ -67,5 +67,5 @@ EOF
 echo
 echo "준비 끝. 이 터미널에서:"
 echo "  source $DIR/env.sh"
-echo "  ssf app both          # 앱 두 개 (1번배 http://localhost:8765, 2번배 :8766)"
+echo "  ssf app both          # 앱 두 개 (A번배 http://localhost:8765, B번배 :8766)"
 echo "  ssf a get hold        # 터미널로"

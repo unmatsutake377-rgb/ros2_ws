@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # ssf — MacBook 에서 배 노트북 파라미터를 보고 고친다 (SSH 로 배 노트북의 tools/ssf_param_core.py · ssf_param_app.py 를 부름)
 #
-#   ssf app a            1번배 파라미터 앱 (SSH 터널 + 서버 + 브라우저). 끄기 Ctrl+C
-#   ssf app b            2번배 (포트 8766)
+#   ssf app a            A번배 파라미터 앱 (SSH 터널 + 서버 + 브라우저). 끄기 Ctrl+C
+#   ssf app b            B번배 (포트 8766)
 #   ssf app both         두 배 동시에 (탭 두 개)
-#   ssf a init           이 별명(boat-a)이 붙는 노트북을 1번배로 등록 (처음 한 번)
+#   ssf a init           이 별명(boat-a)이 붙는 노트북을 A번배로 등록 (처음 한 번)
 #   ssf a get hold       이름 일부로 값 보기
 #   ssf a set hold_dist_m 3.5 [--course main|tournament] [--node ship_back]
 #   ssf a undo hold_dist_m
@@ -17,7 +17,7 @@
 #   ssf b gps            GPS·RTK 상태 한 줄(🟢 FIXED / 🟡 FLOAT / 🟠 단독 / 🔴 위치 없음 / ⚫ 데이터 없음)
 #   ssf b cam            D455 실시간 영상: 배 송신(tmux) + 이 Mac 수신 창. Ctrl+C 한 번이면 둘 다 끔
 #   ssf b cam view|stop|status   수신 창만 / 배 송신 끄기 / 상태(D455 USB·로그)
-#                        포트 1번배 5600 · 2번배 5601 — 영상은 조종과 따로(꺼져도 RC 조종 그대로)
+#                        포트 A번배 5600 · B번배 5601 — 영상은 조종과 따로(꺼져도 RC 조종 그대로)
 #
 # 설치(MacBook, 한 번):  저장소가 있으면  echo 'alias ssf=~/ros2_ws/tools/ssf' >> ~/.zshrc
 #                        없으면          scp boat-a:ros2_ws/tools/ssf ~/ssf && chmod +x ~/ssf && echo 'alias ssf=~/ssf' >> ~/.zshrc
@@ -44,7 +44,7 @@ quote_args() { local out="" a; for a in "$@"; do out+=" $(printf '%q' "$a")"; do
 run_cli() {   # boat, args...
   local b=$1; shift
   local h; h=$(host_of "$b")
-  echo "━━ $( [ "$b" = A ] && echo 1번배 || echo 2번배 ) ($h)"
+  echo "━━ $( [ "$b" = A ] && echo A번배 || echo B번배 ) ($h)"
   # shellcheck disable=SC2029  — 원격에서 펼치는 게 맞다
   $SSH "$h" "cd $REMOTE_REPO && python3 tools/ssf_param_core.py --boat $b$(quote_args "$@")"
 }
@@ -80,7 +80,7 @@ run_app() {   # boats...
   local pids=() b h p
   for b in "$@"; do
     h=$(host_of "$b"); p=$(port_of "$b")
-    echo "━━ $( [ "$b" = A ] && echo 1번배 || echo 2번배 ) 앱: $h → http://localhost:$p"
+    echo "━━ $( [ "$b" = A ] && echo A번배 || echo B번배 ) 앱: $h → http://localhost:$p"
     app_link "$b" &
     pids+=($!)
   done
@@ -116,7 +116,7 @@ run_wp() {    # boat, [main|tournament <레인>] [--dry-run]
   #   이미 있는 세션이 다른 코스·레인이면 붙지 않는다(레인 2 를 레인 1 파일에 찍는 사고 방지).
   local chk="cur=\$(tmux show-options -qv -t $sess @ssf_wp 2>/dev/null); if tmux has-session -t $sess 2>/dev/null && [ \"\$cur\" != $(printf %q "$want") ]; then echo \"❌ 다른 녹화가 열려 있다(\${cur:-표시 없음 — 이전 버전으로 연 녹화}) — 그 녹화를 저장·종료(또는 앱 웨이포인트 탭)한 뒤 다시\"; exit 3; fi"
   local cmd="cd $REMOTE_REPO || exit 1; $chk; tmux new-session -A -s $sess$(quote_args bash tools/ssf_wp_record.sh "$b" "${args[@]}")"
-  echo "━━ $( [ "$b" = A ] && echo 1번배 || echo 2번배 ) ($h) 웨이포인트 녹화 — tmux 세션 $sess"
+  echo "━━ $( [ "$b" = A ] && echo A번배 || echo B번배 ) ($h) 웨이포인트 녹화 — tmux 세션 $sess"
   if [ $dry = 1 ]; then echo "  (시험) $SSH -t $h \"$cmd\""; return 0; fi
   $SSH -t "$h" "$cmd"
 }
@@ -142,7 +142,7 @@ cam_view() {   # boat — 이 Mac 에서 수신 창(cam_view.sh 를 배에서 �
     rm -f "$v.new"; [ -s "$v" ] || { echo "❌ 배에서 cam_view.sh 를 못 받았다 — ssh $h 확인" >&2; return 1; }
   fi
   command -v gst-launch-1.0 >/dev/null 2>&1 || { echo "❌ 이 Mac 에 gstreamer 가 없다: brew install gstreamer" >&2; return 1; }
-  echo "━━ 수신 창 — UDP ${port} ($( [ "$b" = A ] && echo 1번배 || echo 2번배 )). 끄기 Ctrl+C. 좌상단 시계(배 시각)가 멈추면 화면을 믿지 말 것"
+  echo "━━ 수신 창 — UDP ${port} ($( [ "$b" = A ] && echo A번배 || echo B번배 )). 끄기 Ctrl+C. 좌상단 시계(배 시각)가 멈추면 화면을 믿지 말 것"
   trap 'true' INT
   CAM_PORT=$port bash "$v"
   trap - INT

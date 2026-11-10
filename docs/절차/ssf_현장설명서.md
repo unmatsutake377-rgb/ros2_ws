@@ -16,8 +16,8 @@
 
 | 배 | SSH 별명 | 앱 주소 | 영상 포트 | 녹화 세션 | 영상 세션 |
 |---|---|---|---|---|---|
-| 1번배 | `boat-a` | http://localhost:8765 (파란 띠) | 5600 | `ssf_wp_A` | `ssf_cam_A` |
-| 2번배 | `boat-b` (계정 `ssfb`) | http://localhost:8766 (주황 띠) | 5601 | `ssf_wp_B` | `ssf_cam_B` |
+| A번배 | `boat-a` | http://localhost:8765 (파란 띠) | 5600 | `ssf_wp_A` | `ssf_cam_A` |
+| B번배 | `boat-b` (계정 `ssfb`) | http://localhost:8766 (주황 띠) | 5601 | `ssf_wp_B` | `ssf_cam_B` |
 
 ## 1. 처음 한 번 (MacBook)
 
@@ -57,7 +57,7 @@ ssf app b
 불은 배 노트북의 작은 감시 노드(`tools/ssf_gps_watch.py`, **구독만**, tmux `ssf_gps_<배>`)가 켠다 — 앱이 띄우고, 앱을 2 분 안 보면 스스로 끝난다.
 ROS 격리(`ROS_LOCALHOST_ONLY`)를 그대로 써서 다른 배 GPS 는 보지 않는다. 터미널로는 `ssf b gps` (FIXED 면 종료 코드 0).
 
-**연결이 끊기면**(와이파이·핫스팟·Tailscale) — 2번배에서 끊김을 흉내 내 확인(2026-11-10):
+**연결이 끊기면**(와이파이·핫스팟·Tailscale) — B번배에서 끊김을 흉내 내 확인(2026-11-10):
 
 - 앱 맨 위에 **빨간 줄** `⚠️ 배 노트북과 연결 끊김` 이 뜨고 "확인하고 적용" 이 잠긴다. 요청은 10 초(적용 30 초)면 포기한다 — 버튼이 '처리 중'으로 얼지 않는다.
 - `ssf app` 터미널은 20 초 안에 끊김을 알아채고 **5 초마다 스스로 다시 붙는다**. 다시 붙으면 빨간 줄이 저절로 사라진다. **브라우저 창은 닫지 말고 그대로** — 아직 적용 안 한 값이 남아 있다.
@@ -143,7 +143,7 @@ ssf b wp tournament 1
    ```bash
    ssf b cam
    ```
-   배 송신(tmux) + 이 Mac 수신 창. Mac 주소(Tailscale)는 자동, 포트는 1번배 5600 · 2번배 5601.
+   배 송신(tmux) + 이 Mac 수신 창. Mac 주소(Tailscale)는 자동, 포트는 A번배 5600 · B번배 5601.
 4. 창의 **좌상단 시계 = 배 시각**. 멈추면 영상이 멈춘 것 — 화면을 믿지 않는다.
 
 ### 5-2. 끄기·다른 방법
@@ -158,9 +158,9 @@ ssf b wp tournament 1
 | 보이는 것 | 원인 · 할 것 |
 |---|---|
 | `command not found: ssf` | §1-2 |
-| `Permission denied (publickey,password)` | 키 미등록 또는 계정 이름 틀림(2번배 `ssfb`). `ssh-copy-id boat-b` |
+| `Permission denied (publickey,password)` | 키 미등록 또는 계정 이름 틀림(B번배 `ssfb`). `ssh-copy-id boat-b` |
 | `Connection refused` (port 22) | 그 노트북에 SSH 서버 꺼짐 — 노트북에서 `sudo apt install -y openssh-server` → `sudo systemctl enable --now ssh` |
-| `🚨 배가 다르다` | 별명과 등록이 어긋남 — 어느 노트북이 몇 번 배인지 확인 후 `ssf b init` |
+| `🚨 배가 다르다` | 별명과 등록이 어긋남 — 어느 노트북이 A·B 중 어느 배인지 확인 후 `ssf b init` |
 | 앱이 15 초 안에 안 뜸 | 배 노트북 `git pull` 됐는지, `python3 -c "import yaml"` |
 | 포트 8765/8766 사용 중 | 이 Mac 에 남은 터널: `lsof -i :8766`. 🚨 연습 모드(`ssf_practice`)를 진짜 앱과 같은 포트로 띄우면 진짜 앱이 꺼진다 |
 | 웨이포인트 `❌ 이미 녹화 중` / `다른 녹화가 열려 있다` | 열린 녹화를 이어서 하거나 저장·종료 / 앱에서 강제 종료 |
@@ -186,5 +186,5 @@ ssf b wp tournament 1
 
 ## 8. 확인된 것 / 아직인 것 (2026-11-10)
 
-- ✅ 2번배: 앱(9594d45), `ssf b wp`·앱 녹화(가짜 녹화 도구로 전 흐름, 진짜 녹화 도구 실행), `ssf b cam`(진짜 송신 스크립트로 켜기·수신 대기·끄기), 테스트 57개, 실패 상황 68가지.
-- ⏳ 진짜 GPS 캡처(배 띄우고 RTK), 진짜 D455 영상 화면, 1번배 전체(SSH 서버 꺼짐).
+- ✅ B번배: 앱(9594d45), `ssf b wp`·앱 녹화(가짜 녹화 도구로 전 흐름, 진짜 녹화 도구 실행), `ssf b cam`(진짜 송신 스크립트로 켜기·수신 대기·끄기), 테스트 57개, 실패 상황 68가지.
+- ⏳ 진짜 GPS 캡처(배 띄우고 RTK), 진짜 D455 영상 화면, A번배 전체(SSH 서버 꺼짐).

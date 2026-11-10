@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """SSF 파라미터 앱 서버 — 배 노트북에서 돌고, MacBook 브라우저가 SSH 터널로 붙는다.
 
-  MacBook:   tools/ssf app a          (= SSH 터널 + 이 서버 시작 + 브라우저 열기. 2번배는 b, 둘 다 both)
+  MacBook:   tools/ssf app a          (= SSH 터널 + 이 서버 시작 + 브라우저 열기. B번배는 b, 둘 다 both)
   배 노트북: python3 tools/ssf_param_app.py --boat A --port 8765   (직접 띄울 때)
 
 화면은 tools/ssf_param_app.html 하나. 값 읽기·고치기는 전부 ssf_param_core.Repo 가 한다(터미널 ssf 와 같은 엔진).
