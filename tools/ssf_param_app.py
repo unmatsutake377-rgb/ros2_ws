@@ -85,13 +85,19 @@ def make_handler(repo, port):
             return self._send(404, {"ok": False, "error": "없는 주소"})
 
         def do_POST(self):
+            # 본문을 먼저 읽는다 — 안 읽고 거부하면 클라이언트가 응답 대신 '연결 끊김'을 받는다(macOS)
+            try:
+                n = int(self.headers.get("Content-Length") or 0)
+            except ValueError:
+                n = -1
+            if n < 0 or n > 200_000:
+                self.close_connection = True
+                return self._send(413, {"ok": False, "error": "너무 큼"})
+            raw = self.rfile.read(n) if n else b""
             if not self._host_ok() or self.headers.get("X-SSF") != "1":
                 return self._send(403, {"ok": False, "error": "거부(헤더)"})
             try:
-                n = int(self.headers.get("Content-Length") or 0)
-                if n > 200_000:
-                    return self._send(413, {"ok": False, "error": "너무 큼"})
-                body = json.loads(self.rfile.read(n) or b"{}")
+                body = json.loads(raw or b"{}")
             except (ValueError, json.JSONDecodeError):
                 return self._send(400, {"ok": False, "error": "JSON 아님"})
             path = self.path.split("?")[0]

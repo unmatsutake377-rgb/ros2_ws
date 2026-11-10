@@ -78,6 +78,8 @@ def start(repo, boat, home, host_ip):
         raise RuntimeError(f"이미 송신 중(tmux {s}) — 보기만: ssf {boat.lower()} cam view · 끄기: ssf {boat.lower()} cam stop")
     cmd = ["bash", os.path.join(repo, "tools", "ssf_cam_send.sh"), boat, ip]
     r = _tmux("new-session", "-d", "-s", s, "-x", "120", "-y", "30", "-c", repo, "-e", f"HOME={home}", *cmd)
+    if r.returncode != 0 and "duplicate session" in (r.stderr or ""):
+        raise RuntimeError(f"이미 송신 중(tmux {s}) — 보기만: ssf {boat.lower()} cam view · 끄기: ssf {boat.lower()} cam stop")
     if r.returncode != 0:
         raise RuntimeError("tmux 시작 실패: " + (r.stderr or r.stdout).strip())
     time.sleep(0.5)

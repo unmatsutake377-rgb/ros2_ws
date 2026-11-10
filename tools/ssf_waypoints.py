@@ -12,6 +12,7 @@ import os
 import re
 import shutil
 import sys
+import time
 
 import yaml
 
@@ -251,6 +252,7 @@ def rec_send(boat, kind, arg=None):
     else:
         raise RuntimeError(f"모르는 동작 {kind!r}")
     s = st["session"]
+    before = st["screen"]
     # 화면 올려 보기(tmux copy-mode, 마우스 스크롤로 들어감) 중이면 키가 녹화 도구 대신 copy-mode 로 간다
     #   — 'q' 는 copy-mode 만 끄고 뒤의 Enter 가 '찍기'가 된다. 먼저 빠져나온다.
     if _tmux("display-message", "-p", "-t", s, "#{pane_in_mode}").stdout.strip() == "1":
@@ -259,7 +261,17 @@ def rec_send(boat, kind, arg=None):
     if text:
         _tmux("send-keys", "-t", s, "-l", text)
     _tmux("send-keys", "-t", s, "Enter")
-    return {"sent": text or "⏎"}
+    # 녹화 도구가 받아서 화면이 바뀔 때까지 기다린다 — 그 사이 다른 곳에서 누른 키가 옛 프롬프트를 보고
+    # 통과해 다음 질문(mode 등)을 기본값으로 넘기지 않게(잠금은 core.wp_rec 가 잡고 있다)
+    end = time.time() + 3.0
+    changed = False
+    while time.time() < end:
+        time.sleep(0.05)
+        now = rec_status(boat)
+        if not now["running"] or now["screen"] != before:
+            changed = True
+            break
+    return {"sent": text or "⏎", "applied": changed}
 
 
 def rec_kill(boat):

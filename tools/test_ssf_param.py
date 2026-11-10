@@ -699,3 +699,103 @@ def test_rec_accept_gated_copy_mode_and_saved_check(recboat):
     assert "이번에 저장된 것이 없다" in st["screen"]   # 0점 → 이전 파일을 이번 녹화로 쓰지 말라
     assert "ROS_LOCALHOST_ONLY=1" in st["screen"]      # 비대화형에서도 ROS 격리
     b.wp_rec("send", kind="close")
+
+
+# ---------------------------------------------------------------- 동시·겹침(11-10 동시 시험)
+
+def _apply_in_child(repo, home, key, val, start_at):
+    import time as t
+    while t.time() < start_at:
+        pass
+    core.Repo(repo, "A", home=home).apply(key, val)
+
+
+def test_concurrent_apply_same_file_no_lost_update(boat):
+    import multiprocessing as mp
+    import time as t
+    ctx = mp.get_context("fork")
+    for i in range(6):
+        v1, v2 = ("60.0", "0.6") if i % 2 == 0 else ("0.0", "0.4")
+        at = t.time() + 0.3
+        ps = [ctx.Process(target=_apply_in_child, args=(boat.repo, boat.home, "side_escape_deg", v1, at)),
+              ctx.Process(target=_apply_in_child, args=(boat.repo, boat.home, "reverse_duration_sec", v2, at))]
+        [p.start() for p in ps]
+        [p.join() for p in ps]
+        assert all(p.exitcode == 0 for p in ps)
+        txt = _text(boat, "src/ship_direction/config/ship_direction.yaml")
+        assert f"side_escape_deg: {v1}" in txt and f"reverse_duration_sec: {v2}" in txt, i
+    assert not [f for f in os.listdir(os.path.join(boat.repo, "src/ship_direction/config")) if ".ssf_tmp" in f]
+
+
+def test_lock_reentrant_and_exclusive(tmp_path):
+    import ssf_lock
+    import time as t
+    order = []
+    with ssf_lock.locked(str(tmp_path), "x"):
+        with ssf_lock.locked(str(tmp_path), "x"):      # 같은 스레드 재진입
+            order.append("inner")
+
+    def other():
+        with ssf_lock.locked(str(tmp_path), "x"):
+            order.append("other")
+    with ssf_lock.locked(str(tmp_path), "x"):
+        th = threading.Thread(target=other)
+        th.start()
+        t.sleep(0.3)
+        order.append("holder")                          # 다른 스레드는 아직 못 들어온다
+    th.join()
+    assert order == ["inner", "holder", "other"]
+    with ssf_lock.locked(str(tmp_path), "x"):
+        def late():
+            with pytest.raises(ssf_lock.LockTimeout):
+                with ssf_lock.locked(str(tmp_path), "x", timeout=0.3):
+                    pass
+        th = threading.Thread(target=late)
+        th.start()
+        th.join()
+
+
+def test_rec_concurrent_capture_second_refused(recboat):
+    b = recboat
+    b.wp_rec("start", course="tournament", lane="c")
+    _wait(b, "main")
+    res = {}
+    bar = threading.Barrier(2)
+
+    def cap(i):
+        bb = core.Repo(b.repo, "A", home=b.home)
+        bar.wait()
+        try:
+            bb.wp_rec("send", kind="capture")
+            res[i] = "sent"
+        except core.ParamError as e:
+            res[i] = str(e)
+    ts = [threading.Thread(target=cap, args=(i,)) for i in range(2)]
+    [x.start() for x in ts]
+    [x.join() for x in ts]
+    assert sorted(v == "sent" for v in res.values()) == [False, True], res
+    assert any("다른 걸 묻고" in v for v in res.values()), res
+    _time.sleep(0.5)
+    assert b.wp_rec("status")["prompt"] == "mode"     # 두 번째 Enter 가 mode 를 기본값으로 넘기지 않았다
+    b.wp_rec("kill")
+
+
+def test_cam_concurrent_start_one_wins(camboat):
+    b = camboat
+    res = {}
+    bar = threading.Barrier(2)
+
+    def st(i):
+        bb = core.Repo(b.repo, "A", home=b.home)
+        bar.wait()
+        try:
+            bb.cam("start", "100.93.158.11")
+            res[i] = "ok"
+        except core.ParamError as e:
+            res[i] = str(e)
+    ts = [threading.Thread(target=st, args=(i,)) for i in range(2)]
+    [x.start() for x in ts]
+    [x.join() for x in ts]
+    assert sorted(res.values(), key=lambda v: v != "ok")[0] == "ok"
+    assert any("이미 송신 중" in v for v in res.values()), res
+    b.cam("stop")

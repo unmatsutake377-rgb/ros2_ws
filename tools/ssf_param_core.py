@@ -647,6 +647,15 @@ class Repo:
         return out
 
     def apply(self, key, raw, course=None, node=None, source="cli", dry_run=False, rel=None):
+        """앱·터미널·다른 MacBook 이 동시에 고쳐도 한 번에 하나씩(읽기~기록 전체를 잠근다 — tools/ssf_lock.py)."""
+        import ssf_lock
+        try:
+            with ssf_lock.locked(self.home, "param"):
+                return self._apply(key, raw, course, node, source, dry_run, rel)
+        except ssf_lock.LockTimeout as e:
+            raise ParamError(str(e))
+
+    def _apply(self, key, raw, course=None, node=None, source="cli", dry_run=False, rel=None):
         p = self.plan(key, raw, course, node, rel)
         t = p["target"]
         res = {"ok": True, "key": p["gid"][2], "section": p["gid"][1], "pkg": p["gid"][0], "rel": t["rel"],
@@ -667,7 +676,7 @@ class Repo:
             k += 1
         with open(backup, "w", encoding="utf-8") as f:
             f.write(text)
-        tmp = path + ".ssf_tmp"
+        tmp = f"{path}.ssf_tmp{os.getpid()}"
         with open(tmp, "w", encoding="utf-8") as f:
             f.write(new_text)
         os.chmod(tmp, os.stat(path).st_mode & 0o777)
@@ -787,32 +796,37 @@ class Repo:
     def cam(self, action, ip=None):
         """D455 영상 송신: status / start(ip) / stop. 켜고 끄기는 배 확인 뒤에만. tools/ssf_cam.py"""
         import ssf_cam
+        import ssf_lock
         try:
             if action == "status":
                 return ssf_cam.status(self.view_boat(), self.home)
             b = self.boat()
-            if action == "start":
-                return ssf_cam.start(self.repo, b, self.home, ip or ssf_cam.ssh_client_ip() or "")
-            if action == "stop":
-                return ssf_cam.stop(b, self.home)
+            with ssf_lock.locked(self.home, f"cam_{b}"):     # 앱·터미널이 동시에 켜고 꺼도 하나씩
+                if action == "start":
+                    return ssf_cam.start(self.repo, b, self.home, ip or ssf_cam.ssh_client_ip() or "")
+                if action == "stop":
+                    return ssf_cam.stop(b, self.home)
         except RuntimeError as e:
             raise ParamError(str(e))
         raise ParamError(f"모르는 동작 {action!r}")
 
     def wp_rec(self, action, **kw):
         """앱에서 녹화: status / start(course, lane) / send(kind, arg) / kill. 배 확인 뒤에만."""
+        import ssf_lock
         import ssf_waypoints as wpm
         b = self.boat() if action != "status" else self.view_boat()
         try:
             if action == "status":
                 return wpm.rec_status(b)
-            if action == "start":
-                return wpm.rec_start(self.repo, b, kw.get("course") or "main", kw.get("lane") or None, self.home)
-            if action == "send":
-                return wpm.rec_send(b, kw.get("kind"), kw.get("arg"))
-            if action == "kill":
-                return wpm.rec_kill(b)
-        except (RuntimeError, ValueError) as e:
+            # 두 곳(앱 두 개·다른 MacBook)에서 동시에 눌러도 한 번에 하나씩 — 보낸 키가 화면에 반영된 뒤 다음 것
+            with ssf_lock.locked(self.home, f"wp_{b}"):
+                if action == "start":
+                    return wpm.rec_start(self.repo, b, kw.get("course") or "main", kw.get("lane") or None, self.home)
+                if action == "send":
+                    return wpm.rec_send(b, kw.get("kind"), kw.get("arg"))
+                if action == "kill":
+                    return wpm.rec_kill(b)
+        except (RuntimeError, ValueError) as e:      # LockTimeout 도 RuntimeError
             raise ParamError(str(e))
         raise ParamError(f"모르는 동작 {action!r}")
 

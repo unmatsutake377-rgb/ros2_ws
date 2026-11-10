@@ -109,9 +109,12 @@ mac_ip() {   # 이 Mac 의 Tailscale 주소(배가 영상을 보낼 곳)
   echo "$ip"
 }
 
-cam_view() {   # boat — 이 Mac 에서 수신 창(cam_view.sh 를 배에서 받아 ~/.ssf_cam_view.sh 로 둔다)
-  local b=$1 h port=5600 v="$HOME/.ssf_cam_view.sh"
+cam_view() {   # boat — 이 Mac 에서 수신 창(cam_view.sh 를 배에서 받아 ~/.ssf_camrx_<포트>.sh 로 둔다)
+  local b=$1 h port=5600 v
   h=$(host_of "$b"); [ "$b" = B ] && port=5601
+  # 이름에 'cam_view.sh' 가 들어가면 cam_view.sh 의 중복 검사(이름만 본다)가 다른 배(다른 포트) 수신까지 막는다
+  #   → 포트별 이름. 같은 포트 두 개는 cam_view.sh 의 'udpsrc port=' 검사가 그대로 막는다.
+  v="$HOME/.ssf_camrx_${port}.sh"
   if $SSH -n -o BatchMode=yes "$h" "cat $REMOTE_REPO/tools/cam_view.sh" > "$v.new" 2>/dev/null && [ -s "$v.new" ]; then
     mv "$v.new" "$v"
   else
