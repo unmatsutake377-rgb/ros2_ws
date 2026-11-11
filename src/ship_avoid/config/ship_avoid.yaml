@@ -1,0 +1,48 @@
+# ship_avoid 파라미터 — 코드 기본값(core.AvoidParams·노드)과 같게 유지 (CLAUDE.md §1-4).
+# 🚨 소수점 값은 반드시 소수점으로(정수로 쓰면 타입 불일치로 노드가 죽을 수 있다).
+# ⚠️ 실측 필요: low_r, buoy_r, default_half_width_m, cam_h, cam_pitch_deg, dori_lead_s, stop_lead_s, pitch_sign
+/ship_avoid:
+  ros__parameters:
+    active_wp_mode: 5
+    period_sec: 0.1
+    gps_stale_sec: 2.5
+    yaw_stale_sec: 0.5
+    detections_quiet_warn_sec: 5.0
+    lidar_forward_deg: 80.0
+    pitch_sign: 1.0
+    virtual_extra_m: 0.2
+    half_l: 0.83
+    half_w: 0.285
+    low_r: 0.2
+    buoy_r: 0.12
+    default_half_width_m: 1.5
+    clear_low: 0.45
+    clear_wall: 0.35
+    guard_m: 0.15
+    stop_lead_s: 0.6
+    dori_angle_deg: 60.0
+    dori_tol_deg: 4.0
+    dori_lead_s: 0.3
+    dori_settle_s: 0.3
+    dori_hold_s: 1.2
+    dori_sweep_margin_m: 0.25
+    dori_defer_max_m: 1.5
+    dori_explore_m: 3.0
+    dori_timeout_s: 25.0
+    stop_speed: 0.05
+    look_m: 1.5
+    turn_in_m: 2.5
+    max_steer_deg: 60.0
+    step_deg: 10.0
+    cam_h: 0.6
+    cam_pitch_deg: 0.0
+    bearing_sigma_deg: 0.7
+    pitch_sigma_hold: 0.5
+    pitch_sigma_move: 2.0
+    pos_sigma: 0.03
+    range_sigma_rel: 0.03
+    max_range: 8.0
+    confirm_n: 3
+    red_ratio: 0.6
+    wall_fill_step: 0.15
+    buoy_match_m: 0.35
