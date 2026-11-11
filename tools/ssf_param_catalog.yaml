@@ -110,8 +110,9 @@ groups:
          change: rarely, when: "현장 조정표에 기준 없음 — 바꿀 근거(실측)가 있을 때만"}
       - {pkg: color_shape_detector, section: image_subscriber_dock, key: target_color, label: 도킹 표식 색,
          hint: 당일 공지 색, choices: [red, green, blue, orange, yellow, white],
-         change: daily, when: "당일 공지 색으로 교체. 그 색의 HSV 범위도 같이 실측"}
-      - {pkg: color_shape_detector, section: image_subscriber_dock, key: target_shape, label: 도킹 표식 모양,
+         change: daily, when: "당일 공지 색으로 교체. 그 색의 HSV 범위도 같이 실측",
+         advice: "2026 현장(11-11 팀 전달): 왼쪽 파랑 네모 · 가운데 초록 동그라미 · 오른쪽 빨강 삼각형 — 색·모양을 같은 도크 짝으로(blue+Square / green+Circle / red+Triangle)"}
+      - {pkg: color_shape_detector, section: image_subscriber_dock, key: target_shape, label: 도킹 표식 모양, advice: "색과 짝을 맞춘다(blue+Square / green+Circle / red+Triangle). 짝이 어긋나면 어느 도크도 안 맞는다",
          hint: 당일 공지 모양(대문자 시작 — 노드 dock_logic.VALID_SHAPES), choices: [Triangle, Square, Circle],
          change: daily, when: "당일 공지 모양으로 교체"}
       - {pkg: color_shape_detector, section: image_subscriber_dock, key: circle_circularity_min, label: 원/사각 경계,
@@ -128,7 +129,8 @@ groups:
     items:
       - {pkg: color_shape_detector, section: image_subscriber_turn, key: turn_color_mode2, label: 위치유지 부표 색,
          choices: [red, green, white],   # 노드 turn_color_logic.TURN_COLORS 가 덮어쓴다(ssf_param_core.NODE_CHOICES)
-         change: daily, when: "당일 공지 색과 다르면 교체"}
+         change: daily, when: "당일 공지 색과 다르면 교체",
+         advice: "2026 현장(11-11 팀 전달): 위치유지 부표는 초록·빨강·검정 중 현장 상황에 따라 — 🚨 검정은 이 검출기가 모른다(코드 수정 필요)"}
       - {pkg: color_shape_detector, section: image_subscriber_turn, key: turn_color_mode3, label: 탐색 부표 색,
          hint: "공지 색으로 교체 — 목록 = 이 검출기가 아는 색뿐(공지 색이 없으면 코드 수정 필요)", choices: [red, green, white],
          change: daily, when: "당일 공지 색으로 교체. 그 색의 HSV 범위도 같이 실측"}
