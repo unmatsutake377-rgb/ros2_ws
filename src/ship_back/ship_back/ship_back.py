@@ -22,7 +22,7 @@
       결정 6 보충 ①: 창(STOP_HOLD) 시간도 HOLD 총시간 합(hold_max_sec)에 든다 — 창 중에도 상한을
       판정해 넘으면 포기 DONE(20000). 창이 끝난 뒤 20000(SEARCH) 시간은 넣지 않는다.
 
-파라미터(6d-[4]): active_wp_modes([2, 3] = search_behavior 기본 hold; orbit 옵션이면 launch 가 [2]),
+파라미터(6d-[4]): active_wp_modes([2] = search_behavior 기본 orbit; hold 옵션이면 launch 가 [2, 3]),
                   keep_radius_m(5.0 규정), hold_time_sec(5.0 규정), hold_dist_m(2.5 ⚠️실측), dist_tol_m.
 
 FSM: INIT → SEARCH → HOLD → DONE.

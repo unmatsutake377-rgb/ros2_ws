@@ -227,8 +227,8 @@ class ImageSubscriber(Node):
             return
 
         # C6: 목표 색이 무효인 모드 — 검출도 발행(fallback 포함)도 하지 않는다(10000 도 안 냄).
-        #   /image_angle 이 안 오면 (search_behavior hold 기본일 때) ship_back SEARCH 20000 유지
-        #   — orbit 이면 mode 3 은 ship_turn 담당. ERROR 는 부팅 때 1회 + 여기(담당 모드,
+        #   /image_angle 이 안 오면 (search_behavior hold 옵션일 때) ship_back SEARCH 20000 유지
+        #   — orbit(기본)이면 mode 3 은 ship_turn 담당. ERROR 는 부팅 때 1회 + 여기(담당 모드,
         #   모드 게이트 통과 뒤)에서 5 s 주기로 다시 찍는다(§1-7: 전용 호출 지점).
         if detection_disabled(self.wp_mode, self.wp_color_map):
             if log_due(self._last_color_err_log, now_m):
