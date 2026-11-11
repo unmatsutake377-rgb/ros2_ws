@@ -1010,7 +1010,7 @@ def main(argv=None):
     s = sub.add_parser("cam"); s.add_argument("action", choices=["status", "start", "stop"]); s.add_argument("ip", nargs="?")
     s = sub.add_parser("gps"); s.add_argument("--wait", type=float, default=6.0)
     sub.add_parser("wp-list")
-    s = sub.add_parser("wp-prep"); s.add_argument("course", choices=COURSES); s.add_argument("lane", nargs="?")
+    s = sub.add_parser("wp-prep"); s.add_argument("course", choices=COURSES + ("practice",)); s.add_argument("lane", nargs="?")
     a = ap.parse_args(argv)
     r = Repo(a.repo, a.boat)
     try:

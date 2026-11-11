@@ -137,6 +137,16 @@ def list_files(repo, home, geofence=None):
         r["kind"] = "녹화본(노트북)"
         r["launch_arg"] = launch_arg(p, home)
         rows.append(r)
+    prac = sorted(glob.glob(os.path.join(home, "ssf_logs", "practice_*.yaml")),
+                  key=lambda p: os.path.getmtime(p), reverse=True)
+    for p in prac:
+        r = check_file(repo, p, "main", None, None)
+        r["kind"] = "연습(노트북)"
+        r["launch_arg"] = launch_arg(p, home)
+        m = os.path.basename(p)[len("practice_"):-len(".yaml")]
+        r["notes"].insert(0, f"연습용 — {PRACTICE[m][0] if m in PRACTICE else m} 만. launch 는 course:=main · "
+                             f"끝나면 조종기로 받는다. 대회 녹화본과 따로 쓴다")
+        rows.append(r)
     for rel in (MAIN_TEMPLATE_REL, TOURNAMENT_TEMPLATE_REL):
         p = os.path.join(repo, rel)
         if os.path.isfile(p):
@@ -144,6 +154,46 @@ def list_files(repo, home, geofence=None):
             r["kind"] = "저장소 템플릿"
             rows.append(r)
     return rows
+
+
+# ---------------------------------------------------------------- 미션별 연습 (11-11)
+# 그 미션 웨이포인트만 담은 짧은 파일을 따로 녹화한다 → launch course:=main waypoints_file:=$HOME/ssf_logs/practice_<미션>.yaml.
+# north 는 main 코스에서 mode 0·1·2·3·5·7·8 이면 몇 개든 받는다(waypoint_loader) — 배 코드는 그대로.
+# 기본값(구역명·mode·dwell)은 종합임무 템플릿에서 그 미션 줄만 뽑아 쓴다(녹화 도구 --template). 대회 녹화본과 이름이 다르다.
+PRACTICE = {   # 이름: (화면 이름, 템플릿 줄 고르기(mode, 구역명) → bool)
+    "gate":   ("게이트",   lambda m, lab: m in (0, 1)),
+    "hold":   ("위치유지", lambda m, lab: m == 2),
+    "search": ("탐색",     lambda m, lab: m == 3),
+    "avoid":  ("회피",     lambda m, lab: m == 5 and "도킹" not in lab),
+    "dock":   ("도킹",     lambda m, lab: "도킹" in lab),
+}
+
+
+def practice_template(repo, home, mission):
+    """종합임무 템플릿에서 mission 줄만 뽑아 ~/ssf_logs/.practice_template_<미션>.yaml 로 → 경로. 없으면 ValueError."""
+    if mission not in PRACTICE:
+        raise ValueError(f"연습 미션 {mission!r} — {', '.join(PRACTICE)} 중 하나")
+    share = os.path.join(repo, INSTALL_SHARE, "waypoints.yaml")
+    src = share if os.path.exists(share) else os.path.join(repo, MAIN_TEMPLATE_REL)
+    wl = _loader(repo)
+    try:
+        with open(src, encoding="utf-8") as f:
+            raw = yaml.safe_load(f)
+        wps = wl.parse_waypoints(raw)
+    except (OSError, yaml.YAMLError, wl.WaypointError) as e:
+        raise ValueError(f"종합임무 템플릿을 못 읽음({src}): {e}")
+    labels = wl.waypoint_labels(raw)
+    pick = PRACTICE[mission][1]
+    rows = [{"구역": labels[i] if i < len(labels) else "", "lat": w[0], "lon": w[1], "mode": w[2], "dwell": w[3]}
+            for i, w in enumerate(wps) if pick(w[2], labels[i] if i < len(labels) else "")]
+    if not rows:
+        raise ValueError(f"종합임무 템플릿에 '{PRACTICE[mission][0]}' 줄이 없다 — 템플릿이 바뀌었나({src})")
+    out = os.path.join(home, "ssf_logs", f".practice_template_{mission}.yaml")
+    os.makedirs(os.path.dirname(out), exist_ok=True)
+    with open(out, "w", encoding="utf-8") as f:
+        f.write(f"# 연습 '{PRACTICE[mission][0]}' 기본값 — {src} 에서 자동으로 뽑음(녹화 도구 --template 전용, 고치지 말 것)\n")
+        yaml.safe_dump({"waypoints": rows}, f, allow_unicode=True, sort_keys=False)
+    return out
 
 
 def plan(repo, home, boat, course="main", lane=None):
@@ -160,8 +210,13 @@ def plan(repo, home, boat, course="main", lane=None):
             raise ValueError("종합임무는 레인 이름을 받지 않는다")
         out = os.path.join(logs, "waypoints_recorded.yaml")
         template = None          # 녹화 도구 기본(share 의 config/waypoints.yaml)
+    elif course == "practice":
+        if lane not in PRACTICE:
+            raise ValueError(f"연습 미션 이름이 필요하다({', '.join(PRACTICE)}) — ssf b wp practice dock")
+        out = os.path.join(logs, f"practice_{lane}.yaml")
+        template = practice_template(repo, home, lane)
     else:
-        raise ValueError(f"코스 {course!r} — main 또는 tournament")
+        raise ValueError(f"코스 {course!r} — main · tournament · practice")
     return out, template
 
 

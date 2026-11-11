@@ -3,6 +3,7 @@
 #
 #   tools/ssf_wp_record.sh <A|B> main
 #   tools/ssf_wp_record.sh <A|B> tournament <레인>
+#   tools/ssf_wp_record.sh <A|B> practice <gate|hold|search|avoid|dock>   (미션별 연습 — ~/ssf_logs/practice_<미션>.yaml)
 #
 # 하는 일: 배 확인(~/.ssf_boat) → 출력·템플릿 경로 결정 → 기존 녹화본 백업(~/ssf_logs/waypoint_backup/)
 #          → ROS 환경 → ros2 run north_goal_angle waypoint_recorder → 끝나면 검사 결과.
@@ -42,7 +43,12 @@ if ! command -v ros2 >/dev/null; then echo "❌ ROS 환경을 불러왔는데 ro
 source tools/ssf_ros_net.sh && ssf_ros_net      # 두 배 GPS 섞임 방지 — ~/.bashrc 와 같은 ROS 격리
 
 echo
-echo "━━ 웨이포인트 녹화 — $( [ "$boat" = A ] && echo A번배 || echo B번배 ) · $( [ "$course" = tournament ] && echo "토너먼트 레인 $lane" || echo 종합임무 )"
+case "$course" in
+  tournament) what="토너먼트 레인 $lane" ;;
+  practice) what="연습 $lane (그 미션만)" ;;
+  *) what="종합임무" ;;
+esac
+echo "━━ 웨이포인트 녹화 — $( [ "$boat" = A ] && echo A번배 || echo B번배 ) · $what"
 echo "   저장 파일: $OUT"
 [ -n "$TEMPLATE" ] && echo "   템플릿:   $TEMPLATE"
 echo "   ① 지금 GPS: $(python3 tools/ssf_param_core.py --boat "$boat" gps --wait 4 2>/dev/null | grep -v '^\[' | head -1 | sed 's/^ *//')"
@@ -50,6 +56,9 @@ echo "      🟢 RTK FIXED 일 때 찍는다(앱 위쪽 'RTK' 불 · ssf $(echo 
 echo "   ② 조종기로 지점에 대고 몇 초 머문 뒤 Enter → mode → dwell → 이름. l=목록 d N=삭제 r N=재캡처 q=저장"
 if [ "$course" = tournament ]; then
   echo "   ③ 🚨 전부 mode 8. 마지막 점 = 결승선 너머 약 3 m, dwell 0.5 — 경기장 경계 안"
+elif [ "$course" = practice ]; then
+  echo "   ③ 연습: 기본값(엔터)은 종합임무 템플릿의 그 미션 줄. 대회 녹화본(waypoints_recorded.yaml)과 따로 저장된다"
+  echo "      launch 는 course:=main · 마지막 점 뒤엔 조종기로 받는다"
 else
   echo "   ③ 🚨 WP7 다음 점(토너먼트)은 엔터 금지 — mode 8 · dwell 3 · 이름 'WP10 토너먼트 회피' 직접 입력"
   echo "      도킹 네 줄은 찍지 않는다 — 저장 뒤 tools/dock_wp.py 출력을 WP7 과 WP10 사이에 끼운다"
