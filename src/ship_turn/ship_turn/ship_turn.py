@@ -102,10 +102,10 @@ class ShipTurn(Node):
         qos = QoSProfile(depth=5, reliability=ReliabilityPolicy.RELIABLE)
 
         # ---- 파라미터 (config/ship_turn.yaml, CLAUDE.md 1-4) ----
-        # enabled=False(기본 = launch search_behavior 기본 hold): 어떤 모드에서도 발행 안 함.
-        #   orbit 옵션이면 launch 가 True 를 넘긴다.
+        # enabled=True(기본 = launch search_behavior 기본 orbit, 2026-11 경기규정): mode 3 담당.
+        #   hold 옵션이면 launch 가 False 를 넘긴다 → 어떤 모드에서도 발행 안 함.
         #   active_wp_mode 는 그대로 3 — -1 센티널은 부팅 초기값과 겹쳐 금지(상단 docstring).
-        self.enabled = bool(self.declare_parameter('enabled', False).value)
+        self.enabled = bool(self.declare_parameter('enabled', True).value)
         self.active_wp_mode = int(self.declare_parameter('active_wp_mode', 3).value)
         self.period_sec = float(self.declare_parameter('period_sec', 0.1).value)
 

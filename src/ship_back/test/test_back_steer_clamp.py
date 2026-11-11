@@ -56,8 +56,14 @@ class _Pub:
         self.values.append(msg.data)
 
 
+# launch 가 넘기는 값으로 덮는 파라미터. 이 파일의 mode 3 시나리오(3→3 래치 등)는 search_behavior:=hold
+#   옵션 경로다 — 2026-11-11 기본이 orbit(코드 기본 [2])으로 바뀌어, hold 때 launch 가 넘기는 [2, 3] 을 준다
+#   (계약서_탐색선회_부표색_20261111 C3). DECLARED 에는 코드 기본값을 그대로 기록한다(yaml 대조용).
+PARAM_OVERRIDES = {'active_wp_modes': [2, 3]}
+
+
 class _Node:
-    """파라미터는 코드 기본값(= config/ship_back.yaml 과 같게 유지되는 값)."""
+    """파라미터는 코드 기본값(= config/ship_back.yaml 과 같게 유지되는 값) — PARAM_OVERRIDES 만 예외."""
 
     def __init__(self, name):
         self._logger = _Logger()
@@ -65,7 +71,7 @@ class _Node:
 
     def declare_parameter(self, name, default):
         DECLARED[name] = default
-        return _Param(default)
+        return _Param(PARAM_OVERRIDES.get(name, default))
 
     def create_publisher(self, typ, topic, qos):
         p = _Pub()

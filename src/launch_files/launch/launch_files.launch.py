@@ -144,8 +144,9 @@ def _control_nodes(context):
 def search_behavior_params(behavior):
     """launch 인자 search_behavior → ship_back·ship_turn 에 넘길 파라미터 (순수 함수, ROS 없이 테스트).
 
-    hold(기본, 2026 안내문: 탐색 = 부표 앞 위치유지) = 2,3→ship_back, ship_turn 침묵.
-    orbit(2025 규정 선회 대비 옵션) = 2→ship_back, 3→ship_turn.
+    orbit(기본, 2026-11 경기규정: 탐색 = 공지 색 부표 원 선회) = 2→ship_back, 3→ship_turn.
+    hold(옵션, 옛 2026 안내문 해석: 탐색 = 부표 앞 위치유지) = 2,3→ship_back, ship_turn 침묵.
+    (계약서_탐색선회_부표색_20261111 C3 — 11-04 의 hold 기본을 규정에 맞춰 뒤집었다.)
     🚨 enabled 는 Python bool 로 — 문자열 'false' 는 rclpy 타입 불일치고 bool('false') 는 True 다.
     🚨 ship_turn 을 끄려고 active_wp_mode -1 을 넘기지 않는다(부팅 초기값과 겹쳐 SPIN 발행).
     test_search_behavior.py 가 두 행동 모두에서 모드별 /candidate_angle 담당이 하나인지 검사한다.
@@ -159,13 +160,13 @@ def search_behavior_params(behavior):
 
 def _search_nodes(context):
     # 탐색(mode 3) 행동 스위치. 노드는 둘 다 항상 뜬다 — 바뀌는 건 파라미터뿐.
-    # 기본 hold(2026 안내문). 현장에서 선회(2025 규정)로 돌리려면 search_behavior:=orbit.
+    # 기본 orbit(2026-11 경기규정 원 선회). 현장에서 위치유지로 돌리려면 search_behavior:=hold.
     behavior = LaunchConfiguration('search_behavior').perform(context)
     params = search_behavior_params(behavior)
     if behavior == 'hold':
-        msg = 'search_behavior=hold(기본): 탐색(3) = ship_back 위치유지(모드 2·3 담당), ship_turn 침묵'
+        msg = 'search_behavior=hold(옵션): 탐색(3) = ship_back 위치유지(모드 2·3 담당), ship_turn 침묵'
     else:
-        msg = 'search_behavior=orbit: 탐색(3) = ship_turn 선회(2025 규정 대비 옵션), ship_back 은 모드 2'
+        msg = 'search_behavior=orbit(기본, 2026-11 규정): 탐색(3) = ship_turn 선회, ship_back 은 모드 2'
     actions = [LogInfo(msg=msg)]
     # 🚨 parameters 순서가 의미다: yaml 먼저, search_behavior dict **맨 뒤** (뒤가 이긴다).
     #    거꾸로면 orbit 에서 ship_back 이 yaml [2,3] 으로 뜨고 ship_turn 도 켜져
@@ -290,15 +291,16 @@ def generate_launch_description():
         DeclareLaunchArgument(
             'gps_config', default_value='zed_f9p_rover.yaml',
             description='GPS 설정 — 두 배 모두 ZED-F9P 라 기본값 zed_f9p_rover.yaml'),
-        # 탐색(mode 3) 행동. 기본 hold — 2026 안내문 코스도 "특정 색상 부표 탐지 후 그 위치에서 위치유지"
-        #   (팀장 확정 2026-11-04): ship_back 이 모드 2·3 담당, ship_turn 침묵.
-        #   orbit 은 2025 규정(원 선회) 대비 옵션. 현장에서 선회로 돌리려면:
+        # 탐색(mode 3) 행동. 기본 orbit — 2026-11 경기규정 "공지 색 부표를 중심으로 원 선회"
+        #   (빨강·초록 우현선회 CW / 노랑 좌현선회 CCW): ship_turn 이 모드 3, ship_back 은 모드 2.
+        #   (11-04 엔 2026 안내문 코스도를 근거로 hold 기본이었다 — 계약서_탐색선회_부표색_20261111 C3.)
+        #   hold 는 옵션(탐색 = 부표 앞 위치유지). 현장에서 위치유지로 돌리려면:
         #   ros2 launch launch_files launch_files.launch.py boat:=A course:=main \
-        #       search_behavior:=orbit
+        #       search_behavior:=hold
         DeclareLaunchArgument(
-            'search_behavior', default_value='hold', choices=['orbit', 'hold'],
-            description='탐색(wp_mode 3) 행동: hold=ship_back 위치유지, ship_turn 침묵(기본, 2026 안내문) / '
-                        'orbit=ship_turn 선회(2025 규정 대비 옵션)'),
+            'search_behavior', default_value='orbit', choices=['orbit', 'hold'],
+            description='탐색(wp_mode 3) 행동: orbit=ship_turn 선회(기본, 2026-11 경기규정) / '
+                        'hold=ship_back 위치유지, ship_turn 침묵(옵션)'),
         # blackbox 기록. 기본 true — 끄려면 record:=false (아래 13, _blackbox 참고).
         DeclareLaunchArgument(
             'record', default_value='true', choices=['true', 'false'],
@@ -423,9 +425,9 @@ def generate_launch_description():
         #    담당 모드는 **각 노드가 소유**한다 (미션 노드와 같은 패턴).
         #    권위 출처 = 미션 노드의 active_wp_mode(s). 바꿀 땐 양쪽을 함께 바꿔라:
         #      mode 0,1 → ship_gate  ← gate 검출기 (/red_angle, /green_angle)
-        #      mode 2   → ship_back  ← turn 검출기 (white 부표, /image_angle)
-        #      mode 3   → ship_back(hold 기본) / ship_turn(search_behavior:=orbit)
-        #                            ← turn 검출기 (red 부표) — 검출기 쪽은 스위치와 무관
+        #      mode 2   → ship_back  ← turn 검출기 (turn_color_mode2 부표, /image_angle)
+        #      mode 3   → ship_turn(orbit 기본) / ship_back(search_behavior:=hold)
+        #                            ← turn 검출기 (turn_color_mode3 부표) — 검출기 쪽은 스위치와 무관
         #      mode 7   → ship_dock  ← dock 검출기 (/image_angle)
         #      mode 5,8 → 순수 회피(담당 없음) → 검출기 전부 비활성
         #

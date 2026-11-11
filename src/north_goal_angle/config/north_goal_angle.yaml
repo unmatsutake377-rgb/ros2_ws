@@ -52,7 +52,7 @@
     #    잘못된 값(빈·정수 아님·없는 모드, stale ≤0·NaN·inf)이면 시작 ERROR + 기본값.
     # 🚨 dwell_wait_stale_sec 는 반드시 소수(1.0). 코드 기본값(wp_advance.py)과 똑같이 둔다.
     dwell_wait_enabled: true
-    # search_behavior:=orbit 이면 mode 3 담당은 ship_turn — 같은 규칙(20000 = 손 뗌)이 적용된다.
+    # mode 3 담당은 기본(orbit) ship_turn, search_behavior:=hold 면 ship_back — 같은 규칙(20000 = 손 뗌).
     dwell_wait_modes: [2, 3]
     dwell_wait_stale_sec: 1.0      # north 발행 주기 0.5 s × 2 (= ship_direction candidate_stale_sec)
 

@@ -152,15 +152,15 @@ image_subscriber_gate:
 
 image_subscriber_turn:
   ros__parameters:
-    active_wp_modes: [2, 3]     # 2=white(ship_back 위치유지), 3=red(hold 기본 ship_back 위치유지 /
-                                #   orbit 옵션 ship_turn 선회)
+    active_wp_modes: [2, 3]     # 2=turn_color_mode2(ship_back 위치유지), 3=turn_color_mode3(orbit 기본
+                                #   ship_turn 선회 / hold 옵션 ship_back 위치유지)
     # ---- C6(U5, 2026-11-04): 모드별 목표 색. 대회 당일 공지된 탐색 부표 색으로 바꾼다(turn_color_mode3).
     #   허용: red / green / white / yellow / black (이 검출기가 HSV 를 읽는 색, TURN_COLORS). 대소문자·공백 무관.
     #   2026-11 규정·11-11 전달: 탐색 = red·green(우현선회 CW) / yellow(좌현선회 CCW),
     #   위치유지 = green·red·black 중 현장 공지. ⚠️ yellow·black HSV 는 실외 실측 전.
     #   그 외는 부팅 ERROR + 그 모드 검출 안 함(기본값 대체 없음 → /image_angle 안 냄
-    #   → (search_behavior hold 기본일 때) ship_back SEARCH 20000 유지 — orbit 이면
-    #   mode 3 은 ship_turn 담당). 담당 모드에선 5 s 주기 ERROR. mode 3 이 무효면 4·5 도 검출 안 함.
+    #   → mode 2 는 ship_back SEARCH 20000 유지, mode 3 은 (orbit 기본) ship_turn SEARCH 타임아웃
+    #   / (hold 옵션) ship_back SEARCH 20000). 담당 모드에선 5 s 주기 ERROR. mode 3 이 무효면 4·5 도 검출 안 함.
     #   문자열 아닌 값은 rclpy 가 부팅 때 노드를 세움.
     #   4·5 는 mode 3 색을 따른다(active_wp_modes 에 없어 지금은 안 쓰인다).
     #   🚨 ship_turn(orbit)은 색으로 회전 방향을 정한다 — red·green 시계, yellow·white 반시계,

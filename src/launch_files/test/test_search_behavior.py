@@ -6,9 +6,10 @@
     tools/run_tests.sh launch_files
 
 지키는 것
-  ① DeclareLaunchArgument('search_behavior') 정확히 1개, 기본값 'hold', choices ['orbit','hold']
-     — 기본 hold = 2026 안내문(탐색 = 부표 앞 위치유지, 팀장 확정 2026-11-04): 2,3→ship_back.
-       orbit 은 2025 규정(선회) 대비 옵션. 오타(hold 대신 holf)는 choices 가 막는다.
+  ① DeclareLaunchArgument('search_behavior') 정확히 1개, 기본값 'orbit', choices ['orbit','hold']
+     — 기본 orbit = 2026-11 경기규정(탐색 = 공지 색 부표 원 선회): 3→ship_turn
+       (계약서_탐색선회_부표색_20261111 C3 — 11-04 의 hold 기본을 뒤집음).
+       hold 는 옵션(탐색 = 부표 앞 위치유지, 2,3→ship_back). 오타(hold 대신 holf)는 choices 가 막는다.
        ast 와 정규식 두 경로로 읽어 같은 값인지도 본다(하나가 깨져도 다른 쪽이 잡는다).
   ② orbit → ship_back [2], ship_turn enabled **is True** (Python bool — 문자열 'false' 금지)
   ③ hold  → ship_back [2, 3], ship_turn enabled **is False**
@@ -31,7 +32,7 @@ PKG = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), 
 SRC = os.path.dirname(PKG)
 LAUNCH = os.path.join(PKG, 'launch', 'launch_files.launch.py')
 BEHAVIORS = ('orbit', 'hold')
-DEFAULT_BEHAVIOR = 'hold'  # 2026 안내문: 탐색 = 부표 앞 위치유지 (팀장 확정 2026-11-04)
+DEFAULT_BEHAVIOR = 'orbit'  # 2026-11 경기규정: 탐색 = 원 선회 (계약서_탐색선회_부표색_20261111, 승인 11-11)
 # 실제 /wp_mode 값 (CLAUDE.md §3). 5·8 은 미션 노드 없음 = north_goal_angle 의 20000 폴백이 담당.
 WP_MODES = {0, 1, 2, 3, 5, 7, 8}
 # 이 계약이 건드리지 않는 발행자 (각 노드의 active_wp_mode(s) 기본값·FALLBACK_MODES).
@@ -102,8 +103,8 @@ def test_declares_search_behavior_arg():
     assert len(calls) == 1, f'search_behavior DeclareLaunchArgument {len(calls)}개'
     call = calls[0]
     default = _kw(call, 'default_value')
-    assert default is not None, '기본값 없으면 인자 없이 launch 가 거부된다 — 기본 = hold(2026 안내문)'
-    assert ast.literal_eval(default) == DEFAULT_BEHAVIOR, '기본값은 hold = 2026 안내문(팀장 확정 11-04)'
+    assert default is not None, '기본값 없으면 인자 없이 launch 가 거부된다 — 기본 = orbit(2026-11 규정)'
+    assert ast.literal_eval(default) == DEFAULT_BEHAVIOR, '기본값은 orbit = 2026-11 경기규정(11-11 승인)'
     choices = _kw(call, 'choices')
     assert choices is not None, 'choices 없음 → 오타가 ValueError 로 launch 전체를 세운다'
     assert ast.literal_eval(choices) == ['orbit', 'hold']
@@ -119,16 +120,16 @@ def _default_by_regex():
     return found[0]
 
 
-def test_default_is_hold_by_regex():
+def test_default_is_orbit_by_regex():
     assert _default_by_regex() == DEFAULT_BEHAVIOR
 
 
-def test_default_is_hold_and_mode3_owner_is_ship_back_alone(params_fn):
-    """기본값으로 launch 하면 mode 3 /candidate_angle 담당이 ship_back 하나다 (ship_turn 침묵)."""
+def test_default_is_orbit_and_mode3_owner_is_ship_turn_alone(params_fn):
+    """기본값으로 launch 하면 mode 3 /candidate_angle 담당이 ship_turn 하나다 (ship_back 은 mode 2 만)."""
     default = _default_by_regex()
-    assert default == 'hold'
+    assert default == 'orbit'
     owners = _owners(params_fn(default))
-    assert owners[3] == ['ship_back'], f'기본({default}) mode 3 담당 {owners[3]}'
+    assert owners[3] == ['ship_turn'], f'기본({default}) mode 3 담당 {owners[3]}'
     assert owners[2] == ['ship_back']
 
 

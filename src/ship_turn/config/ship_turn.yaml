@@ -1,9 +1,9 @@
 # ship_turn 파라미터 (하드코딩 금지, CLAUDE.md 1-4)
 /ship_turn:
   ros__parameters:
-    # 기본 hold(search_behavior, 2026 안내문)에선 침묵 = 어떤 모드에서도 발행 안 함.
-    #   orbit 옵션이면 launch 가 true 를 넘긴다 — 끄려고 active_wp_mode 를 -1 로 두지 말 것(아래).
-    enabled: false
+    # 기본 orbit(search_behavior, 2026-11 경기규정 원 선회)에선 켜짐 = mode 3 담당.
+    #   hold 옵션이면 launch 가 false 를 넘긴다 — 끄려고 active_wp_mode 를 -1 로 두지 말 것(아래).
+    enabled: true
     active_wp_mode: 3        # WP3,4,5 는 모두 /wp_mode==3 — 그중 공지 색 부표 하나를 돈다(한 번, DONE 래치). 끄려고 -1 로 두지 말 것
     period_sec: 0.1
 
