@@ -53,7 +53,7 @@ def test_defaults_valid_and_hfov_from_vision_geom():
     assert check_params(DEFAULT_PARAMS) == []
     assert DEFAULT_PARAMS["hfov_deg"] == DEFAULT_HFOV_DEG == 63.9
     want = {"cam_height_m": 0.35, "cam_tilt_deg": 11.0, "range_scale": 0.85, "cam_x_from_lidar_m": 0.0,
-            "cam_y_from_lidar_m": 0.0, "max_range_m": 5.0, "min_range_out_m": 0.5,
+            "cam_y_from_lidar_m": 0.0, "cam_yaw_offset_deg": 0.0, "max_range_m": 5.0, "min_range_out_m": 0.5,
             "min_sector_deg": 3.0, "out_angle_inc_deg": 0.5}
     want["max_bbox_width_deg"] = 25.0
     for k, v in want.items():
@@ -433,3 +433,24 @@ def test_max_bboxes_and_width_param_guard():
     del p["max_bboxes"]
     assert check_params(p)
     assert detections_to_array([], W, H, P(max_bboxes=4.0)) == []
+
+
+# ------------------------------------------------------------------ 카메라 요 틀어짐 (11-11 실측 약 4° 오른쪽)
+def test_cam_yaw_offset_shifts_bearings_to_body_frame():
+    """cam_yaw_offset_deg = 광축이 LiDAR 정면보다 왼쪽(+)으로 돈 각. 픽셀 방위 + 오프셋 = 선체 방위."""
+    from color_shape_detector.obstacle_cam_logic import _bbox_cam
+    box = (300.0, 340.0, 250.0)
+    b0 = _bbox_cam(box, W, H, P())
+    b4 = _bbox_cam(box, W, H, P(cam_yaw_offset_deg=-4.0))
+    for a, b in zip(b0[:3], b4[:3]):
+        assert near(b, a - 4.0, 1e-9)
+    assert b4[3] == b0[3]                                     # 행은 그대로
+    c0 = [a for a, _ in cells(process_frame([box], W, H, P()))]
+    c4 = [a for a, _ in cells(process_frame([box], W, H, P(cam_yaw_offset_deg=-4.0)))]
+    assert near(sum(c4) / len(c4), sum(c0) / len(c0) - 4.0, 0.3)
+
+
+def test_cam_yaw_offset_range_checked():
+    assert check_params(P(cam_yaw_offset_deg=30.0)) == []
+    for bad in (30.5, -31.0, float('nan'), True, '4'):
+        assert check_params(P(cam_yaw_offset_deg=bad)), bad

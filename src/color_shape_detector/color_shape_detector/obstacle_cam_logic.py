@@ -45,6 +45,8 @@ DEFAULT_PARAMS = {
     "range_scale": 0.85,              # ⚠️ 실측 필요 — 보수 편향(1 보다 작으면 가깝게 낸다)
     "cam_x_from_lidar_m": 0.0,        # ⚠️ 실측 필요 — 카메라가 LiDAR 보다 앞(+)
     "cam_y_from_lidar_m": 0.0,        # ⚠️ 실측 필요 — 카메라가 LiDAR 보다 왼쪽(+)
+    "cam_yaw_offset_deg": 0.0,        # ⚠️ 실측 필요 — 카메라 광축이 LiDAR 정면보다 왼쪽(+)으로 돌아간 각.
+                                      #    11-11 1번배 실측: 카메라 약 4° 오른쪽(대략) → 값은 약 −4 이지만 다시 재서 넣는다
     "max_range_m": 5.0,               # 넘으면 inf (DWA R_MAX_M 과 같은 값)
     "min_range_out_m": 0.5,           # 내는 거리의 하한
     "min_sector_deg": 3.0,            # 좁은 검출을 이 폭으로 넓혀 낸다(smooth_spikes 1.5° 에 안 지워지게)
@@ -69,6 +71,7 @@ _RANGES = {
     "range_scale": (0.0, 2.0, False, True),
     "cam_x_from_lidar_m": (-2.0, 2.0, True, True),
     "cam_y_from_lidar_m": (-2.0, 2.0, True, True),
+    "cam_yaw_offset_deg": (-30.0, 30.0, True, True),
     "max_range_m": (0.0, 50.0, False, True),
     "min_range_out_m": (0.0, 50.0, True, True),
     "min_sector_deg": (0.0, 90.0, True, True),
@@ -208,7 +211,8 @@ def _bottom_row(y, height, p):
 def cam_to_lidar(bearing_deg, range_m, cam_x_m, cam_y_m):
     """카메라 원점 (방위 deg 좌 +, 거리 m) → LiDAR 원점 (방위, 거리). x 앞 +, y 왼쪽 +.
 
-    카메라 광축은 LiDAR 정면과 평행하다고 본다(⚠️ 장착 요 오프셋 미확인). 거리 inf → (방위 그대로, inf).
+    방위는 이미 선체(LiDAR 정면) 기준 — 카메라 요 틀어짐(cam_yaw_offset_deg)은 _bbox_cam 이 더해 둔다.
+    거리 inf → (방위 그대로, inf).
     """
     if not math.isfinite(range_m):
         return float(bearing_deg), math.inf
@@ -229,6 +233,9 @@ def out_grid(p):
 def _bbox_cam(bbox, width, height, p):
     """bbox (x_l, x_r, y_bottom) → (b_left, b_center, b_right, y_row) 카메라 원점 방위[deg](좌 +), 또는 None.
 
+    방위 = 픽셀 방위(pixel_to_bearing_tilt) + cam_yaw_offset_deg → **선체(LiDAR 정면) 기준**. 확인-N·짝짓기·칸
+    칠하기가 모두 이 값을 쓴다(11-11 실측: 카메라가 약 4° 오른쪽으로 틀어져 있으면 정면 물체가 +4° 칸에 칠해졌다).
+
     x 는 [0, width] 로 자르고, 방위는 바닥 행(경계에 닿으면 경계 행) y_row 에서 정확식(pixel_to_bearing_tilt).
     None: 무효 bbox(숫자 아님·x_r < x_l·모양 틀림) / 방위 계산 불가 /
           **각폭 b_left − b_right > max_bbox_width_deg**(거짓 정지 대책 — 화면을 덮는 반사·석양).
@@ -247,6 +254,8 @@ def _bbox_cam(bbox, width, height, p):
     bs = [pixel_to_bearing_tilt(x, y_row, width, height, hfov, tilt) for x in (x_l, (x_l + x_r) / 2.0, x_r)]
     if any(b is None for b in bs):
         return None
+    yaw = float(p.get("cam_yaw_offset_deg", 0.0))
+    bs = [b + yaw for b in bs]
     if bs[0] - bs[2] > float(p["max_bbox_width_deg"]):
         return None
     return bs[0], bs[1], bs[2], y_row

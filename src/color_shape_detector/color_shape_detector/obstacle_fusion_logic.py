@@ -32,6 +32,18 @@ U2c — 붐 벽 규칙(현장 사진 2차: 붐 = 흰 부표 두 개 사이를 �
     · |AB| > boom_max_span_m 이면 벽을 만들지 않는다(멀리 떨어진 두 부표를 잘못 잇는 것 방지) → 기존 규칙.
     · boom_wall_enabled False → 기존 규칙(U2b 와 비트 단위 같음).
 
+뒤쪽 짝 거부(11-11 검토 — 거리를 멀게 내는 위험 쪽 오류):
+    · LiDAR 는 낮은 붐 자체를 못 보고 **같은 방위 뒤쪽** 물체(뒷줄 흰 부표·벽)를 볼 수 있다. 그 군집과 짝지으면
+      붐 거리가 멀게 나온다(재현: 붐 1.5 m·뒤 부표 4.5 m → 4.5 m 출력, 갭 마스크 3 m 밖이라 안 막힘).
+    · 그래서 **각도로** 비교한다: bbox 바닥 행의 수평 아래 각 δ_row 와, 짝 LiDAR 거리의 수면 점이 카메라에서
+      보이는 각 δ_lidar = atan(cam_height / 앞쪽 거리) 의 차가 fusion_behind_tol_deg 를 넘으면(LiDAR 점이 화면에서
+      bbox 바닥보다 확연히 위 = 멀다) 짝을 버리고 행 기반 부채꼴을 낸다 — fusion_fallback_row 와 무관
+      (LiDAR 가 틀렸다는 증거가 있으니 보수 쪽). 붐 벽도 이 검사 뒤에만 만든다.
+      각도로 보는 이유: 거리 오차는 거리²에 비례해 커진다(피치 1° = 2 m 에서 0.2 m, 4 m 에서 0.8 m) — 피치 잡음·
+      높이·틸트 오차를 거리와 상관없이 같은 기준으로 견딘다. range_scale 은 쓰지 않는다(보수 편향은 출력용).
+    · δ_row ≤ 0(수평선 위)이면 검사 못 함 → 짝 그대로.
+    · 거부는 늘 가까운 쪽으로 간다 — 파도 피치로 좋은 짝을 버려도 결과는 더 보수적(거짓 정지 쪽).
+
 scan 신선도는 호출자(U4 노드·U3 시뮬)가 판단한다: 묵었거나 없으면 scan_or_clusters=None 으로 넘긴다.
 """
 
@@ -39,7 +51,7 @@ import math
 
 from color_shape_detector.obstacle_cam_logic import (
     _bbox_cam, _bbox_sector, _finish_sector, _frame_boxes, _grid_array, _num, _size_ok, cam_to_lidar,
-    check_params, out_grid)
+    check_params, fx_from_hfov, out_grid)
 
 LIDAR_FORWARD_DEG = 80.0   # LiDAR 프레임 정면(ship_direction.py:39 와 같은 값 — 테스트가 일치 검사)
 SOURCE_LIDAR = 'lidar'
@@ -53,6 +65,7 @@ FUSION_DEFAULTS = {
     "fusion_fallback_row": True,   # ⚠️ 실측 필요 — 짝 없는 bbox 를 행 기반 거리로 낼지(False = 버림)
     "boom_wall_enabled": True,     # ⚠️ 실측 필요 — U2c 붐 벽(겹치는 군집 2개 이상 → 두 부표 잇는 선분 거리)
     "boom_max_span_m": 4.0,        # ⚠️ 실측 필요 — 붐 벽 두 부표 간 거리 상한(넘으면 안 이음)
+    "fusion_behind_tol_deg": 3.0,  # ⚠️ 실측 필요 — 짝 LiDAR 점이 bbox 바닥보다 화면에서 이 각 넘게 위(=멀리)면 짝 버림
 }
 
 # (최소, 최대, 최소 포함, 최대 포함)
@@ -61,6 +74,7 @@ _FUSION_RANGES = {
     "cluster_gap_deg": (0.0, 30.0, False, True),
     "cluster_gap_m": (0.0, 5.0, False, True),
     "boom_max_span_m": (0.0, 20.0, False, True),
+    "fusion_behind_tol_deg": (0.0, 30.0, True, True),
 }
 CLUSTER_MIN_POINTS_LIMIT = 1000
 
@@ -316,6 +330,29 @@ def _lidar_range_sector(cam, r_lidar, p):
     return _finish_sector(pts, p)
 
 
+def lidar_behind(cam, r_lidar, width, height, p):
+    """짝 LiDAR 거리 r_lidar(LiDAR 원점)가 bbox 바닥보다 확연히 먼가(= 붐 뒤 물체와 잘못 짝지음) → bool.
+
+    δ_row   = cam_tilt + atan((y_row − cy)/fy)                       (row_to_range 와 같은 식, 수평 아래 +)
+    δ_lidar = atan(cam_height / Z),  Z = 카메라 원점 거리 × cos(픽셀 방위)   (row_to_range 의 Z 는 광축 방향)
+    δ_row − δ_lidar > fusion_behind_tol_deg → True. δ_row ≤ 0(수평선 위)·계산 불가 → False(근거 없음).
+    """
+    try:
+        fy = fx_from_hfov(width, float(p["hfov_deg"]))
+    except (ValueError, ZeroDivisionError):
+        return False
+    d_row = math.radians(float(p["cam_tilt_deg"])) + math.atan((cam[3] - height / 2.0) / fy)
+    if d_row <= 0.0:
+        return False
+    cx, cy = float(p["cam_x_from_lidar_m"]), float(p["cam_y_from_lidar_m"])
+    s = _cam_range_for_lidar_range(cam[1], r_lidar, cx, cy)
+    z = s * math.cos(math.radians(cam[1] - float(p.get("cam_yaw_offset_deg", 0.0))))
+    if not (z > 0.0):
+        return False
+    d_lidar = math.atan(float(p["cam_height_m"]) / z)
+    return math.degrees(d_row - d_lidar) > float(p["fusion_behind_tol_deg"])
+
+
 def _as_clusters(scan_or_clusters, p):
     """None → None(LiDAR 정보 없음). ranges·angle_min·angle_increment 속성(LaserScan) → lidar_clusters.
     그 밖 = 군집 목록 그대로(항목 검사는 fuse_bbox_range 가 한다)."""
@@ -342,6 +379,7 @@ def fused_detections_to_array(bboxes, width, height, scan_or_clusters, p, confir
     · bbox 수 > max_bboxes → [] (프레임 이상, 창은 '본 것 없음' 으로 흐름) — U2 와 같은 헬퍼
     · 확인-N(confirm) 통과 bbox 마다: 각폭 > max_bbox_width_deg 면 버림(U2 와 같음),
       겹치는 군집 2개 이상 + 붐 벽 조건(boom_wall_segment) → 칸마다 선분 광선 거리(U2c, _paint_walls),
+      짝 LiDAR 점이 bbox 바닥보다 fusion_behind_tol_deg 넘게 멀면(lidar_behind) 짝 버리고 행 기반(fallback 과 무관),
       그 밖 짝 있음 → LiDAR 거리(_lidar_range_sector), 짝 없음 → fallback True 면 행 기반(_bbox_sector), False 면 버림
     · 검출 없음·전부 버림 → 전부 inf(살아 있음)
     """
@@ -361,6 +399,9 @@ def fused_detections_to_array(bboxes, width, height, scan_or_clusters, p, confir
         if cam is None:
             continue
         fused = fuse_bbox_range(cam[0], cam[2], clusters, p) if clusters else None
+        if fused is not None and lidar_behind(cam, fused[0], width, height, p):
+            sectors.append(_bbox_sector(b, width, height, p))   # 뒤쪽 짝 거부 → 행 기반(보수)
+            continue
         seg = boom_wall_segment(cam[0], cam[2], clusters, p) if fused is not None else None
         if seg is not None:
             ws = _wall_sector(cam, seg, fused[0], p)

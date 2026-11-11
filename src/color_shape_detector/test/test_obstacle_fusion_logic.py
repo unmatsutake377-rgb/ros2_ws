@@ -82,7 +82,8 @@ def lidar_obj_for_cam(b_lo, b_hi, r, p=PF):
 def test_defaults_and_param_check():
     assert FUSION_DEFAULTS == {"fusion_margin_deg": 3.0, "cluster_gap_deg": 2.0, "cluster_gap_m": 0.3,
                                "cluster_min_points": 2, "fusion_fallback_row": True,
-                               "boom_wall_enabled": True, "boom_max_span_m": 4.0}
+                               "boom_wall_enabled": True, "boom_max_span_m": 4.0,
+                               "fusion_behind_tol_deg": 3.0}
     assert type(FUSION_DEFAULTS["cluster_min_points"]) is int
     assert type(FUSION_DEFAULTS["fusion_fallback_row"]) is bool
     assert type(FUSION_DEFAULTS["boom_wall_enabled"]) is bool
@@ -259,18 +260,19 @@ def test_output_format_and_no_detection_all_inf():
 
 
 def test_fused_lidar_range_beats_row_range():
-    """행은 2.0×0.85 = 1.7 m 라 하지만 LiDAR 군집이 3.2 m → 3.2 m(range_scale·원점 변환 없음). 방위 칸은 같다."""
+    """행은 2.0×0.85 = 1.7 m 라 하지만 LiDAR 군집이 2.4 m → 2.4 m(range_scale·원점 변환 없음). 방위 칸은 같다.
+    (2.4 m 는 bbox 바닥보다 1.6° 위 — 뒤쪽 짝 거부 3° 안. 3.2 m(3.7°)면 거부된다 → test_behind_* )"""
     y = row_for_range(2.0)
     box = (300.0, 340.0, y)
     b_l = pixel_to_bearing_tilt(300.0, y, W, H, 63.9, 11.0)
     b_r = pixel_to_bearing_tilt(340.0, y, W, H, 63.9, 11.0)
-    sc = make_scan([lidar_obj_for_cam(b_r, b_l, 3.2)])
+    sc = make_scan([lidar_obj_for_cam(b_r, b_l, 2.4)])
     fused = fused_detections_to_array([box], W, H, sc, PF)
     row = process_frame([box], W, H, PF)
     assert cells(row) and all(near(r, 1.7, 1e-6) for _, r in cells(row))
-    assert cells(fused) and all(r == 3.2 for _, r in cells(fused))
+    assert cells(fused) and all(r == 2.4 for _, r in cells(fused))
     assert [a for a, _ in cells(fused)] == [a for a, _ in cells(row)]
-    cl = clusters_of([lidar_obj_for_cam(b_r, b_l, 3.2)])
+    cl = clusters_of([lidar_obj_for_cam(b_r, b_l, 2.4)])
     assert fused_detections_to_array([box], W, H, cl, PF) == fused        # 군집 목록을 넘겨도 같다
 
 
@@ -295,15 +297,15 @@ def test_scan_missing_fallback_or_silent():
 
 
 def test_mixed_fused_and_fallback_overlap_min():
-    """bbox 둘: 왼쪽은 LiDAR 짝(4.0 m), 오른쪽은 짝 없음 → 행 기반. 각자 제 칸, 겹치는 칸은 min."""
+    """bbox 둘: 왼쪽은 LiDAR 짝(2.4 m), 오른쪽은 짝 없음 → 행 기반. 각자 제 칸, 겹치는 칸은 min."""
     y_l, y_r = row_for_range(2.0), row_for_range(3.0)
     bl = (200.0, 260.0, y_l)
     br = (380.0, 440.0, y_r)
     b1 = pixel_to_bearing_tilt(200.0, y_l, W, H, 63.9, 11.0)
     b2 = pixel_to_bearing_tilt(260.0, y_l, W, H, 63.9, 11.0)
-    arr = fused_detections_to_array([bl, br], W, H, make_scan([lidar_obj_for_cam(b2, b1, 4.0)]), PF)
+    arr = fused_detections_to_array([bl, br], W, H, make_scan([lidar_obj_for_cam(b2, b1, 2.4)]), PF)
     d = cells(arr)
-    assert {r for a, r in d if a > 0} == {4.0}
+    assert {r for a, r in d if a > 0} == {2.4}
     assert all(near(r, 3.0 * 0.85, 1e-6) for a, r in d if a < 0)
 
 
@@ -458,3 +460,59 @@ def test_boom_wall_picks_end_clusters_of_three():
     seg = boom_wall_segment(b_l, b_r, clusters_of(objs), PF)
     (x1, y1), (x2, y2) = seg
     assert near(x1, D, 0.01) and near(x2, D, 0.01) and y1 > 0 > y2
+
+
+# ------------------------------------------------------------------ 뒤쪽 짝 거부 (11-11 검토)
+def test_behind_cluster_rejected_uses_row():
+    """재현: 붐 1.5 m(행), 같은 방위 4.5 m 에 뒷줄 흰 부표(LiDAR) → 예전엔 4.5 m 출력(위험 쪽).
+    이제 짝을 버리고 행 기반(= process_frame) — fusion_fallback_row False 여도 행 기반."""
+    y = row_for_range(1.5)
+    box = (300.0, 340.0, y)
+    sc = make_scan([(79.0, 81.0, 4.5)])
+    row = process_frame([box], W, H, PF)
+    assert cells(row)
+    assert fused_detections_to_array([box], W, H, sc, PF) == row
+    assert fused_detections_to_array([box], W, H, sc, P(fusion_fallback_row=False)) == row
+    assert min(fused_detections_to_array([box], W, H, sc, PF)[2:]) < 1.5
+
+
+def test_behind_check_threshold_and_off():
+    """3.2 m 짝(바닥보다 3.7° 위)은 기본 3° 에서 거부, 4° 면 짝 그대로. 수평선 위 bbox 는 검사 안 함."""
+    from color_shape_detector.obstacle_cam_logic import _bbox_cam
+    from color_shape_detector.obstacle_fusion_logic import lidar_behind
+    y = row_for_range(2.0)
+    box = (300.0, 340.0, y)
+    cam = _bbox_cam(box, W, H, PF)
+    assert lidar_behind(cam, 3.2, W, H, PF)
+    assert not lidar_behind(cam, 3.2, W, H, P(fusion_behind_tol_deg=4.0))
+    assert not lidar_behind(cam, 2.4, W, H, PF)
+    assert not lidar_behind(cam, 1.0, W, H, PF)                      # LiDAR 가 더 가까움 = 거부 안 함
+    sc = make_scan([(79.0, 81.0, 3.2)])
+    assert all(r == 3.2 for _, r in cells(fused_detections_to_array([box], W, H, sc, P(fusion_behind_tol_deg=4.0))))
+    sky = _bbox_cam((300.0, 340.0, 20.0), W, H, PF)                 # 수평선 위
+    assert not lidar_behind(sky, 4.9, W, H, PF)
+
+
+def test_behind_rejected_before_boom_wall():
+    """bbox 양 끝에 군집 둘이 있어도 둘 다 한참 뒤(4.5 m)면 붐 벽을 만들지 않고 행 기반."""
+    D = 1.5
+    box, b_l, b_r, _ = _wall_box(D)
+    objs = [lidar_obj_for_cam(b - 0.5, b + 0.5, 4.5) for b in (b_l, b_r)]
+    sc = make_scan(objs)
+    assert fused_detections_to_array([box], W, H, sc, PF) == process_frame([box], W, H, PF)
+
+
+def test_cam_yaw_offset_restores_pairing_and_cells():
+    """카메라 4° 오른쪽 틀어짐: 정면 물체가 화면에선 +4°. 오프셋 −4 를 넣으면 정면 칸에 칠하고 좁은 여유각에서도 짝."""
+    from color_shape_detector.vision_geom import fx_from_hfov
+    y = row_for_range(2.5)
+    x0 = 320.0 - fx_from_hfov(W, 63.9) * math.tan(math.radians(4.0))
+    box = (x0 - 10.0, x0 + 10.0, y)
+    sc = make_scan([(79.4, 80.6, 2.5)])                               # LiDAR: 정면 ±0.6°, 2.5 m
+    p0 = P(fusion_margin_deg=1.0)
+    p4 = P(fusion_margin_deg=1.0, cam_yaw_offset_deg=-4.0)
+    a0 = [a for a, _ in cells(fused_detections_to_array([box], W, H, sc, p0))]
+    d4 = cells(fused_detections_to_array([box], W, H, sc, p4))
+    assert min(a0) > 1.0                                              # 보정 없음: 정면이 아닌 왼쪽 칸
+    assert all(r == 2.5 for _, r in d4)                              # 보정: LiDAR 짝(2.5 m)
+    assert min(a for a, _ in d4) < 0.0 < max(a for a, _ in d4)        # 정면을 덮는다
