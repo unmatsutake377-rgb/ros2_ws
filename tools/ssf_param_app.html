@@ -497,9 +497,19 @@ async function recCall(path, body) {
 const recSend = (kind, arg) => recCall("/api/wp/rec/send", {kind, arg});
 function recPanel() {
   if (R.el) return R.el;
-  const course = h("select", {}, h("option", {value:"tournament", text:"토너먼트"}), h("option", {value:"main", text:"종합임무"}));
+  const course = h("select", {}, h("option", {value:"tournament", text:"토너먼트"}), h("option", {value:"main", text:"종합임무"}),
+    h("option", {value:"practice", text:"연습(미션 하나)"}));
   const lane = h("input", {type:"text", class:"mono", placeholder:"레인 (예: 1)", style:"max-width:120px"});
-  course.onchange = () => { lane.disabled = course.value === "main"; };
+  // 연습: 그 미션 줄만 담은 파일 → ~/ssf_logs/practice_<미션>.yaml (대회 녹화본과 따로). 기본값 = 종합임무 템플릿의 그 미션 줄
+  const mission = h("select", {style:"display:none"},
+    ...[["gate","게이트(0→1)"],["hold","위치유지(2)"],["search","탐색(3)"],["avoid","회피(5→5)"],["dock","도킹 네 줄(5·5·7·7)"]]
+      .map(([v, t]) => h("option", {value:v, text:t})));
+  course.onchange = () => {
+    lane.disabled = course.value === "main";
+    lane.style.display = course.value === "practice" ? "none" : "";
+    mission.style.display = course.value === "practice" ? "" : "none";
+  };
+  const laneOf = () => course.value === "main" ? null : course.value === "practice" ? mission.value : lane.value.trim();
   const answer = h("input", {type:"text", class:"mono", placeholder:"답 입력", style:"max-width:200px",
     onkeydown:e => { if (e.key === "Enter") { recSend("answer", answer.value); answer.value = ""; } }});
   const idx = h("input", {type:"text", class:"mono num", placeholder:"번호", inputmode:"numeric", style:"max-width:70px"});
@@ -514,8 +524,8 @@ function recPanel() {
   R.parts = {
     gps: h("div", {class:"gps g-none", text:"RTK …"}),
     status: h("div", {class:"label"}),
-    start: h("div", {class:"tools", style:"margin:8px 0 0"}, course, lane,
-      btn("녹화 시작", "primary", () => recCall("/api/wp/rec/start", {course:course.value, lane:course.value === "main" ? null : lane.value.trim()})),
+    start: h("div", {class:"tools", style:"margin:8px 0 0"}, course, lane, mission,
+      btn("녹화 시작", "primary", () => recCall("/api/wp/rec/start", {course:course.value, lane:laneOf()})),
       h("span", {class:"hint", text:"배를 띄우고 RTK FIXED 확인 뒤"})),
     screen: h("pre", {class:"out", style:"max-height:340px;min-height:120px;white-space:pre-wrap"}),
     ask: h("div", {class:"banner warn", style:"margin:8px 0"}),
@@ -660,6 +670,7 @@ function viewWp() {
     h("div", {class:"guide", style:"margin-top:6px"},
       cmdLine("종합임무", `ssf ${b} wp main`),
       cmdLine("토너먼트", `ssf ${b} wp tournament 1`),
+      cmdLine("연습", `ssf ${b} wp practice dock`),
       h("p", {}, h("span", {class:"k", text:"방법"}),
         "위 '녹화 시작' 또는 터미널 명령 — 둘 다 배 노트북의 같은 tmux 녹화 도구라 어느 쪽에서든 이어서 할 수 있다. ",
         "조종기로 지점에 대고 몇 초 머문 뒤 찍기 → mode → dwell → 이름, 다 찍으면 저장(q). ",
@@ -670,6 +681,9 @@ function viewWp() {
         "mode 0·1·2·3·5·7·8 만. mode 2·3 은 부표 좌표에서. WP7 다음 점은 엔터 금지 — mode 8 · dwell 3 · 'WP10 토너먼트 회피' 직접 입력. 도킹 네 줄은 tools/dock_wp.py 출력으로 끼운다."),
       h("p", {class:"adv"}, h("span", {class:"k", text:"토너먼트"}),
         "레인마다 다른 파일. 전부 mode 8. 마지막 점 = 결승선 너머 약 3 m · dwell 0.5 · 경기장 경계 안."),
+      h("p", {}, h("span", {class:"k", text:"연습"}),
+        "미션 하나(gate·hold·search·avoid·dock)만 담은 파일 → ~/ssf_logs/practice_<미션>.yaml. 기본값(엔터)은 종합임무 템플릿의 그 미션 줄. ",
+        "launch 는 course:=main + 그 파일. 마지막 점 뒤엔 조종기로 받는다. 대회 녹화본과 섞이지 않는다."),
       h("p", {}, h("span", {class:"k", text:"쓰기"}),
         "저장소 파일에 복사하지 말고 launch 인자 waypoints_file:=$HOME/ssf_logs/<녹화본> 으로(~/ 는 안 된다). 어느 파일을 썼는지 현장 조정표 §4 에 기록. 절차: docs/절차/웨이포인트_녹화절차.md")))];
   out.push(h("div", {class:"tools", style:"margin-top:12px"},
@@ -683,7 +697,7 @@ function viewWp() {
     const card = h("div", {class:"card", style:"margin-bottom:10px"});
     const head = h("div", {class:"p", style:"grid-template-columns:minmax(0,1fr) auto"},
       h("div", {class:"name"}, h("div", {class:"label", text:f.name}), h("div", {class:"key", text:f.path}),
-        h("div", {class:"chips"}, h("span", {class:"chip " + (f.kind.startsWith("녹화") ? "b" : ""), text:f.kind}),
+        h("div", {class:"chips"}, h("span", {class:"chip " + (f.kind.startsWith("녹화") ? "b" : f.kind.startsWith("연습") ? "c" : ""), text:f.kind}),
           h("span", {class:"chip c", text:COURSE_KO[f.course]}), f.mtime ? h("span", {class:"chip", text:f.mtime}) : null,
           f.points.length ? h("span", {class:"chip t", text:f.points.length + "점"}) : null)),
       h("div", {class:"side"}, h("span", {class:"when " + (st === "bad" ? "daily" : st === "warn" ? "measure" : "water"),
@@ -694,8 +708,8 @@ function viewWp() {
     for (const m of f.warnings) g.append(h("p", {class:"adv", text:"⚠️ " + m}));
     for (const m of f.notes) g.append(h("p", {text:"ℹ️ " + m}));
     if (f.modes.length) g.append(h("p", {}, h("span", {class:"k", text:"mode 순서"}), h("code", {text:"[" + f.modes.join(", ") + "]"})));
-    if (f.kind.startsWith("녹화")) {
-      g.append(cmdLine("launch 인자", f.launch_arg || ("waypoints_file:=" + f.path)));
+    if (f.kind.startsWith("녹화") || f.kind.startsWith("연습")) {
+      g.append(cmdLine("launch 인자", (f.kind.startsWith("연습") ? "course:=main " : "") + (f.launch_arg || ("waypoints_file:=" + f.path))));
       g.append(h("p", {class:"small", text:"$HOME 그대로 붙여 넣는다 — ~/ 로 쓰면 노드가 파일을 못 연다"}));
     }
     if (g.children.length) card.append(g);

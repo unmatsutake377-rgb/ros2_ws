@@ -499,6 +499,37 @@ def test_wp_prepare_paths_backup_and_boat_check(boat):
         other.wp_prepare("main")
 
 
+def test_practice_templates_pick_one_mission(boat):
+    """연습: 종합임무 템플릿에서 그 미션 줄만 뽑아 녹화 기본값으로 — mode 순서가 미션 그대로."""
+    want = {"gate": [0, 1], "hold": [2], "search": [3, 3, 3], "avoid": [5, 5], "dock": [5, 5, 7, 7]}
+    tm = [f for f in boat.waypoints() if f["name"] == "waypoints.yaml"][0]["modes"]
+    for m, modes in want.items():
+        p = boat.wp_prepare("practice", m)
+        assert p["out"].endswith(f"ssf_logs/practice_{m}.yaml") and p["backup"] is None
+        t = wpm.check_file(boat.repo, p["template"], "main")
+        assert not t["errors"], (m, t["errors"])
+        if m != "search" or tm.count(3) == 3:
+            assert t["modes"] == modes, (m, t["modes"])
+        if m == "dock":
+            assert all("도킹" in x["label"] for x in t["points"])
+    with pytest.raises(core.ParamError, match="연습 미션"):
+        boat.wp_prepare("practice")
+    with pytest.raises(core.ParamError, match="연습 미션"):
+        boat.wp_prepare("practice", "../x")
+
+
+def test_practice_file_listed_separately(boat):
+    _wp(boat, "practice_hold.yaml", "waypoints:\n  - {구역: \"WP2 위치유지\", lat: 35.18688, lon: 128.56604, mode: 2, dwell: 0.5}\n")
+    _wp(boat, "waypoints_recorded.yaml", "waypoints:\n  - {lat: 35.1862, lon: 128.5655, mode: 0, dwell: 3.0}\n")
+    by = {f["name"]: f for f in boat.waypoints()}
+    pr = by["practice_hold.yaml"]
+    assert pr["kind"] == "연습(노트북)" and pr["course"] == "main" and pr["modes"] == [2] and not pr["errors"]
+    assert pr["launch_arg"] == "waypoints_file:=$HOME/ssf_logs/practice_hold.yaml"
+    assert "위치유지" in pr["notes"][0]
+    assert by["waypoints_recorded.yaml"]["kind"] == "녹화본(노트북)"       # 대회 녹화본은 그대로
+    assert not any(f["name"].startswith(".practice_template") for f in boat.waypoints())
+
+
 def test_wp_unreadable_file_does_not_break_list(boat):
     p = _wp(boat, "waypoints_noperm.yaml", GOOD_T)
     os.chmod(p, 0)
@@ -667,6 +698,30 @@ def test_rec_full_flow(recboat):
     assert not b.wp_rec("status")["running"]
     f = [x for x in b.waypoints() if x["name"] == "waypoints_tournament_A_9.yaml"][0]
     assert f["modes"] == [8, 8] and not f["errors"]
+
+
+def test_rec_practice_dock_defaults(recboat):
+    """연습 도킹 녹화: 녹화 도구에 도킹 줄만 뽑은 템플릿을 넘기고, 대회 녹화본과 다른 파일에 저장한다.
+    (가짜 녹화기는 mode 기본값을 늘 8 로 낸다 — 템플릿 내용은 test_practice_templates_pick_one_mission 이 본다)"""
+    b = recboat
+    b.wp_rec("start", course="practice", lane="dock")
+    st = _wait(b, "main")
+    assert "연습 dock" in st["screen"] and ".practice_template_dock.yaml" in st["screen"], st["screen"]
+    b.wp_rec("send", kind="capture"); _wait(b, "mode")
+    b.wp_rec("send", kind="accept"); _wait(b, "dwell")
+    b.wp_rec("send", kind="accept"); _wait(b, "name")
+    b.wp_rec("send", kind="accept"); _wait(b, "main")
+    b.wp_rec("send", kind="save")
+    st = _wait(b, "closing")
+    out = os.path.join(b.home, "ssf_logs", "practice_dock.yaml")
+    assert "practice_dock.yaml" in st["screen"], st["screen"]
+    b.wp_rec("send", kind="close")
+    end = _time.time() + 5
+    while b.wp_rec("status")["running"] and _time.time() < end:
+        _time.sleep(0.2)
+    f = [x for x in b.waypoints() if x["name"] == "practice_dock.yaml"][0]
+    assert len(f["modes"]) == 1 and f["kind"] == "연습(노트북)" and os.path.exists(out)
+    assert not os.path.exists(os.path.join(b.home, "ssf_logs", "waypoints_recorded.yaml"))
 
 
 def test_rec_kill_and_wrong_boat(recboat):
