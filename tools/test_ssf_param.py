@@ -245,6 +245,58 @@ def test_hsv_rule_rejected_like_node(boat, raw):
     assert _text(boat, rel) == before
 
 
+def _copy_node_modules(boat):
+    """노드 순수 모듈(turn_color_logic·dock_logic)을 임시 저장소로 복사하고 choices 를 다시 읽는다."""
+    rels = sorted({rel for rel, _ in core.NODE_CHOICES.values()})
+    for rel in rels:
+        src = os.path.join(REPO, rel)
+        if not os.path.exists(src):
+            pytest.skip(f"{rel} 없음(sparse 사본)")
+        dst = os.path.join(boat.repo, rel)
+        os.makedirs(os.path.dirname(dst), exist_ok=True)
+        shutil.copy(src, dst)
+    return core.apply_node_choices(boat.cidx, boat.repo)
+
+
+def _pid(boat, key):
+    return [x for x in boat.params()["params"] if x["key"] == key][0]
+
+
+def test_turn_color_choices_follow_node(boat):
+    """탐색 부표 색: 노드(turn_color_logic.TURN_COLORS)가 모르는 색은 적용 거부 — 노드는 부팅 ERROR 후 그 모드 검출을 끈다.
+    11-11: 앱 선택지에 yellow 가 있었는데 노드는 red/green/white 만 받았다."""
+    done = _copy_node_modules(boat)
+    assert "turn_color_mode3" in done and "target_shape" in done
+    rel = "src/color_shape_detector/config/vision.yaml"
+    before = _text(boat, rel)
+    p = _pid(boat, "turn_color_mode3")
+    assert p["catalog"]["choices"] == ["red", "green", "white"]
+    for bad in ("yellow", "blue", "Red"):
+        with pytest.raises(core.ParamError, match="turn_color_mode3"):
+            boat.apply(p["id"], bad, course="main")
+    assert _text(boat, rel) == before
+    boat.apply(p["id"], "green", course="main")
+    assert 'turn_color_mode3: "green"' in _text(boat, rel) or "turn_color_mode3: green" in _text(boat, rel)
+
+
+def test_dock_shape_and_color_choices_follow_node(boat):
+    """도킹 표식: 모양은 대문자 시작(Square)만, 색은 dock_logic.VALID_COLORS(yellow 포함)."""
+    _copy_node_modules(boat)
+    sh = _pid(boat, "target_shape")
+    assert sh["catalog"]["choices"] == ["Triangle", "Square", "Circle"]
+    with pytest.raises(core.ParamError, match="target_shape"):
+        boat.apply(sh["id"], "square", course="main")
+    col = _pid(boat, "target_color")
+    assert "yellow" in col["catalog"]["choices"]
+    boat.apply(col["id"], "yellow", course="main")
+
+
+def test_node_choices_missing_module_keeps_catalog(boat):
+    """노드 모듈이 없으면(못 읽으면) 카탈로그 choices 그대로 — 그래도 탐색 색은 red/green/white 만."""
+    assert core.apply_node_choices(boat.cidx, boat.repo) == {}
+    assert _pid(boat, "turn_color_mode3")["catalog"]["choices"] == ["red", "green", "white"]
+
+
 def test_backup_log_and_diff(boat):
     boat.apply("hold_dist_m", "3.5")
     boat.apply("hold_dist_m", "3.0")

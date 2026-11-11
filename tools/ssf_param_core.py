@@ -370,6 +370,52 @@ def _hsv_check(repo, v, color):
     return None
 
 
+# 노드가 받는 값 목록 — 카탈로그 choices 를 노드 코드에서 덮어쓴다(규칙 한 곳, 11-11).
+#   카탈로그만 믿으면 노드가 모르는 색(예: 탐색 yellow)을 골라도 적용이 통과하고, 노드는 부팅 ERROR 후
+#   그 모드 검출을 통째로 끈다. 노드가 나중에 색을 늘리면 앱도 따라간다. 못 읽으면 카탈로그 값 그대로.
+NODE_CHOICES = {
+    # (패키지, 절, 키): (모듈 상대 경로, 상수 이름)
+    ("color_shape_detector", "image_subscriber_turn", "turn_color_mode2"):
+        ("src/color_shape_detector/color_shape_detector/turn_color_logic.py", "TURN_COLORS"),
+    ("color_shape_detector", "image_subscriber_turn", "turn_color_mode3"):
+        ("src/color_shape_detector/color_shape_detector/turn_color_logic.py", "TURN_COLORS"),
+    ("color_shape_detector", "image_subscriber_dock", "target_color"):
+        ("src/color_shape_detector/color_shape_detector/dock_logic.py", "VALID_COLORS"),
+    ("color_shape_detector", "image_subscriber_dock", "target_shape"):
+        ("src/color_shape_detector/color_shape_detector/dock_logic.py", "VALID_SHAPES"),
+}
+
+
+def _node_const(repo, rel, name):
+    """repo 의 노드 순수 모듈(ROS 없음)을 파일 경로로 읽어 상수 → tuple 또는 None(못 읽음)."""
+    path = os.path.join(repo, rel)
+    if not os.path.exists(path):
+        return None
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("ssf_node_" + os.path.basename(rel)[:-3], path)
+    mod = importlib.util.module_from_spec(spec)
+    try:
+        spec.loader.exec_module(mod)
+        v = getattr(mod, name)
+    except Exception:          # noqa: BLE001 — 모듈이 바뀌어 못 부르면 카탈로그 값
+        return None
+    return tuple(v) if isinstance(v, (tuple, list)) and all(isinstance(x, str) for x in v) else None
+
+
+def apply_node_choices(cidx, repo):
+    """카탈로그 색인 cidx 의 choices 를 노드 상수로 덮어쓴다(제자리). → {키: 출처} (덮어쓴 것만)."""
+    done = {}
+    for (pkg, sec, key), (rel, name) in NODE_CHOICES.items():
+        it = cidx.get((pkg, key, sec))
+        if it is None:
+            continue
+        v = _node_const(repo, rel, name)
+        if v:
+            it["choices"] = list(v)
+            done[key] = f"{rel}:{name}"
+    return done
+
+
 def _geofence_check(v):
     sys.path.insert(0, os.path.join(DEFAULT_REPO, "src", "north_goal_angle"))
     try:
@@ -428,6 +474,7 @@ class Repo:
         self.requested_boat = boat.upper() if boat else None
         self.catalog = load_catalog()
         self.cidx = catalog_index(self.catalog)
+        apply_node_choices(self.cidx, self.repo)
 
     # ---- 배 확인
     @property
