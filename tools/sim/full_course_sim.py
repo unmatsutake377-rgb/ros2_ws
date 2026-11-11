@@ -21,8 +21,10 @@
   north_goal_angle  ← north_goal_angle.yaml + waypoints_file (launch 가 둘 다 넘김)
   ship_goal_angle   ← ship_goal_angle.yaml (launch 가 넘김)
   ship_direction, motor_control, ship_gate, ship_dock ← 코드 기본값
-  ship_back         ← {active_wp_modes: [2, 3]}  (search_behavior 기본 hold)
-  ship_turn         ← {enabled: False}           (hold 에서 침묵 — 발행 0 회인지 검사한다)
+  ship_back·ship_turn ← --search-behavior 에 따라 launch search_behavior_params 와 같은 값
+      hold : ship_back {active_wp_modes: [2, 3]}, ship_turn {enabled: False} (침묵 — 발행 0 회인지 검사한다)
+      orbit: ship_back {active_wp_modes: [2]},    ship_turn {enabled: True}
+      (계약서_탐색orbit_WP넘김_20261111 C4. 기본값은 대회 launch 기본과 같게 둔다.)
   ⚠️ 11-05부터 대회 launch 는 위 6개 노드에 각 패키지 yaml 도 넘긴다(계약서_launch_yaml_blackbox).
      지금 yaml 값 == 코드 기본값이라 결과는 같지만, 현장에서 yaml 을 고치면 이 시뮬과 달라진다.
   검출기 3종의 모드 게이트·확정기는 실제 순수 모듈(color_shape_detector.mode_gate.ModeGate,
@@ -79,8 +81,11 @@
 판정 (실측 아님, 시뮬 정의)
   · 게이트 기하 통과 = 궤적이 빨강–초록 선분을 진행 방향으로 가로지름. /gates_passed = ship_gate 마지막 발행값.
   · 위치유지(규정) = mode 2 동안 흰 부표(WP2) 5 m 이내 연속 5 s. 노드 판정(HOLD→DONE) 도 따로 적는다.
-  · 탐색 = mode 3 동안 ship_back 이 HOLD→DONE 했고 그때 가장 가까운 부표가 빨강(turn 검출기 mode 3 대상 색).
+  · 탐색(hold) = mode 3 동안 ship_back 이 HOLD→DONE 했고 그때 가장 가까운 부표가 빨강(turn 검출기 mode 3 대상 색).
     규정 기하(빨강 5 m 이내 연속 5 s)도 따로 적는다.
+  · 탐색(orbit) = ship_turn 이 ORBIT 에서 진행각 orbit_target_deg 를 채워 DONE(안전 타임아웃 DONE 은 실패)
+    + 기하: mode 3 동안 공지 색 부표(turn_color_mode3) 8 m 안에서 배 위치 방위의 부호 있는 누적이
+    규정 방향(빨강·초록 시계 / 노랑·흰색 반시계)으로 ≥ 350°. 둘 다 맞아야 성공.
   · 포기 = ship_back 이 ERROR '포기'(거리 unknown 10 s 또는 HOLD 총 60 s)를 남기고 DONE — 성공으로 세지 않는다.
   · 도킹 = ship_dock 이 CONTACT 에 들어간 순간 배 중심이 목표 칸 중심 ±0.5 m(칸 폭) 안 → '칸 안 접안'.
     후진 이탈 = BACKOFF→DONE 이 거리(2.5 m) 도달로 끝남. SEARCH 타임아웃 = SEARCH→DONE.
@@ -423,14 +428,22 @@ def cam_closest(x, y, psi, pts, rng, dmin=CAM_MIN):
 
 
 # ───────────────────────── 한 런 ─────────────────────────
-def node_params(wp_file, overrides=None):
+SEARCH_BEHAVIOR_PARAMS = {   # launch_files.launch.py search_behavior_params 와 같은 값
+    "hold": {"ship_back": {"active_wp_modes": [2, 3]}, "ship_turn": {"enabled": False}},
+    "orbit": {"ship_back": {"active_wp_modes": [2]}, "ship_turn": {"enabled": True}},
+}
+ORBIT_GEO_MIN_DEG = 350.0     # 기하 판정: 부호 있는 누적이 이 이상
+ORBIT_GEO_NEAR_M = 8.0        # 이 거리 안일 때만 누적
+
+
+def node_params(wp_file, overrides=None, search_behavior="hold"):
     rosstub.PARAMS.clear()
     rosstub.PARAMS["north_goal_angle"] = dict(P_NGA, waypoints_file=wp_file)
     rosstub.PARAMS["ship_goal_angle"] = dict(P_SGA)
     for n in ("ship_direction", "motor_control", "ship_gate", "ship_dock"):
         rosstub.PARAMS[n] = {}
-    rosstub.PARAMS["ship_back"] = {"active_wp_modes": [2, 3]}
-    rosstub.PARAMS["ship_turn"] = {"enabled": False}
+    for node, kv in SEARCH_BEHAVIOR_PARAMS[search_behavior].items():
+        rosstub.PARAMS[node] = dict(kv)
     for node, kv in (overrides or {}).items():         # --param 노드.키=값 (11-06, 계약서_DWA 결정 11)
         rosstub.PARAMS.setdefault(node, {}).update(kv)
 
@@ -470,7 +483,7 @@ def apply_dwell(path, overrides):
 
 def run(seed, variant="A", wp_file=None, world_wp_file=WP_DEFAULT, gps_sigma=0.03, current=(0.0, 0.0),
         t_max=1500.0, tail=90.0, record=False, dwell_override=None, fault=None, dyn="legacy", hull=None,
-        node_overrides=None, lidar_noise=False):
+        node_overrides=None, lidar_noise=False, search_behavior="hold"):
     world_wps = load_wps(world_wp_file)
     nrng = np.random.default_rng(20_000 + seed) if lidar_noise else None
     W = build_world(world_wps, seed)
@@ -480,10 +493,10 @@ def run(seed, variant="A", wp_file=None, world_wp_file=WP_DEFAULT, gps_sigma=0.0
     wp_file = apply_dwell(wp_file, dwell_override)
     wps = load_wps(wp_file)
     WPXY = [np.array(geo.xy(w["lat"], w["lon"])) for w in wps]
-    node_params(wp_file, node_overrides)
+    node_params(wp_file, node_overrides, search_behavior)
     Clock.t = 0.0
     vtag = variant + ("" if not dwell_override else "-dwell(" + ",".join(f"{k}={v:g}" for k, v in dwell_override.items()) + ")")
-    out = dict(seed=seed, variant=vtag, wp_file=wp_file, bay=dock["bay"], exception="")
+    out = dict(seed=seed, variant=vtag, wp_file=wp_file, bay=dock["bay"], exception="", search_behavior=search_behavior)
     rng = random.Random(10_000 + seed)
 
     nga = NGA.NorthGoalAngle(); sga = SGA.ShipGoalAngle(); sd = SD.ShipDirection(); mc = MC.MotorController()
@@ -518,6 +531,11 @@ def run(seed, variant="A", wp_file=None, world_wp_file=WP_DEFAULT, gps_sigma=0.0
     gate_cross = [0] * 4; gate_wrong = [0] * 4
     hold_run = 0.0; hold_best = 0.0; srch_run = {}; srch_best = {}
     sb_events = []; sk_events = []; prev_sb = sb.state; prev_sk = sk.state
+    st_events = []; prev_st = st.state            # ship_turn 상태 전이 (t, mode, 이전, 다음, 진행각)
+    c3 = (TURN_COLOR_MAP.get(3) or [None])[0]       # 공지 탐색 색(검출기 mode 3 대상)
+    orb_buoys = [b for b in W["buoys"] if b["kind"].startswith("search") and b["color"] == c3]
+    orb_prev = {}; orb_sum = {}                     # 부표 index → 직전 방위, 부호 있는 누적(시계 +)
+    orb_min_after = math.inf                        # DONE 뒤 공지 색 부표 표면까지 최소 거리
     sb_log_idx = 0
     contacts_sb_state = {}
     _hd = HULL_DIMS.get(hull or variant[:1], HULL_DIMS["A"]); rect_hl, rect_hb = _hd[0] / 2.0, _hd[1] / 2.0
@@ -735,6 +753,21 @@ def run(seed, variant="A", wp_file=None, world_wp_file=WP_DEFAULT, gps_sigma=0.0
                         kk = b["kind"]
                         srch_run[kk] = srch_run.get(kk, 0.0) + DT if math.hypot(x - b["x"], y - b["y"]) <= 5.0 else 0.0
                         srch_best[kk] = max(srch_best.get(kk, 0.0), srch_run[kk])
+            if cur_mode == 3 and st.state == "DONE":
+                for b in orb_buoys:   # DONE(20000) 뒤 GPS 가 WP 좌표(=부표 위치)로 갈 때 최소 거리
+                    orb_min_after = min(orb_min_after, math.hypot(x - b["x"], y - b["y"]) - BUOY_R)
+            if cur_mode == 3 and st.state != "DONE":   # 기하 누적은 DONE 전까지만(뒤는 GPS 경로)
+                for bi, b in enumerate(orb_buoys):
+                    if math.hypot(x - b["x"], y - b["y"]) <= ORBIT_GEO_NEAR_M:
+                        brg = math.degrees(math.atan2(x - b["x"], y - b["y"]))   # 부표→배 나침반 방위
+                        if bi in orb_prev:
+                            orb_sum[bi] = orb_sum.get(bi, 0.0) + wrap(brg - orb_prev[bi])
+                        orb_prev[bi] = brg
+                    else:
+                        orb_prev.pop(bi, None)
+            if st.state != prev_st:
+                st_events.append((round(t, 1), cur_mode, prev_st, st.state, round(st.progress.progress_deg(), 1)))
+                prev_st = st.state
             # 미션 노드 상태 전이
             if sb.state != prev_sb:
                 near = min(W["buoys"], key=lambda b: math.hypot(x - b["x"], y - b["y"]))
@@ -808,6 +841,23 @@ def run(seed, variant="A", wp_file=None, world_wp_file=WP_DEFAULT, gps_sigma=0.0
     else:
         out["search_node"] = "미완"; out["search_at"] = ""
     out["search_ok"] = out["search_node"] == "HOLD→DONE" and out["search_at"] == "search_red"
+    # orbit 판정 (C4)
+    target = st.orbit_target_deg
+    done_t = [e for e in st_events if e[3] == "DONE" and e[2] == "ORBIT"]
+    if done_t:
+        out["orbit_node"] = "완주" if done_t[0][4] >= target - 1e-6 else "안전 타임아웃"
+    else:
+        out["orbit_node"] = "미완"
+    want_cw = {"red": True, "green": True, "yellow": False, "white": False}.get(c3)
+    geo = max(orb_sum.values(), key=abs) if orb_sum else 0.0
+    out["orbit_geo_deg"] = round(geo, 1)
+    out["orbit_geo_ok"] = want_cw is not None and abs(geo) >= ORBIT_GEO_MIN_DEG and (geo > 0) == want_cw
+    out["orbit_ok"] = out["orbit_node"] == "완주" and out["orbit_geo_ok"]
+    out["orbit_tries"] = sum(1 for e in st_events if e[3] == "APPROACH")
+    out["orbit_min_d_after_done"] = None if not math.isfinite(orb_min_after) else round(orb_min_after, 2)
+    out["st_events"] = st_events
+    if search_behavior == "orbit":
+        out["search_ok"] = out["orbit_ok"]
     out["search_geo_red"] = srch_best.get("search_red", 0.0) >= 5.0
     out["search_best"] = {kk: round(vv, 1) for kk, vv in srch_best.items()}
     out["dock_contact"] = dock_contact is not None
@@ -994,7 +1044,9 @@ CSV_COLS = ["variant", "seed", "bay", "ok", "exception", "t_course", "t_end", "f
             "c_gate", "c_hold", "c_search", "c_obst5", "c_obst8", "c_dock", "turn_published", "multi_pub_ticks",
             "fs_l1_n", "fs_l2_n", "fs_l1_s", "fs_l2_s", "fs_first_t", "fs_first_wp", "fs_first_mode", "mc_wd_n", "mc_wd_s",
             "gps_stale_n", "north_imu_stale_n", "sga_imu_stale_n", "sga_goal_stale_n", "stop_hold_s", "stop_hold_by_mode",
-            "segments", "sk_events", "node_errors", "mode_pubs"]
+            "segments", "sk_events", "node_errors", "mode_pubs",
+            "search_behavior", "orbit_node", "orbit_geo_deg", "orbit_geo_ok", "orbit_ok", "orbit_tries",
+            "orbit_min_d_after_done"]
 FAULT_COLS = ["fault", "fault_applied", "fault_t0", "fault_wp", "fault_mode", "fault_node", "fault_cand0", "t_L1", "t_L2", "max_lvl", "t_wd", "wd_ticks",
               "stop_s", "v_before", "v_in_mean", "v_in_late", "recover_s", "contacts_fault", "sga_goal_stale", "sga_imu_stale", "gps_stale_flag",
               "base_t_course", "d_t_course", "mission_continued", "same_outcome"]
@@ -1011,7 +1063,9 @@ def to_row(r):
             c["gate"], c["hold"], c["search"], c["obst_5"], c["obst_8"], c["dock"], r["turn_published"], str(r["multi_pub_ticks"]),
             r["fs_l1_n"], r["fs_l2_n"], r["fs_l1_s"], r["fs_l2_s"], r["fs_first_t"], r["fs_first_wp"], r["fs_first_mode"], r["mc_wd_n"], r["mc_wd_s"],
             r["gps_stale_n"], r["north_imu_stale_n"], r["sga_imu_stale_n"], r["sga_goal_stale_n"], r["stop_hold_s"], str(r["stop_hold_by_mode"]),
-            seg, ske, str(r["node_errors"]), str({m: sorted(v) for m, v in r["mode_pubs"].items()})] + \
+            seg, ske, str(r["node_errors"]), str({m: sorted(v) for m, v in r["mode_pubs"].items()}),
+            r.get("search_behavior"), r.get("orbit_node"), r.get("orbit_geo_deg"), int(bool(r.get("orbit_geo_ok"))),
+            int(bool(r.get("orbit_ok"))), r.get("orbit_tries"), r.get("orbit_min_d_after_done")] + \
            ([r.get(kk) for kk in FAULT_COLS] if "fault" in r else [])
 
 
@@ -1031,7 +1085,19 @@ def summarize(R, label):
     at = {}
     for r in R:
         at[r["search_at"] or r["search_node"]] = at.get(r["search_at"] or r["search_node"], 0) + 1
-    lines.append(f"  탐색(빨강 앞 HOLD→DONE) {ci(S('search_ok'))} | 빨강 기하 5 m·5 s {S('search_geo_red')}/{n} | mode 3 종료 대상 {at}")
+    if R and all(r.get("search_behavior") == "orbit" for r in R):
+        on = {}
+        for r in R:
+            on[r["orbit_node"]] = on.get(r["orbit_node"], 0) + 1
+        geos = sorted(r["orbit_geo_deg"] for r in R)
+        lines.append(f"  탐색(orbit: 노드 완주 + 기하 ≥{ORBIT_GEO_MIN_DEG:.0f}° 규정 방향) {ci(S('orbit_ok'))} | 노드 {on} | "
+                     f"기하 OK {S('orbit_geo_ok')}/{n} (부호 있는 누적 중앙값 {med(geos):.0f}°, 시계 +) | 시도(APPROACH) 합 {sum(r['orbit_tries'] for r in R)}")
+        dd = sorted(r["orbit_min_d_after_done"] for r in R if r.get("orbit_min_d_after_done") is not None)
+        if dd:
+            lines.append(f"  orbit DONE 뒤(20000 → GPS 가 WP 좌표로) 공지 색 부표 표면 최소 거리: 최소 {dd[0]:.2f} m, 중앙값 {med(dd):.2f} m "
+                         f"(선체 반폭 0.29 m 미만 {sum(1 for v in dd if v < 0.29)} 런)")
+    else:
+        lines.append(f"  탐색(빨강 앞 HOLD→DONE) {ci(S('search_ok'))} | 빨강 기하 5 m·5 s {S('search_geo_red')}/{n} | mode 3 종료 대상 {at}")
     lines.append(f"  도킹 칸 안 접안 {ci(S('dock_inbay'))} | CONTACT {S('dock_contact')}/{n} | 후진 이탈 {S('dock_backout')}/{n} | SEARCH 타임아웃 {S('dock_search_timeout')}/{n} | "
                  f"mode 7 진입 시 도크 거리 중앙값 {med(sorted(r['dock_dist_mode7'] for r in R if r['dock_dist_mode7'] is not None)):.1f} m")
     lines.append(f"  코스 시간(WP10 2.5 m 도달) 중앙값 {med(tc):.0f} s (도달 {len(tc)}/{n}, ≤900 s {sum(1 for v in tc if v <= 900)}/{n}) | 런 종료 중앙값 {med(tend):.0f} s | 전 WP 완료 {S('finished_all')}/{n}")
@@ -1272,14 +1338,18 @@ def main():
                     help="운동 모델: legacy = K_V·K_W 1차 지연(기존) / fossen = 3자유도(boat3dof.py, Gazebo 모델과 같은 계수)")
     ap.add_argument("--hull", default=None, choices=["A", "B"], help="fossen 선체 계수(기본 = variant 글자)")
     ap.add_argument("--lidar-noise", action="store_true",
-                    help="LiDAR 잡음(σ3cm·결측5%·정면±30° 고립 물보라1%) — 합성, add_lidar_noise 참조")
+                    help="LiDAR 잡음(σ3cm·결측5%%·정면±30° 고립 물보라1%%) — 합성, add_lidar_noise 참조")
+    # %% — Python 3.13+ argparse 가 도움말의 단독 % 를 형식 오류로 막는다(11-11 Mac 3.15 에서 시작부터 죽음).
+    ap.add_argument("--search-behavior", default="hold", choices=["hold", "orbit"],
+                    help="탐색(mode 3) 행동 — launch search_behavior 와 같은 값을 ship_back·ship_turn 에 넘긴다")
     ap.add_argument("--param", action="append", default=[], metavar="노드.키=값",
                     help="노드 파라미터 덮어쓰기(반복 가능), 예 --param ship_direction.dwa_enabled=true")
     a = ap.parse_args()
     os.makedirs(OUT_DIR, exist_ok=True)
     dov = {kv.split("=")[0].strip(): float(kv.split("=")[1]) for kv in a.dwell_label.split(",") if "=" in kv} or None
     kw = dict(wp_file=a.wp_file, world_wp_file=a.world_wp_file, gps_sigma=a.gps_sigma, current=tuple(a.current), t_max=a.t_max, tail=a.tail, dyn=a.dyn, hull=a.hull,
-              dwell_override=dov, node_overrides=parse_param_overrides(a.param), lidar_noise=a.lidar_noise)
+              dwell_override=dov, node_overrides=parse_param_overrides(a.param), lidar_noise=a.lidar_noise,
+              search_behavior=a.search_behavior)
     variants = ["A", "B"] if a.variant == "AB" else [a.variant]
     if a.plot_seed is not None:
         for vv in variants:
@@ -1311,7 +1381,7 @@ def main():
             for r in R: wr.writerow(to_row(r) + [f"{r['wall']:.1f}"])
         print(f"{len(R)} 런 실행 시간 {wall:.0f} s (병렬 {a.jobs}, 런당 CPU 중앙값 {sorted(r['wall'] for r in R)[len(R) // 2]:.1f} s) → {a.csv}")
         for vv in variants:
-            print(summarize([r for r in R if r["variant"].split("-")[0] == vv], f"변형 {vv}{'' if not dov else ' dwell ' + a.dwell_label}, seed {a.seed0}~{a.seed0 + a.seeds - 1}"))
+            print(summarize([r for r in R if r["variant"].split("-")[0] == vv], f"변형 {vv}{'' if not dov else ' dwell ' + a.dwell_label}, search_behavior {a.search_behavior}, seed {a.seed0}~{a.seed0 + a.seeds - 1}"))
         bad = [r for r in R if not r["ok"]]
         for r in bad[:3]:
             print(f"예외 seed {r['seed']} {r['variant']}: {r.get('traceback', r['exception'])}")
