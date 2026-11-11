@@ -147,6 +147,12 @@ def test_main_file_ok_for_main_rejected_for_tournament():
     assert _raises(validate_course, 'tournament', wps) is not None
 
 
+def test_main_template_is_2026_rule_order():
+    """2026 규정 채점 구간 순서: 게이트 → 위치유지 1 → 도킹(접근 2 + 입구·이탈) → 탐색 접근 → 탐색 3 → 위치유지 2 접근 → 위치유지 2 → 회피 → 종료."""
+    wps = _load_wp('waypoints.yaml')
+    assert [w[2] for w in wps] == [0, 1, 2, 5, 5, 7, 7, 5, 3, 3, 3, 5, 2, 5, 5, 8], [w[2] for w in wps]
+
+
 # ---------------- ③ launch: course → 파일 해석
 def test_north_goal_files_resolution():
     fn = _load_func(_launch_tree(), 'north_goal_files')

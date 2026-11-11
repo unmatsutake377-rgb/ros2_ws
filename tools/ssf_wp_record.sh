@@ -60,8 +60,8 @@ elif [ "$course" = practice ]; then
   echo "   ③ 연습: 기본값(엔터)은 종합임무 템플릿의 그 미션 줄. 대회 녹화본(waypoints_recorded.yaml)과 따로 저장된다"
   echo "      launch 는 course:=main · 마지막 점 뒤엔 조종기로 받는다"
 else
-  echo "   ③ 🚨 WP7 다음 점(토너먼트)은 엔터 금지 — mode 8 · dwell 3 · 이름 'WP10 토너먼트 회피' 직접 입력"
-  echo "      도킹 네 줄은 찍지 않는다 — 저장 뒤 tools/dock_wp.py 출력을 WP7 과 WP10 사이에 끼운다"
+  echo "   ③ 2026 순서: 게이트 → 위치유지 1 → (도킹) → 탐색 접근 → 탐색 3 → 위치유지 2 접근 → 위치유지 2 → 회피 시작·끝 → WP10 종료 게이트 너머 — 엔터로 기본값 따라 12점"
+  echo "      도킹 네 줄은 찍지 않는다(기본값에서도 빠져 있다) — 저장 뒤 tools/dock_wp.py 출력을 위치유지 1 바로 뒤에 끼운다"
 fi
 echo "   SSH 가 끊겨도 tmux 안이라 녹화는 계속된다 — Mac 에서 같은 ssf 명령을 다시 치면 이어 붙는다"
 echo

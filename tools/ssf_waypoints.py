@@ -172,7 +172,7 @@ PRACTICE = {   # 이름: (화면 이름, 템플릿 줄 고르기(mode, 구역명
     "gate":   ("게이트",   lambda m, lab: m in (0, 1)),
     "hold":   ("위치유지", lambda m, lab: m == 2),
     "search": ("탐색",     lambda m, lab: m == 3),
-    "avoid":  ("회피",     lambda m, lab: m == 5 and "도킹" not in lab),
+    "avoid":  ("회피",     lambda m, lab: m == 5 and "회피" in lab),   # 도킹·탐색·위치유지 2 접근점(mode 5) 제외
     "dock":   ("도킹",     lambda m, lab: "도킹" in lab),
 }
 

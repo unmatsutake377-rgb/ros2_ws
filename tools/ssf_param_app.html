@@ -473,7 +473,7 @@ function viewDiff() {
     h("div", {class:"right"}, h("button", {class:"btn", text:"전부 저장소 값으로", onclick:undoAll}))];
 }
 
-const MODE_KO = {0:"게이트 시작", 1:"게이트 끝", 2:"위치유지", 3:"탐색 부표", 5:"회피·도킹 접근", 7:"도킹", 8:"토너먼트 회피"};
+const MODE_KO = {0:"게이트 시작", 1:"게이트 끝", 2:"위치유지", 3:"탐색 부표", 5:"회피·도킹 접근", 7:"도킹", 8:"토너먼트 회피·종합 종료"};
 function copyBtn(text) {
   return h("button", {class:"linkbtn", text:"복사", onclick:async e => {
     try { await navigator.clipboard.writeText(text); e.target.textContent = "복사됨"; }
@@ -680,7 +680,7 @@ function viewWp() {
       h("p", {class:"adv"}, h("span", {class:"k", text:"먼저"}),
         "RTK FIXED 확인(ros2 topic echo /ublox_gps_node/navpvt --once → carrSoln 2). 단독 GPS 로 찍으면 쓸 수 없다."),
       h("p", {class:"adv"}, h("span", {class:"k", text:"종합임무"}),
-        "mode 0·1·2·3·5·7·8 만. mode 2·3 은 부표 좌표에서. WP7 다음 점은 엔터 금지 — mode 8 · dwell 3 · 'WP10 토너먼트 회피' 직접 입력. 도킹 네 줄은 tools/dock_wp.py 출력으로 끼운다."),
+        "2026 순서: 게이트 → 위치유지 1 → 도킹 → 탐색 → 위치유지 2 → 회피 → 종료. 엔터로 기본값 따라 12점(도킹 네 줄은 녹화에서 빠짐). '탐색 접근'·'위치유지 2 접근'은 그 구역 바로 앞. mode 2·3 은 부표 좌표에서. 저장 뒤 위치유지 1 바로 뒤에 tools/dock_wp.py 출력 네 줄을 끼운다."),
       h("p", {class:"adv"}, h("span", {class:"k", text:"토너먼트"}),
         "레인마다 다른 파일. 전부 mode 8. 마지막 점 = 결승선 너머 약 3 m · dwell 0.5 · 경기장 경계 안."),
       h("p", {}, h("span", {class:"k", text:"연습"}),

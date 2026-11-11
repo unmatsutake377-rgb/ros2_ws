@@ -523,7 +523,7 @@ def test_wp_prepare_paths_backup_and_boat_check(boat):
 
 def test_practice_templates_pick_one_mission(boat):
     """연습: 종합임무 템플릿에서 그 미션 줄만 뽑아 녹화 기본값으로 — mode 순서가 미션 그대로."""
-    want = {"gate": [0, 1], "hold": [5, 2], "search": [5, 3, 3, 3], "avoid": [5, 5], "dock": [5, 5, 7, 7]}
+    want = {"gate": [0, 1], "hold": [5, 2, 2], "search": [5, 3, 3, 3], "avoid": [5, 5], "dock": [5, 5, 7, 7]}
     tm = [f for f in boat.waypoints() if f["name"] == "waypoints.yaml"][0]["modes"]
     for m, modes in want.items():
         p = boat.wp_prepare("practice", m)

@@ -166,6 +166,35 @@ def test_load_template_source_yaml_readable():
     assert all(lb for lb in labels), labels
 
 
+def test_skip_dock_block_2026_order():
+    """2026 순서: 위치유지 1 뒤 도킹 네 줄은 녹화 기본값에서 빠져, 그 뒤 탐색이 한 칸도 안 밀린다."""
+    from north_goal_angle.recorder_prompts import skip_dock_block, dock_block_start
+    rows = [[0, 0, 0, 3.0], [0, 0, 1, 3.0], [0, 0, 2, 0.5], [0, 0, 5, 1.0], [0, 0, 5, 1.0], [0, 0, 7, 1.0],
+            [0, 0, 7, 1.0], [0, 0, 3, 0.5], [0, 0, 2, 0.5], [0, 0, 5, 1.0], [0, 0, 5, 1.0], [0, 0, 8, 3.0]]
+    labels = ["WP0", "WP1", "WP2 위치유지 1", "도킹 접근 10m", "도킹 접근 6m", "WP8 도킹 입구", "WP9 도킹 이탈",
+              "WP3 부표", "WP5b 위치유지 2", "WP6 회피 시작", "WP7 회피 끝", "WP10 종료"]
+    assert dock_block_start(rows, labels) == 3
+    r2, l2 = skip_dock_block(rows, labels)
+    assert [r[2] for r in r2] == [0, 1, 2, 3, 2, 5, 5, 8], [r[2] for r in r2]
+    assert l2[3] == "WP3 부표" and len(l2) == len(r2)
+    # 도킹 연습 템플릿(네 줄뿐)은 그대로
+    r3, l3 = skip_dock_block(rows[3:7], labels[3:7])
+    assert len(r3) == 4
+    # '도킹 접근' 이름이 아니면 건드리지 않는다(단독 mode 7 'WP3 도킹' 같은 템플릿)
+    assert dock_block_start([[0, 0, 0, 1.0], [0, 0, 7, 1.0]], ["WP0", "WP3 도킹"]) is None
+
+
+def test_source_yaml_recording_order_has_no_dock_lines():
+    """소스 waypoints.yaml 녹화 기본값에 도킹 네 줄이 없고 mode 순서가 2026 규정 순서(도킹 제외)다."""
+    if not _has_yaml():
+        return
+    t, reason = load_template(_WAYPOINTS_YAML)
+    assert t is not None, reason
+    rows, labels = t
+    assert not any("도킹" in lb for lb in labels), labels
+    assert [int(r[2]) for r in rows] == [0, 1, 2, 5, 3, 3, 3, 5, 2, 5, 5, 8], [int(r[2]) for r in rows]
+
+
 def test_load_template_missing_file():
     t, reason = load_template("/nonexistent/dir/waypoints.yaml")
     assert t is None and "파일 없음" in reason, reason

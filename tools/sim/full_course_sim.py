@@ -69,12 +69,13 @@
 
 세계 배치 (--world-wp-file, 기본 src/north_goal_angle/config/waypoints.yaml; 원점 = WP0, x = 동, y = 북)
   · 게이트 4쌍: WP0→WP1 선분의 1/8·3/8·5/8·7/8 지점이 중심, 폭 3~6 m 무작위, 선분에 수직, 빨강 = 진행 방향 좌현.
-  · WP2 위치에 흰 부표(위치유지), WP3 초록·WP4 빨강·WP5 흰 부표(구역 이름대로, WP 좌표 그대로).
-  · 장애물(주황, 검출기 대상 색 아님): WP6→WP7(처음 두 mode 5) 선분의 10~90 % 구간에 6~10개,
-    도크(첫 mode 7)→WP10 선 위 WP10 앞 3~20 m 구간에 6~10개,
+  · mode 2 WP 마다 흰 부표(위치유지 — 2026 순서는 2회), WP3 초록·WP4 빨강·WP5 흰 부표(구역 이름대로, WP 좌표 그대로).
+  · 장애물(주황, 검출기 대상 색 아님): WP6→WP7(이름에 '회피' 가 든 mode 5 두 점) 선분의 10~90 % 구간에 6~10개.
+    옛 순서(도킹 바로 뒤 WP10 mode 8)일 때만 도크(첫 mode 7)→WP10 선 위 WP10 앞 3~20 m 구간에 6~10개 더.
     경로선 ±3 m, 서로 1.5 m 이상, 다른 부표와 1.5 m 이상.
   · 도크(dock_sim 과 같은 규격): 정면 벽 3 m(1 m 칸 3개) + 칸막이 0.5 m 4개. 정면 벽 중심 = WP8 좌표,
-    정면(물 쪽)이 WP7 방향을 향함. 목표 칸(표식) 좌·중·우 무작위.
+    정면(물 쪽)이 직전 WP(도킹 접근 6m) 방향을 향함. 목표 칸(표식) 좌·중·우 무작위.
+  · 위치유지 판정은 위치유지 WP 마다 따로(그 WP 동안 그 부표 5 m·5 s), 전부 채워야 성공.
   · geofence: north_goal_angle.yaml 의 geofence_polygon 이 [] → 꺼짐(노드가 빈 배열 발행). 경계 없음.
   · 출발: WP1→WP0 연장선 위 WP0 앞 8 m, 좌우 ±1 m, 헤딩 = WP0 방향 ±20°, 정지 상태. t=0 에 모든 노드 생성.
 
@@ -263,8 +264,9 @@ def build_world(world_wps, seed):
     W["gate_u"] = u
     # 미션 부표 (구역 이름대로)
     by_mode = [w["mode"] for w in world_wps]
-    i2 = by_mode.index(2); add_buoy(P[i2], "white", "hold")
-    W["hold_idx"] = len(W["buoys"]) - 1
+    W["hold_by_wp"] = {}                     # 위치유지 WP 순번 → 부표 index (2026 규정: 2회)
+    for i2 in [i for i, m in enumerate(by_mode) if m == 2]:
+        add_buoy(P[i2], "white", "hold"); W["hold_by_wp"][i2] = len(W["buoys"]) - 1
     col_kw = {"초록": "green", "빨강": "red", "하양": "white", "흰": "white"}
     for i, w in enumerate(world_wps):
         if w["mode"] == 3:
@@ -289,13 +291,17 @@ def build_world(world_wps, seed):
             if all(math.hypot(p[0] - q["x"], p[1] - q["y"]) >= 1.5 for q in W["buoys"]) and \
                np.linalg.norm(p - W["dock"]["O"]) > 5.0:
                 add_buoy(p, "orange", tag); placed += 1
-    i5 = [i for i, m in enumerate(by_mode) if m == 5]
+    # 회피 구간 = 구역 이름에 '회피' 가 든 mode 5 두 점(WP6→WP7). 도킹 접근점도 mode 5 라 이름으로 고른다.
+    i5 = [i for i, m in enumerate(by_mode) if m == 5 and "회피" in world_wps[i]["label"]]
+    if len(i5) < 2:
+        i5 = [i for i, m in enumerate(by_mode) if m == 5 and "도킹" not in world_wps[i]["label"]]
     W["i5"] = i5
-    a, b = P[i5[0]], P[i5[1]]; L = np.linalg.norm(b - a)       # WP6→WP7 (뒤의 mode 5 는 도킹 접근점)
+    a, b = P[i5[0]], P[i5[1]]; L = np.linalg.norm(b - a)
     scatter(a, b, 0.1 * L, 0.9 * L, "obst_5")
     i8 = by_mode.index(8)
-    a, b = P[i7], P[i8]; L = np.linalg.norm(b - a)    # 도크(첫 mode 7)→WP10. 옛 yaml 은 WP9 = 도크라 같다
-    scatter(a, b, max(0.0, L - 20.0), L - 3.0, "obst_8")
+    if by_mode[i8 - 1] == 7:   # 옛 순서(도킹 → WP10 토너먼트 회피)만 두 번째 장애물 구간이 있다. 2026 순서는 회피 → 종료.
+        a, b = P[i7], P[i8]; L = np.linalg.norm(b - a)
+        scatter(a, b, max(0.0, L - 20.0), L - 3.0, "obst_8")
     arr = np.array([[q["x"], q["y"]] for q in W["buoys"]])
     W["bx"], W["by"] = arr[:, 0], arr[:, 1]
     W["seg_arr"] = np.array([[p[0], p[1], q[0], q[1]] for p, q, _ in W["segs"]])
@@ -432,7 +438,7 @@ AVOID_ZONE_END_M = 4.0    # 장애물 구간 직사각형이 WP6·WP7 너머로 
 
 
 def avoid_rect(W, half_w):
-    """WP6→WP7(처음 두 mode 5) 따라 ±half_w, 양 끝 AVOID_ZONE_END_M 연장한 직사각형 꼭짓점(로컬 x, y)."""
+    """WP6→WP7(회피 mode 5 두 점, W["i5"]) 따라 ±half_w, 양 끝 AVOID_ZONE_END_M 연장한 직사각형 꼭짓점(로컬 x, y)."""
     a, b = W["P"][W["i5"][0]], W["P"][W["i5"][1]]
     u = (b - a) / np.linalg.norm(b - a); n = np.array([-u[1], u[0]])
     s0, s1 = a - u * AVOID_ZONE_END_M, b + u * AVOID_ZONE_END_M
@@ -566,7 +572,7 @@ def run(seed, variant="A", wp_file=None, world_wp_file=WP_DEFAULT, gps_sigma=0.0
     contacts_by_mode = {}
     prev_xy = np.array([x, y])
     gate_cross = [0] * 4; gate_wrong = [0] * 4
-    hold_run = 0.0; hold_best = 0.0; srch_run = {}; srch_best = {}
+    hold_run = 0.0; hold_best = {i: 0.0 for i in W["hold_by_wp"]}; hold_wp = None; srch_run = {}; srch_best = {}
     sb_events = []; sk_events = []; prev_sb = sb.state; prev_sk = sk.state
     st_events = []; prev_st = st.state            # ship_turn 상태 전이 (t, mode, 이전, 다음, 진행각)
     c3 = (TURN_COLOR_MAP.get(3) or [None])[0]       # 공지 탐색 색(검출기 mode 3 대상)
@@ -794,9 +800,13 @@ def run(seed, variant="A", wp_file=None, world_wp_file=WP_DEFAULT, gps_sigma=0.0
                     av_in = False
             # 위치유지·탐색 기하
             if cur_mode == 2:
-                hb = W["buoys"][W["hold_idx"]]
-                hold_run = hold_run + DT if math.hypot(x - hb["x"], y - hb["y"]) <= 5.0 else 0.0
-                hold_best = max(hold_best, hold_run)
+                hw = nga.wp_idx if nga.wp_idx in W["hold_by_wp"] else hold_wp   # 전진 직후 틱은 직전 위치유지
+                if hw is not None:
+                    if hw != hold_wp:
+                        hold_run = 0.0; hold_wp = hw
+                    hb = W["buoys"][W["hold_by_wp"][hw]]
+                    hold_run = hold_run + DT if math.hypot(x - hb["x"], y - hb["y"]) <= 5.0 else 0.0
+                    hold_best[hw] = max(hold_best[hw], hold_run)
             if cur_mode == 3:
                 for b in W["buoys"]:
                     if b["kind"].startswith("search"):
@@ -872,16 +882,18 @@ def run(seed, variant="A", wp_file=None, world_wp_file=WP_DEFAULT, gps_sigma=0.0
     out["gates_wrongdir"] = sum(gate_wrong)
     gp = sg.pubs["/gates_passed"].last
     out["gates_node"] = gp.data if gp is not None else -1
-    out["hold_geo"] = hold_best >= 5.0
-    out["hold_best_s"] = round(hold_best, 1)
+    # 위치유지 규정(5 m·5 s)은 **모든** 위치유지 WP 에서(2026: 2회). 최솟값으로 판정.
+    out["hold_geo"] = bool(hold_best) and min(hold_best.values()) >= 5.0
+    out["hold_best_s"] = round(min(hold_best.values()), 1) if hold_best else 0.0
+    out["hold_n"] = len(hold_best)
     m2 = [e for e in sb_events if e[1] == 2]
     done2 = [e for e in m2 if e[3] == "DONE"]
-    if not done2:
+    if len(done2) < len(hold_best):
         out["hold_node"] = "미완"
-    elif done2[0][6] == "포기":
+    elif any(e[6] == "포기" for e in done2):
         out["hold_node"] = "포기"
     else:
-        out["hold_node"] = "HOLD→DONE" if done2[0][2] == "HOLD" else "SEARCH 타임아웃"
+        out["hold_node"] = "HOLD→DONE" if all(e[2] == "HOLD" for e in done2) else "SEARCH 타임아웃"
     m3 = [e for e in sb_events if e[1] == 3]
     done3 = [e for e in m3 if e[3] == "DONE"]
     if done3:
@@ -1134,7 +1146,7 @@ def summarize(R, label):
                  f"/candidate_angle 같은 틱 발행자 2개 이상: {sum(sum(r['multi_pub_ticks'].values()) for r in R)} 틱 | /image_angle 충돌 {sum(r['img_pub_conflict'] for r in R)}")
     g4 = sum(1 for r in R if r["gates_geo"] == 4); gm = sum(1 for r in R if r["gates_node"] == r["gates_geo"])
     lines.append(f"  게이트 4/4 기하 통과 {ci(g4)} | 기하 통과 합 {sum(r['gates_geo'] for r in R)}/{4 * n} | /gates_passed = 기하 {gm}/{n} | 역방향 가로지름 {sum(r['gates_wrongdir'] for r in R)}")
-    lines.append(f"  위치유지 규정(5 m·5 s) {ci(S('hold_geo'))} | 노드 HOLD→DONE {sum(1 for r in R if r['hold_node'] == 'HOLD→DONE')}, SEARCH 타임아웃 {sum(1 for r in R if r['hold_node'] == 'SEARCH 타임아웃')}, 포기 {sum(1 for r in R if r['hold_node'] == '포기')}")
+    lines.append(f"  위치유지 규정(5 m·5 s, {R[0].get('hold_n', 1)}회 모두) {ci(S('hold_geo'))} | 노드 HOLD→DONE {sum(1 for r in R if r['hold_node'] == 'HOLD→DONE')}, SEARCH 타임아웃 {sum(1 for r in R if r['hold_node'] == 'SEARCH 타임아웃')}, 포기 {sum(1 for r in R if r['hold_node'] == '포기')}")
     at = {}
     for r in R:
         at[r["search_at"] or r["search_node"]] = at.get(r["search_at"] or r["search_node"], 0) + 1

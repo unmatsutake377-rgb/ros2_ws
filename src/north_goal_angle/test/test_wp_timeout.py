@@ -148,25 +148,34 @@ def test_timeout_for_mode_absent_is_none():
 
 # ---------------- 회귀: 현재 waypoints.yaml + 기본값
 def test_regression_real_waypoints():
-    """WP0~7 + 도킹 네 줄(접근 10m·6m mode 5, WP8 입구·WP9 이탈 mode 7) + WP10 = 13개."""
+    """2026 규정 순서 16개: 게이트 2 → 위치유지 1 → 도킹 네 줄(접근 10m·6m mode 5, 입구·이탈 mode 7)
+    → 탐색 접근(5) → 탐색 3 → 위치유지 2 접근(5) → 위치유지 2 → 회피 시작·끝 → WP10 종료(mode 8)."""
     wps = _real_waypoints()
-    assert len(wps) == 13, f"waypoints.yaml 가 13개가 아니다 ({len(wps)}) — 회귀 기준 재확인 필요"
-    assert [w[2] for w in wps] == [0, 1, 2, 3, 3, 3, 5, 5, 5, 5, 7, 7, 8], [w[2] for w in wps]
+    assert len(wps) == 16, f"waypoints.yaml 가 16개가 아니다 ({len(wps)}) — 회귀 기준 재확인 필요"
+    assert [w[2] for w in wps] == [0, 1, 2, 5, 5, 7, 7, 5, 3, 3, 3, 5, 2, 5, 5, 8], [w[2] for w in wps]
     got = per_wp_timeouts(wps, _default_table())
-    # WP0~6 은 옛 순번 규칙과 같아야 한다
-    assert got[:7] == [_old_rule(i) for i in range(7)] == [120.0, 120.0, 120.0, 90.0, 90.0, 90.0, 120.0], got
-    assert got[7] == 120.0, got          # WP7 회피 끝(mode 5): 옛 규칙 None → 120
-    assert got[8] == 120.0 and got[9] == 120.0, got    # 도킹 접근 10m·6m(mode 5)
-    assert got[10] == 150.0 and got[11] == 150.0, got  # WP8 입구·WP9 이탈(mode 7)
-    assert got[12] is None, got          # WP10 토너먼트(mode 8): 없음
+    assert got[:3] == [120.0, 120.0, 120.0], got           # 게이트 0·1, 위치유지 1
+    assert got[3] == 120.0 and got[4] == 120.0, got        # 도킹 접근 10m·6m(mode 5)
+    assert got[5] == 150.0 and got[6] == 150.0, got        # WP8 입구·WP9 이탈(mode 7)
+    assert got[7] == 120.0, got                            # 탐색 접근(mode 5)
+    assert got[8:11] == [90.0, 90.0, 90.0], got            # 탐색 3(mode 3)
+    assert got[11] == 120.0 and got[12] == 120.0, got      # 위치유지 2 접근(5)·위치유지 2(2)
+    assert got[13] == 120.0 and got[14] == 120.0, got      # 회피 시작·끝(mode 5)
+    assert got[15] is None, got                            # WP10 종료(mode 8): 없음
 
 
 def test_real_waypoints_dock_exit_is_near_approach():
     """WP9 이탈점 = 가까운 접근점(6 m) 좌표, WP8 입구와는 다른 좌표(같으면 도킹 뒤 칸으로 재진입)."""
     wps = _real_waypoints()
-    near, entr, exit_ = wps[9], wps[10], wps[11]
+    j = _first_dock(wps)
+    near, entr, exit_ = wps[j - 1], wps[j], wps[j + 1]
     assert exit_[:2] == near[:2], (exit_, near)
     assert exit_[:2] != entr[:2], (exit_, entr)
+
+
+def _first_dock(wps):
+    """첫 mode 7(WP8 입구) 순번 — 도킹 네 줄은 그 앞 두 줄(접근 10m·6m)과 뒤 한 줄(WP9 이탈). 순서가 바뀌어도 따라간다."""
+    return next(i for i, w in enumerate(wps) if w[2] == 7)
 
 
 def _xy(lat0, lon0, lat, lon):
@@ -177,16 +186,17 @@ def _xy(lat0, lon0, lat, lon):
 
 
 def _dock_geometry_errors(wps, far=10.0, near=6.0, tol_m=0.2, tol_deg=1.0):
-    """도킹 네 줄(순번 8·9 접근점, 10 WP8 입구, 11 WP9 이탈) 기하 불변식 위반 목록(빈 목록 = 통과).
+    """도킹 네 줄(첫 mode 7 앞 두 줄 접근점, 첫 mode 7 WP8 입구, 그 뒤 WP9 이탈) 기하 불변식 위반 목록(빈 목록 = 통과).
 
     dock_wp.py 가 만든 줄이면 현장 교체 뒤에도 성립한다:
       · 접근점이 WP8 입구에서 far·near ± tol_m
       · WP8→접근 10m 과 WP8→접근 6m 방위 차 ≤ tol_deg (도크 법선 한 직선 위)
-      · 접근점이 물 쪽: WP8→접근점 방위와 WP8→WP7(순번 7, 배가 지나온 물 위 점) 방위 차 < 90°
+      · 접근점이 물 쪽: WP8→접근점 방위와 WP8→도킹 직전 WP(배가 지나온 물 위 점 — 2026 순서는 위치유지 1) 방위 차 < 90°
         (L·R 을 뒤집어 접근점이 육지 쪽으로 나온 경우를 잡는다)
     """
     errs = []
-    w7, wf, wn, w8 = wps[7], wps[8], wps[9], wps[10]
+    j = _first_dock(wps)
+    w7, wf, wn, w8 = wps[j - 3], wps[j - 2], wps[j - 1], wps[j]
     lat0, lon0 = w8[0], w8[1]
     pts = {k: _xy(lat0, lon0, w[0], w[1]) for k, w in (('wp7', w7), ('far', wf), ('near', wn))}
     for k, want in (('far', far), ('near', near)):
@@ -202,7 +212,7 @@ def _dock_geometry_errors(wps, far=10.0, near=6.0, tol_m=0.2, tol_deg=1.0):
     if diff(brg('far'), brg('near')) > tol_deg:
         errs.append(f"접근점 방위 차 {diff(brg('far'), brg('near')):.2f}° > {tol_deg}°")
     if diff(brg('near'), brg('wp7')) >= 90.0:
-        errs.append(f"접근점이 WP7 반대(육지) 쪽: 방위 차 {diff(brg('near'), brg('wp7')):.1f}°")
+        errs.append(f"접근점이 도킹 직전 WP 반대(육지) 쪽: 방위 차 {diff(brg('near'), brg('wp7')):.1f}°")
     return errs
 
 
@@ -214,27 +224,29 @@ def test_real_waypoints_dock_geometry():
 def test_dock_geometry_catches_bad_rows():
     """불변식이 잘못된 좌표를 실제로 잡는지: 육지 쪽(방향 180° 뒤집힘)·거리 틀림·한 직선 밖."""
     wps = [list(w) for w in _real_waypoints()]
-    w8 = wps[10]
+    j = _first_dock(wps)                     # WP8 입구. 접근 10m = j-2, 6m = j-1, WP9 이탈 = j+1
+    F, N, X = j - 2, j - 1, j + 1
+    w8 = wps[j]
 
     def mirror(w):          # WP8 기준 점대칭 = L·R 뒤집어 법선이 180° 돈 경우
         return [2 * w8[0] - w[0], 2 * w8[1] - w[1]] + list(w[2:])
     flipped = list(wps)
-    flipped[8], flipped[9], flipped[11] = mirror(wps[8]), mirror(wps[9]), mirror(wps[11])
+    flipped[F], flipped[N], flipped[X] = mirror(wps[F]), mirror(wps[N]), mirror(wps[X])
     assert any("육지" in e for e in _dock_geometry_errors(flipped)), _dock_geometry_errors(flipped)
 
     far_wrong = list(wps)
-    f = wps[8]                              # 10 m 점을 WP8 에서 1.5 배(15 m)로
-    far_wrong[8] = [w8[0] + (f[0] - w8[0]) * 1.5, w8[1] + (f[1] - w8[1]) * 1.5] + f[2:]
+    f = wps[F]                              # 10 m 점을 WP8 에서 1.5 배(15 m)로
+    far_wrong[F] = [w8[0] + (f[0] - w8[0]) * 1.5, w8[1] + (f[1] - w8[1]) * 1.5] + f[2:]
     assert any("far" in e for e in _dock_geometry_errors(far_wrong))
 
     swapped = list(wps)                     # 10m·6m 순서 뒤바뀜
-    swapped[8], swapped[9] = wps[9], wps[8]
+    swapped[F], swapped[N] = wps[N], wps[F]
     errs = _dock_geometry_errors(swapped)
     assert any("far" in e for e in errs) and any("near" in e for e in errs), errs
 
     skew = list(wps)                        # 6 m 점을 옆으로 1 m(≈ 9.5°) 밀기
     dlon_1m = math.degrees(1.0 / (6371000.0 * math.cos(math.radians(w8[0]))))
-    skew[9] = [wps[9][0], wps[9][1] + dlon_1m] + wps[9][2:]
+    skew[N] = [wps[N][0], wps[N][1] + dlon_1m] + wps[N][2:]
     assert any("방위 차" in e for e in _dock_geometry_errors(skew)), _dock_geometry_errors(skew)
 
 

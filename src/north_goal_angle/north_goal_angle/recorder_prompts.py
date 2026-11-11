@@ -25,7 +25,7 @@ MODE_DESC = {
     3: "탐색 부표 — 기본(orbit)은 원 선회(빨강·초록 시계/노랑 반시계), search_behavior:=hold 면 위치유지. 여러 개 가능",
     5: "회피 구간(비전 없음 — ship_direction 순수 회피)",
     7: "도킹",
-    8: "토너먼트 회피",
+    8: "토너먼트 회피 · 종합임무 마지막(WP10 종료 게이트 너머, 도착 뒤 정지)",
 }
 
 # 템플릿을 못 읽었을 때의 dwell 폴백표. 규정값이 아니라 **소스 config/waypoints.yaml 의 mode 별 dwell** 과
@@ -94,7 +94,34 @@ def load_template(path):
             labels.append(str(it.get("구역", it.get("label", "")) or ""))
         else:
             labels.append("")
-    return (rows, labels), ""
+    return skip_dock_block(rows, labels), ""
+
+
+# 도킹 네 줄('도킹 접근 10m'·'6m' mode 5 + 입구·이탈 mode 7)은 녹화하지 않고 tools/dock_wp.py 출력으로 끼운다.
+# 2026 순서에선 이 네 줄이 위치유지 1 바로 뒤(코스 가운데)에 있어, 템플릿 i 번째 기본값을 그대로 쓰면 그 뒤 점이
+# 전부 한 칸씩 어긋난다(탐색 자리에 '도킹 접근' 기본값). → 녹화 기본값에서는 이 네 줄을 뺀다.
+DOCK_BLOCK_MODES = [5, 5, 7, 7]
+
+
+def dock_block_start(rows, labels):
+    """도킹 네 줄의 시작 index 또는 None. 첫 mode 7 앞 두 줄이 이름에 '도킹 접근' 이 든 mode 5 일 때만."""
+    j = next((k for k, r in enumerate(rows) if int(r[2]) == 7), None)
+    if j is None or j < 2 or j + 2 > len(rows):
+        return None
+    if [int(r[2]) for r in rows[j - 2:j + 2]] != DOCK_BLOCK_MODES:
+        return None
+    if not all("도킹 접근" in (labels[k] if k < len(labels) else "") for k in (j - 2, j - 1)):
+        return None
+    return j - 2
+
+
+def skip_dock_block(rows, labels):
+    """(rows, labels) 에서 도킹 네 줄을 뺀 녹화 순서. 네 줄뿐인 템플릿(도킹 연습)은 그대로 둔다."""
+    k = dock_block_start(rows, labels)
+    if k is None or len(rows) <= len(DOCK_BLOCK_MODES):
+        return rows, labels
+    keep = [i for i in range(len(rows)) if not (k <= i < k + len(DOCK_BLOCK_MODES))]
+    return [rows[i] for i in keep], [labels[i] if i < len(labels) else "" for i in keep]
 
 
 def describe_template(path, template, reason):
