@@ -264,14 +264,15 @@ def _pid(boat, key):
 
 def test_turn_color_choices_follow_node(boat):
     """탐색 부표 색: 노드(turn_color_logic.TURN_COLORS)가 모르는 색은 적용 거부 — 노드는 부팅 ERROR 후 그 모드 검출을 끈다.
-    11-11: 앱 선택지에 yellow 가 있었는데 노드는 red/green/white 만 받았다."""
+    11-11: 앱 선택지에 yellow 가 있었는데 노드는 red/green/white 만 받았다.
+    11-11 오후: 노드가 yellow(탐색 좌현선회)·black(위치유지) 을 받게 됐다(계약서_탐색선회_부표색_20261111 C1)."""
     done = _copy_node_modules(boat)
     assert "turn_color_mode3" in done and "target_shape" in done
     rel = "src/color_shape_detector/config/vision.yaml"
     before = _text(boat, rel)
     p = _pid(boat, "turn_color_mode3")
-    assert p["catalog"]["choices"] == ["red", "green", "white"]
-    for bad in ("yellow", "blue", "Red"):
+    assert p["catalog"]["choices"] == ["red", "green", "white", "yellow", "black"]
+    for bad in ("orange", "blue", "Red"):
         with pytest.raises(core.ParamError, match="turn_color_mode3"):
             boat.apply(p["id"], bad, course="main")
     assert _text(boat, rel) == before

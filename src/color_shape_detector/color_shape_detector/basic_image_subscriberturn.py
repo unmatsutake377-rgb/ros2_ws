@@ -13,8 +13,8 @@ from color_shape_detector import hsv_ranges
 from color_shape_detector.dock_logic import DetectionConfirmer, fallback_value
 from color_shape_detector.turn_color_logic import (
     DEFAULT_TURN_COLOR_MODE2, DEFAULT_TURN_COLOR_MODE3, TURN_COLORS,
-    build_wp_color_map, detection_disabled, log_due, resolve_turn_color,
-    target_colors_for,
+    build_wp_color_map, detection_disabled, log_due, orbit_direction_warning,
+    resolve_turn_color, target_colors_for,
 )
 
 import cv2
@@ -81,6 +81,9 @@ class ImageSubscriber(Node):
         self.get_logger().info(
             f"turn 목표 색: mode 2={self.turn_color_mode2 or '검출 안 함'}, "
             f"mode 3={self.turn_color_mode3 or '검출 안 함'} (4·5 = mode 3 색)")
+        _dir_warn = orbit_direction_warning(self.turn_color_mode3)
+        if _dir_warn:
+            self.get_logger().warn(_dir_warn)
 
         self.br = CvBridge()
 

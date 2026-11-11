@@ -17,13 +17,20 @@
    담당 모드에선 INVALID_LOG_PERIOD_S 마다 ERROR 로 원인을 다시 드러낸다(log_due).
    문자열이 아닌 값(숫자 등)은 rclpy 가 declare_parameter 에서 타입 오류로 부팅 때 노드를 세운다.
 
-🚨 ship_turn(mode 3 orbit 옵션)은 /image_color 로 회전 방향을 정한다(빨강·초록=시계,
-   흰색=반시계). mode 3 색을 white 로 바꾸면 orbit 방향도 바뀐다. 기본 search_behavior
+🚨 ship_turn(mode 3 orbit)은 /image_color 로 회전 방향을 정한다(빨강·초록=시계,
+   노랑·흰색=반시계, 2026-11 경기규정). mode 3 색을 바꾸면 orbit 방향도 바뀐다.
+   검정은 위치유지(mode 2) 전용 — 방향이 없어 mode 3 에 쓰면 ship_turn 이 SEARCH 타임아웃.
+   그래서 mode 3 에 NO_ORBIT_DIRECTION 색이 오면 노드가 부팅 WARN 을 남긴다(orbit_direction_warning).
    hold(ship_back)는 색으로 방향을 정하지 않는다.
 """
 
 # 이 검출기가 HSV 범위를 읽는 색. basic_image_subscriberturn 의 hsv_ranges.load 와 같은 튜플.
-TURN_COLORS = ("red", "green", "white")
+#   2026-11-11: yellow(탐색 좌현선회)·black(위치유지 후보) 추가 — 계약서_탐색선회_부표색_20261111 C1.
+TURN_COLORS = ("red", "green", "white", "yellow", "black")
+
+# ship_turn(orbit_logic.orbit_direction_cw)이 선회 방향을 모르는 허용 색. 상수 공유 모듈은 만들지 않는다
+#   (CLAUDE.md 1-8) — 바꿀 땐 ship_turn/orbit_logic.py 와 함께.
+NO_ORBIT_DIRECTION = ("black",)
 
 # 담당 모드인데 목표 색이 무효일 때 ERROR 를 다시 찍는 주기[s] — dock 의
 # TARGET_INVALID_LOG_PERIOD_S 와 같은 값(상수 공유 모듈은 만들지 않는다).
@@ -88,3 +95,15 @@ def log_due(last, now, period=INVALID_LOG_PERIOD_S):
     dock 의 `(now - last) > period` 와 같은 판정.
     """
     return last is None or (now - last) > period
+
+
+def orbit_direction_warning(color_mode3):
+    """mode 3 목표 색이 ship_turn 이 방향을 모르는 색이면 WARN 문구, 아니면 None.
+
+    무효 색(None)은 resolve_turn_color 가 이미 ERROR 로 알리므로 여기선 None.
+    """
+    if color_mode3 in NO_ORBIT_DIRECTION:
+        return (f"⚠️ turn_color_mode3={color_mode3!r} — ship_turn(orbit)이 이 색의 선회 방향을 모른다 "
+                f"→ 탐색에서 SEARCH 타임아웃. 탐색 부표는 red/green(시계)·yellow(반시계). "
+                f"{color_mode3} 는 위치유지(turn_color_mode2)용")
+    return None

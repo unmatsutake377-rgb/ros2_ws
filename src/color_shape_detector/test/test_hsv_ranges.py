@@ -74,6 +74,15 @@ class TestDefaults(unittest.TestCase):
         for c in VALID_COLORS:
             self.assertTrue(parse_flat(default_flat(c), c))
 
+    def test_검정은_색상무관_저명도(self):
+        """black = H·S 전체 + V 상한만(2026-11-11). 색상대로 좁히거나 V 상한을 없애는 것을 막는다."""
+        self.assertEqual(len(DEFAULT_RANGES["black"]), 1)
+        lo, hi = DEFAULT_RANGES["black"][0]
+        self.assertEqual((lo[0], hi[0]), (0, 180), "검정은 색상(H) 전체")
+        self.assertEqual((lo[1], hi[1]), (0, 255), "검정은 채도(S) 전체")
+        self.assertEqual(lo[2], 0)
+        self.assertLess(hi[2], 128, "V 상한이 너무 높다 — 검정이 아니라 회색·그늘까지 잡는다")
+
     def test_초록은_연두가_아니다(self):
         """🚨 dock 에 있던 H 28~40(연두)로 되돌아가는 것을 막는다."""
         lo, hi = DEFAULT_RANGES["green"][0]
@@ -151,8 +160,8 @@ class TestSyncWithVisionYaml(unittest.TestCase):
         self.assertIsNotNone(m, f"vision.yaml 에 hsv.{color} 가 없다")
         return [int(x) for x in m.group(1).replace(" ", "").split(",") if x]
 
-    def test_여섯_색_모두_yaml과_같다(self):
-        self.assertEqual(len(VALID_COLORS), 6)
+    def test_일곱_색_모두_yaml과_같다(self):
+        self.assertEqual(len(VALID_COLORS), 7)   # 2026-11-11 black 추가
         for c in VALID_COLORS:
             self.assertEqual(self._yaml_flat(c), default_flat(c),
                              f"hsv.{c}: vision.yaml 과 hsv_ranges.DEFAULT_RANGES 가 어긋났다")
@@ -181,9 +190,13 @@ class TestSyncWithDockLogic(unittest.TestCase):
     **에러 없이 아무것도 못 찾는다.** 도킹이 1년간 침묵한 것과 같은 유형이다.
     """
 
+    # HSV 표에만 있고 도크 목표 색으로는 안 받는 색. black = 위치유지 부표 전용(turn, 2026-11-11) —
+    #   도크 표식(파랑 네모·초록 동그라미·빨강 삼각형)에 검정은 없다. 도크 동작 불변.
+    HSV_ONLY = {"black"}
+
     def test_유효색_목록이_같다(self):
         from color_shape_detector.dock_logic import VALID_COLORS as DOCK_COLORS
-        self.assertEqual(set(DOCK_COLORS), set(VALID_COLORS),
+        self.assertEqual(set(DOCK_COLORS), set(VALID_COLORS) - self.HSV_ONLY,
                          "dock_logic.VALID_COLORS 와 hsv_ranges.VALID_COLORS 가 어긋났다")
 
     def test_모든_유효색에_범위가_있다(self):

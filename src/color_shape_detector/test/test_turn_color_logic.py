@@ -15,8 +15,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from color_shape_detector.hsv_ranges import VALID_COLORS  # noqa: E402
 from color_shape_detector.turn_color_logic import (  # noqa: E402
-    DEFAULT_TURN_COLOR_MODE2, DEFAULT_TURN_COLOR_MODE3, INVALID_LOG_PERIOD_S, TURN_COLORS,
-    build_wp_color_map, detection_disabled, log_due, resolve_turn_color, target_colors_for,
+    DEFAULT_TURN_COLOR_MODE2, DEFAULT_TURN_COLOR_MODE3, INVALID_LOG_PERIOD_S, NO_ORBIT_DIRECTION,
+    TURN_COLORS, build_wp_color_map, detection_disabled, log_due, orbit_direction_warning,
+    resolve_turn_color, target_colors_for,
 )
 
 PKG = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..')
@@ -90,6 +91,41 @@ class TestResolve(unittest.TestCase):
     def test_mode3만_바꾸면_4_5도_따른다(self):
         m = build_wp_color_map("white", "green")
         self.assertEqual(m, {2: ["white"], 3: ["green"], 4: ["green"], 5: ["green"]})
+
+
+class Test2026Colors(unittest.TestCase):
+    """2026-11 경기규정(탐색 노랑 = 좌현선회) + 11-11 전달(위치유지 검정) — 계약서_탐색선회_부표색_20261111 C1."""
+
+    def test_노랑_검정을_받는다(self):
+        self.assertEqual(resolve_turn_color(" Yellow "), ("yellow", None))
+        self.assertEqual(resolve_turn_color("BLACK"), ("black", None))
+
+    def test_위치유지_후보와_탐색_색이_모두_허용(self):
+        for c in ("green", "red", "black", "yellow"):
+            self.assertIn(c, TURN_COLORS)
+
+    def test_검정_위치유지_맵(self):
+        m = build_wp_color_map("black", "yellow")
+        self.assertEqual(m, {2: ["black"], 3: ["yellow"], 4: ["yellow"], 5: ["yellow"]})
+        self.assertFalse(detection_disabled(2, m))
+
+    def test_방향_없는_색은_허용_색의_부분집합(self):
+        for c in NO_ORBIT_DIRECTION:
+            self.assertIn(c, TURN_COLORS)
+
+    def test_mode3_검정이면_WARN(self):
+        w = orbit_direction_warning("black")
+        self.assertIsNotNone(w)
+        self.assertIn("SEARCH", w)
+
+    def test_mode3_방향_있는_색이나_무효면_WARN_없음(self):
+        for c in ("red", "green", "yellow", "white", None):
+            self.assertIsNone(orbit_direction_warning(c), c)
+
+    def test_노드가_부팅때_WARN_을_부른다(self):
+        with open(NODE_PATH, encoding='utf-8') as f:
+            src = f.read()
+        self.assertIn('orbit_direction_warning(self.turn_color_mode3)', src)
 
 
 class TestInvalidDisables(unittest.TestCase):
