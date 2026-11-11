@@ -165,3 +165,63 @@ def cast_rays(yaw_deg, pts_east_north, ray_min_deg, ray_max_deg, inc_deg, max_ra
         t = _ray_polygon_dist((0.0, 0.0), d, pts_east_north)
         ranges.append(float(t) if (t is not None and t <= max_range_m) else float('inf'))
     return ranges
+
+
+# ───────────── 장애물 구간 경계 (geofence_avoid_polygon) — 규정 종합임무 (4) ─────────────
+# 「장애물 구간의 가상경계선을 확연하게 벗어나 경기를 진행하는 경우 … 실격」.
+# 경기장 경계(geofence_polygon)와 따로, 회피 WP 에서만 켜는 두 번째 벽이다.
+# 🚨 mode 5 만으로 켜지 않는다 — mode 5 는 도킹 접근점·연습 접근점 같은 '이동'에도 쓴다.
+#    켜는 WP = mode 5 이고 **WP 좌표가 장애물 구간 폴리곤 안**. 구역 밖 mode 5 WP 에서는 꺼진다.
+AVOID_FENCE_MODE = 5
+M_PER_DEG_LAT = 110540.0          # north_goal_angle.py 와 같은 값
+M_PER_DEG_LON_EQ = 111320.0
+
+
+def polygon_pairs(poly):
+    """[lat1, lon1, lat2, lon2, ...] → [(lat, lon), ...]."""
+    return [(poly[i], poly[i + 1]) for i in range(0, len(poly) - 1, 2)]
+
+
+def local_xy(lat0, lon0, lat, lon):
+    """(lat0, lon0) 기준 로컬 미터 (east, north). 노드 _local_xy 와 같은 평면 근사."""
+    kx = math.cos(math.radians(lat0)) * M_PER_DEG_LON_EQ
+    return ((lon - lon0) * kx, (lat - lat0) * M_PER_DEG_LAT)
+
+
+def _seg_dist(p, a, b):
+    px, py = p
+    ax, ay = a
+    bx, by = b
+    ex, ey = bx - ax, by - ay
+    L2 = ex * ex + ey * ey
+    s = 0.0 if L2 <= 0.0 else max(0.0, min(1.0, ((px - ax) * ex + (py - ay) * ey) / L2))
+    return math.hypot(px - (ax + s * ex), py - (ay + s * ey))
+
+
+def edge_dist_m(lat, lon, poly):
+    """점(lat, lon)에서 폴리곤 변까지 최소 거리(m). 폴리곤이 3점 미만이면 None."""
+    if len(poly) < GEOFENCE_MIN_VALUES:
+        return None
+    pts = [local_xy(lat, lon, la, lo) for la, lo in polygon_pairs(poly)]
+    n = len(pts)
+    return min(_seg_dist((0.0, 0.0), pts[i], pts[(i + 1) % n]) for i in range(n))
+
+
+def latlon_in_polygon(lat, lon, poly):
+    """점(lat, lon)이 폴리곤 안인가. 로컬 미터로 바꿔 판정(경기장 크기에선 평면 근사로 충분)."""
+    if len(poly) < GEOFENCE_MIN_VALUES:
+        return False
+    pts = [local_xy(lat, lon, la, lo) for la, lo in polygon_pairs(poly)]
+    return _point_in_polygon((0.0, 0.0), pts)
+
+
+def avoid_fence_wps(waypoints, avoid_poly, mode=AVOID_FENCE_MODE):
+    """WP 마다 장애물 구간 경계를 켜는가 — mode 5 이고 WP 좌표가 폴리곤 안. waypoints = [(lat, lon, mode, ...)]."""
+    if len(avoid_poly) < GEOFENCE_MIN_VALUES:
+        return [False] * len(waypoints)
+    return [int(w[2]) == mode and latlon_in_polygon(w[0], w[1], avoid_poly) for w in waypoints]
+
+
+def merge_min(a, b):
+    """두 광선 목록을 방향마다 가까운 쪽으로. 길이가 다르면 짧은 쪽까지."""
+    return [min(x, y) for x, y in zip(a, b)]

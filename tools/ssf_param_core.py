@@ -45,7 +45,10 @@ BOATS = ("A", "B")
 BOAT_KO = {"A": "A번배", "B": "B번배"}
 
 # [] 가 정상인 키(빈 값 = 꺼짐). 비어 있을 때 원소 타입.
-EMPTY_LIST_OK = {"geofence_polygon": float}
+EMPTY_LIST_OK = {"geofence_polygon": float, "geofence_avoid_polygon": float}
+# 폴리곤 키(sanitize_geofence_polygon 으로 판정) → 적용 뒤 확인할 시작 로그
+GEOFENCE_KEYS = {"geofence_polygon": "geofence ON({n}점)",
+                 "geofence_avoid_polygon": "🚧 장애물 구간 경계 ON({n}점)"}
 
 # yaml 을 고쳐도 소용없는 키 — launch 가 뒤에서 덮어쓴다. (패키지, 키) → 이유
 LAUNCH_OVERRIDES = {
@@ -687,11 +690,17 @@ class Repo:
         new = convert(t["value"], raw, gid[2])
         check_limits(item, new, gid[2])
         warn = []
-        if gid[2] == "geofence_polygon" and new:
+        if gid[2] == "geofence_avoid_polygon" and "main" not in impacts:
+            # 토너먼트 yaml 엔 이 키가 없어 공통 파일로 간다 — 토너먼트엔 장애물 구간이 없다(전부 mode 8).
+            raise ParamError("geofence_avoid_polygon: 종합임무 전용 — 코스를 종합임무(main)로 골라 고친다")
+        if gid[2] in GEOFENCE_KEYS and new:
             reason = _geofence_check(new)
             if reason:
-                raise ParamError(f"geofence_polygon: {reason}")
-            warn.append(f"폴리곤 {len(new) // 2}점 — 시작 로그 'geofence ON({len(new) // 2}점)' 확인")
+                raise ParamError(f"{gid[2]}: {reason}")
+            n = len(new) // 2
+            warn.append(f"폴리곤 {n}점 — 시작 로그 '{GEOFENCE_KEYS[gid[2]].format(n=n)}' 확인")
+            if gid[2] == "geofence_avoid_polygon":
+                warn.append("회피 WP(mode 5)가 이 폴리곤 안, 경계에서 3 m 이상 안쪽인지 시작 로그로 확인")
         if gid[2].startswith("hsv.") and isinstance(new, list):
             reason = _hsv_check(self.repo, new, gid[2][4:])
             if reason:

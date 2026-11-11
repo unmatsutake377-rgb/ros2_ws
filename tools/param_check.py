@@ -31,7 +31,7 @@ import sys
 import yaml
 
 # [] 가 정상인 키(노드가 빈 리스트를 '꺼짐'으로 받는다, Ubuntu 확인). 나머지 [] 는 오류.
-EMPTY_OK = {"geofence_polygon"}
+EMPTY_OK = {"geofence_polygon", "geofence_avoid_polygon"}
 
 REPO = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 

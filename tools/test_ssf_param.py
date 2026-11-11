@@ -185,6 +185,25 @@ def test_geofence_swapped_refused_and_valid_applied(boat):
     assert all(isinstance(x, float) for x in doc["/north_goal_angle"]["ros__parameters"]["geofence_polygon"])
 
 
+def test_avoid_polygon_main_only(boat):
+    """장애물 구간 경계(규정 종합임무 (4)) — 종합임무 파일에만, 토너먼트로는 거부."""
+    poly = "[35.1862, 128.5655, 35.1866, 128.5655, 35.1866, 128.566]"
+    with pytest.raises(core.ParamError, match="종합임무 전용"):
+        boat.apply("geofence_avoid_polygon", poly, course="tournament")
+    with pytest.raises(core.ParamError, match="뒤바뀌"):
+        boat.apply("geofence_avoid_polygon", "[128.5, 35.1, 128.6, 35.1, 128.6, 35.2]", course="main")
+    r = boat.apply("geofence_avoid_polygon", poly, course="main")
+    assert r["impacts"] == ["main"]
+    assert r["rel"].endswith("north_goal_angle_main.yaml")
+    assert any("장애물 구간 경계 ON(3점)" in w for w in r.get("warn", []))
+    doc = yaml.safe_load(_text(boat, r["rel"]))
+    v = doc["/north_goal_angle"]["ros__parameters"]["geofence_avoid_polygon"]
+    assert len(v) == 6 and all(isinstance(x, float) for x in v)
+    r = boat.apply("geofence_avoid_polygon", "[]", course="main")
+    doc = yaml.safe_load(_text(boat, r["rel"]))
+    assert doc["/north_goal_angle"]["ros__parameters"]["geofence_avoid_polygon"] == []
+
+
 def test_dry_run_writes_nothing(boat):
     rel = "src/ship_back/config/ship_back.yaml"
     before = _text(boat, rel)

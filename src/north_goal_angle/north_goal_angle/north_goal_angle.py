@@ -62,6 +62,13 @@ geofence_polygon (계약서_지오펜스폴리곤타입_20261109):
   · 🚨 토너먼트 동작을 wp_mode 8 로 켜지 않는다 — main 에도 mode 8 이 있다. 코스 yaml 값으로만.
   · 코스 끝(wp_idx ≥ len): 두 코스 모두 마지막 WP 가 north 담당(5·8)이면 /candidate_angle
     50000(STOP_HOLD)을 계속 낸다(§9-2 — 결승 뒤 즉시 정지). 코스 끝 INFO 1회. wp_advance 참고.
+
+geofence_avoid_polygon (규정 종합임무 (4) — 장애물 구간 가상경계선을 확연히 벗어나면 실격):
+  · 형식·검증은 geofence_polygon 과 같다. 비면 꺼짐. 값은 north_goal_angle_main.yaml.
+  · 켜는 WP = mode 5 이고 WP 좌표가 이 폴리곤 안(geofence_rays.avoid_fence_wps). mode 5 만으로 켜지
+    않는다 — 도킹 접근점·연습 접근점도 mode 5. 켜진 동안 배가 구역 안이면 경기장 벽과 방향마다
+    가까운 쪽으로 합쳐 낸다. 구역 밖에서 다가올 때는 벽을 안 세우고(입구), 들었다 나가면 ERROR + 벽 없음(복귀로).
+  · 시작 로그: 켜는 WP 와 경계까지 거리. 3 m 미만이면 WARN(도착 전에 벽에 막힐 수 있다).
 """
 
 import math
@@ -87,7 +94,8 @@ from north_goal_angle.gps_guard import (
 from north_goal_angle import los_logic          # LOS 유도 (순수, 테스트됨)
 # geofence 광선은 순수 모듈로 분리 (계약서_geofence부호_20261104). 기존 이름은 호환용 재수출.
 from north_goal_angle.geofence_rays import (  # noqa: F401
-    cast_rays, _ray_polygon_dist, _point_in_polygon, sanitize_geofence_polygon)
+    cast_rays, _ray_polygon_dist, _point_in_polygon, sanitize_geofence_polygon,
+    avoid_fence_wps, edge_dist_m, merge_min)
 from north_goal_angle.gps_filter import GPSFilter  # 공분산·점프·스무딩 (순수, 테스트됨)
 from north_goal_angle.wp_timeout import (            # WP 타임아웃 표 (순수, 테스트됨)
     DEFAULT_WP_TIMEOUT_MODES, DEFAULT_WP_TIMEOUT_SEC, WpTimeoutError,
@@ -129,6 +137,11 @@ def mission_should_run(boat_mode, require_auto, mode_auto=MODE_AUTO):
         return True
     return boat_mode == mode_auto
 
+
+# 장애물 구간 경계: 켜는 WP 가 경계에 이보다 가까우면 시작 WARN.
+#   저속 도착 반경 2.5 m(los_logic.get_dynamic_arrive_radius) + 0.5 m. 경계에 붙은 WP 는
+#   반경에 들기 전에 경계 벽(+ ship_direction dilate)에 막혀 도착 못 할 수 있다.
+AVOID_EDGE_WARN_M = 3.0
 
 # 위경도 → 로컬 미터 근사
 M_PER_DEG_LAT = 110540.0
@@ -189,9 +202,26 @@ class NorthGoalAngle(Node):
             sanitize_geofence_polygon(raw_polygon)
         if not self.geofence_polygon_ok:
             self._log_geofence_invalid(polygon_reason)
+        elif len(self.geofence_polygon) >= 6:
+            # 설명서·앱이 확인하라는 시작 로그(ssf_현장설명서 §3-1). 비었으면 조용히(토너먼트는 아래 WARN).
+            self.get_logger().info(
+                f"🧱 geofence ON({len(self.geofence_polygon) // 2}점) — 경기장 경계를 /geofence_state 로 쏜다")
         # tournament 경고는 검증 뒤 실효 길이로(거부된 폴리곤도 '없음').
         if self.course == 'tournament' and len(self.geofence_polygon) < 6:
             self._log_tournament_no_geofence()
+        # 장애물 구간 폴리곤 — 규정 종합임무 (4) 「장애물 구간의 가상경계선을 확연하게 벗어나면 실격」.
+        #   경기장 경계와 따로, '켜는 WP'(mode 5 이고 WP 좌표가 이 폴리곤 안)에서만 두 번째 벽으로 쏜다.
+        #   🚨 mode 5 만으로 켜지 않는다 — 도킹 접근점·연습 접근점도 mode 5 다(구역 밖이면 꺼짐).
+        #   구역 밖에서 다가올 때는(아직 안에 든 적 없음) 벽을 세우지 않는다 → 입구가 막히지 않는다.
+        #   형식·검증은 geofence_polygon 과 같다(dynamic_typing + sanitize). 비면 꺼짐.
+        raw_avoid = self.declare_parameter(
+            'geofence_avoid_polygon', [], ParameterDescriptor(dynamic_typing=True)).value
+        self.avoid_polygon, avoid_ok, avoid_reason = sanitize_geofence_polygon(raw_avoid)
+        if not avoid_ok:
+            self._log_avoid_polygon_invalid(avoid_reason)
+        self.avoid_wps = avoid_fence_wps(self.waypoints, self.avoid_polygon)
+        self.avoid_entered = False       # 지금 켜는 WP 구간에서 구역 안에 든 적 있나(밖=실격 위험 판정용)
+        self._log_avoid_fence_setup()
         # 경계를 '가짜 LiDAR'로 쏜다 — 스캔과 같은 각도 격자(상대방위, **좌 양수**:
         #   −80 = 우현 끝, +80 = 좌현 끝. LiDAR a−80·/candidate_angle 과 같은 부호. geofence_rays.py).
         # ★ 왜 광선인가: 벽은 '점'이 아니라 '선'이다. 최근접점 한 방향으로 ±각도 원뿔을 막는 건
@@ -370,6 +400,36 @@ class NorthGoalAngle(Node):
             f"🚨 geofence_polygon 오류 → {reason}. geofence 꺼짐(경계 방어 없음, /geofence_state 빈 배열). "
             f"[위도1, 경도1, 위도2, 경도2, ...] 원소마다 소수(.0)로 적고 launch 재시작.")
 
+    def _log_avoid_polygon_invalid(self, reason):
+        self.get_logger().error(
+            f"🚨 geofence_avoid_polygon 오류 → {reason}. 장애물 구간 경계 꺼짐(구간 이탈 방어 없음). "
+            f"[위도1, 경도1, 위도2, 경도2, ...] 원소마다 소수(.0)로 적고 launch 재시작.")
+
+    def _log_avoid_fence_setup(self):
+        """장애물 구간 경계 시작 로그 — 켜는 WP 와 경계까지 거리. 비었으면 조용히."""
+        if len(self.avoid_polygon) < 6:
+            return
+        on = [i for i, f in enumerate(self.avoid_wps) if f]
+        n_pts = len(self.avoid_polygon) // 2
+        if not on:
+            self.get_logger().warn(
+                f"⚠️ geofence_avoid_polygon({n_pts}점)이 있는데 그 안에 든 mode 5 WP 가 없다 → 장애물 구간 "
+                f"경계가 한 번도 켜지지 않는다. 회피 WP 좌표·폴리곤을 확인하라.")
+            return
+        parts = []
+        near = []
+        for i in on:
+            lat, lon = self.waypoints[i][0], self.waypoints[i][1]
+            d = edge_dist_m(lat, lon, self.avoid_polygon)
+            parts.append(f"WP{i}(경계까지 {d:.1f} m)")
+            if d < AVOID_EDGE_WARN_M:
+                near.append(f"WP{i} {d:.1f} m")
+        self.get_logger().info(f"🚧 장애물 구간 경계 ON({n_pts}점) — 켜는 WP: {', '.join(parts)}")
+        if near:
+            self.get_logger().warn(
+                f"⚠️ 장애물 구간 경계에 가까운 회피 WP: {', '.join(near)} (< {AVOID_EDGE_WARN_M:g} m). "
+                f"경계 벽에 막혀 도착 못 할 수 있다 — WP 를 구역 안쪽으로 다시 찍거나 폴리곤을 넓혀라.")
+
     def _log_tournament_template_waypoints(self, template):
         self.get_logger().warn(
             f"⚠️ course=tournament 인데 웨이포인트 파일이 패키지 템플릿 그대로다({template}). "
@@ -534,6 +594,10 @@ class NorthGoalAngle(Node):
         kx = math.cos(math.radians(self.lat)) * M_PER_DEG_LON_EQ
         return ((lon - self.lon) * kx, (lat - self.lat) * M_PER_DEG_LAT)
 
+    def _avoid_fence_on(self):
+        """지금 WP 가 장애물 구간 경계를 켜는 WP 인가(코스 끝이면 꺼짐)."""
+        return self.wp_idx < len(self.avoid_wps) and self.avoid_wps[self.wp_idx]
+
     def _geofence_ranges(self, gps_ok):
         """경계를 '가짜 LiDAR'로 쏜다 → (angle_min_deg, angle_inc_deg, [r0, r1, ...]) 또는 None.
 
@@ -541,13 +605,22 @@ class NorthGoalAngle(Node):
         소비자(ship_direction)는 이걸 실제 스캔과 min() 으로 병합하기만 하면 된다 —
         특수 로직이 아예 없어진다. 기존 dilate 가 배 폭 여유를 더하고, 갭-팔로잉이 알아서 피한다.
 
+        벽 두 개를 방향마다 가까운 쪽으로 합친다(merge_min):
+          · 경기장 경계(geofence_polygon) — 항상
+          · 장애물 구간 경계(geofence_avoid_polygon) — 켜는 WP(mode 5 + WP 가 구역 안)에서만,
+            배가 구역 안일 때만. 구역 밖에서 다가올 때는 벽을 세우지 않는다(입구가 막힌다).
+
         None(=빈 배열) 을 내는 경우 — 전부 '모르면 입을 다문다':
-          · 폴리곤 미설정 / GPS fix 없음 또는 stale(gps_stale_sec)
+          · 켜진 경계 없음 / GPS fix 없음 또는 stale(gps_stale_sec)
           · IMU stale     → yaw 가 얼면 광선 방향이 통째로 틀어져 '없는 벽'을 만든다
           · 이미 경기장 밖 → 경계를 벽으로 세우면 돌아갈 길을 막는다
         """
         poly = self.geofence_polygon
-        if len(poly) < 6 or not gps_ok:             # 최소 3점(=6수) / fix 없음·stale
+        main_on = len(poly) >= 6                    # 최소 3점(=6수)
+        avoid_on = self._avoid_fence_on()
+        if not avoid_on:
+            self.avoid_entered = False              # 켜는 WP 구간을 벗어나면 다음 구간을 위해 리셋
+        if not (main_on or avoid_on) or not gps_ok:  # 켜진 경계 없음 / fix 없음·stale
             return None
 
         # 🚨 IMU 신선도 — 광선 방향이 yaw 에 통째로 의존한다. 얼면 벽 전체가 엉뚱해진다.
@@ -563,22 +636,40 @@ class NorthGoalAngle(Node):
                 throttle_duration_sec=2.0)
             return None
 
-        pts = [self._local_xy(poly[i], poly[i + 1]) for i in range(0, len(poly) - 1, 2)]
+        ranges = None
+        if main_on:
+            pts = [self._local_xy(poly[i], poly[i + 1]) for i in range(0, len(poly) - 1, 2)]
+            if not _point_in_polygon((0.0, 0.0), pts):
+                # 🚨 이미 밖이다. 경계를 벽으로 세우면 복귀로를 막는다 → 아무것도 내지 않는다.
+                self.get_logger().error(
+                    "🚨 경기장 경계 밖이다 (실격 위험). GPS 웨이포인트로 복귀 중.",
+                    throttle_duration_sec=2.0)
+                return None
+            # 광선 계산은 순수 모듈(geofence_rays.cast_rays). 상대방위 **좌 양수**, 절대 방위 = yaw − rel.
+            # 격자가 잘못돼(inc ≤ 0, max < min) 빈 리스트가 오면 '없음'으로 다룬다.
+            ranges = cast_rays(self.yaw, pts, self.ray_min_deg, self.ray_max_deg,
+                               self.ray_inc_deg, self.geofence_max_range_m)
+            if not ranges:
+                return None
 
-        if not _point_in_polygon((0.0, 0.0), pts):
-            # 🚨 이미 밖이다. 경계를 벽으로 세우면 복귀로를 막는다 → 아무것도 내지 않는다.
-            self.get_logger().error(
-                "🚨 경기장 경계 밖이다 (실격 위험). GPS 웨이포인트로 복귀 중.",
-                throttle_duration_sec=2.0)
+        if avoid_on:
+            ap = self.avoid_polygon
+            apts = [self._local_xy(ap[i], ap[i + 1]) for i in range(0, len(ap) - 1, 2)]
+            if _point_in_polygon((0.0, 0.0), apts):
+                self.avoid_entered = True
+                ar = cast_rays(self.yaw, apts, self.ray_min_deg, self.ray_max_deg,
+                               self.ray_inc_deg, self.geofence_max_range_m)
+                if ar:
+                    ranges = ar if ranges is None else merge_min(ranges, ar)
+            elif self.avoid_entered:
+                # 🚨 구역 안에 들었다가 나갔다. 벽을 세우면 복귀로를 막는다 → 이 벽은 안 낸다.
+                #    회피 WP 는 구역 안이라 LOS 가 다시 구역 쪽으로 몬다.
+                self.get_logger().error(
+                    f"🚨 장애물 구간 경계 밖이다 (실격 위험). WP{self.wp_idx} 로 복귀 중.",
+                    throttle_duration_sec=2.0)
+
+        if ranges is None:
             return None
-
-        # 광선 계산은 순수 모듈(geofence_rays.cast_rays). 상대방위 **좌 양수**, 절대 방위 = yaw − rel.
-        # 격자가 잘못돼(inc ≤ 0, max < min) 빈 리스트가 오면 '없음'으로 다룬다.
-        ranges = cast_rays(self.yaw, pts, self.ray_min_deg, self.ray_max_deg,
-                           self.ray_inc_deg, self.geofence_max_range_m)
-        if not ranges:
-            return None
-
         return self.ray_min_deg, self.ray_inc_deg, ranges
 
     def _publish_geofence(self, gps_ok):

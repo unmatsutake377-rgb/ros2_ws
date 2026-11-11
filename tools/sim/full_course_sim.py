@@ -290,6 +290,7 @@ def build_world(world_wps, seed):
                np.linalg.norm(p - W["dock"]["O"]) > 5.0:
                 add_buoy(p, "orange", tag); placed += 1
     i5 = [i for i, m in enumerate(by_mode) if m == 5]
+    W["i5"] = i5
     a, b = P[i5[0]], P[i5[1]]; L = np.linalg.norm(b - a)       # WP6→WP7 (뒤의 mode 5 는 도킹 접근점)
     scatter(a, b, 0.1 * L, 0.9 * L, "obst_5")
     i8 = by_mode.index(8)
@@ -427,6 +428,35 @@ def cam_closest(x, y, psi, pts, rng, dmin=CAM_MIN):
     return None if best is None else (best[0], best[1] + rng.gauss(0.0, CAM_NOISE))
 
 
+AVOID_ZONE_END_M = 4.0    # 장애물 구간 직사각형이 WP6·WP7 너머로 뻗는 길이(회피 WP 가 경계에서 3 m 이상 안쪽)
+
+
+def avoid_rect(W, half_w):
+    """WP6→WP7(처음 두 mode 5) 따라 ±half_w, 양 끝 AVOID_ZONE_END_M 연장한 직사각형 꼭짓점(로컬 x, y)."""
+    a, b = W["P"][W["i5"][0]], W["P"][W["i5"][1]]
+    u = (b - a) / np.linalg.norm(b - a); n = np.array([-u[1], u[0]])
+    s0, s1 = a - u * AVOID_ZONE_END_M, b + u * AVOID_ZONE_END_M
+    return [tuple(map(float, p)) for p in (s0 - n * half_w, s1 - n * half_w, s1 + n * half_w, s0 + n * half_w)]
+
+
+def _poly_edge_dist(p, pts):
+    best = math.inf
+    for i in range(len(pts)):
+        a = np.array(pts[i]); b = np.array(pts[(i + 1) % len(pts)]); e = b - a
+        s_ = max(0.0, min(1.0, float((p - a) @ e) / float(e @ e)))
+        best = min(best, float(np.linalg.norm(p - (a + s_ * e))))
+    return best
+
+
+def _in_poly(p, pts):
+    inside = False
+    for i in range(len(pts)):
+        (x1, y1), (x2, y2) = pts[i], pts[(i + 1) % len(pts)]
+        if (y1 > p[1]) != (y2 > p[1]) and p[0] < x1 + (p[1] - y1) * (x2 - x1) / (y2 - y1):
+            inside = not inside
+    return inside
+
+
 # ───────────────────────── 한 런 ─────────────────────────
 SEARCH_BEHAVIOR_PARAMS = {   # launch_files.launch.py search_behavior_params 와 같은 값
     "hold": {"ship_back": {"active_wp_modes": [2, 3]}, "ship_turn": {"enabled": False}},
@@ -483,7 +513,7 @@ def apply_dwell(path, overrides):
 
 def run(seed, variant="A", wp_file=None, world_wp_file=WP_DEFAULT, gps_sigma=0.03, current=(0.0, 0.0),
         t_max=1500.0, tail=90.0, record=False, dwell_override=None, fault=None, dyn="legacy", hull=None,
-        node_overrides=None, lidar_noise=False, search_behavior="orbit"):
+        node_overrides=None, lidar_noise=False, search_behavior="orbit", avoid_zone=0.0, avoid_measure_only=False):
     world_wps = load_wps(world_wp_file)
     nrng = np.random.default_rng(20_000 + seed) if lidar_noise else None
     W = build_world(world_wps, seed)
@@ -493,6 +523,13 @@ def run(seed, variant="A", wp_file=None, world_wp_file=WP_DEFAULT, gps_sigma=0.0
     wp_file = apply_dwell(wp_file, dwell_override)
     wps = load_wps(wp_file)
     WPXY = [np.array(geo.xy(w["lat"], w["lon"])) for w in wps]
+    avoid_pts = None
+    if avoid_zone > 0.0:   # 장애물 구간 경계(규정 종합임무 (4)) — WP6→WP7 직사각형, 양 끝 AVOID_ZONE_END_M 여유
+        avoid_pts = avoid_rect(W, avoid_zone)
+        poly = [c for p_ in avoid_pts for c in geo.ll(*p_)]
+        node_overrides = {k: dict(v) for k, v in (node_overrides or {}).items()}
+        if not avoid_measure_only:          # 기준선: 경계는 재기만 하고 노드엔 안 넘긴다
+            node_overrides.setdefault("north_goal_angle", {})["geofence_avoid_polygon"] = poly
     node_params(wp_file, node_overrides, search_behavior)
     Clock.t = 0.0
     vtag = variant + ("" if not dwell_override else "-dwell(" + ",".join(f"{k}={v:g}" for k, v in dwell_override.items()) + ")")
@@ -546,6 +583,9 @@ def run(seed, variant="A", wp_file=None, world_wp_file=WP_DEFAULT, gps_sigma=0.0
     n_wps = len(wps)
     i_last = n_wps - 1
     first_mode = {}
+    av_flags = ([w["mode"] == 5 and _in_poly(p_, avoid_pts) for w, p_ in zip(wps, WPXY)]
+                if avoid_pts is not None else [])     # 노드 avoid_fence_wps 와 같은 규칙(재기만 할 때도 같은 구간)
+    av_in = False; av_out_max = 0.0; av_out_s = 0.0; av_on_s = 0.0   # 장애물 구간 경계(켜는 WP 동안)
     pub_mode = -1                  # 노드들이 실제로 받은 마지막 /wp_mode (north 는 전진 '전'에 현재 모드를 발행한다)
     # ---- 페일세이프 기록 (틱 배열) ----
     TK = dict(t=[], lvl=[], des=[], v=[], mode=[], wp=[], wd=[], ctot=[], gps=[], sga_imu=[], sga_goal=[], n_imu=[])
@@ -742,6 +782,16 @@ def run(seed, variant="A", wp_file=None, world_wp_file=WP_DEFAULT, gps_sigma=0.0
                     if on and not contact_on.get(("s", j)):
                         contacts["dock"] += 1; contacts_by_mode[cur_mode] = contacts_by_mode.get(cur_mode, 0) + 1
                     contact_on[("s", j)] = on
+            # 장애물 구간 경계 — 노드가 '켜는 WP'(mode 5 + 구역 안)일 때만, 한 번 든 뒤 밖이면 이탈
+            if avoid_pts is not None:
+                if av_flags[nga.wp_idx] if nga.wp_idx < len(av_flags) else False:
+                    av_on_s += DT
+                    if _in_poly(pos, avoid_pts):
+                        av_in = True
+                    elif av_in:
+                        av_out_s += DT; av_out_max = max(av_out_max, _poly_edge_dist(pos, avoid_pts))
+                else:
+                    av_in = False
             # 위치유지·탐색 기하
             if cur_mode == 2:
                 hb = W["buoys"][W["hold_idx"]]
@@ -869,6 +919,9 @@ def run(seed, variant="A", wp_file=None, world_wp_file=WP_DEFAULT, gps_sigma=0.0
     out["sk_events"] = sk_events; out["sb_events"] = sb_events
     out["contacts"] = contacts; out["contacts_total"] = sum(contacts.values())
     out["contacts_avoid"] = contacts["obst_5"] + contacts["obst_8"]
+    out["avoid_zone"] = avoid_zone; out["avoid_measure_only"] = avoid_measure_only
+    if avoid_pts is not None:
+        out["avoid_on_s"] = round(av_on_s, 1); out["avoid_out_s"] = round(av_out_s, 1); out["avoid_out_max"] = round(av_out_max, 2)
     out["contacts_rect"] = contacts_rect; out["contacts_rect_avoid"] = contacts_rect["obst_5"] + contacts_rect["obst_8"]
     out["contacts_by_mode"] = contacts_by_mode
     out["contacts_sb_state"] = contacts_sb_state
@@ -1104,6 +1157,10 @@ def summarize(R, label):
     lines.append(f"  WP 시간 초과 합 {sum(r['timeouts'] for r in R)} (런당 중앙값 {med(sorted(r['timeouts'] for r in R))}) | 접촉 합 {sum(r['contacts_total'] for r in R)} "
                  f"(회피 장애물 {sum(r['contacts_avoid'] for r in R)}, 게이트 {sum(r['contacts']['gate'] for r in R)}, 위치유지 {sum(r['contacts']['hold'] for r in R)}, "
                  f"탐색 부표 {sum(r['contacts']['search'] for r in R)}, 도크 {sum(r['contacts']['dock'] for r in R)})")
+    if all("avoid_out_s" in r for r in R):
+        om = sorted(r["avoid_out_max"] for r in R)
+        lines.append(f"  장애물 구간 경계(±{R[0]['avoid_zone']:g} m, 끝 {AVOID_ZONE_END_M:g} m{', 노드엔 안 넘김 — 기준선' if R[0]['avoid_measure_only'] else ''}) 이탈 런 {sum(1 for r in R if r['avoid_out_s'] > 0)}/{n} "
+                     f"(최대 {om[-1]:.2f} m, 이탈 시간 합 {sum(r['avoid_out_s'] for r in R):.1f} s) | 켜진 시간 중앙값 {med(sorted(r['avoid_on_s'] for r in R)):.0f} s")
     if all("contacts_rect" in r for r in R):
         lines.append(f"  직사각형 선체 접촉(보조, 선미 포함) 회피 장애물 {sum(r['contacts_rect_avoid'] for r in R)}, "
                      f"게이트 {sum(r['contacts_rect']['gate'] for r in R)}, 위치유지 {sum(r['contacts_rect']['hold'] for r in R)}, "
@@ -1344,12 +1401,17 @@ def main():
                     help="탐색(mode 3) 행동 — launch search_behavior 와 같은 값을 ship_back·ship_turn 에 넘긴다")
     ap.add_argument("--param", action="append", default=[], metavar="노드.키=값",
                     help="노드 파라미터 덮어쓰기(반복 가능), 예 --param ship_direction.dwa_enabled=true")
+    ap.add_argument("--avoid-zone", type=float, default=0.0, metavar="반폭m",
+                    help="장애물 구간 경계 켬: WP6→WP7 ±반폭 m 직사각형(양 끝 4 m 연장)을 geofence_avoid_polygon 으로 넘기고 이탈을 잰다")
+    ap.add_argument("--avoid-measure-only", action="store_true",
+                    help="--avoid-zone 경계를 노드엔 넘기지 않고 이탈만 잰다(경계 효과 비교 기준선)")
     a = ap.parse_args()
     os.makedirs(OUT_DIR, exist_ok=True)
     dov = {kv.split("=")[0].strip(): float(kv.split("=")[1]) for kv in a.dwell_label.split(",") if "=" in kv} or None
     kw = dict(wp_file=a.wp_file, world_wp_file=a.world_wp_file, gps_sigma=a.gps_sigma, current=tuple(a.current), t_max=a.t_max, tail=a.tail, dyn=a.dyn, hull=a.hull,
               dwell_override=dov, node_overrides=parse_param_overrides(a.param), lidar_noise=a.lidar_noise,
-              search_behavior=a.search_behavior)
+              search_behavior=a.search_behavior, avoid_zone=a.avoid_zone,
+              avoid_measure_only=a.avoid_measure_only)
     variants = ["A", "B"] if a.variant == "AB" else [a.variant]
     if a.plot_seed is not None:
         for vv in variants:

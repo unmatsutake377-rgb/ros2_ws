@@ -157,13 +157,18 @@ groups:
          change: daily, when: "공지 색일 때만, 경기 시각·그 해 방향에서 실측(basic_image_subscriberhsv, p 키 = yaml 줄)",
          check: "역광이면 V 하한, 광택이면 S 하한이 먼저 깨진다 · 하늘·물·선체가 같이 잡히지 않는지", revert: 저장소 값}
 
-  - name: 토너먼트 경계
+  - name: 경계 (지오펜스)
     items:
       - {pkg: north_goal_angle, key: geofence_polygon, label: 경기장 경계 폴리곤,
          hint: "[위도, 경도, 위도, 경도, …] 3점 이상. 비우면([]) 경계 방어 꺼짐",
          advice: "결승선 너머까지 포함. 원소마다 소수점. 적용 뒤 시작 로그 'geofence ON(n점)'",
          change: daily, when: "경기장마다 실제 경계 좌표로 교체. 안쪽으로 줄이지 않는다(시뮬상 효과 없음)",
          check: "시작 로그 'geofence ON(n점)' · 경계 근처에서 부표를 피할 때 선체가 경계를 넘지 않는지", revert: "[]"}
+      - {pkg: north_goal_angle, key: geofence_avoid_polygon, label: 장애물 구간 경계 폴리곤 (종합임무),
+         hint: "[위도, 경도, …] 3점 이상. 회피 WP(mode 5, 구역 안)에서만 두 번째 벽. 비우면([]) 꺼짐",
+         advice: "규정: 장애물 구간 가상경계선을 확연히 벗어나면 실격. 종합임무(main)로 고친다. 회피 시작·끝 WP 는 경계에서 3 m 이상 안쪽",
+         change: daily, when: "대회장에서 공지된 장애물 구간 꼭짓점을 RTK FIXED 로 찍는다. 안쪽으로 줄이지 않는다",
+         check: "시작 로그 '🚧 장애물 구간 경계 ON(n점) — 켜는 WP: …' 에 회피 WP 가 다 있고 3 m 미만 WARN 이 없는지 · 도킹 접근 WP 는 없어야 한다", revert: "[]"}
 
   - name: 헤딩 (배마다 다름)
     items:
