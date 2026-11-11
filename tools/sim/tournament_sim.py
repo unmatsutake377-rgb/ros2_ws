@@ -59,6 +59,20 @@
   · 로그 수(rosstub 은 throttle 무시 → 틱 수에 가깝다): ship_direction 'DWA 가능한 후보 없음'(폴백), '🚧🛑 경계'(하드 정지),
     '옆 잠금' 문구(구현 뒤 생기면).
 
+사진 경기장·카메라·전략 비교 (계약서_카메라장애물_20261111 U3·보완 1 — 세부는 cam_sim.py 머리말)
+  --arena photo           평행사변형 경기장(꼭짓점 빨간 기둥 4·흰 부표 쌍+붐 6·흩어진 흰 부표 10, 시드 지터). 상대 = 같은
+                          경기장, A* 경로(--scenario shared) 또는 없음(none). 기본(--arena default)은 기존 세계 그대로.
+  --boom-lidar {none,p,always} --boom-lidar-p 0.3   붐이 LiDAR 에 보이나(흰 부표·기둥은 늘 보임)
+  --strategy {A,B,C}      A 카메라 끔 / B camera_obstacle_enabled=true + 합성 카메라 퓨전 배열 병합 /
+                          C = B + 시뮬 안 정지·선회 탐색 시제품(/candidate_angle 50000·5000·6000·상대각을 매 틱 주입)
+  --cam-pdet 0.9 --cam-fp 0 --cam-fp-kind both --cam-fp-dur 1.0 --cam-outage T0:DUR --cam-x 0.5
+  --cam-tilt-err 0 --cam-h-err 0 --pitch-sigma 1.5   (설정값 대비 참값 오차, 피치 AR(1) 잡음)
+  --fuse 키=값            퓨전 순수 함수 파라미터 덮어쓰기(민감도 — 노드 기본값 아님)
+  --drift m/s             일정 흐름(시드별 무작위 방향). 기본 = photo 0.1, default 0(기존과 같게). 모든 전략에 똑같이.
+  지표 추가: boom_contacts(붐 사각형 ↔ 선체 사각형), buoy_contacts(흰 부표·기둥 = photo 의 obst_contacts),
+            reverse_race_s(/desired_angle 260), cam_merge_ticks(유한 칸 낸 프레임), cam_false_ticks(참 빨간 물체 밖 칸),
+            cam_fp_ticks(오탐 사건 진행 틱), c_stops·c_log(전략 C)
+
 한계: 상대 배는 대본 궤적(반응·회피 없음, 부표 통과), 운동·추력 계수는 가정값(boat3dof), 충돌 물리 없음(겹쳐도 통과,
     횟수만 셈), LiDAR 잡음·가림·물보라 없음, GPS σ 3 cm·IMU 참값, 책임 추정은 휴리스틱.
 """
@@ -150,6 +164,7 @@ GEO0 = (35.1862375, 128.5655118)          # waypoints_tournament.yaml T0 (자리
 OPP_L, OPP_B = 1.7, 0.55
 LANE_X = 2.0
 SCENARIOS = ["none", "side_by_side", "slow_ahead", "fast_behind", "cut_in"]
+PHOTO_SCENARIOS = ["none", "shared"]       # --arena photo: 상대 없음 / 같은 경기장 A* 경로
 NEAR_OPP_M = 6.0
 OVERTAKE_VREL = 0.3                        # 책임 휴리스틱: 겹친 채 이보다 빠르게 앞질러 가면 '추월 중'(m/s)
 FRONT_MASK = np.abs(F.SCAN_REL) <= 80.0   # ship_direction 이 읽는 정면 ±80° (0~160°)
@@ -237,6 +252,14 @@ def build_world(seed, g):
 def build_opp(W, scen, seed, g, v_ref):
     if scen == "none":
         return None, {}
+    if scen == "shared":
+        if g.get("arena") != "photo":
+            raise ValueError("shared 시나리오는 --arena photo 전용")
+        import cam_sim as CS
+        r = random.Random(seed * 1000 + 99)
+        xs, ys = CS.opp_path(W, g)
+        v = v_ref * r.uniform(0.9, 1.05)
+        return OppPath(xs, ys, v), dict(opp_v=v)
     r = random.Random(seed * 1000 + SCENARIOS.index(scen))
     ys = np.arange(g["start_y"] - 1.0, g["arena_len"] + 12.0, 0.1)
     ox, to = W["our_x"], W["toward_opp"]
@@ -267,8 +290,8 @@ def build_opp(W, scen, seed, g, v_ref):
 
 
 def write_wp_file(W, g, geo):
-    pts = [("T0 출발 근처", W["our_x"], g["start_y"] + 1.0),
-           ("T1 결승선 너머", W["our_x"], g["finish_y"] + g["wp_beyond"])]
+    pts = W.get("wp_pts") or [("T0 출발 근처", W["our_x"], g["start_y"] + 1.0),
+                              ("T1 결승선 너머", W["our_x"], g["finish_y"] + g["wp_beyond"])]
     d = os.path.join(tempfile.gettempdir(), "ssf_tournament_sim")
     os.makedirs(d, exist_ok=True)
     path = os.path.join(d, f"wp_seed{W['seed']}_pid{os.getpid()}.yaml")
@@ -323,13 +346,25 @@ def blame(hist, now):
 
 # ───────────────────────── 한 런 ─────────────────────────
 def run(scenario, seed, hull="A", dyn="fossen", overrides=None, geom=None, t_max=150.0, post=10.0,
-        gps_sigma=0.03, record=False, lidar_noise=False):
+        gps_sigma=0.03, record=False, lidar_noise=False, strategy="A", boom_lidar="none", boom_lidar_p=0.3,
+        cam=None, drift=None, c_cfg=None):
     g = dict(DEFAULT_GEOM, **(geom or {}))
     geo = F.Geo(*GEO0)
-    W = build_world(seed, g)
+    photo = g.get("arena", "default") == "photo"
+    CS = None
+    if photo:
+        import cam_sim as CS
+        W = CS.build_photo_world(seed, g)
+    else:
+        W = build_world(seed, g)
     aw, al = g["arena_w"], g["arena_len"]
     fi = g["fence_inset"]                 # 지오펜스 폴리곤을 좌우 변에서만 안쪽으로(위·아래 변 = 경기장). 이탈 판정은 실제 경기장
     poly_xy = [(-aw / 2 + fi, 0.0), (aw / 2 - fi, 0.0), (aw / 2 - fi, al), (-aw / 2 + fi, al)]
+    if photo:
+        poly_xy = list(W["poly"])         # 평행사변형 = 지오펜스 = 이탈 판정(inset 안 씀)
+    if strategy in ("B", "C"):
+        overrides = {k: dict(v) for k, v in (overrides or {}).items()}
+        overrides.setdefault("ship_direction", {})["camera_obstacle_enabled"] = True
     poly_ll = [v for (px, py) in poly_xy for v in geo.ll(px, py)]
     wp_file = write_wp_file(W, g, geo)
     P = build_params(wp_file, hull, poly_ll, overrides)
@@ -341,7 +376,26 @@ def run(scenario, seed, hull="A", dyn="fossen", overrides=None, geom=None, t_max
     nrng = np.random.default_rng(20_000 + seed) if lidar_noise else None
     out = dict(scenario=scenario, seed=seed, hull=hull, dyn=dyn, side="L" if W["side"] < 0 else "R",
                n_buoys=len(W["buoys"]), v_ref=round(v_ref, 3), exception="", **{k: round(v, 2) for k, v in opp_info.items()})
+    out.update(arena=g.get("arena", "default"), strategy=strategy, boom_lidar=boom_lidar if photo else "")
     hl, hb = F.HULL_DIMS[hull][0] / 2.0, F.HULL_DIMS[hull][1] / 2.0
+    # ---- 흐름(drift): 기본 photo 0.1 m/s, default 0 (기존 결과 그대로) — 시드별 방향, 모든 전략 같음 ----
+    if drift is None:
+        drift = 0.1 if photo else 0.0
+    _dr = random.Random(seed * 31 + 5).uniform(0.0, 2.0 * math.pi)
+    cur = (drift * math.sin(_dr), drift * math.cos(_dr))
+    rngL = random.Random(seed * 613 + 3)          # 붐 LiDAR 가시성(p) 전용
+    camsim = stratC = None
+    if photo and strategy in ("B", "C"):
+        camsim = CS.CamSim(W, seed, F.HFOV, **(cam or {}))
+    if photo and strategy == "C":
+        stratC = CS.StrategyC(W, c_cfg, hfov=F.HFOV)
+    elif strategy == "C":
+        raise ValueError("전략 C 는 --arena photo 전용")
+    if strategy in ("B", "C") and not photo:
+        raise ValueError("전략 B·C(합성 카메라)는 --arena photo 전용")
+    boom_on, boom_n, boom_det = {}, 0, []
+    cam_hist = deque(maxlen=30)                   # 붐 접촉 진단(직전 3 s 카메라 배열)
+    rev_race, cam_merge, cam_false, cam_fp = 0.0, 0, 0, 0
 
     nga = F.NGA.NorthGoalAngle(); sga = F.SGA.ShipGoalAngle(); sd = F.SD.ShipDirection(); mc = F.MC.MotorController()
     nodes = dict(north_goal_angle=nga, ship_goal_angle=sga, ship_direction=sd, motor_control=mc)
@@ -358,7 +412,7 @@ def run(scenario, seed, hull="A", dyn="fossen", overrides=None, geom=None, t_max
     if dyn == "fossen":
         import boat3dof
         boat3 = boat3dof.Boat3DOF(hull, x, y, psi)
-    W_b = dict(bx=W["bx"], by=W["by"], seg_arr=np.zeros((0, 4)), dock=dict(O=np.array([1e6, 1e6])))
+    W_b = None if photo else dict(bx=W["bx"], by=W["by"], seg_arr=np.zeros((0, 4)), dock=dict(O=np.array([1e6, 1e6])))
     W_o = dict(bx=np.array([1e6]), by=np.array([1e6]), seg_arr=None, dock=None)
     t = 0.0; k = 0
     t_fin = None; t_end = None; end_xy = None; t_stopped = None; post_len = 0.0
@@ -374,7 +428,16 @@ def run(scenario, seed, hull="A", dyn="fossen", overrides=None, geom=None, t_max
     try:
         while t < t_max and (t_end is None or t < t_end + post):
             # ---- 상대 배 + LiDAR ----
-            rng_b = F.lidar(W_b, x, y, psi)
+            if photo:
+                if boom_lidar == "always":
+                    bvis = [True] * len(W["booms"])
+                elif boom_lidar == "p":
+                    bvis = [rngL.random() < boom_lidar_p for _ in W["booms"]]
+                else:
+                    bvis = [False] * len(W["booms"])
+                rng_b = CS.lidar_photo(W, x, y, psi, F.SCAN_REL, bvis)
+            else:
+                rng_b = F.lidar(W_b, x, y, psi)
             op = opp.pose(t) if opp is not None else None
             if op is not None:
                 oc = rect_corners(op[0], op[1], op[2], OPP_L / 2, OPP_B / 2)
@@ -394,7 +457,8 @@ def run(scenario, seed, hull="A", dyn="fossen", overrides=None, geom=None, t_max
                 ranges = rng_b
             if nrng is not None:
                 ranges = F.add_lidar_noise(ranges, nrng)
-            sd.scan_callback(F.Scan(ranges.tolist()))
+            scan_msg = F.Scan(ranges.tolist())
+            sd.scan_callback(scan_msg)
             yaw = Float64(psi)
             nga.yaw_cb(yaw); sga.yaw_callback(yaw)
             if k % 10 == 3:                                       # GPS 1 Hz
@@ -418,6 +482,25 @@ def run(scenario, seed, hull="A", dyn="fossen", overrides=None, geom=None, t_max
                 if nga.pubs["/candidate_angle"].count > c0["/candidate_angle"]:
                     m = nga.pubs["/candidate_angle"].last
                     sd.candidate_callback(m); nga.candidate_cb(m)
+            # ---- 합성 카메라(B·C) → 실제 퓨전 순수 함수 → sd.camera_obstacle_cb / 전략 C 주입 ----
+            cam_arr = None
+            if camsim is not None:
+                occ_c = rect_corners(op[0], op[1], op[2], OPP_L / 2, OPP_B / 2) if op is not None else None
+                cam_arr, cinfo = camsim.frame(t, x, y, psi, scan_msg, occ_c)
+                cam_hist.append((t, x, y, psi, cam_arr))
+                if cam_arr is not None:
+                    sd.camera_obstacle_cb(F.SD.Float32MultiArray(data=list(cam_arr)))
+                    if t_fin is None:
+                        if any(math.isfinite(r_) for r_ in cam_arr[2:]):
+                            cam_merge += 1
+                        if CS.cam_false(cam_arr, camsim.true_red_intervals(x, y, psi)):
+                            cam_false += 1
+                        cam_fp += int(cinfo["fp"])
+            if stratC is not None:
+                cval = stratC.step(t, x, y, psi, abs(v), scan_msg, F.SCAN_REL, ranges, cam_arr,
+                                   cam_arr is not None, camsim.p)
+                if cval is not None:
+                    sd.candidate_callback(F.Float32(cval))
             c = sga.pubs["/yaw_error"].count
             sga.publish_yaw_error()
             if sga.pubs["/yaw_error"].count > c:
@@ -434,13 +517,15 @@ def run(scenario, seed, hull="A", dyn="fossen", overrides=None, geom=None, t_max
             code = mc.pubs["Motor_run"].last.data; pr, pl = code // 10000, code % 10000
             px, py = x, y
             if boat3 is not None:
-                x, y, psi = boat3.step(pl, pr, DT); v = boat3.speed
+                x, y, psi = boat3.step(pl, pr, DT) if drift == 0.0 else boat3.step(pl, pr, DT, current=cur)
+                v = boat3.speed
             else:
                 TR, TL = 1500 - pr, 1500 - pl
                 v_cmd, w_cmd = K.K_V * (TR + TL) / 2.0, K.K_W * (TL - TR)
                 v += (v_cmd - v) * DT / F.TAU; w += (w_cmd - w) * DT / F.TAU
                 psi = (psi + w * DT) % 360.0
                 x += v * math.sin(math.radians(psi)) * DT; y += v * math.cos(math.radians(psi)) * DT
+                x += cur[0] * DT; y += cur[1] * DT
             t += DT; k += 1; Clock.t = t
             racing = t_fin is None            # 경기 중 = 결승선 통과 전 (접촉·경계·STOP_HOLD 경기 중 지표)
             after_end = t_end is not None     # 코스 끝(50000) 뒤
@@ -448,6 +533,8 @@ def run(scenario, seed, hull="A", dyn="fossen", overrides=None, geom=None, t_max
             if dl is not None and dl.data >= STOP_HOLD:
                 if racing: sh_race += DT
                 elif after_end: sh_post += DT
+            if racing and dl is not None and dl.data == F.SD.REVERSE_ANGLE:
+                rev_race += DT
             if t_fin is None and py < g["finish_y"] <= y:
                 t_fin = t
             if nga.wp_idx >= n_wps and t_end is None:
@@ -457,17 +544,32 @@ def run(scenario, seed, hull="A", dyn="fossen", overrides=None, geom=None, t_max
                 if t_stopped is None and abs(v) < 0.05:
                     t_stopped = t
             corners = rect_corners(x, y, psi, hl, hb)
-            bo = max(outside_dist(cx, cy, aw, al) for cx, cy in corners)
+            if photo:
+                bo = max(CS.poly_outside_dist(cx, cy, W["poly"]) for cx, cy in corners)
+            else:
+                bo = max(outside_dist(cx, cy, aw, al) for cx, cy in corners)
             bnd_all = max(bnd_all, bo)
             if racing:
                 bnd_race = max(bnd_race, bo)
             for i, (bx_, by_) in enumerate(W["buoys"]):
+                br_ = W["cr"][i] if photo else F.BUOY_R
                 rd = F.rect_hull_dist(x, y, psi, bx_, by_, hl, hb)
-                on = rd < F.BUOY_R
+                on = rd < br_
                 if on and not obst_on.get(i):
                     if racing: obst_n += 1
                     else: obst_post += 1
-                obst_on[i] = on if on else (rd < F.BUOY_R + 0.1 and obst_on.get(i, False))
+                obst_on[i] = on if on else (rd < br_ + 0.1 and obst_on.get(i, False))
+            if photo:
+                for i, bm in enumerate(W["booms"]):
+                    if math.hypot(bm["cx"] - x, bm["cy"] - y) > bm["L"] / 2 + 1.5:
+                        boom_on[i] = False
+                        continue
+                    dd_b = rect_rect_dist(corners, bm["c4"])
+                    on = dd_b <= 0.0
+                    if on and not boom_on.get(i) and racing:
+                        boom_n += 1
+                        boom_det.append(CS.contact_note(t, x, y, psi, bm, cam_hist))
+                    boom_on[i] = on if on else (dd_b < 0.1 and boom_on.get(i, False))
             if op is not None:
                 op2 = opp.pose(t)
                 hist.append((t, x, y, psi, op2[0], op2[1], op2[2]))
@@ -523,7 +625,14 @@ def run(scenario, seed, hull="A", dyn="fossen", overrides=None, geom=None, t_max
         geofence_stop_lines=sum("🚧🛑" in ln for ln in sd_lines),
         side_lock_lines=sum("옆 잠금" in ln and not ln.startswith("옆 잠금 켬") for ln in sd_lines),
         node_errors=" | ".join(errs)[:300],
+        reverse_race_s=round(rev_race, 1),
     )
+    if photo:
+        out.update(boom_contacts=boom_n, buoy_contacts=obst_n, drift=drift, boom_detail=" | ".join(boom_det)[:400])
+    if camsim is not None:
+        out.update(cam_merge_ticks=cam_merge, cam_false_ticks=cam_false, cam_fp_ticks=cam_fp)
+    if stratC is not None:
+        out.update(c_stops=stratC.stops, c_log=" ".join(stratC.log)[:400])
     out["rec"] = rec
     try:
         os.remove(wp_file)
@@ -532,7 +641,8 @@ def run(scenario, seed, hull="A", dyn="fossen", overrides=None, geom=None, t_max
     return out
 
 
-DEFAULT_GEOM = dict(arena_len=30.0, arena_w=12.0, start_y=2.0, finish_y=26.0, wp_beyond=3.0, fence_inset=0.0)
+DEFAULT_GEOM = dict(arena_len=30.0, arena_w=12.0, start_y=2.0, finish_y=26.0, wp_beyond=3.0, fence_inset=0.0,
+                    arena="default", photo_shear=3.0, travel_axis="long")
 CSV_COLS = ["scenario", "seed", "hull", "dyn", "params", "side", "n_buoys", "v_ref", "ok", "exception", "finished",
             "t_finish", "t_course_end", "finish_to_end_s", "record_s", "record_fault_s", "obst_contacts", "opp_contacts",
             "opp_fault_ours", "opp_fault_theirs", "opp_fault_unknown", "contacts_post", "contact_detail",
@@ -540,7 +650,9 @@ CSV_COLS = ["scenario", "seed", "hull", "dyn", "params", "side", "n_buoys", "v_r
             "post_final_speed", "stopped", "t_to_stop_s", "post_observed_s", "stop_hold_race_s", "stop_hold_post_s",
             "opp_near_ticks", "opp_seen_any", "opp_seen_front", "opp_scan_min_m", "opp_true_min_m", "opp_hull_min_m",
             "opp_gap", "opp_bump", "opp_ahead", "opp_delay", "opp_ycut", "opp_ang", "opp_v",
-            "dwa_fallback_lines", "geofence_stop_lines", "side_lock_lines", "undeclared", "node_errors", "t_sim", "wall_s"]
+            "dwa_fallback_lines", "geofence_stop_lines", "side_lock_lines", "undeclared", "node_errors", "t_sim", "wall_s",
+            "reverse_race_s", "arena", "strategy", "boom_lidar", "drift", "boom_contacts", "buoy_contacts",
+            "cam_merge_ticks", "cam_false_ticks", "cam_fp_ticks", "c_stops", "c_log", "boom_detail"]
 
 
 def _worker(job):
@@ -571,7 +683,7 @@ def summary_table(R):
            "경계이탈 경기중 런(최대m)", "경계이탈 전체(결승 뒤 포함) 런(최대m)", "결승뒤정지 관측", "결승선너머m 중앙", "코스끝뒤이동m 중앙", "STOP_HOLD경기중s 중앙", "결승→코스끝s 중앙(최대)",
            "상대보임 정면/360/근접틱", "상대 스캔최소/실제최소m"]
     rows = []
-    for scen in SCENARIOS:
+    for scen in SCENARIOS + PHOTO_SCENARIOS[1:]:
         S = [r for r in R if r["scenario"] == scen]
         if not S:
             continue
@@ -633,7 +745,7 @@ def check_declared(overrides, hull):
 
 def main():
     ap = argparse.ArgumentParser(description="토너먼트 2D 시뮬 (실제 노드 코드 + 대본 상대 배)")
-    ap.add_argument("--scenario", default="all", choices=SCENARIOS + ["all"])
+    ap.add_argument("--scenario", default="all", choices=SCENARIOS + PHOTO_SCENARIOS[1:] + ["all"])
     ap.add_argument("--seeds", type=int, default=5)
     ap.add_argument("--seed0", type=int, default=1)
     ap.add_argument("--hull", default="A", choices=["A", "B"])
@@ -653,13 +765,53 @@ def main():
                     help="지오펜스 폴리곤 좌우 변을 경기장보다 이만큼(m) 안쪽에 둔다(현장 대책 시험). 이탈은 실제 경기장 기준")
     ap.add_argument("--lidar-noise", action="store_true", help="LiDAR 잡음 — full_course_sim.add_lidar_noise 와 같음(합성)")
     ap.add_argument("--verbose", action="store_true", help="런마다 한 줄")
+    ap.add_argument("--arena", default="default", choices=["default", "photo"], help="photo = 현장 사진 경기장(cam_sim.py)")
+    ap.add_argument("--travel-axis", default="long", choices=["long", "short"], help="photo 진행 방향(short 미구현)")
+    ap.add_argument("--photo-shear", type=float, default=DEFAULT_GEOM["photo_shear"], help="평행사변형 긴 변 기울기(m/길이)")
+    ap.add_argument("--strategy", default="A", choices=["A", "B", "C"])
+    ap.add_argument("--boom-lidar", default="none", choices=["none", "p", "always"])
+    ap.add_argument("--boom-lidar-p", type=float, default=0.3)
+    ap.add_argument("--cam-pdet", type=float, default=0.9)
+    ap.add_argument("--cam-fp", type=float, default=0.0, help="프레임당 오탐 사건 시작 확률")
+    ap.add_argument("--cam-fp-kind", default="both", choices=["small", "large", "both"])
+    ap.add_argument("--cam-fp-dur", type=float, default=1.0, help="오탐 사건 지속(s)")
+    ap.add_argument("--cam-outage", default="", metavar="T0:DUR", help="카메라 끊김 구간(s)")
+    ap.add_argument("--cam-x", type=float, default=0.5, help="카메라가 배 중심(LiDAR)보다 앞(m) — 퓨전 파라미터에도 같은 값")
+    ap.add_argument("--cam-tilt-err", type=float, default=0.0)
+    ap.add_argument("--cam-h-err", type=float, default=0.0)
+    ap.add_argument("--pitch-sigma", type=float, default=1.5)
+    ap.add_argument("--drift", type=float, default=None, help="흐름 m/s (기본 photo 0.1, default 0)")
+    ap.add_argument("--c", action="append", default=[], metavar="키=값", help="전략 C 설정(cam_sim.C_DEFAULTS)")
+    ap.add_argument("--fuse", action="append", default=[], metavar="키=값",
+                    help="퓨전 파라미터 덮어쓰기(DEFAULT_PARAMS·FUSION_DEFAULTS 키, 민감도용), 예 max_bbox_width_deg=40")
+    ap.add_argument("--tag", default="", help="CSV 에 적는 조건 이름")
     a = ap.parse_args()
     ov = F.parse_param_overrides(a.param)
     check_declared(ov, a.hull)
     geom = dict(arena_len=a.arena_len, arena_w=a.arena_wid, start_y=a.start_y, finish_y=a.finish_y, wp_beyond=a.wp_beyond,
                 fence_inset=a.fence_inset)
     kw = dict(hull=a.hull, dyn=a.dyn, overrides=ov, geom=geom, t_max=a.t_max, post=a.post, lidar_noise=a.lidar_noise)
-    scens = SCENARIOS if a.scenario == "all" else [a.scenario]
+    if a.arena == "photo":
+        if a.travel_axis != "long":
+            ap.error("--travel-axis short 미구현 — 진행 방향 = 긴 변(팀원 확인 11-11)")
+        geom.update(arena="photo", photo_shear=a.photo_shear, travel_axis=a.travel_axis)
+        outage = None
+        if a.cam_outage:
+            t0_, du_ = a.cam_outage.split(":")
+            outage = (float(t0_), float(du_))
+        kw.update(strategy=a.strategy, boom_lidar=a.boom_lidar, boom_lidar_p=a.boom_lidar_p, drift=a.drift,
+                  cam=dict(pdet=a.cam_pdet, fp=a.cam_fp, fp_kind=a.cam_fp_kind, fp_dur=a.cam_fp_dur, outage=outage,
+                           cam_x=a.cam_x, cam_tilt_err=a.cam_tilt_err, cam_h_err=a.cam_h_err, pitch_sigma=a.pitch_sigma,
+                           p_over={k: yaml.safe_load(v) for k, v in (it.split("=", 1) for it in a.fuse)}),
+                  c_cfg={k: float(v) for k, v in (it.split("=", 1) for it in a.c)})
+    elif a.strategy != "A" or a.drift:
+        ap.error("--strategy B/C·--drift 는 --arena photo 전용(기본 세계 결과를 바꾸지 않게)")
+    if a.arena == "photo":
+        scens = PHOTO_SCENARIOS if a.scenario == "all" else [a.scenario]
+        if any(s_ not in PHOTO_SCENARIOS for s_ in scens):
+            ap.error(f"--arena photo 시나리오는 {PHOTO_SCENARIOS}")
+    else:
+        scens = SCENARIOS if a.scenario == "all" else [a.scenario]
     jobs = [(s, sd, kw) for s in scens for sd in range(a.seed0, a.seed0 + a.seeds)]
     t0 = _walltime.perf_counter()
     if a.jobs > 1 and len(jobs) > 1:
@@ -669,7 +821,7 @@ def main():
     else:
         R = [_worker(j) for j in jobs]
     wall = _walltime.perf_counter() - t0
-    ptag = " ".join(a.param)
+    ptag = " ".join(a.param) + (f" [{a.tag}]" if a.tag else "")
     os.makedirs(os.path.dirname(os.path.abspath(a.csv)), exist_ok=True)
     with open(a.csv, "w", newline="", encoding="utf-8") as f:
         wr = csv.writer(f); wr.writerow(CSV_COLS)

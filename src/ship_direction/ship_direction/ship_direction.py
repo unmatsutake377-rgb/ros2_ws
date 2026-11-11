@@ -20,6 +20,11 @@ from ship_direction.gap_select import side_escape
 from ship_direction.side_lock import SideLockWait, SideLockFilter, side_states, allowed_range
 from ship_direction.side_lock import angle_allowed
 from ship_direction.side_lock import clip_candidates, check_params, UNKNOWN
+from ship_direction.camera_merge import CAMERA_ALLOWED_MODES, ST_EMPTY, camera_active, camera_silent
+from ship_direction.camera_merge import merge_camera, parse_state
+from ship_direction.camera_merge import check_enabled as check_camera_enabled
+from ship_direction.camera_merge import check_modes as check_camera_modes
+from ship_direction.camera_merge import check_stale_sec as check_camera_stale_sec
 
 # 특수 신호 상수 (CLAUDE.md 3-9 상수표)
 SPIN_RIGHT = 5000.0          # 우선회
@@ -43,6 +48,8 @@ DWA_SLOW_WARN_SEC = 0.05     # DWA 1회가 이보다 오래 걸리면 WARN(결�
 DWA_LOG_PERIOD_SEC = 5.0     # DWA 느림·예외 로그 throttle(로그 전용)
 DWA_IDLE_RESET_SEC = 1.0     # 같은 DWA 모드 안에서 (C) 틱이 이보다 오래 끊기면 추정 초기화
 #   ((0)·레벨2·[N]·(A)(B) 동안 배가 멈췄을 수 있다 — 추정은 (C) 틱에서만 굴린다)
+CAMERA_SILENT_LOG_PERIOD_SEC = 5.0  # 카메라 장애물 침묵 지속 중 ERROR 반복 주기(로그 전용, 제어 무관)
+CAMERA_LOG_PERIOD_SEC = 5.0  # 카메라 빈 배열 WARN throttle(로그 전용)
 
 
 def edge_range(distance_array, i, detection_distance):
@@ -82,6 +89,13 @@ def select_valid_zones(safe_zones, distance_array, angle_increment_rad,
 #       rclcpp::QoS(KeepLast(10)) = RELIABLE 로 발행한다 — 소스 확인함. 드라이버를 갈아도 안 깨진다.
 #   드롭이 생겨도 '콜백 부재 → 스테일 → 페일세이프 발동' 으로 안전한 방향으로 실패한다.
 SCAN_QOS = QoSProfile(
+    reliability=ReliabilityPolicy.BEST_EFFORT,
+    history=HistoryPolicy.KEEP_LAST,
+    depth=1,
+)
+# /camera_obstacle_state 구독 — 이미지 구독과 같은 규칙(묵은 프레임으로 조향 금지, 계약서_카메라장애물 토픽 계약).
+#   발행자(RELIABLE)와 호환. depth=1 이라 도착 = 최신.
+CAMERA_OBSTACLE_QOS = QoSProfile(
     reliability=ReliabilityPolicy.BEST_EFFORT,
     history=HistoryPolicy.KEEP_LAST,
     depth=1,
@@ -209,6 +223,15 @@ class ShipDirection(Node):
         · 받은 뒤 끊김은 [E] 가 맡는다(ARMED 뒤 stale → 레벨 2, 모든 모드 정지).
         · _compute (C) 첫머리에도 같은 가드(None → STOP_HOLD) — None % 360 TypeError 로 노드가
           죽는 걸 막는 방어선.
+
+    [P] 카메라 장애물 병합 (계약서_카메라장애물_20261111 U1). LiDAR 빔이 못 보는 낮은 물체(누운 원통)를
+        카메라 노드가 /camera_obstacle_state 로 낸다 — /geofence_state 와 같은 '가짜 LiDAR' 형식·좌 양수.
+        camera_obstacle_enabled(기본 false) + wp_mode ∈ camera_obstacle_modes([8]) 일 때만 (C) 에서
+        [H] geofence 병합 **바로 뒤** 같은 매핑으로 min 병합(계산은 ship_direction/camera_merge.py).
+        끔 = 아무것도 안 함(기존과 비트 동일). 감속 신호(_closest_obstacle)·옆 잠금·[I] 하드 가드에는
+        안 넣는다(원 스캔 그대로). stale(camera_obstacle_stale_sec 0.5 s)·빈 배열·못 받음 → 병합 안 함.
+        SensorWatch·/failsafe_level 에 넣지 않는다 — 카메라가 멈춰도 제어 체인은 돈다(OAK 재연결 공백).
+        침묵(켜짐 + 담당 모드에서 수신 없음)은 ERROR 진입 1회 + 5 s 주기 + 복구 INFO 로만 드러낸다.
 
     ※ 판정 로직(SensorWatch, TemporalVote, median_min)은 **ROS 비의존 모듈** ship_direction/failsafe.py 에 있다.
       워치독을 노드 안에 인라인하면 단위 테스트가 불가능해진다. rclpy 없이 임포트 가능:
@@ -470,6 +493,33 @@ class ShipDirection(Node):
                 f"wait {self.side_lock_wait_max_sec} s, 확인 {self.side_lock_confirm_frames}프레임, "
                 f"풀림 여유 {self.side_lock_release_margin_m} m")
 
+        # ---- [P] 카메라 장애물 병합 (계약서_카메라장애물_20261111 U1, Q4·Q5·Q7) ----
+        # /camera_obstacle_state('가짜 LiDAR', 좌 양수)를 (C) 에서 geofence 병합 바로 뒤에 min 병합.
+        # 끔(기본) = 기존과 비트 동일. 모드는 5·8 만 허용(밖이면 빼고 WARN, 다 빠지면 끔).
+        # stale: 수신 후 이 시간 넘게 갱신 없으면 병합 안 함(비유한·≤0 → 0.5 + WARN).
+        # 🚨 대회 launch 가 yaml 을 넘긴다 → yaml 과 같이 바꿀 것. 켜는 건 물 위 확인 뒤 토너먼트 yaml 만(U7).
+        cam_enabled_raw = self.declare_parameter('camera_obstacle_enabled', False).value
+        cam_modes_raw = self.declare_parameter('camera_obstacle_modes', [8]).value
+        cam_stale_raw = self.declare_parameter('camera_obstacle_stale_sec', 0.5).value
+        self.camera_obstacle_enabled, err = check_camera_enabled(cam_enabled_raw)
+        if err:
+            self.get_logger().warn(err)
+        self.camera_obstacle_modes, dropped = check_camera_modes(cam_modes_raw)
+        if dropped:
+            self.get_logger().warn(
+                f"camera_obstacle_modes 의 {dropped} 는 허용({list(CAMERA_ALLOWED_MODES)}) 밖 → 제거, "
+                f"남은 {self.camera_obstacle_modes}")
+        if self.camera_obstacle_enabled and not self.camera_obstacle_modes:
+            self.get_logger().warn("camera_obstacle_modes 에 허용 모드가 하나도 없음 → 카메라 병합 끔")
+            self.camera_obstacle_enabled = False
+        self.camera_obstacle_stale_sec, err = check_camera_stale_sec(cam_stale_raw)
+        if err:
+            self.get_logger().warn(err)
+        if self.camera_obstacle_enabled:
+            self.get_logger().info(
+                f"카메라 장애물 병합 켬: 모드 {self.camera_obstacle_modes}, "
+                f"stale {self.camera_obstacle_stale_sec} s (감속 신호·페일세이프엔 안 넣음)")
+
         self.detection_distance = self.detection_distance_default
 
         # ----------------------
@@ -480,6 +530,9 @@ class ShipDirection(Node):
         self.create_subscription(Float32, '/candidate_angle', self.candidate_callback, 10)
         self.create_subscription(Int32, '/wp_mode', self.wp_mode_cb, 10)
         self.create_subscription(Float32MultiArray, '/geofence_state', self.geofence_cb, 10)
+        # [P] 끔이어도 구독은 만든다 — 발행자(카메라 노드)가 '구독자 0' 을 겪지 않게(계약서 U1).
+        self.create_subscription(Float32MultiArray, '/camera_obstacle_state',
+                                 self.camera_obstacle_cb, CAMERA_OBSTACLE_QOS)
 
         # ----------------------
         #       Publishers  (토픽/타입 불변 + /failsafe_level 신규, CLAUDE.md 3-9)
@@ -526,6 +579,13 @@ class ShipDirection(Node):
         # geofence: (거리 m, 상대방위 deg) 또는 None. north 가 [inf,nan] 을 내면 None.
         self.geofence = None
         self.last_geofence_t = None
+
+        # [P] 카메라 장애물: (a0, inc, [r...]) 또는 None(빈 배열). 수신 시각 None = 아직 못 받음.
+        self.camera_obstacle = None
+        self.camera_obstacle_t = None
+        self._camera_active_since = None   # 켜짐 + 담당 모드에 들어온 시각(침묵 판정 기준). control_cb 가 갱신
+        # 침묵 로그 시점(진입 ERROR 1회·5 s 주기 ERROR·복구 INFO). (C) 틱에서만 쓴다.
+        self.camera_obstacle_log = CandidateStaleLog(CAMERA_SILENT_LOG_PERIOD_SEC)
 
         # 페일세이프 감시 — /scan 과 /yaw_error 를 둘 다 본다.
         # ★ /scan 만 보면 IMU 사망을 놓친다. IMU 가 죽으면 ship_goal_angle 이 /yaw_error 를
@@ -598,6 +658,18 @@ class ShipDirection(Node):
             else:
                 self.geofence = None
             self.last_geofence_t = time.monotonic()
+
+    def camera_obstacle_cb(self, msg):
+        """[P] /camera_obstacle_state = [angle_min_deg, angle_inc_deg, r0, r1, ...] — 저장만.
+
+        형식·부호는 /geofence_state 와 같다(좌 양수, 인덱스 0 = 우현, 멀면 inf, LiDAR 원점).
+        **빈 배열 = 정보 없음**(카메라 노드: 영상 없음·파라미터 무효·프레임 비정상) → None 으로 저장.
+        병합·로그는 _compute (C) 가 한다. 끔이어도 저장은 한다(쓰지 않을 뿐).
+        """
+        cam = parse_state(msg.data)
+        with self.lock:
+            self.camera_obstacle = cam
+            self.camera_obstacle_t = time.monotonic()
 
     def candidate_callback(self, msg):
         val = msg.data
@@ -774,6 +846,9 @@ class ShipDirection(Node):
         # DWA 구간을 벗어난 틱 → 다음 진입 때 추정 초기화(결정 6). 끔이면 _dwa_active 가 늘 False.
         if getattr(self, '_dwa_active', False) and wp_mode not in self.dwa_modes:
             self._dwa_leave()
+        # [P] 카메라 담당 구간 진입 시각(침묵 판정 기준) — 끔이면 아무것도 안 함.
+        if getattr(self, 'camera_obstacle_enabled', False):
+            self._camera_track_active(wp_mode, now)
 
         # ---- candidate 신선도: candidate_stale_sec 넘게 갱신 없으면 20000 (_compute 전) ----
         candidate_angle = self._effective_candidate(
@@ -995,6 +1070,69 @@ class ShipDirection(Node):
             return True
         return False
 
+    # =====================================================
+    # [P] 카메라 장애물 병합 (계약서_카메라장애물_20261111 U1) — 계산은 ship_direction/camera_merge.py
+    # =====================================================
+    def _camera_track_active(self, wp_mode, now):
+        """켜짐일 때 control_cb 가 매 틱 부른다: 담당 모드 진입 시각을 기록, 벗어나면 지운다.
+
+        진입 시각을 침묵 판정 기준에 넣는 이유: 카메라 노드는 담당 모드 밖에선 발행하지 않는다 →
+        mode 8 진입 순간엔 마지막 수신이 늘 묵었다. 진입부터 stale_sec 은 기다려야 거짓 ERROR 가 없다.
+        벗어날 때 침묵 로그 상태도 조용히 처음으로(다음 진입 첫 틱의 거짓 '복구' INFO 방지).
+        """
+        if camera_active(self.camera_obstacle_enabled, wp_mode, self.camera_obstacle_modes):
+            if self._camera_active_since is None:
+                self._camera_active_since = now
+        elif self._camera_active_since is not None:
+            self._camera_active_since = None
+            self.camera_obstacle_log = CandidateStaleLog(CAMERA_SILENT_LOG_PERIOD_SEC)
+
+    def _merge_camera(self, distance_array, angle_array, now):
+        """[P] (C) 에서 geofence 병합 바로 뒤에 부른다(켜짐일 때만). → 병합한(또는 그대로인) 배열.
+
+        담당 모드(control_cb 스냅샷 _side_wp_mode)가 아니면 그대로. 담당이면 merge_camera(순수):
+        stale·빈 배열·못 받음 → 그대로(옛 동작). 로그(CLAUDE.md §1-7, 심각도마다 호출 줄 따로):
+          · 침묵(진입 뒤 stale_sec 넘게 수신 없음): 진입 ERROR 1회 + 5 s 주기 ERROR, 복구 INFO 1회
+          · 빈 배열(카메라 노드는 살아 있으나 정보 없음): WARN throttle 5 s
+          · 병합됨: INFO throttle 2 s
+        """
+        mode = getattr(self, '_side_wp_mode', None)
+        if not camera_active(self.camera_obstacle_enabled, mode, self.camera_obstacle_modes):
+            return distance_array
+        if self._camera_active_since is None:      # control_cb 를 안 거친 직접 호출
+            self._camera_active_since = now
+        with self.lock:
+            cam = self.camera_obstacle
+            cam_t = self.camera_obstacle_t
+        out, status, hits, nearest = merge_camera(
+            distance_array, angle_array, cam, cam_t, now, self.camera_obstacle_stale_sec,
+            LIDAR_FORWARD_DEG)
+
+        silent = camera_silent(cam_t, self._camera_active_since, now, self.camera_obstacle_stale_sec)
+        ev = self.camera_obstacle_log.update(silent, now)
+        if ev == 'enter':
+            how = "한 번도 못 받음" if cam_t is None else f"{now - cam_t:.1f}s 갱신 없음"
+            self.get_logger().error(
+                f"📷 /camera_obstacle_state {how}(> {self.camera_obstacle_stale_sec:.1f}s, wp_mode {mode}) "
+                f"→ 카메라 장애물 병합 안 함(LiDAR 만으로 회피). 카메라 노드·OAK 확인")
+        elif ev == 'repeat':
+            self.get_logger().error(
+                f"📷 /camera_obstacle_state 침묵 지속 (wp_mode {mode}) → 카메라 병합 안 함")
+        elif ev == 'recover' and status == ST_EMPTY:
+            # 재개 첫 수신이 빈 배열 = 노드는 살아 있으나 정보 없음 → 병합 안 함을 사실대로(아래 WARN 도 뜬다)
+            self.get_logger().info(f"📷 /camera_obstacle_state 수신 재개(빈 배열 — 병합 안 함) (wp_mode {mode})")
+        elif ev == 'recover':
+            self.get_logger().info(f"📷 /camera_obstacle_state 수신 재개 (wp_mode {mode}) → 카메라 병합")
+        if status == ST_EMPTY:
+            self.get_logger().warn(
+                "📷 /camera_obstacle_state 빈 배열(카메라 정보 없음) → 병합 안 함",
+                throttle_duration_sec=CAMERA_LOG_PERIOD_SEC)
+        if hits:
+            self.get_logger().info(
+                f"📷 카메라 장애물이 스캔에 병합됨 ({hits}셀, 최근접 {nearest:.1f}m)",
+                throttle_duration_sec=2.0)
+        return out
+
     def _compute(self, msg, wp4_enter_time, candidate_angle, yaw_error, detection_distance,
                  candidate_t=None):
         """(desired_angle, obstacle_array) 를 만든다. 작년 scan_callback 의 로직 그대로.
@@ -1105,6 +1243,9 @@ class ShipDirection(Node):
         # 경계는 north 가 '가짜 LiDAR'로 쏴서 보낸다. 여기서 스캔에 섞어버리면
         # 아래 파이프라인(마스크 → dilate → 갭-팔로잉)이 경계를 그냥 '벽'으로 취급한다.
         distance_array = self._merge_geofence(distance_array, angle_array)
+        # ---- [P] 카메라 장애물 병합 — geofence 바로 뒤, 같은 매핑 min. 끔이면 부르지도 않는다. ----
+        if getattr(self, 'camera_obstacle_enabled', False):
+            distance_array = self._merge_camera(distance_array, angle_array, now)
 
         # ---- Binary obstacle mask ----
         # ※ rear_obstacle_ignore_margin 제거됨. 작년엔 여기서

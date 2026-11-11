@@ -26,3 +26,9 @@
     side_lock_wait_max_sec: 10.0
     side_lock_confirm_frames: 3     # 🚨 정수(3.0 금지)
     side_lock_release_margin_m: 0.3
+    # ---- [P] 카메라 장애물 병합 (계약서_카메라장애물_20261111 U1·U7) — 처음 값 false ----
+    # ⚠️ U7 현장 절차: 물 위 확인(줄자 거리 vs 추정, 끔·켬 각 2회, 거짓 정지·후진 없음) 통과 뒤에만 true. 실패면 false.
+    # 나머지 값은 공통 yaml 과 같다(현장에서 바꿀 때 여기만 고친다).
+    camera_obstacle_enabled: false
+    camera_obstacle_modes: [8]      # 5·8 만 허용. 빈 리스트 [] 금지
+    camera_obstacle_stale_sec: 0.5  # 소수점 필수

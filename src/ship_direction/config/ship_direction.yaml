@@ -144,5 +144,14 @@
     side_lock_wait_max_sec: 10.0    # 잠금이 후보를 지운 대기 상한 → 넘으면 기존 동작 폴백(0.0 = 바로)
     side_lock_confirm_frames: 3     # 🚨 정수(3.0 금지). 잠그려면 새 스캔 연속 이 횟수(물보라·깜빡임 방지)
     side_lock_release_margin_m: 0.3  # 잠긴 뒤 dist + 이 값 이상이어야 풀림(히스테리시스)
+    # ---- [P] 카메라 장애물 병합 (계약서_카메라장애물_20261111 U1) ----
+    # LiDAR 빔이 못 보는 낮은 물체(빨간 누운 원통)를 카메라 노드가 /camera_obstacle_state('가짜 LiDAR',
+    # 좌 양수, /geofence_state 와 같은 형식)로 낸다 → (C) 에서 geofence 병합 바로 뒤 min 병합.
+    # 감속 신호·옆 잠금·경계 하드 가드·페일세이프(/failsafe_level·/health_ok)엔 안 넣는다.
+    # stale·빈 배열·못 받음 → 병합 안 함(옛 동작) + 침묵이면 ERROR(진입 1회·5 s 주기)·복구 INFO.
+    # 끔(기본) = 기존과 비트 동일. 🚨 코드 기본값과 같은 값으로 둘 것(test_camera_obstacle_merge 가 본다).
+    camera_obstacle_enabled: false  # ⚠️ 켜는 건 물 위 확인(줄자 거리 vs 추정, 끔·켬 각 2회) 뒤 토너먼트 yaml 에서만(U7)
+    camera_obstacle_modes: [8]      # 5·8 만 허용. 밖이면 노드가 빼고 WARN(다 빠지면 끔). 빈 리스트 [] 금지
+    camera_obstacle_stale_sec: 0.5  # 수신 후 이 시간 넘게 갱신 없으면 병합 안 함. 소수점 필수. 비유한·≤0 → 0.5
     # ※ rear_obstacle_ignore_margin 은 '튜닝값'이 아니라 증명된 결함이라 구조 커밋에서 제거했다
     #    (물보라 0.3m 반사 하나가 실제 1.6m 부표를 통째로 지웠다: 17셀 → 0셀).
