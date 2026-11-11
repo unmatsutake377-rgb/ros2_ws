@@ -146,6 +146,9 @@ def list_files(repo, home, geofence=None):
         m = os.path.basename(p)[len("practice_"):-len(".yaml")]
         r["notes"].insert(0, f"연습용 — {PRACTICE[m][0] if m in PRACTICE else m} 만. launch 는 course:=main · "
                              f"끝나면 조종기로 받는다. 대회 녹화본과 따로 쓴다")
+        if m in APPROACH_FIRST and r["modes"] and r["modes"][0] != 5:
+            r["warnings"].append("첫 점이 mode 5(접근)가 아니다 — 출발 자리에서 바로 부표를 찾아 게이트 부표 같은 "
+                                 "다른 부표를 목표로 잡을 수 있다(11-11 시뮬). 미션 구역 앞에 mode 5 점을 먼저 찍는다")
         rows.append(r)
     for rel in (MAIN_TEMPLATE_REL, TOURNAMENT_TEMPLATE_REL):
         p = os.path.join(repo, rel)
@@ -160,6 +163,11 @@ def list_files(repo, home, geofence=None):
 # 그 미션 웨이포인트만 담은 짧은 파일을 따로 녹화한다 → launch course:=main waypoints_file:=$HOME/ssf_logs/practice_<미션>.yaml.
 # north 는 main 코스에서 mode 0·1·2·3·5·7·8 이면 몇 개든 받는다(waypoint_loader) — 배 코드는 그대로.
 # 기본값(구역명·mode·dwell)은 종합임무 템플릿에서 그 미션 줄만 뽑아 쓴다(녹화 도구 --template). 대회 녹화본과 이름이 다르다.
+# 🚨 위치유지·탐색은 맨 앞에 '연습 접근'(mode 5) 한 줄을 붙인다(11-11 시뮬): 첫 점부터 mode 2·3 이면 출발 자리에서
+#    바로 부표 검출·선회가 켜져 **게이트의 빨강·초록 부표**를 목표로 잡았다(탐색 목표 부표 0/20, 게이트 접촉 9).
+#    접근점을 넣으니 게이트 접촉 0·목표 부표 선회 13/20(나머지 7 은 344~348°로 판정선 350° 미달). 기본 좌표 = 코스에서
+#    그 미션 바로 앞 WP 자리 — 실제로는 미션 구역 앞, 다른 색 부표가 화면에 덜 들어오는 곳을 찍는다.
+APPROACH_FIRST = ("hold", "search")
 PRACTICE = {   # 이름: (화면 이름, 템플릿 줄 고르기(mode, 구역명) → bool)
     "gate":   ("게이트",   lambda m, lab: m in (0, 1)),
     "hold":   ("위치유지", lambda m, lab: m == 2),
@@ -184,10 +192,15 @@ def practice_template(repo, home, mission):
         raise ValueError(f"종합임무 템플릿을 못 읽음({src}): {e}")
     labels = wl.waypoint_labels(raw)
     pick = PRACTICE[mission][1]
-    rows = [{"구역": labels[i] if i < len(labels) else "", "lat": w[0], "lon": w[1], "mode": w[2], "dwell": w[3]}
-            for i, w in enumerate(wps) if pick(w[2], labels[i] if i < len(labels) else "")]
+    idx = [i for i, w in enumerate(wps) if pick(w[2], labels[i] if i < len(labels) else "")]
+    rows = [{"구역": labels[i] if i < len(labels) else "", "lat": wps[i][0], "lon": wps[i][1], "mode": wps[i][2],
+             "dwell": wps[i][3]} for i in idx]
     if not rows:
         raise ValueError(f"종합임무 템플릿에 '{PRACTICE[mission][0]}' 줄이 없다 — 템플릿이 바뀌었나({src})")
+    if mission in APPROACH_FIRST and idx[0] > 0:
+        prev = wps[idx[0] - 1]
+        rows.insert(0, {"구역": f"연습 접근 — {PRACTICE[mission][0]} 구역 앞", "lat": prev[0], "lon": prev[1],
+                        "mode": 5, "dwell": 1.0})
     out = os.path.join(home, "ssf_logs", f".practice_template_{mission}.yaml")
     os.makedirs(os.path.dirname(out), exist_ok=True)
     with open(out, "w", encoding="utf-8") as f:

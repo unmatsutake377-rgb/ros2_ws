@@ -504,14 +504,14 @@ def test_wp_prepare_paths_backup_and_boat_check(boat):
 
 def test_practice_templates_pick_one_mission(boat):
     """연습: 종합임무 템플릿에서 그 미션 줄만 뽑아 녹화 기본값으로 — mode 순서가 미션 그대로."""
-    want = {"gate": [0, 1], "hold": [2], "search": [3, 3, 3], "avoid": [5, 5], "dock": [5, 5, 7, 7]}
+    want = {"gate": [0, 1], "hold": [5, 2], "search": [5, 3, 3, 3], "avoid": [5, 5], "dock": [5, 5, 7, 7]}
     tm = [f for f in boat.waypoints() if f["name"] == "waypoints.yaml"][0]["modes"]
     for m, modes in want.items():
         p = boat.wp_prepare("practice", m)
         assert p["out"].endswith(f"ssf_logs/practice_{m}.yaml") and p["backup"] is None
         t = wpm.check_file(boat.repo, p["template"], "main")
         assert not t["errors"], (m, t["errors"])
-        if m != "search" or tm.count(3) == 3:
+        if m != "search" or tm.count(3) == 3:   # 위치유지·탐색은 맨 앞 '연습 접근' mode 5
             assert t["modes"] == modes, (m, t["modes"])
         if m == "dock":
             assert all("도킹" in x["label"] for x in t["points"])
@@ -529,6 +529,7 @@ def test_practice_file_listed_separately(boat):
     assert pr["kind"] == "연습(노트북)" and pr["course"] == "main" and pr["modes"] == [2] and not pr["errors"]
     assert pr["launch_arg"] == "waypoints_file:=$HOME/ssf_logs/practice_hold.yaml"
     assert "위치유지" in pr["notes"][0]
+    assert any("mode 5(접근)" in w for w in pr["warnings"])          # 접근점 없이 바로 mode 2
     assert by["waypoints_recorded.yaml"]["kind"] == "녹화본(노트북)"       # 대회 녹화본은 그대로
     assert not any(f["name"].startswith(".practice_template") for f in boat.waypoints())
 
