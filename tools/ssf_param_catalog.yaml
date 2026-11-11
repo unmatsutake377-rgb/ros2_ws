@@ -112,7 +112,7 @@ groups:
          hint: 당일 공지 색, choices: [red, green, blue, orange, yellow, white],
          change: daily, when: "당일 공지 색으로 교체. 그 색의 HSV 범위도 같이 실측"}
       - {pkg: color_shape_detector, section: image_subscriber_dock, key: target_shape, label: 도킹 표식 모양,
-         hint: 당일 공지 모양,
+         hint: 당일 공지 모양(대문자 시작 — 노드 dock_logic.VALID_SHAPES), choices: [Triangle, Square, Circle],
          change: daily, when: "당일 공지 모양으로 교체"}
       - {pkg: color_shape_detector, section: image_subscriber_dock, key: circle_circularity_min, label: 원/사각 경계,
          step: 0.01, limits: [0.5, 0.99], hint: 이보다 둥글면 원,
@@ -127,10 +127,10 @@ groups:
   - name: 색 (당일 아침)
     items:
       - {pkg: color_shape_detector, section: image_subscriber_turn, key: turn_color_mode2, label: 위치유지 부표 색,
-         choices: [red, green, blue, orange, yellow, white],
+         choices: [red, green, white],   # 노드 turn_color_logic.TURN_COLORS 가 덮어쓴다(ssf_param_core.NODE_CHOICES)
          change: daily, when: "당일 공지 색과 다르면 교체"}
       - {pkg: color_shape_detector, section: image_subscriber_turn, key: turn_color_mode3, label: 탐색 부표 색,
-         hint: 공지 색으로 교체, choices: [red, green, blue, orange, yellow, white],
+         hint: "공지 색으로 교체 — 목록 = 이 검출기가 아는 색뿐(공지 색이 없으면 코드 수정 필요)", choices: [red, green, white],
          change: daily, when: "당일 공지 색으로 교체. 그 색의 HSV 범위도 같이 실측"}
       - {pkg: color_shape_detector, key: hsv.red, label: 빨강 HSV 범위, hint: "[H저,S저,V저,H고,S고,V고] ×1~2 구간 — 그 시각 실측값", advice: 🚨 정수 6개 또는 12개,
          change: daily, when: "공지 색일 때만, 경기 시각·그 해 방향에서 실측(basic_image_subscriberhsv, p 키 = yaml 줄)",
