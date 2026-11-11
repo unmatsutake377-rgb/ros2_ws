@@ -85,6 +85,10 @@ h2.group:first-child{margin-top:4px}
 .ctl input.num{font-family:var(--mono);text-align:right;max-width:130px}
 .ctl textarea,.ctl input.mono{font-family:var(--mono);font-size:13px}
 .ctl textarea{min-height:64px;resize:vertical}
+.geo{display:flex;flex-direction:column;gap:6px;width:100%}
+.geobtns{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.geobtns .step{width:auto;padding:4px 10px}
+.geobtns .geoadd.off{opacity:.55}
 .unit{color:var(--ink3);font-size:13px;white-space:nowrap}
 .step{border:1px solid var(--line);background:var(--panel);width:30px;height:32px;border-radius:8px;cursor:pointer;font-weight:700}
 .tog{display:inline-flex;border:1px solid var(--line);border-radius:9px;overflow:hidden}
@@ -194,7 +198,8 @@ pre.out{font-family:var(--mono);font-size:12px;background:var(--bg);padding:10px
 <script>
 "use strict";
 const S = {state:null, params:[], groups:[], errors:[], diff:[], log:[], course:"main", tab:"field",
-           q:"", pending:new Map(), open:new Set(), applied:[], buildPkgs:new Set(), chg:null};
+           q:"", pending:new Map(), open:new Set(), applied:[], buildPkgs:new Set(), chg:null,
+           geoMsg:new Map()};
 const COURSE_KO = {main:"종합임무", tournament:"토너먼트"};
 // 카탈로그 change → 배지 (언제 바꾸나)
 const CHANGE_KO = {daily:"매 경기 교체", measure:"실측해서 넣기", water:"물 위 확인 후 조정", rarely:"보통 그대로", fixed:"바꾸지 않음"};
@@ -289,10 +294,75 @@ function control(p, cur, onval) {
       inp, h("button", {class:"step", text:"+", onclick:() => bump(1), "aria-label":"늘리기"}),
       c.unit ? h("span", {class:"unit", text:c.unit}) : null);
   }
-  if (p.key === "geofence_polygon")
-    return h("textarea", {class:"mono", placeholder:"[35.1862375, 128.5655118, 35.1866, 128.5655, …]",
-      onchange:e => onval(e.target.value.trim())}, cur);
+  if (p.key === "geofence_polygon") return geofenceControl(p, cur, onval);
   return h("input", {type:"text", class:p.type === "list" ? "mono" : "", value:cur, onchange:e => onval(e.target.value)});
+}
+
+// ---- 지오펜스 꼭짓점 찍기 — 현재 GPS(RTK FIXED 만)를 폴리곤 끝에 붙인다. 값은 '적용' 전까지 대기 상태.
+//   경계는 실제 경계 그대로(안쪽으로 줄이지 않음), 꼭짓점은 경계를 따라 한 방향 순서로. 토너먼트는 결승선 너머 포함.
+const GEO_MAX_AGE_S = 2.0;      // 감시 노드 파일이 이보다 묵었으면 거부(배가 움직였을 수 있다)
+const GEO_DUP_M = 0.5;          // 이미 찍은 점과 이보다 가까우면 거부(같은 자리 두 번)
+function geoParse(txt) {
+  const t = String(txt ?? "").trim();
+  if (t === "" || t === "[]") return [];
+  let v;
+  try { v = JSON.parse(t); } catch (e) { return null; }
+  if (!Array.isArray(v) || v.length % 2 || !v.every(x => typeof x === "number" && isFinite(x))) return null;
+  return v;
+}
+function geoFmt(v) { return "[" + v.map(x => x.toFixed(7)).join(", ") + "]"; }
+function geoDistM(a1, o1, a2, o2) {
+  const k = Math.PI / 180, R = 6371000;
+  const x = (o2 - o1) * k * Math.cos((a1 + a2) / 2 * k), y = (a2 - a1) * k;
+  return Math.hypot(x, y) * R;
+}
+function geofenceControl(p, cur, onval) {
+  const pk = pkey(p);
+  const msg = S.geoMsg.get(pk);
+  const pts = geoParse(cur);
+  const say = (ok, text) => { S.geoMsg.set(pk, {ok, text}); render(); };
+  const add = async () => {
+    const v = geoParse(cur);
+    if (v === null) return say(false, "입력 칸이 [위도, 경도, …] 숫자 배열이 아니다 — 먼저 고치거나 '모두 지우기'");
+    let g;
+    try { g = await api("/api/gps"); } catch (e) { return say(false, "GPS 를 못 읽었다: " + e.message); }
+    if (g.ok === false) return say(false, "GPS 를 못 읽었다: " + g.error);
+    if (g.level !== "fixed") return say(false, "RTK FIXED 가 아니다(" + (g.text || g.level) + ") — FIXED 가 될 때까지 기다린다");
+    if (!(g.age <= GEO_MAX_AGE_S)) return say(false, `GPS 값이 ${g.age ?? "?"} s 묵었다 — 감시 노드·launch 확인`);
+    if (!isFinite(g.lat) || !isFinite(g.lon)) return say(false, "GPS 응답에 위도·경도가 없다");
+    for (let i = 0; i < v.length; i += 2) {
+      const d = geoDistM(v[i], v[i + 1], g.lat, g.lon);
+      if (d < GEO_DUP_M) return say(false, `${i / 2 + 1}번 점과 ${(d * 100).toFixed(0)} cm — 같은 자리를 두 번 찍었다`);
+    }
+    const nv = v.concat([g.lat, g.lon]);
+    const n = nv.length / 2;
+    let txt = `${n}번 점 추가: ${g.lat.toFixed(7)}, ${g.lon.toFixed(7)}` +
+      (g.h_acc_m != null ? ` (±${(g.h_acc_m * 100).toFixed(1)} cm)` : "");
+    if (n >= 2) txt += ` · 직전 점에서 ${geoDistM(nv[nv.length - 4], nv[nv.length - 3], g.lat, g.lon).toFixed(1)} m`;
+    txt += n < 3 ? ` — 최소 3점(지금 ${n})` : " — 다 찍었으면 아래 '확인하고 적용'";
+    S.geoMsg.set(pk, {ok:true, text:txt});
+    onval(geoFmt(nv));
+  };
+  const pop = () => {
+    const v = geoParse(cur);
+    if (!v || !v.length) return say(false, "뺄 점이 없다");
+    S.geoMsg.set(pk, {ok:true, text:`${v.length / 2}번 점을 뺐다`});
+    onval(geoFmt(v.slice(0, -2)));
+  };
+  const clear = () => { S.geoMsg.set(pk, {ok:true, text:"모두 지웠다(적용 전까지 배 파일은 그대로)"}); onval("[]"); };
+  const ta = h("textarea", {class:"mono", placeholder:"[35.1862375, 128.5655118, 35.1866, 128.5655, …]",
+    onchange:e => { S.geoMsg.delete(pk); onval(e.target.value.trim()); }}, cur);
+  const fixed = S.gps?.level === "fixed";
+  return h("div", {class:"geo"}, ta,
+    h("div", {class:"geobtns"},
+      h("button", {class:"step geoadd" + (fixed ? "" : " off"), text:"📍 지금 위치를 꼭짓점으로",
+        title:"RTK FIXED 일 때만 — 경계 꼭짓점(빨간 기둥)에 배를 대고 누른다", onclick:add}),
+      h("button", {class:"step", text:"마지막 점 빼기", onclick:pop}),
+      h("button", {class:"step", text:"모두 지우기", onclick:clear}),
+      h("span", {class:"hint", text:pts === null ? "형식 오류" : `${pts.length / 2}점` +
+        (fixed ? "" : " · RTK FIXED 아님 — 찍기 거부")})),
+    h("div", {class:"hint", text:"실제 경계 그대로(안쪽으로 줄이지 않음) · 경계를 따라 한 방향 순서로 · 토너먼트는 결승선 너머 정지 지점까지 포함"}),
+    msg ? h("div", {class:msg.ok ? "hint" : "err", text:(msg.ok ? "✅ " : "❌ ") + msg.text}) : null);
 }
 
 function paramRow(p) {
