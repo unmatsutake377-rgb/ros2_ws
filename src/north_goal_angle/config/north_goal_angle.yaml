@@ -10,7 +10,9 @@
     ilos_ki: 0.02                  # 적분 이득 — 조류·바람 상쇄. 너무 크면 진동, 작으면 상쇄 느림
     ilos_integral_max: 50.0        # anti-windup 클램프
     # ---- GPS 필터 (fix_is_usable 통과분에 품질·이상치·지터 처리) ----
-    gps_cov_threshold: 2.0         # position_covariance 이보다 크면 그 프레임 버림 (RTK 품질)
+    gps_cov_threshold: 9.0         # position_covariance 이보다 크면 그 프레임 버림. 9.0 = hAcc 약 3 m 까지 받음
+                                   # (11-11 창원: RTK 없을 때 단독 hAcc 1.1~1.58 m → 2.0(hAcc 1.41 m)이면 fix 가 버려져
+                                   #  stale 정지·경계 이탈. 합성 시뮬 60판: 이탈 10~12 → 1, 오늘 고장 조합 22~23 → 6~8. RTK 정상이면 영향 없음)
     gps_max_speed_mps: 15.0        # 두 fix 간 속도 상한 — 넘으면 순간이동(멀티패스)으로 버림
     gps_stale_sec: 2.5             # 🚨 받아들인 마지막 fix 가 이보다 묵으면 tp·goal_distance 멈춤, geofence 빈 배열.
                                    #   1Hz 한 프레임 빠짐(2.0s)은 견디고 두 프레임(3.0s)부터 stale.
