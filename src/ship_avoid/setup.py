@@ -17,7 +17,7 @@ setup(
     zip_safe=True,
     maintainer='SSF',
     maintainer_email='you@example.com',
-    description='mode 5 장애물 회피 — 낮은 장애물 카메라 지도 + 도리도리 (계약서_도리도리회피_20261112, 미승인)',
+    description='도리도리회피: mode 5 장애물 회피 — 낮은 장애물 카메라 지도 + 도리도리 (계약서_도리도리회피_20261112, 미승인)',
     license='MIT',
     tests_require=['pytest'],
     entry_points={

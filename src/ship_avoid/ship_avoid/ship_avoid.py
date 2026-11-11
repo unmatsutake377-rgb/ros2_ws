@@ -1,4 +1,4 @@
-"""ship_avoid — mode 5 장애물 회피 미션 노드 (낮은 장애물 + 도리도리).
+"""도리도리회피 — ship_avoid: mode 5 장애물 회피 미션 노드 (낮은 장애물 + 도리도리).
 
 계약서: docs/문제와작업/계약서_도리도리회피_20261112.md (초안, 미승인)
 🚨 아직 대회 launch 에 넣지 않는다. 넣을 땐 같은 커밋으로(원자 묶음, 계약서 §2 ③):
@@ -74,7 +74,7 @@ class ShipAvoid(Node):
         self.was_active = False
         self.create_timer(self.period, self.timer_cb)
         self.get_logger().info(
-            f"ship_avoid 시작: mode {self.active_wp_mode} 담당, 칸 = 낮은 빨간 장애물 1개 통과, "
+            f"도리도리회피(ship_avoid) 시작: mode {self.active_wp_mode} 담당, 칸 = 낮은 빨간 장애물 1개 통과, "
             f"도리도리 ±{P.dori_angle_deg:.0f}°")
 
     # ── 입력 ──
