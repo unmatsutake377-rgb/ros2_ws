@@ -293,9 +293,11 @@ def test_dock_shape_and_color_choices_follow_node(boat):
 
 
 def test_node_choices_missing_module_keeps_catalog(boat):
-    """노드 모듈이 없으면(못 읽으면) 카탈로그 choices 그대로 — 그래도 탐색 색은 red/green/white 만."""
+    """노드 모듈이 없으면(못 읽으면) 카탈로그 choices 그대로 — 카탈로그 = 노드 TURN_COLORS 와 같은 목록."""
     assert core.apply_node_choices(boat.cidx, boat.repo) == {}
-    assert _pid(boat, "turn_color_mode3")["catalog"]["choices"] == ["red", "green", "white"]
+    assert _pid(boat, "turn_color_mode3")["catalog"]["choices"] == ["red", "green", "white", "yellow", "black"]
+    hb = [x for x in boat.params()["params"] if x["key"] == "hsv.black"]
+    assert hb and hb[0]["catalog"]["label"] == "검정 HSV 범위"
 
 
 def test_backup_log_and_diff(boat):
