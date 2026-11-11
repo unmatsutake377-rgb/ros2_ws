@@ -436,7 +436,7 @@ ORBIT_GEO_MIN_DEG = 350.0     # 기하 판정: 부호 있는 누적이 이 이�
 ORBIT_GEO_NEAR_M = 8.0        # 이 거리 안일 때만 누적
 
 
-def node_params(wp_file, overrides=None, search_behavior="hold"):
+def node_params(wp_file, overrides=None, search_behavior="orbit"):
     rosstub.PARAMS.clear()
     rosstub.PARAMS["north_goal_angle"] = dict(P_NGA, waypoints_file=wp_file)
     rosstub.PARAMS["ship_goal_angle"] = dict(P_SGA)
@@ -483,7 +483,7 @@ def apply_dwell(path, overrides):
 
 def run(seed, variant="A", wp_file=None, world_wp_file=WP_DEFAULT, gps_sigma=0.03, current=(0.0, 0.0),
         t_max=1500.0, tail=90.0, record=False, dwell_override=None, fault=None, dyn="legacy", hull=None,
-        node_overrides=None, lidar_noise=False, search_behavior="hold"):
+        node_overrides=None, lidar_noise=False, search_behavior="orbit"):
     world_wps = load_wps(world_wp_file)
     nrng = np.random.default_rng(20_000 + seed) if lidar_noise else None
     W = build_world(world_wps, seed)
@@ -1340,7 +1340,7 @@ def main():
     ap.add_argument("--lidar-noise", action="store_true",
                     help="LiDAR 잡음(σ3cm·결측5%%·정면±30° 고립 물보라1%%) — 합성, add_lidar_noise 참조")
     # %% — Python 3.13+ argparse 가 도움말의 단독 % 를 형식 오류로 막는다(11-11 Mac 3.15 에서 시작부터 죽음).
-    ap.add_argument("--search-behavior", default="hold", choices=["hold", "orbit"],
+    ap.add_argument("--search-behavior", default="orbit", choices=["hold", "orbit"],   # = launch 기본(C3)
                     help="탐색(mode 3) 행동 — launch search_behavior 와 같은 값을 ship_back·ship_turn 에 넘긴다")
     ap.add_argument("--param", action="append", default=[], metavar="노드.키=값",
                     help="노드 파라미터 덮어쓰기(반복 가능), 예 --param ship_direction.dwa_enabled=true")

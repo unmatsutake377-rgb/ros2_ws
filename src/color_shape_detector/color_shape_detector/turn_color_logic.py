@@ -12,8 +12,8 @@
    에러 없이 **아무것도 못 찾는다.** 그래서 모르는 색은 부팅 때 ERROR 1회 + **그 모드는 검출하지
    않는다**(CLAUDE.md 도크 목표 색 규칙과 같다). 기본값으로 대체하지 않는 이유: 공지 색을
    오타로 적었는데 기본 red 로 조용히 돌면 게이트 빨강 등에 HOLD 할 수 있다.
-   → 그 모드에선 /image_angle 을 아예 안 낸다 → (search_behavior hold 기본일 때)
-   ship_back SEARCH 20000 유지 — orbit 이면 mode 3 은 ship_turn 담당.
+   → 그 모드에선 /image_angle 을 아예 안 낸다 → mode 2 는 ship_back SEARCH 20000 유지,
+   mode 3 은 (search_behavior orbit 기본) ship_turn SEARCH 타임아웃 / (hold 옵션) ship_back 20000.
    담당 모드에선 INVALID_LOG_PERIOD_S 마다 ERROR 로 원인을 다시 드러낸다(log_due).
    문자열이 아닌 값(숫자 등)은 rclpy 가 declare_parameter 에서 타입 오류로 부팅 때 노드를 세운다.
 

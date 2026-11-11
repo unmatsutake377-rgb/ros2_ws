@@ -91,11 +91,11 @@ class ShipBack(Node):     # 🚨 작년엔 ShipTurn 이었다(복붙). 이름을
         qos = QoSProfile(depth=5, reliability=ReliabilityPolicy.RELIABLE)
 
         # ---- 파라미터 (config/ship_back.yaml, CLAUDE.md 1-4) ----
-        # 담당 모드 목록. 기본 [2, 3] = launch search_behavior 기본 hold(2026 안내문: 탐색 = 부표 앞
-        # 위치유지) — 그때 ship_turn 은 enabled=false 로 침묵. orbit 옵션이면 launch 가 [2] 를 넘긴다.
+        # 담당 모드 목록. 기본 [2] = launch search_behavior 기본 orbit(2026-11 경기규정: 탐색 = 원 선회,
+        # ship_turn 담당). hold 옵션이면 launch 가 [2, 3] 을 넘긴다(그때 ship_turn 은 enabled=false).
         # 코드 기본값 = yaml(config/ship_back.yaml). 🚨 빈 리스트 금지.
         self.active_wp_modes = [
-            int(m) for m in self.declare_parameter('active_wp_modes', [2, 3]).value]
+            int(m) for m in self.declare_parameter('active_wp_modes', [2]).value]
         self.period_sec = float(self.declare_parameter('period_sec', 0.1).value)
 
         self.keep_radius_m = float(self.declare_parameter('keep_radius_m', 5.0).value)   # 규정

@@ -78,11 +78,11 @@ class HealthCheck(Node):
         candidate_topic = self.declare_parameter("candidate_topic", "/candidate_angle").value
 
         # mode 0,1 → ship_gate (6b 에서 ship_last 제거, mode 0 인수). 5,8 = 회피(담당 없음).
-        # mode 3 → ship_back (launch search_behavior 기본 hold). orbit 옵션이면 yaml 과 함께 ship_turn 으로.
+        # mode 3 → ship_turn (launch search_behavior 기본 orbit). hold 옵션이면 yaml 과 함께 ship_back 으로.
         wp_modes = list(self.declare_parameter("wp_modes", [0, 1, 2, 3, 5, 7, 8]).value)
         wp_nodes = list(self.declare_parameter(
             "wp_nodes",
-            ["ship_gate", "ship_gate", "ship_back", "ship_back", "none", "ship_dock", "none"]).value)
+            ["ship_gate", "ship_gate", "ship_back", "ship_turn", "none", "ship_dock", "none"]).value)
 
         # 🚨 geofence 배선 검사 — '잊으면 최악'.
         # north_goal_angle 이 /geofence_state 를 발행하는데 구독자가 0 이면 경계 이탈 방어가
