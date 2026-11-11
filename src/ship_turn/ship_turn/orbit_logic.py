@@ -38,12 +38,16 @@ def is_active(enabled, wp_mode, active_wp_mode):
 
 
 def orbit_direction_cw(color):
-    """색 → orbit 방향. 규정: 빨강·초록 = 시계(CW) / 흰색 = 반시계(CCW).
-    → True(CW) / False(CCW) / None(모름)."""
+    """색 → orbit 방향. → True(CW) / False(CCW) / None(모름).
+
+    2026-11 경기규정: 빨강·초록 = 우현선회(시계, CW) / **노랑 = 좌현선회(반시계, CCW)**.
+    흰색 = 반시계는 2025 규정 값 — 2026 에 없는 색이지만 충돌이 없어 남긴다(계약서_탐색선회_부표색_20261111 C2).
+    검정은 위치유지 전용이라 방향 없음(None) — 검출기 turn_color_logic.NO_ORBIT_DIRECTION 과 맞출 것.
+    """
     c = (color or "").strip().lower()
     if c in ("red", "green"):
         return True
-    if c in ("white",):
+    if c in ("yellow", "white"):
         return False
     return None
 
