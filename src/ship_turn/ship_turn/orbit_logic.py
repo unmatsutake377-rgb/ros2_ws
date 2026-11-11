@@ -52,6 +52,27 @@ def orbit_direction_cw(color):
     return None
 
 
+def orbit_source(state, cam_rel, lidar_hit):
+    """이번 틱 부표 방위를 어디서 쓸지 → "lidar" / "cam" / None. 순수 함수(계약서_탐색orbit_WP넘김_20261111 C).
+
+    state     : ship_turn FSM 상태 문자열
+    cam_rel   : 신선한 카메라 방위(/image_angle) 또는 None
+    lidar_hit : lidar_track 결과 (rel, dist) 또는 None — 노드가 ORBIT 에선 늘, APPROACH 에선 카메라가 없을 때만 구한다
+
+    ORBIT 에선 **LiDAR 먼저**: turn 검출기는 부표를 놓친 뒤 grace_period_s(2 s) 동안 마지막 각(시야 끝 ±32°)을
+    그대로 다시 낸다. 카메라를 먼저 믿으면 그 2 s 동안 LiDAR 추적이 안 켜지고, 끝나면 부표는 이미 추적 창
+    밖이라 놓친다 — 전체 코스 시뮬에서 ORBIT 이 61–73° 에서 끊겼다(11-11).
+    APPROACH 는 지금처럼 카메라 먼저(색으로 확인한 방위), 카메라가 없을 때만 LiDAR.
+    """
+    if state == "ORBIT" and lidar_hit is not None:
+        return "lidar"
+    if cam_rel is not None:
+        return "cam"
+    if state in ("APPROACH", "ORBIT") and lidar_hit is not None:
+        return "lidar"
+    return None
+
+
 def orbit_expected_rel(direction_cw):
     """설계상 orbit 자세에서 부표가 있어야 할 상대각(좌 양수). CW → 우현 −90, CCW → 좌현 +90."""
     return -90.0 if direction_cw else 90.0

@@ -9,7 +9,7 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from ship_turn.orbit_logic import (  # noqa: E402
-    orbit_steer, orbit_expected_rel, buoy_world_bearing, OrbitProgress, orbit_direction_cw,
+    orbit_steer, orbit_expected_rel, orbit_source, buoy_world_bearing, OrbitProgress, orbit_direction_cw,
     is_active, clamp)
 
 fails = 0
@@ -55,6 +55,19 @@ def test_color_direction():
     check("black → None", orbit_direction_cw("black") is None)
     check("모르는 색 → None", orbit_direction_cw("blue") is None)
     check("빈 문자열 → None", orbit_direction_cw("") is None)
+
+
+# ─────────────── 방위 소스 (계약서_탐색orbit_WP넘김_20261111 C) ───────────────
+def test_orbit_source_table():
+    hit = (-45.0, 3.0)
+    check("ORBIT + LiDAR hit + 카메라(묵은 grace 각) → lidar", orbit_source("ORBIT", -31.0, hit) == "lidar")
+    check("ORBIT + LiDAR 없음 + 카메라 → cam", orbit_source("ORBIT", -20.0, None) == "cam")
+    check("ORBIT + 카메라 없음 + LiDAR → lidar", orbit_source("ORBIT", None, hit) == "lidar")
+    check("APPROACH + 카메라 + LiDAR → cam (그대로)", orbit_source("APPROACH", 10.0, hit) == "cam")
+    check("APPROACH + 카메라 없음 + LiDAR → lidar", orbit_source("APPROACH", None, hit) == "lidar")
+    check("SEARCH + 카메라 → cam", orbit_source("SEARCH", 5.0, None) == "cam")
+    check("SEARCH + LiDAR 만 → None (획득은 색 확인으로만)", orbit_source("SEARCH", None, hit) is None)
+    check("DONE + 아무것도 없음 → None", orbit_source("DONE", None, None) is None)
 
 
 # ─────────────── orbit_steer: 좌 양수(/image_angle·/candidate_angle 규약) ───────────────

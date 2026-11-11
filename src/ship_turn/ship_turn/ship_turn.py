@@ -17,17 +17,28 @@
           ORBIT 과 APPROACH 에서도 켜지며 실질 게이트는 lidar_track_max_m(5 m) 뿐 — 카메라가 한 틱 끊기면
           5 m 안 다른 반사(수조 벽·게이트 부표)를 잡을 수 있다. 카메라 방위가 돌아오면 그것이 덮어쓴다.
 
+  [5] 🚨 [2026-11-11] 전체 코스에서 탐색 orbit 이 끝나지 않았다(계약서_탐색orbit_WP넘김_20261111).
+      ① SEARCH 가 제자리 선회(SPIN)라 20000(손 뗌)이 없어 north 가 WP 를 못 넘기고 GPS 유도도 없었다
+         → SEARCH = 20000: GPS 로 WP 경로를 따라가며 카메라가 공지 색을 찾는다. SEARCH 시간 초과 없음.
+      ② 한 바퀴 뒤 COOLDOWN 5 s → SEARCH 로 돌아가 같은 부표를 또 돌았다
+         → DONE 래치: 모드 3 이 끝날 때까지 20000(ship_back DONE 과 같은 규약, 3→3 미리셋).
+      ③ ORBIT 중 검출기 grace 2 s 의 묵은 시야 끝 각 때문에 LiDAR 추적이 안 켜져 60–73° 에서 놓쳤다
+         → ORBIT 에선 LiDAR 추적 먼저(orbit_logic.orbit_source).
+      그래서 이 노드는 더 이상 SPIN 5000/6000 을 내지 않는다. search_timeout_sec·cooldown_sec 는 미사용(선언만 유지).
+
 파라미터(6c-[4]): orbit_radius_m(⚠️실측), radius_tol_m, approach_dist_m, k_radial_deg_per_m,
-                  orbit_target_deg(360). SPIN 규약(6c-[5]): 5000=우선회, 6000=좌선회.
+                  orbit_target_deg(360).
   enabled(bool, 기본 false): false 면 이 노드는 **어떤 모드에서도** /candidate_angle 을 안 낸다.
     기본 false = launch search_behavior 기본 hold(탐색 = 부표 앞 위치유지, ship_back 담당).
     orbit 옵션(2025 규정 선회)이면 launch 가 true 를 넘긴다. 코드 기본값 = yaml.
     🚨 끄려고 active_wp_mode 를 -1 로 두지 마라 — 부팅 초기값(self.wp_mode=-1)과 일치해
     /wp_mode 첫 수신 전에 게이트를 통과, SPIN 5000 을 낸다.
 
-FSM: WAIT → SEARCH → APPROACH → ORBIT → COOLDOWN → (다음 부표 위해 SEARCH)
-  WP3,4,5(부표 3개)는 모두 /wp_mode==3 으로 온다. 한 부표를 돌고 COOLDOWN 동안 손 떼면
-  autonomous(GPS)가 다음 부표로 데려가고, 다시 SEARCH 로 잡는다.
+FSM: INIT → SEARCH → APPROACH → ORBIT → DONE (모드 3 이 끝날 때까지 래치)
+  INIT 20000(hold_sec) → SEARCH 20000(공지 색 부표+색이 잡힐 때까지, GPS 가 WP3·4·5 경로로 데려간다)
+  → APPROACH 부표 쪽 조향 → ORBIT 접선 조향(진행각 orbit_target_deg 또는 orbit_max_sec) → DONE 20000.
+  APPROACH·ORBIT 에서 부표를 lost_sec 놓치면 SEARCH(20000)로 — 다시 잡으면 진행각 0 부터.
+  2026-11 규정 = 공지된 색 부표 **하나**를 돈다(검출기는 turn_color_mode3 한 색만 본다). 리셋은 모드 3 진입 때만.
 
 프레임 규약: /image_angle=상대각(0=정면, **좌 양수**). orbit 조향각을 상대(좌 양수)로 구해 rel_to_raw 로
   /candidate_angle(0~360) 규약에 맞춰 발행 → ship_direction (B)에서 80+raw 로 매핑. LiDAR 80°=정면, a−80 좌 양수.
@@ -54,14 +65,13 @@ from std_msgs.msg import Float32, Int32, String, Float64
 from sensor_msgs.msg import LaserScan
 
 from ship_turn.orbit_logic import (
-    orbit_steer, orbit_expected_rel, buoy_world_bearing, OrbitProgress, orbit_direction_cw,
-    clamp, clamp_pm180, is_active)
+    orbit_steer, orbit_expected_rel, orbit_source, buoy_world_bearing, OrbitProgress,
+    orbit_direction_cw, clamp, clamp_pm180, is_active)
 from ship_turn.lidar_track import lidar_track
 
 IMAGE_ANGLE_INVALID = 10000.0
 CANDIDATE_INVALID = 20000.0
-SPIN_RIGHT = 5000.0          # 우선회 (CLAUDE.md 3-9)
-SPIN_LEFT = 6000.0           # 좌선회
+# SPIN_RIGHT 5000 / SPIN_LEFT 6000 (CLAUDE.md §3) — 2026-11-11 부터 이 노드는 내지 않는다(SEARCH = 20000).
 LIDAR_FORWARD_DEG = 80.0     # LiDAR 프레임 정면
 # ship_direction (B) 매핑: mapped = 80 + raw, 정상 범위 0~160 → 상대 조향 |steer| ≤ 80 만 통과하고
 # 그 밖은 STOP_HOLD(1 s 스로틀 warn 뿐). orbit 진입(rel≈0, 90−gain)은 80 을 쉽게 넘으므로 발행 전 클램프.
@@ -107,8 +117,10 @@ class ShipTurn(Node):
         self.orbit_target_deg = float(self.declare_parameter('orbit_target_deg', 360.0).value)
 
         self.hold_sec = float(self.declare_parameter('hold_sec', 2.0).value)
+        # 2026-11-11 부터 미사용(SEARCH 는 모드가 끝날 때까지 20000) — yaml·check_params 대조용으로 선언만 유지.
         self.search_timeout_sec = float(self.declare_parameter('search_timeout_sec', 20.0).value)
         self.orbit_max_sec = float(self.declare_parameter('orbit_max_sec', 60.0).value)       # 안전(진행각 못 잴 때)
+        # 2026-11-11 부터 미사용(COOLDOWN → DONE 래치) — 선언만 유지.
         self.cooldown_sec = float(self.declare_parameter('cooldown_sec', 5.0).value)
         self.lost_sec = float(self.declare_parameter('lost_sec', 2.0).value)                  # 부표 놓침 허용
 
@@ -280,21 +292,22 @@ class ShipTurn(Node):
             rel, col = self._buoy(now)
             yaw = self.yaw if (self.t_yaw and (now - self.t_yaw) <= self.angle_stale_sec) else None
 
-        # ---- 부표 (rel, dist): 카메라 방위 우선, 없으면 (B) LiDAR 추적 ----
-        dist = None
-        src = None
-        if rel is not None:
-            src = "cam"
-            dist = self._lidar_dist_at(rel, now)
-        elif self.state in ("APPROACH", "ORBIT"):
+        # ---- 부표 (rel, dist): 소스 선택은 orbit_logic.orbit_source ----
+        #   ORBIT = LiDAR 추적 먼저(검출기 grace 의 묵은 각 회피), 그 외 = 카메라 먼저·없으면 LiDAR 추적.
+        lidar_hit = None
+        if self.state == "ORBIT" or (self.state == "APPROACH" and rel is None):
             # 예상 방위 = 직전 유효 방위. 없으면(이론상 ORBIT 진입엔 항상 있다) 설계 자세(CW 우현 −90).
             expected = self.last_rel
             if expected is None and self.dir_cw is not None:
                 expected = orbit_expected_rel(self.dir_cw)
-            tracked = self._lidar_track(expected, now) if expected is not None else None
-            if tracked is not None:
-                rel, dist = tracked
-                src = "lidar"
+            if expected is not None:
+                lidar_hit = self._lidar_track(expected, now)
+        src = orbit_source(self.state, rel, lidar_hit)
+        dist = None
+        if src == "lidar":
+            rel, dist = lidar_hit
+        elif src == "cam":
+            dist = self._lidar_dist_at(rel, now)
         if rel is not None:
             self.last_seen_t = now
             self.last_rel = rel
@@ -311,7 +324,9 @@ class ShipTurn(Node):
                 self.set_state("SEARCH")
             return
 
-        # ---- SEARCH: 부표+색이 잡힐 때까지 제자리 선회 ----
+        # ---- SEARCH: 공지 색 부표+색이 잡힐 때까지 손 뗀다(20000 → GPS 가 WP 경로로) ----
+        #   🚨 [11-11] 예전엔 제자리 선회(SPIN)였다 — 20000 이 없어 north 가 WP 를 못 넘기고(dwell 대기)
+        #   GPS 유도도 없어 색이 다른 탐색 WP 마다 90 s 시간 초과였다. 시간 초과 전이도 없앴다.
         if self.state == "SEARCH":
             direction = orbit_direction_cw(col) if col else None
             if rel is not None and direction is not None:
@@ -319,13 +334,7 @@ class ShipTurn(Node):
                 self.progress.reset()
                 self.set_state("APPROACH")
                 return
-            if self.elapsed() > self.search_timeout_sec:
-                self.get_logger().warn("부표/색 못 찾음(SEARCH 타임아웃) → 다음으로")
-                self.set_state("COOLDOWN")
-                return
-            # 색을 알면 그 방향으로, 모르면 우선회로 탐색
-            spin = SPIN_LEFT if (col and orbit_direction_cw(col) is False) else SPIN_RIGHT
-            self.publish(spin)
+            self.publish(CANDIDATE_INVALID)
             return
 
         # ---- APPROACH: 부표를 향해 접근, orbit 반경 부근에서 ORBIT ----
@@ -356,8 +365,8 @@ class ShipTurn(Node):
                 self.set_state("SEARCH")
                 return
             if self.elapsed() > self.orbit_max_sec:
-                self.get_logger().warn("orbit 안전 타임아웃 → 완료 처리")
-                self.set_state("COOLDOWN")
+                self.get_logger().warn("orbit 안전 타임아웃 → 완료 처리(DONE)")
+                self.set_state("DONE")
                 return
 
             if rel is None:
@@ -375,19 +384,18 @@ class ShipTurn(Node):
                 if yaw is not None:
                     prog = self.progress.update(buoy_world_bearing(yaw, rel))
                     if prog >= self.orbit_target_deg:
-                        self.get_logger().info(f"✅ 선회 {prog:.0f}° 완료")
-                        self.set_state("COOLDOWN")
+                        self.get_logger().info(f"✅ 선회 {prog:.0f}° 완료 → DONE(모드 3 끝까지 20000)")
+                        self.set_state("DONE")
                         return
 
             self.publish_steer(steer)
             return
 
-        # ---- COOLDOWN: 손 떼고(autonomous 로) 다음 부표로 이동 ----
-        if self.state == "COOLDOWN":
+        # ---- DONE: 한 바퀴 끝 — 모드 3 이 끝날 때까지 손 뗌(20000) ----
+        #   🚨 [11-11] 예전엔 COOLDOWN 5 s 뒤 SEARCH 로 돌아가 같은 부표를 또 잡아 돌았다.
+        #   리셋은 wp_cb 의 모드 3 진입(prev != 3)뿐 — 3→3(다음 탐색 WP)은 래치 유지(ship_back DONE 과 같다).
+        if self.state == "DONE":
             self.publish(CANDIDATE_INVALID)
-            if self.elapsed() >= self.cooldown_sec:
-                self._forget_buoy()
-                self.set_state("SEARCH")               # 다음 부표 탐색
             return
 
         # 알 수 없는 상태 → 안전
