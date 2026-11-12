@@ -11,8 +11,11 @@ def generate_launch_description():
 
     Notes:
     - ``/dev/ttyLiDAR`` requires a matching udev rule on each computer.
-    - ``scan_mode`` remains ``Sensitivity`` by default until comparative
-      water-test data supports changing it. It can be overridden at launch.
+    - ``scan_mode`` default is ``Stability`` (2026-11-12, user decision: outdoor
+      sunlight — field run showed missing/erratic returns while health was OK).
+      If the LiDAR does not support that name the driver logs ERROR with the
+      supported list and publishes NO /scan — check the start log line
+      ``current scan mode: ...`` and roll back with ``scan_mode:=Sensitivity``.
     - QoS for ``/scan`` subscribers belongs in the subscribing node, not here.
     """
 
@@ -62,10 +65,10 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             'scan_mode',
-            default_value='Sensitivity',
+            default_value='Stability',
             description=(
-                'RPLIDAR scan mode. Keep Sensitivity as the baseline and '
-                'override this argument during Standard/Boost comparison tests.'
+                'RPLIDAR scan mode. Stability = outdoor/sunlight (11-12 default); '
+                'Sensitivity = previous baseline (rollback). Unsupported name -> no /scan.'
             ),
         ),
         Node(
