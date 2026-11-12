@@ -9,6 +9,8 @@
 | `kaboat_full_course_sim.py` | 2025 규정 코스 70×20m 전 구간 (`python3 kaboat_full_course_sim.py`) |
 | `sweep_s1.py` | half_width × clearance 스윕 (`python3 tools/sim/sweep_s1.py --seeds 20`) |
 | `tournament_sim.py` | 토너먼트 1:1 — 실제 노드 4개(north·ship_goal·ship_direction·motor_control) + 대본 상대 배(none·side_by_side·slow_ahead·fast_behind·cut_in). `--param`, `--fence-inset`(지오펜스 좌우 안쪽, 이탈은 실제 경기장 기준). 결과: 계약서_토너먼트분리_20261109 §11 |
+| `full_course_sim.py --world worlds/arena_2025.yaml` | 규정 그림(2025-11) 배치 세계 — 게이트 5쌍·장애물 격자·위치유지·탐색·도크 12 m(칸 2 m·칸막이 1.5 m·깊이 3 m), 2026 OT 순서 13점. 가정은 yaml 머리말. 위경도 사본 `worlds/arena_2025_wp.yaml` 은 `--write-world-wp` 로 생성 |
+| `dock_geometry.py` | 도크 선분 생성 순수 함수(`--dock-bay-w/--dock-gap/--dock-depth`, 기본 = 옛 1 m 칸 형상과 선분까지 같음). 테스트 `python3 -m pytest tools/sim/test_dock_geometry.py -q` (LiDAR 전방 섹터 거리 vs 닫힌 식, 옆 비킴 거짓 CONTACT 경계) |
 
 ## 노드와 다른 점 (알고 쓸 것)
 - 시간 투표 [G], geofence 병합 [H] 없음. 물보라 오탐이 없는 월드라 회피 결과엔 영향 적음.
