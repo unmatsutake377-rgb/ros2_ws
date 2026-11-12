@@ -1,0 +1,40 @@
+# perception_fusion — LiDAR 군집 + D455 뎁스 덩어리 + OAK 검출 방위(색) → /fused_objects
+# (계약서_인식융합_20261112 §4·§5·§6·§10, 근거 계약서_거리융합_20261112 §4·§5)
+#
+# 🚨 코드 기본값(perception_fusion.py declare_parameter) == 이 파일 == fusion_logic.DEFAULTS.
+#    test_fusion_params.py 가 셋을 묶는다. 소수점을 지킨다(3.0 ↔ 3 은 부팅 실패).
+# 🚨 대회 사용은 물 위 실측 0회 상태(§10). 미션 노드는 distance_source: fill(LiDAR 먼저) 로 쓴다.
+#    롤백: launch perception_fusion:=false d455_depth:=false, 또는 미션 yaml distance_source: lidar.
+/perception_fusion:
+  ros__parameters:
+    # D455 뎁스(launch d455_depth:=true, name=camera·namespace=camera → /camera/camera/...)
+    depth_topic: "/camera/camera/depth/image_rect_raw"   # ⚠️ Ubuntu 에서 ros2 topic list 로 확인
+    depth_info_topic: "/camera/camera/depth/camera_info"
+    publish_hz: 10.0                # /fused_objects 고정주기 타이머
+    status_hz: 1.0                  # /fusion_status
+    lidar_stale_sec: 0.5            # 넘으면 뎁스만으로(flags bit1). 둘 다 넘으면 발행 중단
+    depth_stale_sec: 0.5
+    det_stale_sec: 0.7              # 검출기 방위(색 붙이기) 신선도
+    warn_period_sec: 5.0            # 입력 stale WARN 주기
+    lidar_half_fov_deg: 90.0        # 정면 ±90° 만 물체로
+    cluster_gap_deg: 2.0            # 군집: 이웃 점 간격(각)
+    cluster_gap_m: 0.3              # 군집: 이웃 점 거리 차
+    cluster_min_points: 2           # 🚨 정수
+    fusion_margin_deg: 3.0          # LiDAR 군집 ↔ 뎁스 덩어리 방위 구간 겹침 여유
+    color_match_deg: 3.0            # 검출기 방위 ↔ 물체 방위 구간 여유(색 붙이기)
+    weight_min: 0.3                 # 일치할 때 가중평균 w(LiDAR) 하한
+    weight_max: 0.7
+    agree_abs_m: 0.3                # 일치 = |dL − dD| ≤ max(agree_abs_m, agree_rel·min)  ⚠️ 실측 필요
+    agree_rel: 0.1                  # ⚠️ 실측 필요
+    disagree_penalty: 0.1           # 어긋남(min 채택) 때 conf 감점
+    conf_window_frames: 10          # 🚨 정수. 신뢰도 = 소스별 최근 N 프레임
+    conf_mad_ref_m: 0.3             # 신뢰도: MAD 가 이 값이면 안정도 −0.5
+    conf_jump_m: 0.5                # 신뢰도: 프레임 간 이 이상 변하면 점프
+    depth_min_m: 0.5                # ⚠️ 실측 필요 (D455 최소 거리)
+    depth_max_m: 6.0                # ⚠️ 실측 필요 (물 위 신뢰 거리)
+    depth_row_lo_frac: 0.4          # 뎁스 열 거리에 쓰는 행 띠(위 0 ~ 아래 1). 수면 띠 제거  ⚠️ 실측 필요
+    depth_row_hi_frac: 0.6          # ⚠️ 실측 필요 (카메라 높이·피치)
+    depth_min_valid_frac: 0.3       # 열마다 띠 안 유효 픽셀(0 아님) 비율 하한  ⚠️ 실측 필요
+    cam_x_from_lidar_m: 0.0         # D455 위치(LiDAR 기준, 앞 +)  ⚠️ 실측 필요
+    cam_y_from_lidar_m: 0.0         # D455 위치(LiDAR 기준, 왼쪽 +)  ⚠️ 실측 필요
+    cam_yaw_offset_deg: 0.0         # D455 장착 요(왼쪽 +)  ⚠️ 실측 필요
