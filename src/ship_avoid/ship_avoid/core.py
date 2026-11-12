@@ -239,6 +239,21 @@ class AvoidCore:
         self._request(0.0)          # 시작 도리도리
         return True
 
+    def resume(self, t):
+        """같은 zone 구간 안에서 잠깐 멈췄다(검출 침묵 → deactivate) 다시 켤 때.
+        activate 와 달리 reset 하지 않는다 — 지도·코스 축 ψ0·원점·칸 수를 그대로 두고 DRIVE 로 돌아가
+        도리도리를 1회 요청한다(멈춘 동안 배가 움직였으니 다시 본다). 자세가 있어야 한다(없으면 False).
+        계약서_도리도리회피_v2_20261114 U1 (지도 수명 = zone 구간)."""
+        if self.pose.t < 0:
+            return False
+        self.active = True
+        self.state = "DRIVE"
+        self.capture_ok = False
+        self.pending = False
+        self.pose.hist = []
+        self._request(self.to_course(self.pose.x, self.pose.y)[0])
+        return True
+
     def reset_keep_pose(self):
         pose, pitch, buoys = self.pose, self.pitch, self.buoys
         self.reset()
@@ -267,13 +282,14 @@ class AvoidCore:
         self.buoys = list(pts)
 
     def add_detections(self, t, x, y, yaw, dets):
-        """카메라 검출 (촬영 순간 자세와 함께). dets = [(cls, bearing_left_deg, v_norm, range_m, conf)].
-        cls 0 = 빨강(낮은 장애물), 2 = 노랑. 그 외는 무시. capture_ok 가 아니면 버린다."""
+        """카메라 검출 (촬영 순간 자세와 함께). dets = [(cls, bearing_left_deg, v_norm, range_m, conf[, age_s])].
+        cls 0 = 빨강(낮은 장애물), 2 = 노랑. 그 외는 무시. capture_ok 가 아니면 버린다.
+        age_s(노드 /avoid_detections VER 1)는 지금은 받기만 하고 쓰지 않는다(U5/U6 몫) — 5개짜리도 그대로 받는다."""
         if not (self.active and self.capture_ok):
             return 0
         moving = self.state == "DRIVE"
         used = 0
-        for cls, brg, v_norm, rng, conf in dets:
+        for cls, brg, v_norm, rng, conf, *_age in dets:
             if cls not in (0, 2):
                 continue
             if rng is not None and math.isfinite(rng) and rng > 0:

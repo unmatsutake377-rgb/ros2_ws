@@ -64,17 +64,25 @@ groups:
 
   - name: 회피·DWA
     items:
-      - {pkg: ship_avoid, key: avoid_mode, label: 장애물 회피 방식(mode 5), choices: [lidar, doridori],
-         hint: "lidar = mode 5 에서 매 틱 20000(ship_direction LiDAR 회피, 예전 north 폴백과 같음) / doridori = 도리도리(카메라 낮은 장애물). 검출이 없으면 doridori 여도 20000",
-         advice: "대회 lidar(11-13 결정). doridori 는 검출기·시뮬·수조 뒤. 🚨 바꾸면 launch 재시작(param set 효과 없음)",
-         change: rarely, when: "현장 조정표 avoid_mode 행 — doridori 는 검출기·C3~C7·시뮬·수조 뒤(11-14 엔 켜지 않음)",
-         check: "시작 로그 avoid_mode=lidar · north 시작 로그 '폴백은 mode (8,)' · mode 5 구간 blackbox candidate_angle 20000 하나",
+      - {pkg: ship_avoid, key: avoid_mode, label: 장애물 회피 방식(mode 5), choices: [lidar, fused],
+         hint: "fused = 도리도리(카메라 낮은 장애물 지도, 명세 1~8) — /avoid_zone true 이고 검출이 살아 있을 때만, 아니면 20000 / lidar = mode 5 에서 매 틱 20000(ship_direction LiDAR 회피, 예전 north 폴백과 같음). 옛 이름 doridori 는 fused 로 받음(WARN)",
+         advice: "기본 fused(11-14 결정). /avoid_zone 발행(north U2)·검출기(U3) 전에는 fused 여도 늘 20000 = lidar 와 같은 동작(mode 5 진입 때 '/avoid_zone 을 한 번도 못 받음' WARN 1회). 이상값은 ERROR + lidar. 🚨 바꾸면 launch 재시작(param set 효과 없음)",
+         change: rarely, when: "현장 조정표 avoid_mode 행(되돌리기 lidar + launch 재시작). 조정표는 11-13 기준(lidar 기본)이라 fused 기본으로 바꾸는 기준은 없음",
+         check: "현장 조정표 avoid_mode 행 — 시작 로그 avoid_mode 값 · north 시작 로그 '폴백은 mode (8,)' · mode 5 구간 blackbox candidate_angle 20000 하나",
          revert: "lidar"}
       - {pkg: ship_avoid, key: detections_quiet_warn_sec, label: 검출 침묵 폴백 기준, unit: s, step: 0.5,
-         hint: "doridori 일 때만: /avoid_detections 가 이 시간 넘게 없으면 20000 으로 넘기고 ERROR(도리도리 안 함). lidar 면 안 씀",
+         hint: "fused 이고 zone 안일 때만: /avoid_detections 가 이 시간 넘게 없으면 20000 으로 넘기고 ERROR(도리도리 멈춤, 지도는 유지). lidar 면 안 씀",
          advice: "기본 5.0. 0 이하·숫자 아님은 ERROR + 5.0",
          change: rarely, when: "현장 조정표 avoid_mode 행 '같이 볼 값' — 바꾸는 기준 없음",
          revert: "5.0"}
+      - {pkg: ship_avoid, key: avoid_zone_stale_sec, label: 장애물 구간 신호 유효 시간, unit: s, step: 0.5,
+         hint: "fused 일 때만: north /avoid_zone 이 이 시간 넘게 안 오면 zone 밖으로 보고 20000 + ERROR(지도 초기화). lidar 면 안 씀",
+         advice: "기본 1.0(north 주기 0.5 s 의 2배). 0 이하·숫자 아님은 ERROR + 1.0. 🚨 바꾸면 launch 재시작",
+         change: rarely, when: "현장 조정표에 기준 없음", revert: "1.0"}
+      - {pkg: ship_avoid, key: det_max_age_s, label: 검출 최대 지연, unit: s, step: 0.1,
+         hint: "fused 일 때만: /avoid_detections 의 age_s(촬영→발행)가 이보다 큰 검출은 버림(WARN). 메시지는 살아 있음으로 침",
+         advice: "기본 0.5 ⚠️ 검출기 지연 실측 전 가정값. 0 이하·숫자 아님은 ERROR + 0.5. 🚨 바꾸면 launch 재시작",
+         change: measure, when: "현장 조정표에 기준 없음", revert: "0.5"}
       - {pkg: ship_direction, key: dwa_enabled, label: DWA 회피 켜기,
          hint: "동적 창 회피. 토너먼트 파일 true, 공통(종합임무) false",
          advice: "물 위 확인(시작 로그 'DWA 켬: 선체 <그 배>', 부표 접촉·갇힘 없음) 실패하면 끔",
