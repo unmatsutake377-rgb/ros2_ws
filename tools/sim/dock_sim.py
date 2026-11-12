@@ -114,6 +114,7 @@ SCAN_MIN_DEG, SCAN_INC = -180.0, 0.5
 LIDAR_FWD = SD.LIDAR_FORWARD_DEG         # 80
 # motor_control / 운동 상수 (tools/sim/ssf_sim.py 와 동일)
 BASE_PWM, MAX_ANGLE, MAX_DIFF, NEUTRAL, REVERSE_PWM = 1360, 81, 100, 1500, 1590
+REVERSE_TRIM_US = 0                      # motor_control reverse_trim_us 사본(계약서_후진트림_20261112). +t → R +t / L −t
 SPIN_CENTER, SPIN_DIFF = 1500, 100
 SLOW_START, MIN_RATIO = 1.2, 0.7
 K_V, K_W, TAU, DT = 0.010, 0.22, 0.5, 0.1
@@ -168,7 +169,7 @@ def motor(desired, front_d):
     elif -1.0 <= desired <= 161.0:
         off = max(-MAX_ANGLE, min(MAX_ANGLE, desired - 80.0)); d = abs(off) / MAX_ANGLE * MAX_DIFF
         r, l = (BASE_PWM - d, BASE_PWM + d) if off > 0 else (BASE_PWM + d, BASE_PWM - d)
-    elif 161.0 < desired < 5000.0: return REVERSE_PWM, REVERSE_PWM
+    elif 161.0 < desired < 5000.0: return REVERSE_PWM + REVERSE_TRIM_US, REVERSE_PWM - REVERSE_TRIM_US
     else: r = l = BASE_PWM
     if front_d is not None and front_d < SLOW_START:            # 전진 명령만 감속
         k = max(MIN_RATIO, front_d / SLOW_START)

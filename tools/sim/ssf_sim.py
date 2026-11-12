@@ -44,6 +44,7 @@ MAX_DIFF = 100
 TURN_OFFSET = -60
 PWM_NEUTRAL = 1500
 PWM_REVERSE = 1590
+REVERSE_TRIM_US = 0   # motor_control reverse_trim_us 사본(계약서_후진트림_20261112). 0 = 지금과 동일. +t → R 1590+t / L 1590−t
 # 목표(WP) 근접 감속 — motor_control.py 기본값과 같은 값 (계약서_목표근접감속_20261106)
 GOAL_SLOW_START_M = 8.0
 GOAL_SLOW_FULL_M = 3.0
@@ -362,7 +363,7 @@ def motor_control_step(angle, goal_dist=None):
         else:
             return c + d, c - d, "STEER_RIGHT"
     elif 161.0 < angle < 5000.0:             # (5) 후진 (260 포함)
-        return PWM_REVERSE, PWM_REVERSE, "REVERSE"
+        return PWM_REVERSE + REVERSE_TRIM_US, PWM_REVERSE - REVERSE_TRIM_US, "REVERSE"
     else:                                    # (6) 직진
         return c, c, "STRAIGHT"
 

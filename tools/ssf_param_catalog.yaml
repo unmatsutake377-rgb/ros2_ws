@@ -90,6 +90,11 @@ groups:
          hint: "1.0 = 감속 끔", advice: "종합임무 0.5 / 토너먼트 1.0(결승 감속 끔). 결승 정지가 넘치면 0.5",
          change: water, when: "토너먼트에서 결승 정지가 경계를 넘치면 1.0 → 0.5",
          check: "결승 직선 통과 · 맴돌지 않음 · 결승 정지가 경계 안", revert: "종합임무 0.5 / 토너먼트 1.0"}
+      - {pkg: motor_control, key: reverse_trim_us, label: 후진 좌우 트림, unit: µs, step: 1, limits: [-40, 40],
+         hint: "후진(분기 5) 좌우 차. + = 우측 더 후진(후진 좌선회 쏠림 보정). 0 = 끔",
+         advice: "1번배 실측 뒤만, 기본 0. 🚨 정수. 3 s 에 5° 미만 쏠림이면 0 유지",
+         change: measure, when: "1번배 hold.py 대칭 후진으로 쏠림이 재현될 때만(계약서_후진트림_20261112 §6). 그 배 노트북 yaml 에만, 커밋 안 함",
+         check: "시작 로그 reverse_trim_us 값 · 도킹 후진 이탈·틈 없음 후진에서 헤딩이 곧은지 · 부호 반대면 회전 2배", revert: "0"}
 
   - name: 도킹
     items:

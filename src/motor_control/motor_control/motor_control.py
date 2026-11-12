@@ -32,6 +32,10 @@ class MotorController(Node):
         당기고 조향 차동은 그대로 둔다(균일 축소는 선회 반경이 안 줄어든다 — 시뮬 발견 5).
         그 뒤 기존 min(근접비, L1) 균일 축소가 이어진다. 미수신·stale 이면 1.0(지금과 동일).
         SPIN(3)·후진(5)·STOP(1)·워치독은 안 건드린다.
+      · 후진 좌우 트림 (계약서_후진트림_20261112): reverse_trim_us(int µs, 기본 0 = 지금 출력 그대로).
+        분기 (5) 를 apply_steer(−t, center=reverse_pwm) 로 좌우 따로 → t>0 이면 pwm_r=reverse_pwm+t,
+        pwm_l=reverse_pwm−t (우측 더 후진 = 후진 중 시계 방향 보정). steer_invert 면 같이 뒤집힌다.
+        L1 상한은 좌우 각각. |t| ≥ 65(ESC 데드밴드 실효) 또는 비정수면 ERROR + 0. 값은 실측 뒤 배별 yaml 만.
 
     ※ TTC 비상제동은 넣지 않는다. /obstacle_distance_array 최소거리는 시간필터 없는 생값이라
       미분(접근속도)이 노이즈를 증폭 → 물보라 반사 하나로 급정지. 시뮬상 이득 0/위험 막대라 폐기.
@@ -63,12 +67,16 @@ class MotorController(Node):
         self.base_pwm = int(self.declare_parameter("base_pwm", 1360).value)         # ⚠️ 실측 필요(순항 추력)
         self.max_diff = int(self.declare_parameter("max_diff", 100).value)          # ⚠️ 실측 필요(최대 차동)
         self.reverse_pwm = int(self.declare_parameter("reverse_pwm", 1590).value)   # ⚠️ 실측 필요(후진 추력)
+        # 후진 좌우 트림(µs, 계약서_후진트림_20261112). 기본 0 = 지금 출력 그대로. ⚠️ 실측 필요(1번배만, hold.py).
+        #   t>0 → pwm_r=reverse_pwm+t, pwm_l=reverse_pwm−t (우측 더 후진 = 후진 좌선회 쏠림 보정).
+        #   🚨 yaml 엔 정수로(0.0 이면 rclpy 가 부팅 때 노드를 죽인다). 값 가드는 아래 목표 근접 가드 뒤.
+        self.reverse_trim_us = self.declare_parameter("reverse_trim_us", 0).value
         # SPIN(제자리 선회): 중심 PWM 과 차동을 따로 둔다.
         #   spin_forward_pwm=1500 → 1400/1600 = 순 추력 0 = 진짜 제자리 선회.
         #   =1360 이면 1260/1460 = 작년 방식(순항 속도로 원, 반경 2.1m → 도크에 부딪힘). 되돌릴 수 있는 노브.
         self.spin_forward_pwm = int(self.declare_parameter("spin_forward_pwm", 1500).value)
         self.spin_diff = int(self.declare_parameter("spin_diff", 100).value)
-        # 조향 좌/우 반전 노브: 모터 배선이 반대면 조향(4)·SPIN(3)이 함께 반대로 나온다(원인 하나).
+        # 조향 좌/우 반전 노브: 모터 배선이 반대면 조향(4)·SPIN(3)·후진 트림(5)이 함께 반대로 나온다(원인 하나).
         # ★ 물 위 첫 시험에서 확정. 지금 추측 금지(배가 아직 없음). CLAUDE.md §8 "가장 흔한 사고".
         self.steer_invert = bool(self.declare_parameter("steer_invert", False).value)
         self.max_angle = 81   # -1~161도 전체를 조향에 반영 (매핑 상수, 보트 무관)
@@ -107,6 +115,13 @@ class MotorController(Node):
             self.get_logger().error(
                 f"goal_dist_stale_sec={self.goal_dist_stale_sec} 이상(비유한·≤0) → 기본값 2.0 s 사용")
             self.goal_dist_stale_sec = 2.0
+        # 후진 트림 가드: 비정수(bool 포함) 또는 |t| ≥ 65(ESC 데드밴드 ±25 → 실효 65 µs, 한쪽이 1525 아래로
+        #   빠지면 그 추진기가 멈춘다) → ERROR 1회 + 0(= 트림 없음). 노드는 죽이지 않는다.
+        t = self.reverse_trim_us
+        if isinstance(t, bool) or not isinstance(t, int) or abs(t) >= 65:
+            self.get_logger().error(
+                f"reverse_trim_us={t!r} 이상(정수 아님 또는 |t| ≥ 65 µs) → 0(트림 없음) 사용")
+            self.reverse_trim_us = 0
 
         # ---- 구독/발행 (토픽·타입 불변, CLAUDE.md 1-3) ----
         self.sub_angle = self.create_subscription(Float32, "/desired_angle", self.angle_callback, 2)
@@ -141,7 +156,8 @@ class MotorController(Node):
         self.get_logger().info(
             f"motor_control 시작: 20Hz. 감속 slow_start={self.slow_start_dist}m/"
             f"min_ratio={self.min_speed_ratio}, 명령 워치독={self.cmd_timeout_sec}s, "
-            f"steer_invert={self.steer_invert}.\n"
+            f"steer_invert={self.steer_invert}, 후진 {self.reverse_pwm} reverse_trim_us={self.reverse_trim_us}"
+            f"(+면 우측 더 후진).\n"
             f"   SPIN(5000=우/6000=좌) 중심={self.spin_forward_pwm}(1500=제자리). "
             f"첫 명령 전/끊김 시 중립. PWM: <1500 전진, >1500 후진.\n"
             f"   목표 근접 감속(/goal_distance): {self.goal_slow_start_m}m 부터 → "
@@ -184,8 +200,8 @@ class MotorController(Node):
 
     def apply_steer(self, signed_diff, center=None):
         """center 중심 좌우 차동. signed_diff>0 = '왼쪽 패턴'(오른쪽 모터가 더 전진).
-        center 기본은 base_pwm(전진 조향), SPIN 은 spin_forward_pwm 을 넘긴다.
-        steer_invert=True 면 좌/우를 통째로 뒤집는다 — 조향(4)·SPIN(3) 공통(배선 반대 대비)."""
+        center 기본은 base_pwm(전진 조향), SPIN 은 spin_forward_pwm, 후진 트림(5)은 reverse_pwm 을 넘긴다.
+        steer_invert=True 면 좌/우를 통째로 뒤집는다 — 조향(4)·SPIN(3)·후진 트림(5) 공통(배선 반대 대비)."""
         c = self.base_pwm if center is None else center
         s = -signed_diff if self.steer_invert else signed_diff
         return c - s, c + s
@@ -300,12 +316,14 @@ class MotorController(Node):
         # (5) 후진 구간 — 페일세이프 L1 상한만 여기서 건다(계약서_후진감속_L1_20261104).
         #     근접 감속(speed_ratio)은 안 건다: 후진은 전방 장애물에 다가가지 않는다(slow_ok 그대로).
         #     cap < 1.0 게이트는 전진과 같다. 예) 1590, L1 0.7 → 1563.
+        #     후진 트림(계약서_후진트림_20261112): 좌우 따로. t=10 → 1600/1580, L1 → 1570/1556.
+        #     🚨 L1 은 좌우 각각 — 단일 대입(pwm_r = pwm_l = ...)으로 되돌리면 L1 중 트림이 사라진다.
         elif 161.0 < angle < SPIN_RIGHT:
-            pwm_r = self.reverse_pwm
-            pwm_l = self.reverse_pwm
+            pwm_r, pwm_l = self.apply_steer(-self.reverse_trim_us, center=self.reverse_pwm)
             cap = self.failsafe_speed_cap()
             if cap < 1.0:
-                pwm_r = pwm_l = self.apply_slow(self.reverse_pwm, cap)
+                pwm_r = self.apply_slow(pwm_r, cap)
+                pwm_l = self.apply_slow(pwm_l, cap)
 
         # (6) 기본값: 직진 유지
         else:
