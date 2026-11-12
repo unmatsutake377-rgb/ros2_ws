@@ -13,8 +13,14 @@
 groups:
   - name: 위치유지·탐색
     items:
+      - {pkg: ship_back, key: hold_source, label: 위치유지 방식, choices: [gps, vision],
+         hint: "gps = WP2(mode 2) 반경 안에 GPS 로 서서 4.5 m 안 연속 6 s / vision = 부표를 카메라·LiDAR 로 잡고 hold_dist_m 앞에 섬. 탐색(mode 3)은 언제나 vision",
+         advice: "대회 gps(11-13 사용자 결정). WP2 는 부표 옆 대기점(부표에서 약 1.5 m, 1.0~2.0). 🚨 WP2 근처 MANUAL 로 6 s 머물면 AUTO 전에 끝남",
+         change: rarely, when: "현장 조정표 hold_source 행 — GPS 가 FLOAT·끊김이 잦으면 vision(당일 turn_color_mode2 도 맞출 것)",
+         check: "시작 로그 hold_source=gps(mode 2: …) · 대기점에 서서 6 s 뒤 다음 WP · 정지 위치가 WP 앞 약 1.5 m",
+         revert: "vision"}
       - {pkg: ship_back, key: hold_dist_m, label: 부표 앞 유지 거리, unit: m, step: 0.1, limits: [1.0, 4.5],
-         hint: 위치유지·탐색(mode 2·3)에서 부표 앞에 머무는 거리,
+         hint: "탐색(mode 3)·위치유지 vision 방식에서 부표 앞에 머무는 거리(hold_source gps 면 위치유지엔 안 씀)",
          advice: "2.5~3.5. hold + dist_tol(0.4) 가 규정 5 m 보다 작아야 한다. 3.2 넘게 올리면 도착 반경도 같이 본다",
          change: water, when: "실배에서 부표 놓침·선미 여유를 보고 2.5 / 3.0 / 3.5 중 고른다",
          check: "3.0·3.5 에서 카메라가 부표를 놓치지 않는지 · LiDAR 거리 연속 · 조류 중 5 m 안 5 s 유지 · 떠날 때 부표 옆 간격",
