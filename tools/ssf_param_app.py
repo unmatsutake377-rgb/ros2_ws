@@ -12,7 +12,9 @@
   · 쓰기(POST)는 'X-SSF: 1' 헤더가 있어야 한다(다른 사이트가 브라우저로 몰래 보내는 요청 차단).
   · NTRIP 파일은 엔진이 아예 목록에 안 올린다. 웨이포인트 파일은 '웨이포인트' 탭에서 보기·검사만(쓰기 API 없음).
   · '오늘 시험' 탭(tools/ssf_test_plan.yaml)도 보기만 — 체크 표시는 브라우저 localStorage 에만 남는다.
-ROS 없이 돈다(파이썬 3.8+ · PyYAML). launch 는 건드리지 않는다.
+  · 'launch' 탭은 자율 launch 를 켜고(이미 떠 있거나 boat_boot 안 됐으면 거부) Ctrl+C 로만 끈다(tools/ssf_launch.py).
+    모드 전환(자율 출발)은 하지 않는다 — 조종기로만.
+ROS 없이 돈다(파이썬 3.8+ · PyYAML).
 """
 import argparse
 import json
@@ -83,6 +85,8 @@ def make_handler(repo, port):
                     return self._send(200, dict(repo.cam("status"), ok=True))
                 if path == "/api/plan":            # '오늘 시험' 탭(tools/ssf_test_plan.yaml, 보기 전용)
                     return self._send(200, dict(repo.test_plan(), ok=True))
+                if path == "/api/launch":          # 자율 launch 상태·로그·boat_boot 확인
+                    return self._send(200, dict(repo.launch("status"), ok=True))
                 if path == "/api/wp/rec":          # 녹화 화면(tmux) 읽기
                     return self._send(200, dict(repo.wp_rec("status"), ok=True))
             except core.ParamError as e:
@@ -119,6 +123,11 @@ def make_handler(repo, port):
                         return self._send(200, dict(repo.cam("start", body.get("ip")), ok=True))
                     if path == "/api/cam/stop":
                         return self._send(200, dict(repo.cam("stop"), ok=True))
+                    if path == "/api/launch/start":
+                        return self._send(200, dict(repo.launch("start", course=body.get("course"),
+                                                                wp=body.get("wp")), ok=True))
+                    if path == "/api/launch/stop":
+                        return self._send(200, dict(repo.launch("stop"), ok=True))
                     if path == "/api/wp/rec/start":
                         return self._send(200, dict(repo.wp_rec("start", course=body.get("course"),
                                                                 lane=body.get("lane")), ok=True))

@@ -1077,6 +1077,27 @@ class Repo:
             raise ParamError(str(e))
         raise ParamError(f"모르는 동작 {action!r}")
 
+    def launch(self, action, **kw):
+        """자율 launch: status / start(course, wp) / stop. 켜고 끄기는 배 확인 뒤에만. tools/ssf_launch.py
+        연습 폴더(tools/ssf_practice.sh)에는 일부러 복사하지 않는다 — 연습용 사본이 진짜 launch 를 띄우지 않게."""
+        try:
+            import ssf_launch
+            import ssf_lock
+        except ImportError:
+            raise ParamError("이 앱 사본에는 launch 기능이 없다(연습 폴더) — 배 노트북 저장소의 앱에서")
+        try:
+            if action == "status":
+                return ssf_launch.status(self.view_boat(), self.home)
+            b = self.boat()
+            with ssf_lock.locked(self.home, f"launch_{b}"):   # 두 곳에서 동시에 눌러도 하나만 뜬다
+                if action == "start":
+                    return ssf_launch.start(self.repo, b, self.home, kw.get("course") or "", kw.get("wp"))
+                if action == "stop":
+                    return ssf_launch.stop(b, self.home)
+        except RuntimeError as e:      # LockTimeout 도 RuntimeError
+            raise ParamError(str(e))
+        raise ParamError(f"모르는 동작 {action!r}")
+
     def wp_rec(self, action, **kw):
         """앱에서 녹화: status / start(course, lane) / send(kind, arg) / kill. 배 확인 뒤에만."""
         import ssf_lock

@@ -1136,3 +1136,159 @@ def test_server_plan_route(server, monkeypatch, tmp_path):
     monkeypatch.setattr(core, "PLAN_PATH", str(bad))
     st, d = _req(port, "/api/plan")
     assert st == 200 and d["ok"] is False and "title 필요" in d["error"]
+
+
+# ---------------------------------------------------------------- 자율 launch 켜기·끄기 (11-12, tools/ssf_launch.py)
+import ssf_launch  # noqa: E402
+
+FAKE_LAUNCH = """exec python3 -c "
+import signal, sys, time
+# {token}
+print('[north_goal_angle]: 웨이포인트 13개 로드 args', sys.argv[1:], flush=True)
+def f(*a):
+    print('fake: SIGINT 받고 정리', flush=True)
+    sys.exit(0)
+signal.signal(signal.SIGINT, f)
+while True:
+    time.sleep(0.1)
+" "$@"
+"""
+
+
+def _sys_tree(root, gov="performance", auto="-1"):
+    for i in range(2):
+        d = root / "devices" / "system" / "cpu" / f"cpu{i}" / "cpufreq"
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "scaling_governor").write_text(gov + "\n")
+    p = root / "module" / "usbcore" / "parameters"
+    p.mkdir(parents=True, exist_ok=True)
+    (p / "autosuspend").write_text(auto + "\n")
+
+
+@pytest.fixture
+def launchboat(boat, tmp_path, monkeypatch):
+    if not _sh.which("tmux"):
+        pytest.skip("tmux 없음")
+    tools = os.path.join(boat.repo, "tools")
+    os.makedirs(tools, exist_ok=True)
+    for f in ("ssf_launch_run.sh", "ssf_ros_net.sh"):
+        shutil.copy(os.path.join(HERE, f), tools)
+    token = f"ssf_fake_launch_{os.getpid()}"
+    fake = tmp_path / "fake_launch.sh"
+    fake.write_text(FAKE_LAUNCH.replace("{token}", token))
+    sysroot = tmp_path / "sys"
+    _sys_tree(sysroot)
+    sock = f"ssf_launch_test{os.getpid()}"
+    monkeypatch.setenv("SSF_WP_TMUX_SOCKET", sock)
+    monkeypatch.setenv("SSF_LAUNCH_FAKE", str(fake))
+    monkeypatch.setenv("SSF_LAUNCH_PGREP", token)
+    monkeypatch.setenv("SSF_SYS_ROOT", str(sysroot))
+    logs = os.path.join(boat.home, "ssf_logs")
+    os.makedirs(logs, exist_ok=True)
+    with open(os.path.join(logs, "practice_avoid.yaml"), "w") as f:
+        f.write("waypoints: []\n")
+    boat._fake, boat._token, boat._sys = str(fake), token, sysroot
+    yield boat
+    subprocess.run(["tmux", "-L", sock, "kill-server"], capture_output=True)
+    subprocess.run(["pkill", "-f", token], capture_output=True)
+
+
+def _ln_wait(boat, cond, sec=8):
+    end = _time.time() + sec
+    st = None
+    while _time.time() < end:
+        st = boat.launch("status")
+        if cond(st):
+            return st
+        _time.sleep(0.2)
+    raise AssertionError(f"조건 안 됨: {st}")
+
+
+def test_launch_boot_check(tmp_path):
+    root = tmp_path / "s1"
+    _sys_tree(root, gov="powersave", auto="2")
+    r = ssf_launch.boot_check(str(root))
+    assert r["ok"] is False and [i["ok"] for i in r["items"]] == [False, False]
+    root2 = tmp_path / "s2"
+    _sys_tree(root2)
+    assert ssf_launch.boot_check(str(root2))["ok"] is True
+    r = ssf_launch.boot_check(str(tmp_path / "없음"))       # VM·Mac: 항목 없음 = 건너뜀
+    assert r["ok"] is True and [i["ok"] for i in r["items"]] == [None, None]
+
+
+def test_launch_refusals(launchboat):
+    b = launchboat
+    st = b.launch("status")
+    assert not st["running"] and st["owner"] is None and st["boot"]["ok"]
+    assert [f["name"] for f in st["files"]] == ["practice_avoid.yaml"]
+    with pytest.raises(core.ParamError, match="코스는"):
+        b.launch("start", course="sim")
+    with pytest.raises(core.ParamError, match="토너먼트는 웨이포인트"):
+        b.launch("start", course="tournament")
+    for bad in ("../x.yaml", "a b.yaml", "x.yaml; rm -rf ~", ".hidden.yaml"):
+        with pytest.raises(core.ParamError, match="이름이 이상"):
+            b.launch("start", course="main", wp=bad)
+    with pytest.raises(core.ParamError, match="가 없다"):
+        b.launch("start", course="main", wp="nope.yaml")
+    with pytest.raises(core.ParamError, match="꺼져 있다"):
+        b.launch("stop")
+    _sys_tree(b._sys, gov="powersave")
+    with pytest.raises(core.ParamError, match="sudo .*boat_boot.sh"):
+        b.launch("start", course="main")
+    other = core.Repo(b.repo, "B", home=b.home)
+    _sys_tree(b._sys)
+    with pytest.raises(core.ParamError, match="배가 다르다"):
+        other.launch("start", course="main")
+    assert not b.launch("status")["running"]
+
+
+def test_launch_start_stop_restart(launchboat):
+    b = launchboat
+    st = b.launch("start", course="main", wp="practice_avoid.yaml")
+    assert "waypoints_file:=" + os.path.join(b.home, "ssf_logs", "practice_avoid.yaml") in st["command"]
+    st = _ln_wait(b, lambda s: s["running"] and any("웨이포인트 13개" in ln for ln in s["log"]))
+    assert st["owner"] == "app" and st["pane"] == "run"
+    line = next(ln for ln in st["log"] if "웨이포인트 13개" in ln)
+    assert "boat:=A" in line and "course:=main" in line and "practice_avoid.yaml" in line
+    assert any("ROS 격리" in ln for ln in st["log"])            # 비대화형 tmux 에도 ~/.bashrc 와 같은 격리
+    with pytest.raises(core.ParamError, match="이미 떠 있다\\(앱"):
+        b.launch("start", course="main")
+    st = b.launch("stop")
+    assert st["stopping"]
+    st = _ln_wait(b, lambda s: not s["running"] and any("■" in ln and "launch 끝" in ln for ln in s["log"]))
+    assert st["pane"] == "ended" and any("SIGINT 받고 정리" in ln for ln in st["log"])
+    # 다시 켜기 — 끝난 창은 정리하고 새로
+    b.launch("start", course="main")
+    st = _ln_wait(b, lambda s: s["running"])
+    assert not any("■" in ln for ln in st["log"]) and not any("waypoints_file" in ln for ln in st["log"])
+    b.launch("stop")
+    _ln_wait(b, lambda s: not s["running"])
+
+
+def test_launch_started_from_terminal_is_not_ours(launchboat):
+    b = launchboat
+    p = subprocess.Popen(["bash", b._fake, "boat:=A", "course:=main"], stdout=subprocess.DEVNULL)
+    try:
+        st = _ln_wait(b, lambda s: s["running"])
+        assert st["owner"] == "terminal"
+        with pytest.raises(core.ParamError, match="앱이 띄운 launch 가 아니다"):
+            b.launch("stop")
+        with pytest.raises(core.ParamError, match="이미 떠 있다\\(터미널"):
+            b.launch("start", course="main")
+    finally:
+        p.terminate()
+        p.wait(5)
+
+
+def test_server_launch_routes(server, monkeypatch, tmp_path):
+    port, _ = server
+    monkeypatch.setenv("SSF_SYS_ROOT", str(tmp_path / "없음"))
+    monkeypatch.setenv("SSF_LAUNCH_PGREP", f"ssf_no_such_{os.getpid()}")
+    st, d = _req(port, "/api/launch")
+    assert st == 200 and d["ok"] and d["running"] is False and "boot" in d
+    st, d = _req(port, "/api/launch/start", {"course": "main"})
+    assert st == 403          # 헤더 없음
+    st, d = _req(port, "/api/launch/start", {"course": "x"}, {"X-SSF": "1"})
+    assert d["ok"] is False and "코스는" in d["error"]
+    st, d = _req(port, "/api/launch/stop", {}, {"X-SSF": "1"})
+    assert d["ok"] is False and "꺼져 있다" in d["error"]
