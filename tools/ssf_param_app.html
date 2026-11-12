@@ -180,6 +180,7 @@ pre.out{font-family:var(--mono);font-size:12px;background:var(--bg);padding:10px
     </div>
     <nav class="tabs" id="tabs">
       <button data-t="plan">오늘 시험</button>
+      <button data-t="launch">launch</button>
       <button data-t="field" class="sel">현장 조정</button>
       <button data-t="all">전체 파라미터</button>
       <button data-t="diff">저장소와 다른 값<span class="count" id="diffcount" hidden>0</span></button>
@@ -674,6 +675,99 @@ async function camPoll() {
 setInterval(() => { if (S.tab === "cam" && !document.hidden) camPoll(); }, 2000);
 function viewCam() { return [camPanel()]; }
 
+// ---- 자율 launch (배 tmux ssf_launch_<배>, tools/ssf_launch.py). 끄기 = Ctrl+C 한 번. 출발(자율)은 조종기로만
+const LN = {el:null, st:null, busy:false, msg:""};
+// 시작 로그에서 눈으로 확인할 줄
+const LN_KEY = /웨이포인트 \d+개|미션 순서|geofence (ON|OFF)|장애물 구간 경계|reverse_trim_us|DWA (켬|끔)|course=|노랑·흰색·검정/;
+async function lnCall(path, body) {
+  if (LN.busy) return; LN.busy = true; lnUpdate();
+  try { const r = await api(path, body, 30000); LN.msg = r.ok === false ? "❌ " + r.error : (r.stopping ? "Ctrl+C 보냄 — 끝날 때까지 수십 초" : ""); if (r.ok !== false) LN.st = r; }
+  catch (e) { LN.msg = "❌ " + e; }
+  LN.busy = false; await lnPoll();
+}
+function lnStart() {
+  const P = LN.parts, course = P.course.value, wp = P.wp.value;
+  if (course === "tournament" && !wp) { LN.msg = "❌ 토너먼트는 레인 녹화본을 골라야 한다"; return lnUpdate(); }
+  const ok = confirm(
+    `launch 를 켤까요? — ${S.state?.boat_ko || ""} · ${COURSE_KO[course]}${wp ? " · " + wp : " · 템플릿 웨이포인트"}\n\n` +
+    "확인:\n· 지금 판과 판 사이다\n· 조종기 SwD [위] = 수동, 스틱에서 손 뗌\n· 배터리는 launch 가 뜬 뒤에 꽂는다(이미 꽂혀 있으면 수동인지 다시 확인)\n" +
+    "· 출발은 조종기 SwD [아래] — 앱은 출발시키지 않는다");
+  if (ok) lnCall("/api/launch/start", {course, wp});
+}
+function lnPanel() {
+  if (LN.el) return LN.el;
+  const btn = (text, cls, fn) => h("button", {class:"btn " + (cls || ""), text, onclick:fn});
+  const course = h("select", {}, h("option", {value:"main", text:"종합임무"}), h("option", {value:"tournament", text:"토너먼트"}));
+  course.value = S.course;
+  const wp = h("select", {});
+  LN.parts = {
+    status: h("div", {class:"label"}),
+    boot: h("div", {class:"guide", style:"margin:8px 0"}),
+    course, wp,
+    cmd: h("div", {class:"mono small", style:"margin:6px 0;word-break:break-all"}),
+    on: h("div", {class:"tools"}, h("span", {text:"코스"}), course, h("span", {text:"웨이포인트"}), wp, btn("▶ launch 켜기", "go", lnStart)),
+    off: h("div", {class:"tools"}, btn("■ 끄기 (Ctrl+C 한 번)", "primary", () => {
+      if (confirm("launch 를 끌까요? Ctrl+C 한 번 — 라이다 정지까지 수십 초. 판과 판 사이에만.")) lnCall("/api/launch/stop", {}); })),
+    keys: h("div", {class:"guide", style:"margin:8px 0"}),
+    log: h("pre", {class:"out", style:"max-height:420px;white-space:pre-wrap"}),
+    msg: h("div", {class:"small"}),
+  };
+  course.onchange = wp.onchange = lnUpdate;
+  LN.el = h("div", {},
+    h("div", {class:"card", style:"padding:12px 14px;margin-bottom:12px"}, LN.parts.status, LN.parts.boot, LN.parts.on, LN.parts.cmd,
+      LN.parts.off, LN.parts.msg, LN.parts.keys,
+      h("div", {class:"small", style:"margin-top:8px", text:"launch 화면 (tmux ssf_launch_<배> 끝 150줄)"}), LN.parts.log),
+    h("div", {class:"card", style:"padding:12px 14px"},
+      h("div", {class:"label", text:"순서 · 주의"}),
+      h("div", {class:"guide", style:"margin-top:6px"},
+        h("p", {}, h("span", {class:"k", text:"하루 한 번"}), "노트북을 켠 뒤 배 노트북 터미널에서 sudo ~/ros2_ws/tools/boat_boot.sh (비밀번호는 사람이). 안 했으면 켜기가 막힌다."),
+        h("p", {}, h("span", {class:"k", text:"켜기"}), "센서·아두이노(노트북 직결) 연결 → 조종기 수동 → 여기서 켜기 → 아래 확인 줄 → 배터리 1·2번 → 5·6번 → 삑 → 15~25 s."),
+        h("p", {class:"adv"}, h("span", {class:"k", text:"출발"}), "조종기 SwD [아래]. 앱·노트북으로는 출발시키지 않는다. 위험하면 SwD [위]."),
+        h("p", {}, h("span", {class:"k", text:"판 사이"}), "끄기(Ctrl+C) → '■ launch 끝' 줄 확인 → 다시 켜기. 다시 켜야 웨이포인트가 처음부터 시작한다."),
+        h("p", {}, h("span", {class:"k", text:"터미널로 켠 것"}), "ssh 로 tmux ssf 에서 띄운 launch 는 여기서 끌 수 없다 — 그 창에서 Ctrl+C."))));
+  return LN.el;
+}
+function lnUpdate() {
+  const st = LN.st, P = LN.parts; if (!P) return;
+  const run = !!st?.running, mine = st?.owner === "app";
+  P.status.textContent = st?.error ? "❌ " + st.error :
+    run ? (mine ? "🟢 launch 실행 중 (앱에서 켬)" : "🟢 launch 실행 중 — 터미널에서 켠 것(여기서 못 끔)") :
+    st?.pane === "run" ? "⏳ 시작 중…" : "launch 꺼짐";
+  const bc = st?.boot;
+  fill(P.boot, h("p", {}, h("span", {class:"k", text:"boat_boot"}),
+    !bc ? "—" : bc.ok ? "✅ 이번 부팅에 적용됨 (" + bc.items.map(i => `${i.name} ${i.detail}`).join(" · ") + ")" :
+      h("span", {style:"color:var(--bad);font-weight:600",
+        text:"❌ 안 됨 — " + bc.items.filter(i => i.ok === false).map(i => `${i.name} ${i.detail}`).join(" · ") +
+          " → 배 노트북 터미널: sudo ~/ros2_ws/tools/boat_boot.sh"})));
+  // 웨이포인트 목록(바뀔 때만 다시 그림 — 고른 값 유지)
+  const names = (st?.files || []).map(f => f.name), key = names.join("|");
+  if (P.wp.dataset.k !== key) {
+    const cur = P.wp.value;
+    fill(P.wp, h("option", {value:"", text:"(템플릿 그대로 — 종합임무만)"}),
+      ...(st?.files || []).map(f => h("option", {value:f.name, text:`${f.name}  (${f.mtime})`})));
+    P.wp.value = names.includes(cur) ? cur : ""; P.wp.dataset.k = key;
+  }
+  const b = st?.boat || S.state?.boat || "A";
+  P.cmd.textContent = "실행될 명령: ros2 launch launch_files launch_files.launch.py boat:=" + b + " course:=" + P.course.value +
+    (P.wp.value ? " waypoints_file:=~/ssf_logs/" + P.wp.value : "");
+  P.on.hidden = run || st?.pane === "run"; P.cmd.hidden = P.on.hidden; P.off.hidden = !(mine || st?.pane === "run");
+  const log = st?.log || [];
+  fill(P.keys, ...log.filter(l => LN_KEY.test(l)).slice(-12).map(l => h("p", {class:"mono small", text:"🔎 " + l.trim()})),
+    ...log.filter(l => /\bERROR\b|\[ERROR\]|❌/.test(l)).slice(-8).map(l =>
+      h("p", {class:"mono small", style:"color:var(--bad)", text:"❗ " + l.trim()})));
+  const t = log.join("\n");
+  if (P.log.textContent !== t) { P.log.textContent = t || "(앱에서 켠 launch 화면 없음)"; P.log.scrollTop = P.log.scrollHeight; }
+  P.msg.textContent = LN.busy ? "처리 중…" : LN.msg;
+  for (const x of LN.el.querySelectorAll("button.btn")) x.disabled = LN.busy;
+}
+async function lnPoll() {
+  try { const r = await api("/api/launch"); LN.st = r.ok === false ? {error:r.error} : r; }
+  catch (e) { LN.st = {error:String(e)}; }
+  lnUpdate();
+}
+setInterval(() => { if (S.tab === "launch" && !document.hidden) lnPoll(); }, 2000);
+function viewLaunch() { return [lnPanel()]; }
+
 function viewWp() {
   const b = (S.wpBoat || S.state?.boat || "A").toLowerCase();
   const out = [recPanel(), h("div", {class:"card", style:"padding:12px 14px"},
@@ -989,7 +1083,7 @@ function render(keepFocus) {
   if (S.applied.length && S.tab !== "log") kids.push(restartBanner());
   if (S.tab === "field" || S.tab === "all")
     kids.push(h("p", {class:"hint", text:`보는 코스: ${COURSE_KO[S.course]} — 칸의 값 = 이 배가 이 코스에서 실제로 읽는 값. 바꾸면 그 값을 정하는 파일이 고쳐진다.`}));
-  const v = {plan:viewPlan, field:viewField, all:viewAll, diff:viewDiff, wp:viewWp, cam:viewCam, log:viewLog}[S.tab]();
+  const v = {plan:viewPlan, launch:viewLaunch, field:viewField, all:viewAll, diff:viewDiff, wp:viewWp, cam:viewCam, log:viewLog}[S.tab]();
   m.replaceChildren(...kids, ...v);
   if (S.tab === "wp") requestAnimationFrame(recScroll);   // 다시 붙인 녹화 화면의 스크롤 되돌리기
   if (keepFocus && selStart != null) { const s = $(".search"); s.focus(); s.setSelectionRange(selStart, selStart); }
@@ -1006,7 +1100,7 @@ async function refresh() {
 
 $("#course").addEventListener("click", e => { const c = e.target.dataset?.c; if (c) { S.course = c; render(); } });
 $("#tabs").addEventListener("click", e => { const t = e.target.closest("button")?.dataset.t;
-  if (t) { S.tab = t; render(); if (t === "wp") { loadWp(); recPoll(); } if (t === "cam") camPoll(); if (t === "plan") loadPlan(); } });
+  if (t) { S.tab = t; render(); if (t === "wp") { loadWp(); recPoll(); } if (t === "cam") camPoll(); if (t === "plan") loadPlan(); if (t === "launch") lnPoll(); } });
 $("#discard").addEventListener("click", () => { S.pending.clear(); render(); });
 $("#review").addEventListener("click", review);
 $("#modal").addEventListener("click", e => { if (e.target.id === "modal") { $("#modal").hidden = true; render(); } });
