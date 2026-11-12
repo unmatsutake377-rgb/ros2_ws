@@ -1,0 +1,17 @@
+# 자동 생성 — tools/sim/worlds/arena_2025.yaml 의 waypoints(로컬 xy)를 origin 기준 평면 변환. 손으로 고치지 말 것.
+#   python3 tools/sim/full_course_sim.py --world tools/sim/worlds/arena_2025.yaml --write-world-wp
+#   시뮬 전용 좌표(합성, 실측 아님). 라벨·mode·dwell 은 대회 템플릿(KABOAT 2026 OT 순서)과 같다.
+waypoints:
+  - {구역: "WP0 게이트 시작", lat: 35.186286963, lon: 128.565561317, mode: 0, dwell: 3.0}
+  - {구역: "WP1 게이트 끝", lat: 35.186286963, lon: 128.565836412, mode: 1, dwell: 3.0}
+  - {구역: "WP2 위치유지", lat: 35.186282466, lon: 128.566061990, mode: 2, dwell: 0.5}
+  - {구역: "도킹 정렬 6m", lat: 35.186291459, lon: 128.566161024, mode: 5, dwell: 1.0}
+  - {구역: "WP8 도킹(도크 정면)", lat: 35.186291459, lon: 128.566227046, mode: 7, dwell: 1.0}
+  - {구역: "WP9 도킹 이탈", lat: 35.186291459, lon: 128.566161024, mode: 7, dwell: 1.0}
+  - {구역: "탐색 접근", lat: 35.186345419, lon: 128.566172028, mode: 5, dwell: 1.0}
+  - {구역: "WP3 부표(초록)", lat: 35.186417364, lon: 128.566161024, mode: 3, dwell: 0.5}
+  - {구역: "WP4 부표(빨강)", lat: 35.186363405, lon: 128.566106005, mode: 3, dwell: 0.5}
+  - {구역: "WP5 부표(검정)", lat: 35.186417364, lon: 128.566050986, mode: 3, dwell: 0.5}
+  - {구역: "WP6 회피 시작", lat: 35.186390385, lon: 128.565929944, mode: 5, dwell: 1.0}
+  - {구역: "WP7 회피 끝", lat: 35.186390385, lon: 128.565533808, mode: 5, dwell: 1.0}
+  - {구역: "WP10 종료 게이트 너머", lat: 35.186390385, lon: 128.565467785, mode: 8, dwell: 3.0}

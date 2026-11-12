@@ -16,6 +16,13 @@
            north GPS stale/fix 없음·IMU stale 경고, ship_goal_angle IMU·목표각 stale 경고, /desired_angle 50000 시간(모드별).
   옵션: --wp-file <yaml>(north_goal_angle 이 읽을 파일; 세계 배치는 늘 --world-wp-file 기준), --gps-sigma 0.03,
         --current VX VY(조류 m/s, 기본 0 0), --t-max 1500, --jobs N(병렬 프로세스)
+  세계·도크 (11-12, 옵션을 안 주면 옛 결과와 같다):
+        --world tools/sim/worlds/arena_2025.yaml   규정 그림(2025-11) 배치 — 게이트 5쌍·장애물 격자·위치유지·탐색·도크 12 m
+                                                   (웨이포인트 = 그 파일의 waypoints_file, --write-world-wp 로 생성)
+        --dock-bay-w 2 --dock-gap 1.5 --dock-depth 3   도크 칸 폭·칸막이 두께·깊이(기본 1·0·0.5 = 옛 형상, 세계 파일 값 우선)
+        --dock-target -1|0|1|random                    목표 칸(기본 random = 시드)
+        --dock-align wp|target                         target = 정렬·WP8·WP9 를 목표 칸 축으로 옮긴 사본
+        형상은 dock_geometry.py(순수 함수, test_dock_geometry.py). 도크 상세 요약 줄(분류·접안 깊이)은 이 옵션을 줄 때만.
 
 실제로 돌리는 노드 코드 (한 줄도 안 바꾼다. 파라미터는 아래 — 대회 launch 와 값은 같다)
   north_goal_angle  ← north_goal_angle.yaml + waypoints_file (launch 가 둘 다 넘김)
@@ -75,6 +82,8 @@
     경로선 ±3 m, 서로 1.5 m 이상, 다른 부표와 1.5 m 이상.
   · 도크(dock_sim 과 같은 규격): 정면 벽 3 m(1 m 칸 3개) + 칸막이 0.5 m 4개. 정면 벽 중심 = WP8 좌표,
     정면(물 쪽)이 직전 WP(도킹 접근 6m) 방향을 향함. 목표 칸(표식) 좌·중·우 무작위.
+    --dock-* 로 칸 폭·칸막이 두께(덩어리)·깊이를 바꾸면 dock_geometry: 뒷벽(front) + 칸 옆벽·양 끝 벽(div) + 덩어리 끝면(cap).
+    표식 = 목표 칸 뒷벽 가운데. 접촉 검사 반경 = max(4.0, 반길이 + 깊이 + 0.83 + 1). 칸 안 = |lat| ≤ 칸폭/2.
   · 위치유지 판정은 위치유지 WP 마다 따로(그 WP 동안 그 부표 5 m·5 s), 전부 채워야 성공.
   · geofence: north_goal_angle.yaml 의 geofence_polygon 이 [] → 꺼짐(노드가 빈 배열 발행). 경계 없음.
   · 출발: WP1→WP0 연장선 위 WP0 앞 8 m, 좌우 ±1 m, 헤딩 = WP0 방향 ±20°, 정지 상태. t=0 에 모든 노드 생성.
@@ -88,7 +97,9 @@
     + 기하: mode 3 동안 공지 색 부표(turn_color_mode3) 8 m 안에서 배 위치 방위의 부호 있는 누적이
     규정 방향(빨강·초록 시계 / 노랑·흰색·검정 반시계 — 검정은 2026 OT 11-12)으로 ≥ 350°. 둘 다 맞아야 성공.
   · 포기 = ship_back 이 ERROR '포기'(거리 unknown 10 s 또는 HOLD 총 60 s)를 남기고 DONE — 성공으로 세지 않는다.
-  · 도킹 = ship_dock 이 CONTACT 에 들어간 순간 배 중심이 목표 칸 중심 ±0.5 m(칸 폭) 안 → '칸 안 접안'.
+  · 도킹 = ship_dock 이 CONTACT 에 들어간 순간 배 중심이 목표 칸 중심 ±칸폭/2(기본 0.5 m) 안 → '칸 안 접안'.
+    분류(dock_outcome): 그 순간 ship_dock 과 같은 전방 섹터(±15°, median 5) 최소거리 광선이 뒷벽이면 '안쪽 벽', 칸막이(div·cap)면
+    목표 칸 밖일 때 '거짓 CONTACT@칸막이 끝'. CONTACT 없으면 SEARCH 타임아웃 / APPROACH 중단 / ALIGN 진동 / 기타.
     후진 이탈 = BACKOFF→DONE 이 거리(2.5 m) 도달로 끝남. SEARCH 타임아웃 = SEARCH→DONE.
   · 코스 시간 = WP10(마지막 WP) 2.5 m 안에 처음 든 시각. 그 뒤 dwell 완료를 --tail 초까지만 기다린다.
 """
@@ -143,6 +154,7 @@ sys.modules.setdefault("geopy", _geopy)
 rosstub.Pub.get_subscription_count = lambda self: 1      # /geofence_state 구독자(ship_direction) 있음
 
 import kaboat_full_course_sim as K               # noqa: E402  (운동 상수: gate_sim 과 같은 출처)
+from dock_geometry import DOCK_DEFAULT, dock_geometry, bay_offsets, extent as dock_extent   # noqa: E402
 
 std = sys.modules["std_msgs.msg"]
 Float32, Float64, Int32, String = std.Float32, std.Float64, std.Int32, std.String
@@ -243,12 +255,63 @@ def load_wps(path):
     return [dict(label=w.get("구역", ""), lat=float(w["lat"]), lon=float(w["lon"]), mode=int(w["mode"]), dwell=float(w["dwell"])) for w in raw]
 
 
+# ───────────────────────── 세계 파일 (--world, 명시 배치) ─────────────────────────
+# 형식은 tools/sim/worlds/arena_2025.yaml 머리말. 없으면(기본) 아래 build_world 의 옛 규칙 그대로.
+#   origin(위경도 = 로컬 원점), waypoints(xy 로컬), waypoints_file(위경도 사본, --write-world-wp 로 생성),
+#   gates(빨강·초록 쌍, 지나는 순서), buoys(명시 부표), obstacle_grid(주황 장애물 행), random_obstacles(false 면
+#   회피 선분 무작위 장애물 끔), dock(center·facing_deg·bay_w·gap·depth·n_bays), arena(그림용 경계, 선택).
+def load_world(path):
+    with open(path, encoding="utf-8") as f:
+        w = yaml.safe_load(f)
+    w["_path"] = os.path.abspath(path)
+    wf = w.get("waypoints_file")
+    w["_wp_path"] = os.path.join(os.path.dirname(w["_path"]), wf) if wf else None
+    return w
+
+
+def world_geo(world):
+    return Geo(float(world["origin"]["lat"]), float(world["origin"]["lon"]))
+
+
+def world_wp_text(world):
+    """세계 파일의 waypoints(로컬 xy) → north_goal_angle 이 읽는 waypoints.yaml 형식 문자열(위경도 9자리)."""
+    geo = world_geo(world)
+    name = os.path.basename(world.get("_path", "world.yaml"))
+    lines = [f"# 자동 생성 — tools/sim/worlds/{name} 의 waypoints(로컬 xy)를 origin 기준 평면 변환. 손으로 고치지 말 것.",
+             f"#   python3 tools/sim/full_course_sim.py --world tools/sim/worlds/{name} --write-world-wp",
+             "#   시뮬 전용 좌표(합성, 실측 아님). 라벨·mode·dwell 은 대회 템플릿(KABOAT 2026 OT 순서)과 같다.",
+             "waypoints:"]
+    for w in world["waypoints"]:
+        lat, lon = geo.ll(float(w["xy"][0]), float(w["xy"][1]))
+        lines.append(f'  - {{구역: "{w["구역"]}", lat: {lat:.9f}, lon: {lon:.9f}, '
+                     f'mode: {int(w["mode"])}, dwell: {float(w["dwell"]):.1f}}}')
+    return "\n".join(lines) + "\n"
+
+
+def resolve_dock_cfg(world=None, dock_cfg=None):
+    """도크 치수: 코드 기본(DOCK_DEFAULT = 옛 1 m 칸) ← 세계 파일 dock ← CLI(--dock-*) 순으로 덮어쓴다. 목표 칸 None = 무작위."""
+    d = dict(DOCK_DEFAULT, target=None)
+    if world is not None and world.get("dock"):
+        for k in ("bay_w", "gap", "depth", "n_bays"):
+            if k in world["dock"]:
+                d[k] = world["dock"][k]
+    for k, v in (dock_cfg or {}).items():
+        if v is not None:
+            d[k] = v
+    d["bay_w"], d["gap"], d["depth"], d["n_bays"] = float(d["bay_w"]), float(d["gap"]), float(d["depth"]), int(d["n_bays"])
+    return d
+
+
 # ───────────────────────── 세계 ─────────────────────────
-def build_world(world_wps, seed):
+def build_world(world_wps, seed, dock_cfg=None, world=None):
+    """dock_cfg = resolve_dock_cfg() 결과(None 이면 기본 = 옛 형상), world = load_world() 결과(None 이면 옛 규칙)."""
     rng = random.Random(seed)
-    geo = Geo(world_wps[0]["lat"], world_wps[0]["lon"])
+    dcfg = dock_cfg if dock_cfg is not None else resolve_dock_cfg(world)
+    geo = world_geo(world) if world is not None else Geo(world_wps[0]["lat"], world_wps[0]["lon"])
     P = [np.array(geo.xy(w["lat"], w["lon"])) for w in world_wps]
     W = dict(geo=geo, P=P, buoys=[], segs=[])
+    if world is not None and world.get("arena"):
+        W["arena"] = [tuple(map(float, q)) for q in world["arena"]]
 
     def add_buoy(p, color, kind):
         W["buoys"].append(dict(x=float(p[0]), y=float(p[1]), color=color, kind=kind))
@@ -256,11 +319,17 @@ def build_world(world_wps, seed):
     # 게이트
     d01 = P[1] - P[0]; L01 = np.linalg.norm(d01); u = d01 / L01; left = np.array([-u[1], u[0]])
     W["gates"] = []
-    for k in range(4):
-        c = P[0] + u * L01 * (k + 0.5) / 4.0; w = rng.uniform(3.0, 6.0)
-        red, green = c + left * w / 2, c - left * w / 2
-        W["gates"].append(dict(c=c, w=w, red=red, green=green))
-        add_buoy(red, "red", f"gate{k}"); add_buoy(green, "green", f"gate{k}")
+    if world is not None and world.get("gates"):
+        for k, g in enumerate(world["gates"]):
+            red, green = np.array(g["red"], dtype=float), np.array(g["green"], dtype=float)
+            W["gates"].append(dict(c=(red + green) / 2, w=float(np.linalg.norm(red - green)), red=red, green=green))
+            add_buoy(red, "red", f"gate{k}"); add_buoy(green, "green", f"gate{k}")
+    else:
+        for k in range(4):
+            c = P[0] + u * L01 * (k + 0.5) / 4.0; w = rng.uniform(3.0, 6.0)
+            red, green = c + left * w / 2, c - left * w / 2
+            W["gates"].append(dict(c=c, w=w, red=red, green=green))
+            add_buoy(red, "red", f"gate{k}"); add_buoy(green, "green", f"gate{k}")
     W["gate_u"] = u
     # 미션 부표 (구역 이름대로)
     by_mode = [w["mode"] for w in world_wps]
@@ -272,14 +341,30 @@ def build_world(world_wps, seed):
         if w["mode"] == 3:
             col = next((v for kk, v in col_kw.items() if kk in w["label"]), "red")
             add_buoy(P[i], col, f"search_{col}")
-    # 도크: 정면 벽 중심 = 첫 mode 7 WP, 정면은 직전 WP 쪽
+    if world is not None:                    # 명시 부표·장애물 격자
+        for b in world.get("buoys") or []:
+            add_buoy(b["xy"], b["color"], b["kind"])
+        for row in world.get("obstacle_grid") or []:
+            for gx in row["x"]:
+                add_buoy((gx, row["y"]), "orange", "obst_5")
+    # 도크: 뒷벽(칸 안쪽 벽) 중심 O, 물 쪽 n. 기본 = 첫 mode 7 WP 가 O, 정면은 직전 WP 쪽(옛 규칙).
+    #   세계 파일 dock 이 있으면 center·facing_deg. 형상은 dock_geometry(순수 함수) — 기본 치수면 옛 선분과 같다.
     i7 = by_mode.index(7)
-    O = P[i7]; n = P[i7 - 1] - O; n = n / np.linalg.norm(n); t = np.array([n[1], -n[0]])
-    bay = rng.choice((-1.0, 0.0, 1.0))
-    W["dock"] = dict(O=O, n=n, t=t, bay=bay, marker=O + t * bay)
-    W["segs"].append((O - 1.5 * t, O + 1.5 * t, "front"))
-    for s in (-1.5, -0.5, 0.5, 1.5):
-        W["segs"].append((O + s * t, O + s * t + 0.5 * n, "div"))
+    if world is not None and world.get("dock"):
+        O = np.array(world["dock"]["center"], dtype=float); f_ = math.radians(float(world["dock"]["facing_deg"]))
+        n = np.array([math.sin(f_), math.cos(f_)])
+    else:
+        O = P[i7]; n = P[i7 - 1] - O; n = n / np.linalg.norm(n)
+    geom = dock_geometry(O, n, dcfg["bay_w"], dcfg["gap"], dcfg["depth"], dcfg["n_bays"])
+    t = geom["t"]
+    # 목표 칸: 난수는 늘 같은 순서로 뽑는다(지정해도 기본 동작의 난수 흐름 유지)
+    bay = rng.choice((-1.0, 0.0, 1.0)) if dcfg["n_bays"] == 3 else rng.choice(bay_offsets(dcfg["n_bays"]))
+    if dcfg.get("target") is not None:
+        bay = float(dcfg["target"])
+    W["dock"] = dict(O=O, n=n, t=t, bay=bay, marker=O + t * (bay * geom["pitch"]), geom=geom,
+                     bay_w=geom["bay_w"], depth=geom["depth"], pitch=geom["pitch"], half=geom["half"],
+                     reach=max(3.0, dock_extent(geom)))
+    W["segs"].extend(geom["segs"])
 
     # 장애물
     def scatter(a, b, t_lo, t_hi, tag, n_min=6, n_max=10):
@@ -297,9 +382,11 @@ def build_world(world_wps, seed):
         i5 = [i for i, m in enumerate(by_mode) if m == 5 and "도킹" not in world_wps[i]["label"]]
     W["i5"] = i5
     a, b = P[i5[0]], P[i5[1]]; L = np.linalg.norm(b - a)
-    scatter(a, b, 0.1 * L, 0.9 * L, "obst_5")
+    rand_obst = world is None or world.get("random_obstacles", True)
+    if rand_obst:
+        scatter(a, b, 0.1 * L, 0.9 * L, "obst_5")
     i8 = by_mode.index(8)
-    if by_mode[i8 - 1] == 7:   # 옛 순서(도킹 → WP10 토너먼트 회피)만 두 번째 장애물 구간이 있다. 2026 순서는 회피 → 종료.
+    if rand_obst and by_mode[i8 - 1] == 7:   # 옛 순서(도킹 → WP10 토너먼트 회피)만 두 번째 장애물 구간이 있다. 2026 순서는 회피 → 종료.
         a, b = P[i7], P[i8]; L = np.linalg.norm(b - a)
         scatter(a, b, max(0.0, L - 20.0), L - 3.0, "obst_8")
     arr = np.array([[q["x"], q["y"]] for q in W["buoys"]])
@@ -323,7 +410,7 @@ def lidar(W, x, y, psi):
     hit = (d2 <= r2) & (t_ca > 0)
     t = np.where(hit, t_ca - np.sqrt(np.maximum(r2 - d2, 0.0)), np.inf)
     rng = t.min(axis=1)
-    near = math.hypot(x - W["dock"]["O"][0], y - W["dock"]["O"][1]) < LIDAR_MAX + 3.0
+    near = math.hypot(x - W["dock"]["O"][0], y - W["dock"]["O"][1]) < LIDAR_MAX + W["dock"].get("reach", 3.0)   # 도크 크기(tournament_sim 등 reach 없는 W = 옛 3.0)
     if near:
         for ax, ay, bx, by in W["seg_arr"]:
             ex, ey = bx - ax, by - ay
@@ -519,13 +606,25 @@ def apply_dwell(path, overrides):
 
 def run(seed, variant="A", wp_file=None, world_wp_file=WP_DEFAULT, gps_sigma=0.03, current=(0.0, 0.0),
         t_max=1500.0, tail=90.0, record=False, dwell_override=None, fault=None, dyn="legacy", hull=None,
-        node_overrides=None, lidar_noise=False, search_behavior="orbit", avoid_zone=0.0, avoid_measure_only=False):
+        node_overrides=None, lidar_noise=False, search_behavior="orbit", avoid_zone=0.0, avoid_measure_only=False,
+        world=None, dock_cfg=None, dock_align="wp"):
+    """world = 세계 파일 경로(--world, None = 옛 규칙), dock_cfg = {bay_w, gap, depth, target}(None 값은 기본·세계 파일),
+    dock_align = "wp"(웨이포인트 파일 그대로) | "target"(정렬·WP8·WP9 를 목표 칸 축으로 옮긴 사본)."""
+    world_d = load_world(world) if isinstance(world, str) else world
+    if world_d is not None and world_wp_file in (None, WP_DEFAULT):   # 세계 파일이 있으면 그 위경도 사본
+        world_wp_file = world_d["_wp_path"]
+    if world_wp_file is None:
+        world_wp_file = WP_DEFAULT
+    dcfg = resolve_dock_cfg(world_d, dock_cfg)
+    dock_custom = world_d is not None or any(v is not None for v in (dock_cfg or {}).values()) or dock_align != "wp"
     world_wps = load_wps(world_wp_file)
     nrng = np.random.default_rng(20_000 + seed) if lidar_noise else None
-    W = build_world(world_wps, seed)
+    W = build_world(world_wps, seed, dcfg, world_d)
     geo = W["geo"]; dock = W["dock"]
     if wp_file is None:
         wp_file = variant_b_file(W) if variant == "B" else world_wp_file
+    if dock_align == "target":
+        wp_file = align_target_file(wp_file, W)
     wp_file = apply_dwell(wp_file, dwell_override)
     wps = load_wps(wp_file)
     WPXY = [np.array(geo.xy(w["lat"], w["lon"])) for w in wps]
@@ -572,7 +671,7 @@ def run(seed, variant="A", wp_file=None, world_wp_file=WP_DEFAULT, gps_sigma=0.0
     contact_on = {}; contacts = {"gate": 0, "hold": 0, "search": 0, "obst_5": 0, "obst_8": 0, "dock": 0}
     contacts_by_mode = {}
     prev_xy = np.array([x, y])
-    gate_cross = [0] * 4; gate_wrong = [0] * 4
+    gate_cross = [0] * len(W["gates"]); gate_wrong = [0] * len(W["gates"])
     hold_run = 0.0; hold_best = {i: 0.0 for i in W["hold_by_wp"]}; hold_wp = None; srch_run = {}; srch_best = {}
     sb_events = []; sk_events = []; prev_sb = sb.state; prev_sk = sk.state
     st_events = []; prev_st = st.state            # ship_turn 상태 전이 (t, mode, 이전, 다음, 진행각)
@@ -585,6 +684,7 @@ def run(seed, variant="A", wp_file=None, world_wp_file=WP_DEFAULT, gps_sigma=0.0
     _hd = HULL_DIMS.get(hull or variant[:1], HULL_DIMS["A"]); rect_hl, rect_hb = _hd[0] / 2.0, _hd[1] / 2.0
     contacts_rect = {"gate": 0, "hold": 0, "search": 0, "obst_5": 0, "obst_8": 0}; rect_on = {}
     dock_contact = None; dock_mode7_t0 = None; dock_dist_at = {}
+    dock_r = max(4.0, dock["half"] + dock["depth"] + HULL_HALF_L + 1.0)   # 도크 접촉 검사 반경(기본 형상 = 옛 4.0 m)
     t_last_reach = None; img_pub_conflict = 0
     rec = dict(t=[], x=[], y=[], psi=[], v=[], mode=[], wp=[], sk=[], sb=[], cand=[], des=[], dd=[]) if record else None
     n_wps = len(wps)
@@ -780,12 +880,12 @@ def run(seed, variant="A", wp_file=None, world_wp_file=WP_DEFAULT, gps_sigma=0.0
                     kind = b["kind"]; key = "gate" if kind.startswith("gate") else ("search" if kind.startswith("search") else kind)
                     contacts_rect[key] = contacts_rect.get(key, 0) + 1
                 rect_on[i] = ron if ron else (rd < BUOY_R + 0.1 and rect_on.get(i, False))
-            if math.hypot(x - dock["O"][0], y - dock["O"][1]) < 4.0:
+            if math.hypot(x - dock["O"][0], y - dock["O"][1]) < dock_r:
                 h = np.array([math.sin(math.radians(psi)), math.cos(math.radians(psi))])
                 bow, stern = pos + h * HULL_HALF_L, pos - h * HULL_HALF_L
                 for j, (a_, b_, kind) in enumerate(W["segs"]):
                     dd = seg_seg_dist(stern, bow, a_, b_)
-                    on = dd < (0.02 if kind == "front" else HALF_W)
+                    on = dd < (0.02 if kind == "front" else HALF_W)   # div·cap(칸막이 끝면) = 선체 반폭
                     if on and not contact_on.get(("s", j)):
                         contacts["dock"] += 1; contacts_by_mode[cur_mode] = contacts_by_mode.get(cur_mode, 0) + 1
                     contact_on[("s", j)] = on
@@ -848,6 +948,10 @@ def run(seed, variant="A", wp_file=None, world_wp_file=WP_DEFAULT, gps_sigma=0.0
                 if sk.state == "CONTACT" and dock_contact is None:
                     lat_e = float((pos - dock["marker"]) @ dock["t"])
                     dock_contact = dict(t=t, lat=lat_e, head=abs(wrap(psi - (math.degrees(math.atan2(-dock["n"][0], -dock["n"][1]))))))
+                    # 접안 순간: 배 중심 → 뒷벽 거리(깊이), ship_dock 과 같은 전방 섹터 거리와 그 광선이 맞은 물체
+                    dock_contact["depth"] = float((pos - dock["O"]) @ dock["n"])
+                    fd, fk = front_sector_hit(W, x, y, psi, sk.front_sector_half_deg, sk.front_median_kernel)
+                    dock_contact["front_d"], dock_contact["hit"] = fd, fk
                 prev_sk = sk.state
             if nga.wp_idx == i_last and math.hypot(x - WPXY[i_last][0], y - WPXY[i_last][1]) <= 2.5 and t_last_reach is None:
                 t_last_reach = t
@@ -924,11 +1028,18 @@ def run(seed, variant="A", wp_file=None, world_wp_file=WP_DEFAULT, gps_sigma=0.0
     out["search_geo_red"] = srch_best.get("search_red", 0.0) >= 5.0
     out["search_best"] = {kk: round(vv, 1) for kk, vv in srch_best.items()}
     out["dock_contact"] = dock_contact is not None
-    out["dock_inbay"] = dock_contact is not None and abs(dock_contact["lat"]) <= 0.5
+    out["dock_inbay"] = dock_contact is not None and abs(dock_contact["lat"]) <= dock["bay_w"] / 2.0
     out["dock_lat"] = None if dock_contact is None else round(dock_contact["lat"], 2)
     out["dock_backout"] = _backoff_by_dist(sk_events)
     out["dock_search_timeout"] = any(e[2] == "SEARCH" and e[3] == "DONE" for e in sk_events)
     out["dock_dist_mode7"] = None if "mode7" not in dock_dist_at else round(dock_dist_at["mode7"], 1)
+    out["n_gates"] = len(W["gates"])
+    out["dock_custom"] = dock_custom
+    out["dock_geom"] = dict(bay_w=dock["bay_w"], gap=dcfg["gap"], depth=dock["depth"], align=dock_align)
+    out["dock_depth_at"] = None if dock_contact is None else round(dock_contact["depth"], 2)
+    out["dock_hit"] = None if dock_contact is None else dock_contact["hit"]
+    out["dock_front_d"] = None if dock_contact is None else dock_contact["front_d"]
+    out["dock_class"] = dock_outcome(out, sk_events, dock_contact, dock["bay_w"], dock["depth"])
     out["sk_events"] = sk_events; out["sb_events"] = sb_events
     out["contacts"] = contacts; out["contacts_total"] = sum(contacts.values())
     out["contacts_avoid"] = contacts["obst_5"] + contacts["obst_8"]
@@ -952,6 +1063,85 @@ def run(seed, variant="A", wp_file=None, world_wp_file=WP_DEFAULT, gps_sigma=0.0
     if fault is not None:
         out.update(fault_metrics(TK, f_kind, f_t0, f_dur, f_node, f_cand0, wps))
     out["rec"] = rec; out["W"] = W if record else None; out["wps"] = wps if record else None
+    return out
+
+
+def front_sector_hit(W, x, y, psi, half_deg, kernel):
+    """ship_dock.front_min_dist 와 같은 정의(정면 ±half_deg, 공간 median kernel)로 전방 거리와 그 광선이 맞은 물체.
+    → (거리 또는 None, 'front'|'div'|'cap'|부표 kind|None). 접안 순간 1회만 부른다(진단용)."""
+    from ship_dock.dock_fsm_logic import median_min, MEDIAN_MIN_VALID
+    r = lidar(W, x, y, psi)
+    inc = K.SCAN_INC_DEG; a0 = K.SCAN_ANGLE_MIN_DEG
+    lo = max(0, int((80.0 - half_deg - a0) / inc)); hi = min(len(r) - 1, int((80.0 + half_deg - a0) / inc))
+    d, idx = median_min(list(r), lo, hi, kernel, MEDIAN_MIN_VALID)
+    if d is None:
+        return None, None
+    return round(float(d), 2), ray_hit_kind(W, x, y, psi, idx)
+
+
+def ray_hit_kind(W, x, y, psi, i):
+    """광선 i 가 가장 먼저 맞는 물체 종류(lidar() 와 같은 기하)."""
+    th = math.radians(psi - SCAN_REL[i]); dx, dy = math.sin(th), math.cos(th)
+    best = (math.inf, None)
+    for b in W["buoys"]:
+        ox, oy = b["x"] - x, b["y"] - y; tc = dx * ox + dy * oy; d2 = ox * ox + oy * oy - tc * tc
+        if tc > 0 and d2 <= BUOY_R ** 2:
+            tt = tc - math.sqrt(max(BUOY_R ** 2 - d2, 0.0))
+            if tt < best[0]: best = (tt, b["kind"])
+    for a_, b_, kind in W["segs"]:
+        ex, ey = b_[0] - a_[0], b_[1] - a_[1]; den = dx * ey - dy * ex
+        if abs(den) <= 1e-9: continue
+        tt = ((a_[0] - x) * ey - (a_[1] - y) * ex) / den; uu = ((a_[0] - x) * dy - (a_[1] - y) * dx) / den
+        if tt > 0 and 0.0 <= uu <= 1.0 and tt < best[0]: best = (tt, kind)
+    return best[1]
+
+
+DOCK_CLASSES = ("칸 안 접안(안쪽 벽)", "칸 안 접안(입구)", "거짓 CONTACT@칸막이 끝", "CONTACT 칸 밖",
+                "SEARCH 타임아웃", "ALIGN 진동", "APPROACH 중단", "mode 7 미진입·기타")
+
+
+def dock_outcome(out, sk_events, dc, bay_w, depth):
+    """도킹 결과 한 줄 분류 (시뮬 정의, DOCK_CLASSES).
+    CONTACT 가 있으면: 목표 칸 |lat| ≤ 칸폭/2 이고 전방 섹터가 뒷벽(front)을 봤으면 '안쪽 벽', 아니면 '입구'.
+      목표 칸 밖인데 전방 섹터가 칸막이(div)·끝면(cap)을 봤으면 '거짓 CONTACT@칸막이 끝', 그 밖(다른 칸 뒷벽 등)은 'CONTACT 칸 밖'.
+    CONTACT 가 없으면: SEARCH→DONE 이 있으면 SEARCH 타임아웃, APPROACH→BACKOFF(접근 타임아웃) 이면 APPROACH 중단,
+      ALIGN 진입 3회 이상이거나 ALIGN→SEARCH(정렬 타임아웃) 이면 ALIGN 진동, 나머지 기타."""
+    if dc is not None:
+        if abs(dc["lat"]) <= bay_w / 2.0:
+            return DOCK_CLASSES[0] if dc.get("hit") == "front" else DOCK_CLASSES[1]
+        return DOCK_CLASSES[2] if dc.get("hit") in ("div", "cap") else DOCK_CLASSES[3]
+    tr = [(e[2], e[3]) for e in sk_events]
+    if ("SEARCH", "DONE") in tr:
+        return DOCK_CLASSES[4]
+    if ("APPROACH", "BACKOFF") in tr:
+        return DOCK_CLASSES[6]
+    if sum(1 for a, b in tr if b == "ALIGN") >= 3 or ("ALIGN", "SEARCH") in tr:
+        return DOCK_CLASSES[5]
+    return DOCK_CLASSES[7]
+
+
+def align_target_file(path, W):
+    """정렬(첫 mode 7 직전 mode 5)·첫 mode 7(WP8)·두 번째 mode 7(WP9) 을 목표 칸 축으로 옮긴 사본(가로 bay·pitch)."""
+    d = W["dock"]; geo = W["geo"]; off = d["t"] * (d["bay"] * d["pitch"])
+    with open(path, encoding="utf-8") as f:
+        src = f.read().splitlines()
+    items = [k for k, ln in enumerate(src) if ln.strip().startswith("- {")]
+    modes = [int(yaml.safe_load(src[k].strip())[0]["mode"]) for k in items]
+    j7 = modes.index(7)
+    move = [items[j7 - 1], items[j7]] + ([items[j7 + 1]] if j7 + 1 < len(modes) and modes[j7 + 1] == 7 else [])
+    for k in move:
+        e = yaml.safe_load(src[k].strip())[0]
+        x0, y0 = geo.xy(float(e["lat"]), float(e["lon"]))
+        lat, lon = geo.ll(x0 + off[0], y0 + off[1])
+        src[k] = re.sub(r"lat:\s*[-0-9.]+", f"lat: {lat:.9f}", src[k])
+        src[k] = re.sub(r"lon:\s*[-0-9.]+", f"lon: {lon:.9f}", src[k])
+    os.makedirs(SCRATCH_B, exist_ok=True)
+    tag = {-1.0: "m1", 0.0: "0", 1.0: "p1"}.get(d["bay"], f"{d['bay']:+g}")
+    out = os.path.join(SCRATCH_B, os.path.basename(path).replace(".yaml", f"_aligntarget_bay{tag}_p{d['pitch']:g}.yaml"))
+    tmp = f"{out}.{os.getpid()}.tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.write("\n".join(src) + "\n")
+    os.replace(tmp, out)
     return out
 
 
@@ -1071,7 +1261,7 @@ def variant_b_file(W):
     tag = {-1.0: "m1", 0.0: "0", 1.0: "p1"}[bay]
     path = os.path.join(SCRATCH_B, f"waypoints_B_bay{tag}.yaml")
     geo = W["geo"]; d = W["dock"]
-    entr = d["marker"] + 0.5 * d["n"]                      # 칸 입구 중심(칸막이 끝 선 위)
+    entr = d["marker"] + d["depth"] * d["n"]               # 칸 입구 중심(칸막이 끝 선 위)
     lat, lon = geo.ll(*entr)
     out_deg = math.degrees(math.atan2(d["n"][0], d["n"][1])) % 360.0
     res = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "dock_wp.py"),
@@ -1145,8 +1335,9 @@ def summarize(R, label):
     lines = [f"[{label}] {n} 런"]
     lines.append(f"  예외 {sum(1 for r in R if not r['ok'])} | ship_turn 발행 합 {sum(r['turn_published'] for r in R)} | "
                  f"/candidate_angle 같은 틱 발행자 2개 이상: {sum(sum(r['multi_pub_ticks'].values()) for r in R)} 틱 | /image_angle 충돌 {sum(r['img_pub_conflict'] for r in R)}")
-    g4 = sum(1 for r in R if r["gates_geo"] == 4); gm = sum(1 for r in R if r["gates_node"] == r["gates_geo"])
-    lines.append(f"  게이트 4/4 기하 통과 {ci(g4)} | 기하 통과 합 {sum(r['gates_geo'] for r in R)}/{4 * n} | /gates_passed = 기하 {gm}/{n} | 역방향 가로지름 {sum(r['gates_wrongdir'] for r in R)}")
+    ng = R[0].get("n_gates", 4)
+    g4 = sum(1 for r in R if r["gates_geo"] == ng); gm = sum(1 for r in R if r["gates_node"] == r["gates_geo"])
+    lines.append(f"  게이트 {ng}/{ng} 기하 통과 {ci(g4)} | 기하 통과 합 {sum(r['gates_geo'] for r in R)}/{ng * n} | /gates_passed = 기하 {gm}/{n} | 역방향 가로지름 {sum(r['gates_wrongdir'] for r in R)}")
     lines.append(f"  위치유지 규정(5 m·5 s, {R[0].get('hold_n', 1)}회 모두) {ci(S('hold_geo'))} | 노드 HOLD→DONE {sum(1 for r in R if r['hold_node'] == 'HOLD→DONE')}, SEARCH 타임아웃 {sum(1 for r in R if r['hold_node'] == 'SEARCH 타임아웃')}, 포기 {sum(1 for r in R if r['hold_node'] == '포기')}")
     at = {}
     for r in R:
@@ -1166,6 +1357,14 @@ def summarize(R, label):
         lines.append(f"  탐색(빨강 앞 HOLD→DONE) {ci(S('search_ok'))} | 빨강 기하 5 m·5 s {S('search_geo_red')}/{n} | mode 3 종료 대상 {at}")
     lines.append(f"  도킹 칸 안 접안 {ci(S('dock_inbay'))} | CONTACT {S('dock_contact')}/{n} | 후진 이탈 {S('dock_backout')}/{n} | SEARCH 타임아웃 {S('dock_search_timeout')}/{n} | "
                  f"mode 7 진입 시 도크 거리 중앙값 {med(sorted(r['dock_dist_mode7'] for r in R if r['dock_dist_mode7'] is not None)):.1f} m")
+    if any(r.get("dock_custom") for r in R):
+        g_ = R[0]["dock_geom"]; cls = {}
+        for r in R:
+            cls[r["dock_class"]] = cls.get(r["dock_class"], 0) + 1
+        dep = sorted(r["dock_depth_at"] for r in R if r["dock_depth_at"] is not None)
+        lines.append(f"  도크 형상 칸폭 {g_['bay_w']:g} m·칸막이 {g_['gap']:g} m·깊이 {g_['depth']:g} m, 정렬 {g_['align']} | 분류 "
+                     + ", ".join(f"{k} {cls[k]}" for k in DOCK_CLASSES if k in cls)
+                     + (f" | 접안 순간 뒷벽까지(배 중심) 중앙값 {med(dep):.2f} m" if dep else ""))
     lines.append(f"  코스 시간(WP10 2.5 m 도달) 중앙값 {med(tc):.0f} s (도달 {len(tc)}/{n}, ≤900 s {sum(1 for v in tc if v <= 900)}/{n}) | 런 종료 중앙값 {med(tend):.0f} s | 전 WP 완료 {S('finished_all')}/{n}")
     lines.append(f"  WP 시간 초과 합 {sum(r['timeouts'] for r in R)} (런당 중앙값 {med(sorted(r['timeouts'] for r in R))}) | 접촉 합 {sum(r['contacts_total'] for r in R)} "
                  f"(회피 장애물 {sum(r['contacts_avoid'] for r in R)}, 게이트 {sum(r['contacts']['gate'] for r in R)}, 위치유지 {sum(r['contacts']['hold'] for r in R)}, "
@@ -1249,7 +1448,10 @@ def plot(r, path):
     for g in W["gates"]:
         ax.plot([g["red"][0], g["green"][0]], [g["red"][1], g["green"][1]], color="k", ls=":", lw=0.7)
     for a_, b_, kind in W["segs"]:
-        ax.plot([a_[0], b_[0]], [a_[1], b_[1]], color="#222", lw=3 if kind == "front" else 2)
+        ax.plot([a_[0], b_[0]], [a_[1], b_[1]], color="#222", lw=3 if kind == "front" else (2.5 if kind == "cap" else 2))
+    if W.get("arena"):
+        ar = W["arena"] + [W["arena"][0]]
+        ax.plot([q[0] for q in ar], [q[1] for q in ar], color="#888", lw=0.8, ls="--")
     mk = W["dock"]["marker"]; ax.plot(mk[0], mk[1], "s", color="crimson", ms=8, zorder=5)
     WPXY = [W["geo"].xy(w["lat"], w["lon"]) for w in wps]
     for i, (wx, wy) in enumerate(WPXY):
@@ -1263,7 +1465,7 @@ def plot(r, path):
                 Line2D([0], [0], color="#222", lw=3, label="도크 벽·칸막이")]
     ax.legend(handles=handles, fontsize=8, loc="best", framealpha=0.9)
     c = r["contacts"]
-    ax.set_title(f"변형 {r['variant']} seed {r['seed']} — 게이트 기하 {r['gates_geo']}/4 (/gates_passed {r['gates_node']}), 위치유지 {'달성' if r['hold_geo'] else '미달'}, "
+    ax.set_title(f"변형 {r['variant']} seed {r['seed']} — 게이트 기하 {r['gates_geo']}/{r.get('n_gates', 4)} (/gates_passed {r['gates_node']}), 위치유지 {'달성' if r['hold_geo'] else '미달'}, "
                  f"탐색 {'성공' if r['search_ok'] else '실패'}({r['search_node']} {r['search_at']}), 도킹 {'칸 안 접안' if r['dock_inbay'] else ('접안(칸 밖)' if r['dock_contact'] else '미접안')}, "
                  f"접촉 {r['contacts_total']}, 코스 {r['t_course']} s, WP 시간초과 {r['timeouts']}", fontsize=9.5)
     # 시간축
@@ -1394,7 +1596,7 @@ def main():
     ap.add_argument("--seed0", type=int, default=1)
     ap.add_argument("--plot-seed", type=int, default=None)
     ap.add_argument("--wp-file", default=None, help="north_goal_angle 이 읽을 웨이포인트 파일(지정 시 변형 B 자동 생성 대신 이 파일)")
-    ap.add_argument("--world-wp-file", default=WP_DEFAULT)
+    ap.add_argument("--world-wp-file", default=None, help="세계 배치용 웨이포인트(기본 src/north_goal_angle/config/waypoints.yaml, --world 면 그 waypoints_file)")
     ap.add_argument("--gps-sigma", type=float, default=0.03)
     ap.add_argument("--current", type=float, nargs=2, default=[0.0, 0.0])
     ap.add_argument("--t-max", type=float, default=1500.0)
@@ -1418,13 +1620,35 @@ def main():
                     help="장애물 구간 경계 켬: WP6→WP7 ±반폭 m 직사각형(양 끝 4 m 연장)을 geofence_avoid_polygon 으로 넘기고 이탈을 잰다")
     ap.add_argument("--avoid-measure-only", action="store_true",
                     help="--avoid-zone 경계를 노드엔 넘기지 않고 이탈만 잰다(경계 효과 비교 기준선)")
+    # 세계·도크 (기본값이면 옛 동작과 같다 — 기본 형상 = 칸 1 m·칸막이 두께 0·깊이 0.5 m, 목표 칸 무작위)
+    ap.add_argument("--world", default=None, metavar="yaml",
+                    help="명시 배치 세계 파일(예 tools/sim/worlds/arena_2025.yaml). 세계·웨이포인트를 그 파일에서")
+    ap.add_argument("--write-world-wp", action="store_true",
+                    help="--world 의 waypoints(로컬 xy)를 위경도 웨이포인트 파일(waypoints_file)로 쓰고 끝낸다")
+    ap.add_argument("--dock-bay-w", type=float, default=None, help="칸 폭 m (기본 1.0, 세계 파일 값이 있으면 그 값)")
+    ap.add_argument("--dock-gap", type=float, default=None, help="칸막이(칸 사이·양 끝 덩어리) 두께 m (기본 0)")
+    ap.add_argument("--dock-depth", type=float, default=None, help="칸 깊이 m (기본 0.5)")
+    ap.add_argument("--dock-target", default="random", choices=["-1", "0", "1", "random"],
+                    help="목표 칸(가로 t 방향 번호, t = 물 쪽 n 을 시계로 90°). random = 시드 무작위(기본)")
+    ap.add_argument("--dock-align", default="wp", choices=["wp", "target"],
+                    help="wp = 웨이포인트 그대로(정렬점 = 파일 값) / target = 정렬·WP8·WP9 를 목표 칸 축으로 옮긴 사본")
     a = ap.parse_args()
     os.makedirs(OUT_DIR, exist_ok=True)
+    if a.write_world_wp:
+        if not a.world:
+            raise SystemExit("--write-world-wp 는 --world 와 같이")
+        wd = load_world(a.world)
+        with open(wd["_wp_path"], "w", encoding="utf-8") as f:
+            f.write(world_wp_text(wd))
+        print("저장:", wd["_wp_path"])
+        return
+    dock_cfg = dict(bay_w=a.dock_bay_w, gap=a.dock_gap, depth=a.dock_depth,
+                    target=None if a.dock_target == "random" else float(a.dock_target))
     dov = {kv.split("=")[0].strip(): float(kv.split("=")[1]) for kv in a.dwell_label.split(",") if "=" in kv} or None
     kw = dict(wp_file=a.wp_file, world_wp_file=a.world_wp_file, gps_sigma=a.gps_sigma, current=tuple(a.current), t_max=a.t_max, tail=a.tail, dyn=a.dyn, hull=a.hull,
               dwell_override=dov, node_overrides=parse_param_overrides(a.param), lidar_noise=a.lidar_noise,
               search_behavior=a.search_behavior, avoid_zone=a.avoid_zone,
-              avoid_measure_only=a.avoid_measure_only)
+              avoid_measure_only=a.avoid_measure_only, world=a.world, dock_cfg=dock_cfg, dock_align=a.dock_align)
     variants = ["A", "B"] if a.variant == "AB" else [a.variant]
     if a.plot_seed is not None:
         for vv in variants:
