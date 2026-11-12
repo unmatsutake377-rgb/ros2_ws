@@ -185,17 +185,17 @@ def test_skip_dock_block_2026_order():
 
 
 def test_source_yaml_recording_order_includes_dock():
-    """소스 waypoints.yaml(OT 순서) 녹화 기본값 = 템플릿 전체 — 도킹 두 줄이 위치유지 바로 뒤에 그대로 나온다.
+    """소스 waypoints.yaml(OT 순서) 녹화 기본값 = 템플릿 전체 — 도킹 세 줄(정렬 6m·정면·이탈)이 위치유지 바로 뒤에 그대로 나온다.
 
-    도킹 접근점 네 줄(dock_wp.py 방식)이 없으니 skip_dock_block 이 손대지 않는다(11-12 사용자: 녹화 순서 안에 도킹).
+    도킹 접근점 네 줄(dock_wp.py 방식, mode 5 두 줄)이 아니라 정렬점 한 줄이라 skip_dock_block 이 손대지 않는다(11-12 사용자: 녹화 순서 안에 도킹).
     """
     if not _has_yaml():
         return
     t, reason = load_template(_WAYPOINTS_YAML)
     assert t is not None, reason
     rows, labels = t
-    assert [int(r[2]) for r in rows] == [0, 1, 2, 7, 7, 5, 3, 3, 3, 5, 5, 8], [int(r[2]) for r in rows]
-    assert "위치유지" in labels[2] and "도킹" in labels[3] and "도킹" in labels[4], labels
+    assert [int(r[2]) for r in rows] == [0, 1, 2, 5, 7, 7, 5, 3, 3, 3, 5, 5, 8], [int(r[2]) for r in rows]
+    assert "위치유지" in labels[2] and all("도킹" in labels[k] for k in (3, 4, 5)), labels
     assert not any("위치유지 2" in lb for lb in labels), labels
 
 

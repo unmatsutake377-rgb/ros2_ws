@@ -148,27 +148,29 @@ def test_timeout_for_mode_absent_is_none():
 
 # ---------------- 회귀: 현재 waypoints.yaml + 기본값
 def test_regression_real_waypoints():
-    """KABOAT 2026 OT(11-12) 순서 12개: 게이트 2 → 위치유지(1회) → 도킹 두 줄(도크 정면·이탈, mode 7)
+    """KABOAT 2026 OT(11-12) 순서 13개: 게이트 2 → 위치유지(1회) → 도킹 정렬 6m(5) → 도크 정면·이탈(7)
     → 탐색 접근(5) → 탐색 3 → 회피 시작·끝 → WP10 종료(mode 8)."""
     wps = _real_waypoints()
-    assert len(wps) == 12, f"waypoints.yaml 가 12개가 아니다 ({len(wps)}) — 회귀 기준 재확인 필요"
-    assert [w[2] for w in wps] == [0, 1, 2, 7, 7, 5, 3, 3, 3, 5, 5, 8], [w[2] for w in wps]
+    assert len(wps) == 13, f"waypoints.yaml 가 13개가 아니다 ({len(wps)}) — 회귀 기준 재확인 필요"
+    assert [w[2] for w in wps] == [0, 1, 2, 5, 7, 7, 5, 3, 3, 3, 5, 5, 8], [w[2] for w in wps]
     got = per_wp_timeouts(wps, _default_table())
     assert got[:3] == [120.0, 120.0, 120.0], got           # 게이트 0·1, 위치유지
-    assert got[3] == 150.0 and got[4] == 150.0, got        # WP8 도크 정면·WP9 이탈(mode 7)
-    assert got[5] == 120.0, got                            # 탐색 접근(mode 5)
-    assert got[6:9] == [90.0, 90.0, 90.0], got             # 탐색 3(mode 3)
-    assert got[9] == 120.0 and got[10] == 120.0, got       # 회피 시작·끝(mode 5)
-    assert got[11] is None, got                            # WP10 종료(mode 8): 없음
+    assert got[3] == 120.0, got                            # 도킹 정렬 6m(mode 5)
+    assert got[4] == 150.0 and got[5] == 150.0, got        # WP8 도크 정면·WP9 이탈(mode 7)
+    assert got[6] == 120.0, got                            # 탐색 접근(mode 5)
+    assert got[7:10] == [90.0, 90.0, 90.0], got            # 탐색 3(mode 3)
+    assert got[10] == 120.0 and got[11] == 120.0, got      # 회피 시작·끝(mode 5)
+    assert got[12] is None, got                            # WP10 종료(mode 8): 없음
 
 
-def test_real_waypoints_dock_right_after_hold_and_exit_differs():
-    """도킹은 위치유지 바로 뒤(OT: 위치유지 끝난 자리에서 출발), WP9 이탈 ≠ WP8 도크 정면(같으면 도킹 뒤 칸으로 재진입)."""
+def test_real_waypoints_dock_after_hold_align_and_exit():
+    """위치유지 → 정렬 6m(mode 5) → WP8 도크 정면 → WP9 이탈. 이탈 = 정렬점 좌표, WP8 과 다름(같으면 칸으로 재진입)."""
     wps = _real_waypoints()
     j = _first_dock(wps)
-    assert wps[j - 1][2] == 2, wps[j - 1]
-    entr, exit_ = wps[j], wps[j + 1]
+    assert wps[j - 2][2] == 2 and wps[j - 1][2] == 5, (wps[j - 2], wps[j - 1])
+    align, entr, exit_ = wps[j - 1], wps[j], wps[j + 1]
     assert exit_[2] == 7, exit_
+    assert exit_[:2] == align[:2], (exit_, align)
     assert exit_[:2] != entr[:2], (exit_, entr)
 
 

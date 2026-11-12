@@ -148,9 +148,9 @@ def test_main_file_ok_for_main_rejected_for_tournament():
 
 
 def test_main_template_is_2026_rule_order():
-    """KABOAT 2026 OT(11-12) 종합임무 순서: 게이트 → 위치유지(1회) → 도킹(도크 정면·이탈) → 탐색 접근 → 탐색 3 → 회피 → 종료."""
+    """KABOAT 2026 OT(11-12) 종합임무 순서: 게이트 → 위치유지(1회) → 도킹(정렬 6m·도크 정면·이탈) → 탐색 접근 → 탐색 3 → 회피 → 종료."""
     wps = _load_wp('waypoints.yaml')
-    assert [w[2] for w in wps] == [0, 1, 2, 7, 7, 5, 3, 3, 3, 5, 5, 8], [w[2] for w in wps]
+    assert [w[2] for w in wps] == [0, 1, 2, 5, 7, 7, 5, 3, 3, 3, 5, 5, 8], [w[2] for w in wps]
 
 
 # ---------------- ③ launch: course → 파일 해석
