@@ -3,6 +3,10 @@
 # ⚠️ 실측 필요: low_r, buoy_r, default_half_width_m, cam_h, cam_pitch_deg, dori_lead_s, stop_lead_s, pitch_sign
 /ship_avoid:
   ros__parameters:
+    # 회피 방식 스위치 (계약서_도리도리회피_launch_20261113 C1). 'lidar' = 담당 모드에서 매 틱 20000(지금 north
+    #   폴백과 같은 동작, 기본) / 'doridori' = 도리도리 코어(검출 침묵이면 20000 폴백). 이상값 → ERROR + lidar.
+    avoid_mode: "lidar"
+    wp_mode_stale_sec: 1.0          # /wp_mode 마지막 수신 후 이 시간 넘으면 발행 중지 (north 주기 0.5 s 의 2배)
     active_wp_mode: 5
     period_sec: 0.1
     gps_stale_sec: 2.5
