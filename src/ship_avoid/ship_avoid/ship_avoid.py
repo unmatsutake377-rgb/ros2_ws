@@ -5,9 +5,10 @@
 avoid_mode (yaml, 기본 'lidar'): lidar = 담당 모드에서 매 틱 20000 만(GPS·yaw 무관, 지금 north 폴백과 같음).
   doridori = 도리도리 코어. 단 /avoid_detections 침묵이면 20000 으로 넘기고 도리도리를 시작하지 않는다.
   판정은 avoid_mode_logic.plan_tick (순수 함수).
-🚨 아직 대회 launch 에 넣지 않는다. 넣을 땐 같은 커밋으로(원자 묶음, 계약서 §2 ③):
-   north_goal_angle FALLBACK_MODES 에서 5 제거 + ssf_tools.yaml 매핑 5→ship_avoid + test_mode_gate.
-   (안 하면 mode 5 에서 /candidate_angle 발행자가 2개가 된다.)
+🚨 대회 launch 에 들어 있다(launch_files _ship_avoid, 계약서 C2 원자 묶음 — 한 커밋):
+   north_goal_angle FALLBACK_MODES (8,)(mode 5 폴백 뺌) + ssf_tools wp_nodes 5→ship_avoid + launch Node.
+   하나만 되돌리면 mode 5 /candidate_angle 발행자가 2개이거나 healthcheck 거짓 경보(test_avoid_mission 이 검사).
+   avoid_mode 는 시작 때만 읽는다 → 바꾸면 launch 재시작(ros2 param set 은 효과 없음).
 
 입력
   /wp_mode (Int32)                 담당 모드(active_wp_mode, 기본 5)일 때만 발행.

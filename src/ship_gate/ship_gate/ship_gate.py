@@ -6,7 +6,7 @@
       잡고 GPS 폴백만 냈다). 게이트 접근 구간(mode 0)부터 비전을 쓰면 정렬 시간을 번다.
       ship_last 는 6b 에서 제거했다 → mode 0 은 ship_gate 단독(발행자 둘 충돌 없음).
       ★ north 의 FALLBACK_MODES 에 0 을 넣으면 안 된다: ship_gate 가 mode 0 을 발행하는데 north 도
-        폴백을 내면 다시 발행자 둘이 된다. FALLBACK_MODES 는 (5,8) 로 유지.
+        폴백을 내면 다시 발행자 둘이 된다. FALLBACK_MODES 는 (8,) 로 유지(mode 5 = ship_avoid, 11-13 C2).
   [3] 🚨 게이트 쌍 제약. '다음 게이트 빨강' + '이번 게이트 초록'이 같이 보이면 둘의 중간으로
       가버린다(엉뚱). 각도차가 [pair_min_sep, pair_max_sep] 일 때만 쌍으로 인정. 벗어나면
       가까운 쪽 하나만. (판정은 gate_logic.gate_candidate — 순수 함수, 테스트됨)

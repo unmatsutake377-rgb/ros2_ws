@@ -60,3 +60,36 @@ def test_healthcheck_code_default_equals_yaml():
     assert m, "healthcheck.py 에 declare_parameter(\"image_topic\", <문자열>) 가 없다"
     assert m.group(1) == _yaml_str(_TOOLS_YAML, "image_topic"), \
         f"healthcheck 코드 기본 {m.group(1)} ≠ ssf_tools.yaml {_yaml_str(_TOOLS_YAML, 'image_topic')}"
+
+
+def _flow_list(text):
+    """`[0, 1, "a"]` 한 줄 흐름 리스트 → 원소 문자열 목록(따옴표 제거)."""
+    return [x.strip().strip('"\'') for x in text.strip()[1:-1].split(',') if x.strip()]
+
+
+def _yaml_list(path, key):
+    m = re.search(r'^\s*%s:\s*(\[[^\]]*\])' % re.escape(key), open(path, encoding='utf-8').read(), re.M)
+    return _flow_list(m.group(1)) if m else None
+
+
+def _code_list(key):
+    src = open(_HEALTHCHECK, encoding='utf-8').read()
+    m = re.search(r'declare_parameter\(\s*["\']%s["\']\s*,\s*(\[[^\]]*\])' % re.escape(key), src, re.S)
+    return _flow_list(m.group(1)) if m else None
+
+
+def test_wp_owner_map_mode5_is_ship_avoid():
+    """계약서_도리도리회피_launch_20261113 C2: mode 5 담당 = ship_avoid, mode 8 = none(north 폴백).
+
+    yaml 과 코드 기본값(yaml 이 안 닿는 단독 실행)이 같아야 한다. mode 5 가 'none' 으로 남으면
+    ship_avoid 가 죽어도 healthcheck 가 모른다. 거꾸로 launch 에 ship_avoid 가 없는데 여기만
+    ship_avoid 면 거짓 '담당 침묵' — 그래서 launch 와 한 커밋(원자 묶음).
+    """
+    modes_y, nodes_y = _yaml_list(_TOOLS_YAML, "wp_modes"), _yaml_list(_TOOLS_YAML, "wp_nodes")
+    modes_c, nodes_c = _code_list("wp_modes"), _code_list("wp_nodes")
+    assert modes_y and nodes_y and modes_c and nodes_c, (modes_y, nodes_y, modes_c, nodes_c)
+    assert (modes_y, nodes_y) == (modes_c, nodes_c), "ssf_tools.yaml wp_modes/wp_nodes ≠ healthcheck 코드 기본값"
+    table = dict(zip((int(m) for m in modes_y), nodes_y))
+    assert len(modes_y) == len(nodes_y)
+    assert table[5] == "ship_avoid", table
+    assert table[8] == "none", table

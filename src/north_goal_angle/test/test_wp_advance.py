@@ -72,7 +72,7 @@ def test_never_received_counts():
 
 
 def test_other_modes_unaffected():
-    """mode 5(north 담당)·7(도킹)·0·1·8 은 대상 아님 → 신선한 비-20000 이어도 센다."""
+    """mode 5(ship_avoid 담당)·7(도킹)·0·1·8 은 대상 아님 → 신선한 비-20000 이어도 센다."""
     for m in (0, 1, 5, 7, 8):
         assert _may(m, 50000.0, 10.0, 10.1) is True, m
 
@@ -240,7 +240,7 @@ def test_sanitize_wait_modes():
 
 # ---------------- 코스 종료 후 candidate (C1 리뷰 권고 → 계약서_토너먼트분리_20261109 §9-2 로 갱신)
 def test_after_course_fallback_last_mode():
-    """마지막 WP 가 north 담당(5·8)이면 코스 끝에 50000(STOP_HOLD)을 낸다.
+    """마지막 WP 가 코스 끝 정지 모드(COURSE_END_STOP_MODES 5·8)면 코스 끝에 50000(STOP_HOLD)을 낸다.
 
     🚨 기존 계약(20000 계속 — 조향 그대로, L2 정지까지 약 5 s 더 주행)에서 바뀌었다:
     계약서_토너먼트분리_20261109 §9-2·결정 4 — main·tournament 모두 결승·코스 끝 즉시 정지.
@@ -259,20 +259,34 @@ def test_stop_hold_value_matches_special_signal():
         assert re.search(r"^STOP_HOLD = 50000\.0", src, re.M), "ship_direction STOP_HOLD 값이 다르다"
 
 
+def _node_tuple(name):
+    """노드 모듈 상수(rclpy import 라 Mac 에서 못 부른다)를 소스에서 읽는다. `NAME = (5, 8)` / `(8,)` 꼴."""
+    src = open(_NODE_SRC, encoding='utf-8').read()
+    m = re.search(r"^%s = \(([0-9, ]+)\)" % name, src, re.M)
+    assert m, f"{name} 정의를 못 찾음"
+    return tuple(int(v) for v in m.group(1).split(',') if v.strip())
+
+
+def test_fallback_and_course_end_sets_split():
+    """계약서_도리도리회피_launch_20261113 C2: 폴백(20000)은 mode 8 만(5 = ship_avoid 담당),
+    코스 끝 정지 집합은 (5, 8) 그대로(위험 6). 둘을 다시 합치면 한쪽이 조용히 바뀐다."""
+    assert _node_tuple('FALLBACK_MODES') == (8,)
+    assert _node_tuple('COURSE_END_STOP_MODES') == (5, 8)
+
+
 def test_after_course_both_courses_stop():
     """실제 두 코스 파일의 마지막 WP 로 코스 끝 값이 50000 인지 (main WP10 mode 8, tournament 전부 8).
 
-    FALLBACK_MODES 는 노드 모듈(rclpy import)에 있어 Mac 에서 못 부른다 → 소스에서 읽는다.
+    🚨 마지막이 mode 8 이어야 하는 이유가 하나 더 있다(C2 알려진 제한): 마지막이 mode 5 면 코스 끝 뒤
+    최대 1 s ship_avoid 20000 과 north 50000 이 섞이고 ship_avoid 가 거짓 /wp_mode stale ERROR 를 낸다.
     """
     from north_goal_angle.waypoint_loader import parse_waypoints
-    src = open(_NODE_SRC, encoding='utf-8').read()
-    m = re.search(r"^FALLBACK_MODES = \(([0-9, ]+)\)", src, re.M)
-    assert m, "FALLBACK_MODES 정의를 못 찾음"
-    fallback = tuple(int(v) for v in m.group(1).split(',') if v.strip())
+    stop_modes = _node_tuple('COURSE_END_STOP_MODES')
     for name in ('waypoints.yaml', 'waypoints_tournament.yaml'):
         with open(os.path.join(_PKG, 'config', name), encoding='utf-8') as f:
             wps = parse_waypoints(yaml.safe_load(f))
-        assert candidate_after_course(wps[-1][2], fallback) == STOP_HOLD, name
+        assert wps[-1][2] == 8, f"{name}: 마지막 WP mode {wps[-1][2]} — 8 이 아니면 위 제한에 걸린다"
+        assert candidate_after_course(wps[-1][2], stop_modes) == STOP_HOLD, name
 
 
 def test_node_course_end_publishes_every_tick():
@@ -280,7 +294,7 @@ def test_node_course_end_publishes_every_tick():
     src = open(_NODE_SRC, encoding='utf-8').read()
     i = src.index("if self.wp_idx >= len(self.waypoints):")
     block = src[i:src.index("return", i)]
-    assert "candidate_after_course(self.waypoints[-1][2], FALLBACK_MODES)" in block
+    assert "candidate_after_course(self.waypoints[-1][2], COURSE_END_STOP_MODES)" in block
     assert "self.pub_candidate.publish(Float32(data=after))" in block
     assert "if not self.course_done_logged:" in block and "self.course_done_logged = True" in block
 

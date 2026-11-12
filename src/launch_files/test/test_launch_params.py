@@ -13,8 +13,9 @@
 지키는 것 (값은 비교하지 않는다 — 결정 ②: yaml 이 이긴다, 키·타입만 강제)
   T1 노드별 Node 정확히 1개 + parameters 첫 항목이 _pkg_yaml('<pkg>') = share/<pkg>/config/<pkg>.yaml
      T1b OpaqueFunction 진입점(_yaw_mux·_course_check·_oak_camera·_d455_depth·_perception_fusion·
-         _search_nodes·_control_nodes·_blackbox)이 launch 목록에 각 1개
+         _search_nodes·_ship_avoid·_control_nodes·_blackbox)이 launch 목록에 각 1개
      T1~T4·T6 은 perception_fusion(계약서_인식융합_20261112)도 대조한다 — 미션 노드는 아니지만 같은 _pkg_yaml 패턴
+     T1~T4·T6 은 ship_avoid(계약서_도리도리회피_launch_20261113 C2)도 대조한다 — _ship_avoid 가 띄운다
   T2 yaml 절 이름 = launch name= = 노드 super().__init__ 인자 (어긋나면 yaml 이 통째로 안 닿는다)
      T2~T4 는 코스 yaml(<pkg>_tournament.yaml)도 대조한다 (계약서_토너먼트분리_20261109 T1-4)
   T3 yaml 키 ⊆ 노드 declare_parameter 키 (미선언 키 = 조용히 버려지는 죽은 설정)
@@ -45,7 +46,8 @@ MISSION_PKGS = ('ship_direction', 'motor_control', 'ship_gate', 'ship_dock',
                 'ship_back', 'ship_turn')
 # yaml 을 _pkg_yaml 로 받는 노드 전체 = 미션·제어 + perception_fusion(계약서_인식융합_20261112, 패키지 = 실행파일 =
 #   노드 이름 = yaml 절 이름). perception_fusion Node 는 _perception_fusion(perception_fusion:=true 일 때)이 띄운다.
-YAML_PKGS = MISSION_PKGS + ('perception_fusion',)
+#   ship_avoid(계약서_도리도리회피_launch_20261113 C2, mode 5 담당) 도 같은 규칙 — Node 는 _ship_avoid 가 띄운다.
+YAML_PKGS = MISSION_PKGS + ('perception_fusion', 'ship_avoid')
 SEARCH_PKGS = ('ship_back', 'ship_turn')     # search_behavior dict 를 맨 뒤에 더 받는다
 # blackbox 는 패키지(ssf_tools) ≠ 노드 이름(blackbox)
 BLACKBOX = {'package': 'ssf_tools', 'executable': 'blackbox', 'name': 'blackbox',
@@ -343,7 +345,7 @@ def test_t4_yaml_types_match_declared(name, yaml_path, source):
 # OpaqueFunction 으로 노드를 띄우는 진입점. 함수가 있어도 목록에서 빠지면 그 노드는 안 뜬다
 # (에러 없음) — T1·T5·T7 은 함수 안의 Node 만 보므로 따로 검사한다.
 OPAQUE_ENTRIES = ('_yaw_mux', '_course_check', '_oak_camera', '_d455_depth', '_perception_fusion',
-                  '_search_nodes', '_control_nodes', '_blackbox')
+                  '_search_nodes', '_ship_avoid', '_control_nodes', '_blackbox')
 
 
 def _launch_list():

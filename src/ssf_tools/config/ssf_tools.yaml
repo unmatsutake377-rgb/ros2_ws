@@ -57,14 +57,16 @@
     candidate_topic: "/candidate_angle"
     # wp_mode -> 담당 노드 매핑표 (실제 waypoint 값: {0,1,2,3,5,7,8})
     #   dock 은 7 이 정답, 코드엔 9 로 박혀있음 = 버그(CLAUDE.md 3-1)
-    #   mode 5(WP6,7 회피)·mode 8(WP10 회피)은 담당 노드 없음이 정상 → "none"
+    #   mode 8(WP10 회피)은 담당 노드 없음이 정상 → "none"
     #   (ship_direction 이 GPS 방위로만 감. "none" 은 거짓 경보를 내지 않음, CLAUDE.md 3-6)
-    # mode 0,1 → ship_gate (6b: ship_last 제거, mode 0 인수). 5,8 = 회피 구간(담당 없음).
+    #   mode 5(회피·접근점)는 11-13 부터 ship_avoid 담당(계약서_도리도리회피_launch_20261113 C2 원자 묶음 —
+    #   launch 의 ship_avoid · north FALLBACK_MODES (8,) 와 같이 바꾼다. 한쪽만 바꾸면 거짓 경보 또는 발행자 2개).
+    # mode 0,1 → ship_gate (6b: ship_last 제거, mode 0 인수). 5 = ship_avoid, 8 = 회피 구간(담당 없음).
     # mode 3 → ship_turn (search_behavior 기본 orbit, 2026-11 경기규정: 탐색 = 원 선회).
     #   `search_behavior:=hold` 로 띄우면 여기도 ship_back 으로 바꿔야 healthcheck 가
     #   거짓 '담당 침묵' 을 안 낸다. (한 노드가 여러 모드 담당은 정상 — ship_gate 0,1 과 같음)
     wp_modes: [0, 1, 2, 3, 5, 7, 8]
-    wp_nodes: ["ship_gate", "ship_gate", "ship_back", "ship_turn", "none", "ship_dock", "none"]
+    wp_nodes: ["ship_gate", "ship_gate", "ship_back", "ship_turn", "ship_avoid", "ship_dock", "none"]
     # ---- geofence 배선 검사 ('잊으면 최악') ----
     # north_goal_angle 이 /geofence_state 를 발행하는데 구독자가 0 이면 경계 이탈 방어가
     # 통째로 없는 것이다(실격 위험). 침묵하는 기능은 에러를 안 내니 출발 전에 여기서 잡는다.

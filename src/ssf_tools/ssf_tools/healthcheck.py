@@ -77,12 +77,12 @@ class HealthCheck(Node):
         wp_mode_topic = self.declare_parameter("wp_mode_topic", "/wp_mode").value
         candidate_topic = self.declare_parameter("candidate_topic", "/candidate_angle").value
 
-        # mode 0,1 → ship_gate (6b 에서 ship_last 제거, mode 0 인수). 5,8 = 회피(담당 없음).
+        # mode 0,1 → ship_gate (6b 에서 ship_last 제거, mode 0 인수). 5 = ship_avoid(11-13 C2), 8 = 회피(담당 없음).
         # mode 3 → ship_turn (launch search_behavior 기본 orbit). hold 옵션이면 yaml 과 함께 ship_back 으로.
         wp_modes = list(self.declare_parameter("wp_modes", [0, 1, 2, 3, 5, 7, 8]).value)
         wp_nodes = list(self.declare_parameter(
             "wp_nodes",
-            ["ship_gate", "ship_gate", "ship_back", "ship_turn", "none", "ship_dock", "none"]).value)
+            ["ship_gate", "ship_gate", "ship_back", "ship_turn", "ship_avoid", "ship_dock", "none"]).value)
 
         # 🚨 geofence 배선 검사 — '잊으면 최악'.
         # north_goal_angle 이 /geofence_state 를 발행하는데 구독자가 0 이면 경계 이탈 방어가
@@ -244,7 +244,7 @@ class HealthCheck(Node):
         map_ok = True
         for mode, node in sorted(self.wp_map.items()):
             if str(node).lower() == "none":
-                continue  # mode 5,8 = 순수 회피 구간(담당 노드 없음이 정상). 경고 금지.
+                continue  # mode 8 = 순수 회피 구간(담당 노드 없음이 정상). 경고 금지.
             present = node in alive_nodes
             if not present:
                 lines.append(f"   ❌ mode {mode} → {node} : 노드가 떠있지 않음(침묵)")
@@ -260,7 +260,7 @@ class HealthCheck(Node):
             else:
                 owner = self.wp_map[cur]
                 if str(owner).lower() == "none":
-                    # 순수 회피 구간(mode 5,8): ship_direction 이 GPS 로 감. 정상.
+                    # 순수 회피 구간(mode 8): ship_direction 이 GPS 로 감. 정상.
                     lines.append(f"   ✅ wp_mode={cur} 회피 구간(담당 노드 없음이 정상)")
                 elif owner not in alive_nodes:
                     lines.append(f"   ❌ 현재 wp_mode={cur} 담당 {owner} 침묵")

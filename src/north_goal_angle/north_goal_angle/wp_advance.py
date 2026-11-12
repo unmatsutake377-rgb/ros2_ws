@@ -29,7 +29,8 @@ ROS2 파라미터 (north_goal_angle.yaml 과 코드 기본값 동일 — test_wp
    모두 /candidate_angle 50000(STOP_HOLD)을 계속 낸다 → ship_direction 이 STOP_HOLD 를 그대로 넘겨
    motor_control 이 중립. 예전(20000 계속)엔 tp 중단 → /yaw_error 2.0 s → L2 3.0 s 까지 약 5 s·4 m 를
    더 달렸다(/goal_distance 도 끊겨 근접 감속까지 풀림). 🚨 코스 이름으로 가르지 않는다 —
-   마지막 WP 가 north 담당 모드(5·8)일 때만 낸다(담당 노드가 있는 모드에 내면 발행자가 둘).
+   마지막 WP 가 코스 끝 정지 모드(north COURSE_END_STOP_MODES = 5·8)일 때만 낸다(담당 노드가 있는
+   모드에 내면 발행자가 둘). 5 는 11-13 부터 ship_avoid 담당이지만 정지 집합엔 남긴다 — 아래 함수 참고.
 """
 
 import math
@@ -107,10 +108,12 @@ def wp_step(now, wp_enter_t, timeout, dist, arrive_r, t_start, dwell, may_count)
     return None, t_start, remain
 
 
-def candidate_after_course(last_mode, fallback_modes, stop_hold=STOP_HOLD):
+def candidate_after_course(last_mode, stop_modes, stop_hold=STOP_HOLD):
     """코스가 끝난 뒤(wp_idx ≥ len) north 가 /candidate_angle 로 낼 값. None = 안 낸다.
 
-    마지막 WP 가 north 담당 모드(fallback 5·8)였으면 50000(STOP_HOLD)을 계속 낸다 — 결승·코스 끝에서
+    stop_modes = north COURSE_END_STOP_MODES (5, 8) — 폴백 집합 FALLBACK_MODES (8,) 와 따로다
+    (계약서_도리도리회피_launch_20261113 위험 6: 5 를 폴백에서 빼도 마지막 mode 5 녹화본의 코스 끝 정지는 지킨다).
+    마지막 WP 가 이 모드였으면 50000(STOP_HOLD)을 계속 낸다 — 결승·코스 끝에서
     바로 중립(계약서_토너먼트분리_20261109 §9-2: main·tournament 모두, 결정 4). main 의 마지막 WP10 과
     tournament 의 모든 WP 가 mode 8 이라 두 코스 다 여기로 온다. 코스 이름은 안 받는다.
     (예전엔 20000 을 계속 냈다 — tp 가 멈춘 뒤 L2 정지까지 약 5 s 더 달렸다.)
@@ -118,7 +121,10 @@ def candidate_after_course(last_mode, fallback_modes, stop_hold=STOP_HOLD):
     5 s 마다 거짓 'candidate 갱신 없음' ERROR 를 낸다(C1).
     마지막 모드에 담당 노드(0·1 gate, 2·3 back, 7 dock)가 있으면 내지 않는다 — 소비자는 여전히
     그 모드로 알고 있어 담당 노드가 계속 발행 중이고, north 가 내면 발행자가 둘이 된다.
+    ⚠️ 예외 = mode 5(ship_avoid 담당): ship_avoid 는 /wp_mode 가 wp_mode_stale_sec(1.0 s) 넘게 묵으면 스스로
+       멈추므로 섞임은 코스 끝 뒤 최대 1 s 다(알려진 제한, 그 뒤 ship_avoid /wp_mode stale ERROR 는 거짓).
+       기본 두 코스는 마지막이 mode 8 이라 해당 없음.
     """
-    if last_mode in fallback_modes:
+    if last_mode in stop_modes:
         return stop_hold
     return None

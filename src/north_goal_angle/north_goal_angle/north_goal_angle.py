@@ -7,7 +7,9 @@
       배가 멈추지 않게 north 가 대신 폴백을 냈다.
       ship_dock 을 7 로 고치면 → 같은 /candidate_angle 에 발행자가 둘이 된다.
       도킹 중 조향이 GPS 방위로 튄다 (접안 직전 60초에 35° 스파이크 20번).
-      → 폴백은 **담당 노드가 없는 모드에만** 남긴다: mode 5(회피), 8(토너먼트 회피).
+      → 폴백은 **담당 노드가 없는 모드에만** 남긴다: mode 8(토너먼트 회피·종합임무 마지막).
+      mode 5(회피)는 11-13 부터 ship_avoid 담당(계약서_도리도리회피_launch_20261113 C2 — 원자 묶음:
+      launch 의 ship_avoid · ssf_tools wp_nodes · 이 FALLBACK_MODES 를 한 커밋으로).
 
   [6] Geofence 발행 — 경계를 **'가짜 LiDAR'** 로 낸다. 경기장 밖으로 나가면 실격인데 방어가 0 이었다.
 
@@ -60,7 +62,7 @@ geofence_polygon (계약서_지오펜스폴리곤타입_20261109):
     → 조용히 꺼짐. 틀린 값(홀수·3점 미만·정수·문자열·NaN·범위 밖·위경도 뒤바뀜 등) → ERROR 1회 + 꺼짐,
     노드는 계속(웨이포인트 FSM 은 돈다). 원소마다 소수, [위도, 경도] 순서.
   · 🚨 토너먼트 동작을 wp_mode 8 로 켜지 않는다 — main 에도 mode 8 이 있다. 코스 yaml 값으로만.
-  · 코스 끝(wp_idx ≥ len): 두 코스 모두 마지막 WP 가 north 담당(5·8)이면 /candidate_angle
+  · 코스 끝(wp_idx ≥ len): 두 코스 모두 마지막 WP 가 COURSE_END_STOP_MODES(5·8)면 /candidate_angle
     50000(STOP_HOLD)을 계속 낸다(§9-2 — 결승 뒤 즉시 정지). 코스 끝 INFO 1회. wp_advance 참고.
 
 geofence_avoid_polygon (규정 종합임무 (4) — 장애물 구간 가상경계선을 확연히 벗어나면 실격):
@@ -115,8 +117,16 @@ CANDIDATE_INVALID = 20000.0
 ARRIVE_RADIUS_M = 3.0
 # WP 타임아웃은 순번이 아니라 wp_mode 기준 — 파라미터 wp_timeout_modes / wp_timeout_sec (wp_timeout.py)
 
-# 담당 노드가 없는 모드 = 순수 회피 구간. 여기서만 폴백을 낸다. (CLAUDE.md 3-6)
-FALLBACK_MODES = (5, 8)
+# 담당 노드가 없는 모드 = 순수 회피 구간. 여기서만 폴백(20000)을 낸다. (CLAUDE.md 3-6)
+# 🚨 5 는 뺐다 — mode 5 는 ship_avoid 담당(계약서_도리도리회피_launch_20261113 C2). 5 를 되돌려 넣으면
+#    mode 5 /candidate_angle 발행자가 2개(에러 없이 값 섞임). test_avoid_mission 이 검사.
+FALLBACK_MODES = (8,)
+# 코스 끝(wp_idx ≥ len) 50000(STOP_HOLD) 을 내는 '마지막 WP 모드' 집합 — FALLBACK_MODES 와 **따로** 둔다(위험 6).
+#   5 를 남기는 이유: 마지막 WP 가 mode 5 인 녹화본에서도 코스 끝 즉시 정지를 지킨다.
+#   ⚠️ 알려진 제한: 그 경우 코스 끝 뒤 최대 1 s(ship_avoid wp_mode_stale_sec) 동안 ship_avoid 20000 과
+#      이 50000 이 섞이고, 그 뒤 ship_avoid 가 /wp_mode stale ERROR 를 5 s 마다 낸다(거짓). 기본 두 코스의
+#      마지막은 mode 8 이라 해당 없음(test_wp_advance 가 고정).
+COURSE_END_STOP_MODES = (5, 8)
 
 # GPS stale 이 이어지는 동안 ERROR 를 다시 찍는 주기(s). 로그 주기일 뿐 제어에는 안 쓴다.
 GPS_STALE_LOG_PERIOD_SEC = 5.0
@@ -305,8 +315,8 @@ class NorthGoalAngle(Node):
         self.create_subscription(Float64, '/imu/yaw', self.yaw_cb, qos)   # 경계 상대방위 계산용
         # 🚀 아두이노 모드(ssf_bridge 발행). AUTO 일 때만 미션 전진. RELIABLE 발행이라 qos 호환.
         self.create_subscription(Int32, '/boat_mode', self.boat_mode_cb, qos)
-        # dwell 대기: 담당 노드(ship_back 등)가 손 뗐는지 본다. 자기 발행분(mode 5·8 의 20000)도
-        # 들어오지만 그 모드는 대기 대상이 아니라 무관하다.
+        # dwell 대기: 담당 노드(ship_back 등)가 손 뗐는지 본다. 자기 발행분(mode 8 의 20000)·ship_avoid 의
+        # mode 5 20000 도 들어오지만 그 모드는 대기 대상이 아니라 무관하다.
         self.create_subscription(Float32, '/candidate_angle', self.candidate_cb, qos)
 
         # ---- 상태 ----
@@ -343,7 +353,8 @@ class NorthGoalAngle(Node):
             gf = "OFF(폴리곤 오류 — 위 ERROR)"
         self.get_logger().info(
             f"north_goal_angle 시작(코스 {self.course}): 폴백은 mode {FALLBACK_MODES} 에만 발행"
-            f"(mode 7 폴백 제거 — ship_dock 과 충돌했다). geofence {gf}. "
+            f"(mode 7 폴백 제거 — ship_dock 과 충돌했다. mode 5 는 ship_avoid 담당), "
+            f"코스 끝 정지는 마지막 mode {COURSE_END_STOP_MODES} 일 때. geofence {gf}. "
             f"GPS stale 기준 {self.gps_stale_sec:g}s. "
             f"dwell 대기 {'ON' if self.dwell_wait_enabled else 'OFF'}"
             f"(mode {list(self.dwell_wait_modes)}, 무수신 {self.dwell_wait_stale_sec:g}s). "
@@ -720,10 +731,10 @@ class NorthGoalAngle(Node):
         self._publish_geofence(gps_ok)       # 웨이포인트가 끝나도 경계 감시는 계속한다
 
         if self.wp_idx >= len(self.waypoints):
-            # 코스 끝 — 마지막 WP 가 north 담당(5·8)이면 50000(STOP_HOLD)을 계속 낸다(main·tournament
+            # 코스 끝 — 마지막 WP 가 COURSE_END_STOP_MODES(5·8)면 50000(STOP_HOLD)을 계속 낸다(main·tournament
             # 모두, 계약서_토너먼트분리_20261109 §9-2). 고정주기 타이머에서 매 틱 — wp_advance 참고.
             # /wp_mode·tp·goal_distance 는 계속 멈춘다(L2 정지는 뒤따르는 이중 안전).
-            after = candidate_after_course(self.waypoints[-1][2], FALLBACK_MODES)
+            after = candidate_after_course(self.waypoints[-1][2], COURSE_END_STOP_MODES)
             if not self.course_done_logged:
                 self._log_course_done(after)
                 self.course_done_logged = True
@@ -776,7 +787,7 @@ class NorthGoalAngle(Node):
 
         self.pub_mode.publish(Int32(data=wp_mode))
 
-        # [3] 폴백은 '담당 노드가 없는 모드'(5, 8)에만.
+        # [3] 폴백은 '담당 노드가 없는 모드'(FALLBACK_MODES = 8)에만. mode 5 는 ship_avoid 가 낸다.
         #     작년엔 mode 7(도킹)에도 냈다 → ship_dock 을 7 로 고치면 발행자가 둘이 되어
         #     도킹 중 조향이 GPS 방위로 튄다. 원자적 한 쌍이라 같은 커밋에서 고친다.
         if wp_mode in FALLBACK_MODES:

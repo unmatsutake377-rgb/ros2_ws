@@ -33,13 +33,16 @@ SRC = os.path.dirname(PKG)
 LAUNCH = os.path.join(PKG, 'launch', 'launch_files.launch.py')
 BEHAVIORS = ('orbit', 'hold')
 DEFAULT_BEHAVIOR = 'orbit'  # 2026-11 경기규정: 탐색 = 원 선회 (계약서_탐색선회_부표색_20261111, 승인 11-11)
-# 실제 /wp_mode 값 (CLAUDE.md §3). 5·8 은 미션 노드 없음 = north_goal_angle 의 20000 폴백이 담당.
+# 실제 /wp_mode 값 (CLAUDE.md §3). 8 은 미션 노드 없음 = north_goal_angle 의 20000 폴백이 담당.
+#   5 는 11-13 부터 ship_avoid 담당(계약서_도리도리회피_launch_20261113 C2) — north FALLBACK_MODES (8,).
 WP_MODES = {0, 1, 2, 3, 5, 7, 8}
 # 이 계약이 건드리지 않는 발행자 (각 노드의 active_wp_mode(s) 기본값·FALLBACK_MODES).
+#   소스와 맞는지는 test_avoid_mission.py 가 본다(ship_avoid active_wp_mode·north FALLBACK_MODES).
 FIXED_OWNERS = {
     'ship_gate': {0, 1},
     'ship_dock': {7},
-    'north_goal_angle': {5, 8},
+    'ship_avoid': {5},
+    'north_goal_angle': {8},
 }
 # launch 가 넘기는 파라미터 키 → 그 키를 선언해야 하는 노드 소스
 NODE_SOURCES = {

@@ -124,7 +124,8 @@
 #     mode 3   → ship_turn(active_wp_mode=3, search_behavior 기본 orbit) — hold 옵션이면 ship_back [2,3]
 #                 ⚠️ 검출기 turn 의 active_wp_modes [2, 3] 은 두 행동 모두 그대로. 3 의 미션 노드만 바뀐다.
 #     mode 7   → ship_dock  (active_wp_mode=7)
-#     mode 5,8 → 순수 회피(담당 없음) → 검출기 전부 비활성
+#     mode 5   → ship_avoid(기본 avoid_mode lidar = 20000, 11-13 C2) — 검출기 전부 비활성(도리도리 검출기는 C6)
+#     mode 8   → north 폴백(순수 회피) → 검출기 전부 비활성
 #
 # 🚨 dock 과 turn 은 둘 다 /image_angle 을 발행한다. 모드가 겹치면 한 토픽에 발행자 2개가
 #    되어 **에러 없이** 값이 섞인다. 겹침 없음은 test_mode_gate.py 가 정적으로 검사한다.

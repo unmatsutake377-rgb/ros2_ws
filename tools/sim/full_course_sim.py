@@ -53,15 +53,18 @@
                           → /goal_distance → ship_dock (C4 TRANSIT→INIT, north 순서대로 /wp_mode 보다 먼저)
                                              → ship_back (hold_source=gps 일 때만 — vision 이면 노드가 구독 안 함)
                           → /wp_remaining_time → ship_dock (C4 WP8→WP9 전환 감지, /wp_mode 뒤)
-                          → /candidate_angle(20000, mode 5·8) → ship_direction
+                          → /candidate_angle(20000, mode 8 — FALLBACK_MODES (8,)) → ship_direction
+                          → /wp_mode → ship_avoid (mode 5 담당, 계약서_도리도리회피_launch_20261113 C2)
   검출기 gate → /red_angle·/green_angle → ship_gate;  turn → /image_angle·/image_color → ship_back·ship_turn;
   검출기 dock → /image_angle → ship_back·ship_turn·ship_dock
   ship_goal_angle → /yaw_error → ship_direction
-  ship_gate·ship_back·ship_turn·ship_dock → /candidate_angle → ship_direction (발행자를 틱마다 기록)
+  ship_gate·ship_back·ship_turn·ship_dock·ship_avoid → /candidate_angle → ship_direction (발행자를 틱마다 기록)
+    ship_avoid 는 yaml 기본 avoid_mode lidar(mode 5 에서 매 틱 20000 — 예전 north 폴백과 같은 값)로 돌린다.
+    lidar 모드는 /wp_mode 만 본다 → /scan·/imu·GPS·/avoid_detections 는 연결하지 않는다(도리도리는 doridori_sim).
   /candidate_angle(모든 발행자, north 자기 발행 포함) → north_goal_angle.candidate_cb
                           (C2 dwell 대기: mode 2·3 은 담당 노드가 손 뗀 동안만 dwell)
   ship_direction → /desired_angle·/obstacle_distance_array·/failsafe_level → motor_control → Motor_run → 운동 모델
-  한 틱 안의 순서: 센서 → north(주기 도래 시) → 검출기 → ship_goal_angle → 미션 노드 4개 → ship_direction → motor_control.
+  한 틱 안의 순서: 센서 → north(주기 도래 시) → 검출기 → ship_goal_angle → 미션 노드 5개 → ship_direction → motor_control.
   /candidate_angle: ship_direction 은 마지막 값을 들고 있되, 1.0 s(candidate_stale_sec) 넘게 갱신이 없으면
   20000 으로 대체하고, /wp_mode 가 바뀌면 20000·수신 시각 없음으로 초기화한다(C1, e0b1a06).
 
@@ -151,6 +154,7 @@ class NavSatFix:
 
 
 _senm.NavSatFix = NavSatFix
+_senm.Imu = getattr(_senm, "Imu", type("Imu", (), {}))   # ship_avoid import 용(lidar 모드는 /imu/data 안 씀)
 _ament = types.ModuleType("ament_index_python"); _amp = types.ModuleType("ament_index_python.packages")
 _amp.get_package_share_directory = lambda pkg: os.path.join(SRC, pkg)
 _amp.PackageNotFoundError = Exception
@@ -179,6 +183,7 @@ SG = _load("ship_gate/ship_gate/ship_gate.py", "sg_real", "ship_gate")
 SB = _load("ship_back/ship_back/ship_back.py", "sb_real", "ship_back")
 ST = _load("ship_turn/ship_turn/ship_turn.py", "st_real", "ship_turn")
 SK = _load("ship_dock/ship_dock/ship_dock.py", "sk_real", "ship_dock")
+SA = _load("ship_avoid/ship_avoid/ship_avoid.py", "sa_real", "ship_avoid")   # mode 5 담당(C2), yaml 기본 lidar
 sys.path.insert(0, os.path.join(SRC, "color_shape_detector"))
 from color_shape_detector.mode_gate import ModeGate              # noqa: E402
 from color_shape_detector.dock_logic import DetectionConfirmer   # noqa: E402
@@ -189,6 +194,8 @@ with open(os.path.join(SRC, "north_goal_angle/config/north_goal_angle.yaml"), en
     P_NGA = yaml.safe_load(_f)["/north_goal_angle"]["ros__parameters"]
 with open(os.path.join(SRC, "ship_goal_angle/config/ship_goal_angle.yaml"), encoding="utf-8") as _f:
     P_SGA = yaml.safe_load(_f)["/ship_goal_angle"]["ros__parameters"]
+with open(os.path.join(SRC, "ship_avoid/config/ship_avoid.yaml"), encoding="utf-8") as _f:
+    P_SA = yaml.safe_load(_f)["/ship_avoid"]["ros__parameters"]      # 대회 launch 가 넘기는 값(_pkg_yaml) 그대로
 with open(os.path.join(SRC, "color_shape_detector/config/vision.yaml"), encoding="utf-8") as _f:
     _V = yaml.safe_load(_f)
 VIS_ALL = _V["/**"]["ros__parameters"]
@@ -585,6 +592,7 @@ def node_params(wp_file, overrides=None, search_behavior="orbit"):
     rosstub.PARAMS["ship_goal_angle"] = dict(P_SGA)
     for n in ("ship_direction", "motor_control", "ship_gate", "ship_dock"):
         rosstub.PARAMS[n] = {}
+    rosstub.PARAMS["ship_avoid"] = dict(P_SA)          # avoid_mode lidar 등 yaml 그대로(--param ship_avoid.* 로 덮음)
     for node, kv in SEARCH_BEHAVIOR_PARAMS[search_behavior].items():
         rosstub.PARAMS[node] = dict(kv)
     for node, kv in (overrides or {}).items():         # --param 노드.키=값 (11-06, 계약서_DWA 결정 11)
@@ -662,13 +670,14 @@ def run(seed, variant="A", wp_file=None, world_wp_file=WP_DEFAULT, gps_sigma=0.0
     rng = random.Random(10_000 + seed)
 
     nga = NGA.NorthGoalAngle(); sga = SGA.ShipGoalAngle(); sd = SD.ShipDirection(); mc = MC.MotorController()
-    sg = SG.ShipGate(); sb = SB.ShipBack(); st = ST.ShipTurn(); sk = SK.ShipDock()
+    sg = SG.ShipGate(); sb = SB.ShipBack(); st = ST.ShipTurn(); sk = SK.ShipDock(); sa = SA.ShipAvoid()
     det_gate = Det(VIS["image_subscriber_gate"], int(VIS["image_subscriber_gate"]["confirm_frames"]))
     det_turn = Det(VIS["image_subscriber_turn"], int(VIS["image_subscriber_turn"]["confirm_frames"]))
     det_dock = Det(VIS["image_subscriber_dock"], int(VIS["image_subscriber_dock"]["confirm_frames"]))
     nodes = dict(north_goal_angle=nga, ship_goal_angle=sga, ship_direction=sd, motor_control=mc,
-                 ship_gate=sg, ship_back=sb, ship_turn=st, ship_dock=sk)
-    cand_pubs = [("north_goal_angle", nga), ("ship_gate", sg), ("ship_back", sb), ("ship_turn", st), ("ship_dock", sk)]
+                 ship_gate=sg, ship_back=sb, ship_turn=st, ship_dock=sk, ship_avoid=sa)
+    cand_pubs = [("north_goal_angle", nga), ("ship_gate", sg), ("ship_back", sb), ("ship_turn", st), ("ship_dock", sk),
+                 ("ship_avoid", sa)]
     cnt = {name: n.pubs["/candidate_angle"].count for name, n in cand_pubs}
     nga.boat_mode_cb(Int32(2))                     # ssf_bridge /boat_mode = AUTO
 
@@ -730,7 +739,7 @@ def run(seed, variant="A", wp_file=None, world_wp_file=WP_DEFAULT, gps_sigma=0.0
                 f_t0 = t + fault["offset"]
             fa = f_t0 is not None and f_t0 <= t < f_t0 + f_dur
             if fa and f_node is None:
-                f_node = "/scan" if f_kind.startswith("scan") else ("GPS" if f_kind == "gps10" else ("/imu/yaw" if f_kind == "imu3" else MODE_OWNER.get(pub_mode, "north_goal_angle")))
+                f_node = "/scan" if f_kind.startswith("scan") else ("GPS" if f_kind == "gps10" else ("/imu/yaw" if f_kind == "imu3" else ("north_goal_angle" if fault["group"] == "north" else MODE_OWNER.get(pub_mode, "north_goal_angle"))))
                 f_cand0 = last_cand
             # ---- 센서 ----
             _r = lidar(W, x, y, psi)
@@ -764,7 +773,7 @@ def run(seed, variant="A", wp_file=None, world_wp_file=WP_DEFAULT, gps_sigma=0.0
                         sb.goal_distance_cb(nga.pubs["/goal_distance"].last)
                 if nga.pubs["/wp_mode"].count > c0["/wp_mode"]:
                     m = nga.pubs["/wp_mode"].last
-                    sd.wp_mode_cb(m); sg.wp_mode_cb(m); sb.wp_cb(m); st.wp_cb(m); sk.wp_mode_cb(m)
+                    sd.wp_mode_cb(m); sg.wp_mode_cb(m); sb.wp_cb(m); st.wp_cb(m); sk.wp_mode_cb(m); sa.wp_mode_cb(m)
                     mode_chg = m.data != pub_mode          # 값 변화만 — 0.5 s 반복 발행엔 리셋 안 함
                     for d in (det_gate, det_turn, det_dock):
                         d.gate.update(m.data, Clock.t)
@@ -830,7 +839,7 @@ def run(seed, variant="A", wp_file=None, world_wp_file=WP_DEFAULT, gps_sigma=0.0
             if sga.pubs["/yaw_error"].count > c:
                 sd.yaw_error_callback(sga.pubs["/yaw_error"].last)
             # ---- 미션 노드 ----
-            for nm_, nd_ in (("ship_gate", sg), ("ship_back", sb), ("ship_turn", st), ("ship_dock", sk)):
+            for nm_, nd_ in (("ship_gate", sg), ("ship_back", sb), ("ship_turn", st), ("ship_dock", sk), ("ship_avoid", sa)):
                 if silent != nm_:
                     nd_.timer_cb()
             for name, n in cand_pubs[1:]:
@@ -1171,9 +1180,12 @@ def align_target_file(path, W):
 FAULT_DUR = {"scan2": 2.0, "scan5": 5.0, "gps10": 10.0, "imu3": 3.0, "node3": 3.0}
 FAULT_NAME = {"scan2": "(a) /scan 2 s 끊김", "scan5": "(b) /scan 5 s 끊김", "gps10": "(c) GPS fix 10 s 끊김",
               "imu3": "(d) /imu/yaw 3 s 끊김", "node3": "(e) 담당 미션 노드 발행 정지 3 s"}
+# 고장 (e) 의 '시작 조건' 묶음. north 묶음 = 회피 구간(5·8) 에서 **north_goal_angle 자체를 끈다**(C2 이후에도 그대로 —
+#   /wp_mode·tp 가 끊기는 경우(L1)를 계속 시험. mode 5 담당 ship_avoid 는 /wp_mode stale 1 s 뒤 스스로 멈춘다).
+#   나머지 묶음은 그 순간 모드의 담당(MODE_OWNER)을 끈다.
 NODE_GROUP_MODES = {"gate": (0, 1), "back": (2, 3), "dock": (7,), "north": (5, 8)}
 NODE_GROUP_OFFSET = {"gate": (1.0, 8.0), "back": (2.0, 40.0), "dock": (1.0, 20.0), "north": (5.0, 60.0)}
-MODE_OWNER = {0: "ship_gate", 1: "ship_gate", 2: "ship_back", 3: "ship_back", 7: "ship_dock", 5: "north_goal_angle", 8: "north_goal_angle"}
+MODE_OWNER = {0: "ship_gate", 1: "ship_gate", 2: "ship_back", 3: "ship_back", 7: "ship_dock", 5: "ship_avoid", 8: "north_goal_angle"}
 
 
 def _edges(flags):

@@ -153,7 +153,11 @@ def test_layout_matches_mission_nodes():
 
 
 def test_avoidance_modes_have_no_detector():
-    """mode 5, 8 은 순수 회피 구간(담당 노드 없음). 검출기를 돌릴 이유가 없다."""
+    """mode 5, 8 은 회피 구간 — 검출기를 돌릴 이유가 없다(8 = 담당 노드 없음, 5 = ship_avoid 기본 lidar).
+
+    5 의 담당은 11-13 부터 ship_avoid(계약서_도리도리회피_launch_20261113 C2)지만 기본 avoid_mode lidar 는
+    검출을 안 쓴다. 도리도리 검출기(image_subscriber_avoid, C6)를 넣을 때 이 테스트를 같이 고친다.
+    """
     for m in (5, 8):
         for name, (modes, _t) in LAYOUT.items():
             assert m not in modes, f"회피 모드 {m} 에 {name} 이 활성이다(불필요 CPU)"
