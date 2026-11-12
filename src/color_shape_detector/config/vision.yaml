@@ -74,9 +74,10 @@
     #   ⚠️ 실측 필요 — 맑은 하늘(≈H108·S144·V230)이 이 범위 안이다. 하늘·물 반사·파란 물체 오탐은 미확인.
     #      target_color: blue 일 때만 쓰인다(기본 red 에선 대회 동작 불변). 공지 색이 파랑이면 당일 vision_probe 로 확인.
     hsv.blue: [100, 100, 50, 130, 255, 255]
-    # black: 2026-11-11 추가(계약서_탐색선회_부표색_20261111). 위치유지 부표 후보(초록·빨강·검정).
+    # black: 2026-11-11 추가(계약서_탐색선회_부표색_20261111). 위치유지 부표 후보(초록·빨강·검정),
+    #   2026-11-12 탐색 좌현선회 색이기도 하다(2026 OT, 계약서_탐색검정좌현_20261112).
     #   검정은 색상이 없어 V 상한으로만 잡는다. 40 은 **자리표시자** — ⚠️ 실측 필요(부표 V 최대 +
-    #   그늘진 물·그림자·도크·타이어 오탐 대조). turn_color_mode2: black 일 때만 쓰인다.
+    #   그늘진 물·그림자·도크·타이어 오탐 대조). turn_color_mode2·turn_color_mode3 가 black 일 때만 쓰인다.
     hsv.black: [0, 0, 0, 180, 255, 40]
 
     # ------------------------------------------------------------------
@@ -156,15 +157,15 @@ image_subscriber_turn:
                                 #   ship_turn 선회 / hold 옵션 ship_back 위치유지)
     # ---- C6(U5, 2026-11-04): 모드별 목표 색. 대회 당일 공지된 탐색 부표 색으로 바꾼다(turn_color_mode3).
     #   허용: red / green / white / yellow / black (이 검출기가 HSV 를 읽는 색, TURN_COLORS). 대소문자·공백 무관.
-    #   2026-11 규정·11-11 전달: 탐색 = red·green(우현선회 CW) / yellow(좌현선회 CCW),
+    #   2026-11 규정·11-11 전달·OT 11-12: 탐색 = red·green(우현선회 CW) / yellow·black(좌현선회 CCW),
     #   위치유지 = green·red·black 중 현장 공지. ⚠️ yellow·black HSV 는 실외 실측 전.
     #   그 외는 부팅 ERROR + 그 모드 검출 안 함(기본값 대체 없음 → /image_angle 안 냄
-    #   → mode 2 는 ship_back SEARCH 20000 유지, mode 3 은 (orbit 기본) ship_turn SEARCH 타임아웃
+    #   → mode 2 는 ship_back SEARCH 20000 유지, mode 3 은 (orbit 기본) ship_turn SEARCH 20000 유지
     #   / (hold 옵션) ship_back SEARCH 20000). 담당 모드에선 5 s 주기 ERROR. mode 3 이 무효면 4·5 도 검출 안 함.
     #   문자열 아닌 값은 rclpy 가 부팅 때 노드를 세움.
     #   4·5 는 mode 3 색을 따른다(active_wp_modes 에 없어 지금은 안 쓰인다).
-    #   🚨 ship_turn(orbit)은 색으로 회전 방향을 정한다 — red·green 시계, yellow·white 반시계,
-    #      black 은 방향 없음(mode 3 에 쓰면 부팅 WARN + ship_turn SEARCH 타임아웃).
+    #   🚨 ship_turn(orbit)은 색으로 회전 방향을 정한다 — red·green 시계, yellow·white·black 반시계.
+    #      black 반시계는 2026 OT(11-12, 계약서_탐색검정좌현_20261112) — 예전엔 방향 없음이라 선회 0회였다.
     turn_color_mode2: "white"   # 위치유지 부표 — 🚨 2026 후보(green/red/black)에 white 없음. 당일 공지 색으로 반드시 교체
     turn_color_mode3: "red"     # 탐색 부표 — 공지 색으로 교체
     # ---- A1(2026-10-27): 확인 창. 기본 = confirm_frames(위 공통 절 1) → 옛 "연속 N" 과 동일.

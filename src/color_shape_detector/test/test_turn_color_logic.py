@@ -23,6 +23,8 @@ from color_shape_detector.turn_color_logic import (  # noqa: E402
 PKG = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..')
 YAML_PATH = os.path.join(PKG, 'config', 'vision.yaml')
 NODE_PATH = os.path.join(PKG, 'color_shape_detector', 'basic_image_subscriberturn.py')
+# ship_turn 의 색 → 방향 함수(소스 트리에서만 있다 — 설치 트리에서 돌면 동기화 테스트는 skip).
+ORBIT_LOGIC_PATH = os.path.join(PKG, '..', 'ship_turn', 'ship_turn', 'orbit_logic.py')
 
 # 옛 하드코딩 맵 — 기본값일 때 이것과 똑같아야 한다(동작 불변).
 LEGACY_MAP = {2: ["white"], 3: ["red"], 4: ["red"], 5: ["red"]}
@@ -94,7 +96,10 @@ class TestResolve(unittest.TestCase):
 
 
 class Test2026Colors(unittest.TestCase):
-    """2026-11 경기규정(탐색 노랑 = 좌현선회) + 11-11 전달(위치유지 검정) — 계약서_탐색선회_부표색_20261111 C1."""
+    """2026-11 경기규정(탐색 노랑 = 좌현선회) + 11-11 전달(위치유지 검정) — 계약서_탐색선회_부표색_20261111 C1.
+
+    2026 OT(11-12): 검정 = 탐색 좌현선회(반시계)도 된다 — 계약서_탐색검정좌현_20261112 K2.
+    """
 
     def test_노랑_검정을_받는다(self):
         self.assertEqual(resolve_turn_color(" Yellow "), ("yellow", None))
@@ -113,14 +118,38 @@ class Test2026Colors(unittest.TestCase):
         for c in NO_ORBIT_DIRECTION:
             self.assertIn(c, TURN_COLORS)
 
-    def test_mode3_검정이면_WARN(self):
-        w = orbit_direction_warning("black")
+    def test_mode3_검정이면_WARN_없음(self):
+        # 2026 OT(11-12): 검정 = 좌현선회. 수정 전엔 NO_ORBIT_DIRECTION 에 있어 거짓 WARN 을 냈다.
+        self.assertIsNone(orbit_direction_warning("black"))
+
+    def test_WARN_장치는_남아_있다(self):
+        # NO_ORBIT_DIRECTION 은 지금 빈 튜플이지만 장치(색이 들어오면 WARN)는 유지한다.
+        mod = sys.modules[orbit_direction_warning.__module__]
+        saved = mod.NO_ORBIT_DIRECTION
+        mod.NO_ORBIT_DIRECTION = ("black",)
+        try:
+            w = orbit_direction_warning("black")
+        finally:
+            mod.NO_ORBIT_DIRECTION = saved
         self.assertIsNotNone(w)
         self.assertIn("SEARCH", w)
 
     def test_mode3_방향_있는_색이나_무효면_WARN_없음(self):
-        for c in ("red", "green", "yellow", "white", None):
+        for c in ("red", "green", "yellow", "white", "black", None):
             self.assertIsNone(orbit_direction_warning(c), c)
+
+    def test_방향_없는_색이_ship_turn_과_같다(self):
+        # 상수 공유 모듈은 만들지 않는다(CLAUDE.md 1-8) — 대신 ship_turn 소스를 ast 로 읽어 함수만 실행해 맞춘다.
+        if not os.path.isfile(ORBIT_LOGIC_PATH):
+            self.skipTest('ship_turn 소스 없음(설치 트리)')
+        with open(ORBIT_LOGIC_PATH, encoding='utf-8') as f:
+            tree = ast.parse(f.read())
+        fn = [n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == 'orbit_direction_cw']
+        self.assertEqual(len(fn), 1, 'orbit_logic.orbit_direction_cw 를 못 찾았다')
+        ns = {}
+        exec(compile(ast.Module(body=fn, type_ignores=[]), ORBIT_LOGIC_PATH, 'exec'), ns)
+        for c in TURN_COLORS:
+            self.assertEqual(ns['orbit_direction_cw'](c) is None, c in NO_ORBIT_DIRECTION, c)
 
     def test_노드가_부팅때_WARN_을_부른다(self):
         with open(NODE_PATH, encoding='utf-8') as f:

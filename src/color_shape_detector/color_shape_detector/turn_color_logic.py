@@ -13,24 +13,27 @@
    않는다**(CLAUDE.md 도크 목표 색 규칙과 같다). 기본값으로 대체하지 않는 이유: 공지 색을
    오타로 적었는데 기본 red 로 조용히 돌면 게이트 빨강 등에 HOLD 할 수 있다.
    → 그 모드에선 /image_angle 을 아예 안 낸다 → mode 2 는 ship_back SEARCH 20000 유지,
-   mode 3 은 (search_behavior orbit 기본) ship_turn SEARCH 타임아웃 / (hold 옵션) ship_back 20000.
+   mode 3 은 (search_behavior orbit 기본) ship_turn SEARCH 20000 유지 / (hold 옵션) ship_back 20000.
    담당 모드에선 INVALID_LOG_PERIOD_S 마다 ERROR 로 원인을 다시 드러낸다(log_due).
    문자열이 아닌 값(숫자 등)은 rclpy 가 declare_parameter 에서 타입 오류로 부팅 때 노드를 세운다.
 
 🚨 ship_turn(mode 3 orbit)은 /image_color 로 회전 방향을 정한다(빨강·초록=시계,
-   노랑·흰색=반시계, 2026-11 경기규정). mode 3 색을 바꾸면 orbit 방향도 바뀐다.
-   검정은 위치유지(mode 2) 전용 — 방향이 없어 mode 3 에 쓰면 ship_turn 이 SEARCH 타임아웃.
-   그래서 mode 3 에 NO_ORBIT_DIRECTION 색이 오면 노드가 부팅 WARN 을 남긴다(orbit_direction_warning).
+   노랑·흰색·검정=반시계, 2026-11 경기규정·2026 OT 11-12). mode 3 색을 바꾸면 orbit 방향도 바뀐다.
+   검정 = 좌현선회는 2026 OT(11-12) — 예전엔 방향 없음이라 SEARCH(20000)에 머물러 선회 0회였다
+   (계약서_탐색검정좌현_20261112). 지금은 방향 없는 허용 색이 없다(NO_ORBIT_DIRECTION 빈 튜플).
+   그래도 mode 3 에 NO_ORBIT_DIRECTION 색이 오면 노드가 부팅 WARN 을 남기는 장치는 남긴다(orbit_direction_warning).
    hold(ship_back)는 색으로 방향을 정하지 않는다.
 """
 
 # 이 검출기가 HSV 범위를 읽는 색. basic_image_subscriberturn 의 hsv_ranges.load 와 같은 튜플.
 #   2026-11-11: yellow(탐색 좌현선회)·black(위치유지 후보) 추가 — 계약서_탐색선회_부표색_20261111 C1.
+#   2026-11-12: black 은 탐색 좌현선회 색이기도 하다(2026 OT) — 계약서_탐색검정좌현_20261112.
 TURN_COLORS = ("red", "green", "white", "yellow", "black")
 
 # ship_turn(orbit_logic.orbit_direction_cw)이 선회 방향을 모르는 허용 색. 상수 공유 모듈은 만들지 않는다
-#   (CLAUDE.md 1-8) — 바꿀 땐 ship_turn/orbit_logic.py 와 함께.
-NO_ORBIT_DIRECTION = ("black",)
+#   (CLAUDE.md 1-8) — 바꿀 땐 ship_turn/orbit_logic.py 와 함께(test_turn_color_logic 이 소스로 맞춰 본다).
+#   2026-11-12: black 제거(검정 = 좌현선회, 2026 OT) → 지금은 빈 튜플. WARN 장치는 남긴다.
+NO_ORBIT_DIRECTION = ()
 
 # 담당 모드인데 목표 색이 무효일 때 ERROR 를 다시 찍는 주기[s] — dock 의
 # TARGET_INVALID_LOG_PERIOD_S 와 같은 값(상수 공유 모듈은 만들지 않는다).
@@ -104,6 +107,6 @@ def orbit_direction_warning(color_mode3):
     """
     if color_mode3 in NO_ORBIT_DIRECTION:
         return (f"⚠️ turn_color_mode3={color_mode3!r} — ship_turn(orbit)이 이 색의 선회 방향을 모른다 "
-                f"→ 탐색에서 SEARCH 타임아웃. 탐색 부표는 red/green(시계)·yellow(반시계). "
-                f"{color_mode3} 는 위치유지(turn_color_mode2)용")
+                f"→ 탐색에서 SEARCH(20000)에 머물러 선회 없이 WP 를 지나간다. "
+                f"탐색 부표는 red/green(시계)·yellow/black(반시계)")
     return None
