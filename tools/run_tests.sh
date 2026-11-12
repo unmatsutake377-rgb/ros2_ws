@@ -26,7 +26,7 @@ cd "$(dirname "$0")/.."
 
 PKGS=(
   color_shape_detector launch_files motor_control north_goal_angle
-  ship_back ship_direction ship_dock ship_gate ship_goal_angle ship_turn
+  ship_avoid ship_back ship_direction ship_dock ship_gate ship_goal_angle ship_turn
   ssf_bridge ssf_heading ssf_tools
 )
 
