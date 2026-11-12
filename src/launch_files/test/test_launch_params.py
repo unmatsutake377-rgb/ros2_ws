@@ -12,8 +12,9 @@
 
 지키는 것 (값은 비교하지 않는다 — 결정 ②: yaml 이 이긴다, 키·타입만 강제)
   T1 노드별 Node 정확히 1개 + parameters 첫 항목이 _pkg_yaml('<pkg>') = share/<pkg>/config/<pkg>.yaml
-     T1b OpaqueFunction 진입점(_yaw_mux·_course_check·_oak_camera·_search_nodes·_control_nodes·
-         _blackbox)이 launch 목록에 각 1개
+     T1b OpaqueFunction 진입점(_yaw_mux·_course_check·_oak_camera·_d455_depth·_perception_fusion·
+         _search_nodes·_control_nodes·_blackbox)이 launch 목록에 각 1개
+     T1~T4·T6 은 perception_fusion(계약서_인식융합_20261112)도 대조한다 — 미션 노드는 아니지만 같은 _pkg_yaml 패턴
   T2 yaml 절 이름 = launch name= = 노드 super().__init__ 인자 (어긋나면 yaml 이 통째로 안 닿는다)
      T2~T4 는 코스 yaml(<pkg>_tournament.yaml)도 대조한다 (계약서_토너먼트분리_20261109 T1-4)
   T3 yaml 키 ⊆ 노드 declare_parameter 키 (미선언 키 = 조용히 버려지는 죽은 설정)
@@ -42,6 +43,9 @@ LAUNCH = os.path.join(PKG, 'launch', 'launch_files.launch.py')
 # 대회 launch 에서 yaml 을 받는 노드: 패키지 = 실행파일 = 노드 이름 = yaml 절 이름
 MISSION_PKGS = ('ship_direction', 'motor_control', 'ship_gate', 'ship_dock',
                 'ship_back', 'ship_turn')
+# yaml 을 _pkg_yaml 로 받는 노드 전체 = 미션·제어 + perception_fusion(계약서_인식융합_20261112, 패키지 = 실행파일 =
+#   노드 이름 = yaml 절 이름). perception_fusion Node 는 _perception_fusion(perception_fusion:=true 일 때)이 띄운다.
+YAML_PKGS = MISSION_PKGS + ('perception_fusion',)
 SEARCH_PKGS = ('ship_back', 'ship_turn')     # search_behavior dict 를 맨 뒤에 더 받는다
 # blackbox 는 패키지(ssf_tools) ≠ 노드 이름(blackbox)
 BLACKBOX = {'package': 'ssf_tools', 'executable': 'blackbox', 'name': 'blackbox',
@@ -61,7 +65,7 @@ def _tournament_yaml(pkg):
 def _node_cases():
     """(노드 이름, yaml 경로, 노드 소스) — T2·T3·T4 공통. 코스 yaml 도 같은 노드 절로 대조한다."""
     cases = [(p, os.path.join(SRC, p, 'config', f'{p}.yaml'),
-              os.path.join(SRC, p, p, f'{p}.py')) for p in MISSION_PKGS]
+              os.path.join(SRC, p, p, f'{p}.py')) for p in YAML_PKGS]
     cases += [(p, _tournament_yaml(p), os.path.join(SRC, p, p, f'{p}.py')) for p in COURSE_PKGS]
     cases.append((BLACKBOX['name'], BLACKBOX['yaml'], BLACKBOX['source']))
     return cases
@@ -261,7 +265,7 @@ def _ros_type(v):
 
 # ------------------------------------------------------------ T1  Node 1개 + yaml 경로
 
-@pytest.mark.parametrize('pkg', MISSION_PKGS)
+@pytest.mark.parametrize('pkg', YAML_PKGS)
 def test_t1_node_once_with_pkg_yaml_first(pkg):
     nodes = _nodes(_tree(), pkg)
     assert len(nodes) == 1, f'{pkg} Node {len(nodes)}개 — 둘이면 발행자 2개, 0이면 침묵'
@@ -278,11 +282,11 @@ def test_t1_pkg_yaml_builds_share_config_path():
     fn = _func(_tree(), '_pkg_yaml')
     ns = {'os': os, 'get_package_share_directory': lambda p: f'/install/{p}/share/{p}'}
     exec(compile(ast.Module(body=[fn], type_ignores=[]), '<launch>', 'exec'), ns)
-    for pkg in MISSION_PKGS + ('ssf_tools',):
+    for pkg in YAML_PKGS + ('ssf_tools',):
         assert ns['_pkg_yaml'](pkg) == f'/install/{pkg}/share/{pkg}/config/{pkg}.yaml'
 
 
-@pytest.mark.parametrize('pkg', MISSION_PKGS)
+@pytest.mark.parametrize('pkg', YAML_PKGS)
 def test_t1_source_yaml_exists(pkg):
     assert os.path.isfile(os.path.join(SRC, pkg, 'config', f'{pkg}.yaml'))
 
@@ -338,8 +342,8 @@ def test_t4_yaml_types_match_declared(name, yaml_path, source):
 
 # OpaqueFunction 으로 노드를 띄우는 진입점. 함수가 있어도 목록에서 빠지면 그 노드는 안 뜬다
 # (에러 없음) — T1·T5·T7 은 함수 안의 Node 만 보므로 따로 검사한다.
-OPAQUE_ENTRIES = ('_yaw_mux', '_course_check', '_oak_camera', '_search_nodes',
-                  '_control_nodes', '_blackbox')
+OPAQUE_ENTRIES = ('_yaw_mux', '_course_check', '_oak_camera', '_d455_depth', '_perception_fusion',
+                  '_search_nodes', '_control_nodes', '_blackbox')
 
 
 def _launch_list():
@@ -403,7 +407,7 @@ def test_t5_dict_comes_from_search_behavior_params():
 
 # ------------------------------------------------------------ T6  setup.py 가 yaml 설치
 
-@pytest.mark.parametrize('pkg', MISSION_PKGS + ('ssf_tools',))
+@pytest.mark.parametrize('pkg', YAML_PKGS + ('ssf_tools',))
 def test_t6_setup_installs_yaml(pkg):
     with open(os.path.join(SRC, pkg, 'setup.py'), encoding='utf-8') as f:
         setup = f.read()

@@ -6,7 +6,9 @@ ROS 없이 돈다 — launch 파일은 ast 로, yaml 은 정규식으로 읽는�
     tools/run_tests.sh launch_files
 
 지키는 것
-  ① depthai_ros_driver Node 정확히 1개, realsense2_camera Node 0개 (결정 1: 대회 launch 에서 D455 제거).
+  ① depthai_ros_driver Node 정확히 1개. realsense2_camera Node 는 _d455_depth 안에 정확히 1개(뎁스 전용)
+     — 11-04 결정 1(대회 launch 에서 D455 제거)을 계약서_인식융합_20261112 §10 Q9 가 뎁스 전용으로 되돌렸다.
+     비전 검출 영상은 여전히 OAK 뿐이다(D455 컬러 끔 — test_perception_launch.py).
      camera.launch.py(벤치)의 realsense 는 그대로 — CLAUDE.md §1-8 "RealSense 경로 삭제 금지".
   ② 그 Node 는 name='oak', namespace 없음 → 토픽 /oak/rgb/image_raw (런북 10-31 실측 = vision.yaml image_topic).
   ③ parameters= 로 설치 yaml(config/oak_640x360_full.yaml)을 넘기고, setup.py 가 config/*.yaml 을 설치한다.
@@ -93,10 +95,13 @@ def oak_params():
 
 # ------------------------------------------------------------ ①  노드 수
 
-def test_exactly_one_depthai_and_no_realsense_node(depthai_node):
+def test_exactly_one_depthai_and_realsense_only_in_d455_depth(depthai_node):
     tree = _tree()
-    assert len(_nodes_of_package(tree, 'realsense2_camera')) == 0, (
-        '대회 launch 에 realsense2_camera Node 가 남아 있다 — 결정 1(D455 제거). 벤치는 camera.launch.py')
+    rs = _nodes_of_package(tree, 'realsense2_camera')
+    assert len(rs) == 1, f'realsense2_camera Node {len(rs)}개 — 뎁스 전용 1개(_d455_depth)여야 한다'
+    fns = [n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == '_d455_depth']
+    assert len(fns) == 1 and len(_nodes_of_package(fns[0], 'realsense2_camera')) == 1, (
+        'realsense2_camera Node 가 _d455_depth(d455_depth 인자·패키지 확인) 밖에 있다')
     assert not re.search(r"IncludeLaunchDescription[^)]*realsense", open(LAUNCH, encoding='utf-8').read())
 
 

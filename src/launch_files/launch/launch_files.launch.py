@@ -11,6 +11,9 @@
     (main = 붙이는 것 없음, tournament = <pkg>_tournament.yaml, 없으면 launch 를 세운다).
   · ship_direction 의 dwa_hull 은 boat 인자로 정한다(main·tournament 모두, §9-5).
   · 판 사이에는 launch 를 재시작한다(MANUAL→AUTO 재진입은 wp_idx 를 안 되돌린다).
+
+인식 융합 (계약서_인식융합_20261112 §10): d455_depth·perception_fusion 기본 true(대회에서 켬).
+  끄기(롤백): ... perception_fusion:=false d455_depth:=false  → 이 계약 전과 같은 노드 구성.
 """
 
 from launch import LaunchDescription
@@ -219,6 +222,88 @@ def _oak_camera(context):
     ]
 
 
+def d455_depth_params():
+    """D455 뎁스 전용 realsense2_camera 파라미터 (순수 함수, ROS 없이 테스트 — test_perception_launch.py).
+
+    계약서_인식융합_20261112 §10 Q9 + 계약서_거리융합_20261112 §4: 컬러·IR·IMU 끔, 뎁스만 424x240x15.
+    🚨 값은 Python bool 로(문자열 'false' 는 타입 불일치). 래퍼 4.56.4 소스 확인(Mac, 11-12):
+       · 이름 = depth_module.depth_profile (rs_launch.py:44 — 옛 depth_module.profile 아님)
+       · 구분자 x·, 둘 다 받음 (profile_manager.cpp:453 정규식 [xX,]) → '424x240x15'
+       ⚠️ Ubuntu 에서 확인: 시작 로그 'Open profile: ... Depth ... 424x240 ... 15' — 안 맞으면 대안 '424,240,15'.
+       ⚠️ D455 가 424x240x15 Z16 을 지원하는지(rs-enumerate-devices)도 그때 본다 — 없으면 래퍼가 기본 프로필로 연다.
+    hole_filling 끔: 메운 값은 지어낸 거리다(§1-6). initial_reset 끔: USB 재열거로 허브째 끊길 수 있다.
+    emitter 는 기본값(켬) 그대로 ⚠️ 물 위 영향 미확인.
+    """
+    return {
+        'enable_color': False,
+        'enable_depth': True,
+        'enable_infra1': False,
+        'enable_infra2': False,
+        'enable_gyro': False,
+        'enable_accel': False,
+        'depth_module.depth_profile': '424x240x15',
+        'pointcloud.enable': False,
+        'align_depth.enable': False,
+        'hole_filling_filter.enable': False,
+        'initial_reset': False,
+    }
+
+
+def _d455_depth(context):
+    """7b) D455 뎁스 전용(realsense2_camera). d455_depth:=false 면 안 뜬다. 패키지가 없으면 **건너뛴다**.
+
+    🚨 name='camera' + namespace='camera' = camera.launch.py 와 같은 이름 → 토픽 /camera/camera/depth/image_rect_raw,
+       /camera/camera/depth/camera_info (= perception_fusion.yaml depth_topic·depth_info_topic).
+    🚨 camera.launch.py(물가 영상·벤치, D455 컬러)를 대회 launch 와 **동시에 띄우지 말 것** — 같은 노드 이름
+       /camera/camera 가 둘이 되고 한 장치를 두 드라이버가 연다. 물가 영상(D455 컬러)은 §10 Q9 로 폐기:
+       ssf_cam_send.sh 의 ros 모드는 컬러 토픽을 구독하는데 뎁스 전용이라 그 토픽이 없다.
+    ⚠️ 허브: 뎁스 켠 채 LiDAR·IMU·GPS 와 같은 허브 시험은 아직 안 했다(§10 Q9). 끊기면 d455_depth:=false.
+    """
+    if LaunchConfiguration('d455_depth').perform(context) != 'true':
+        return [LogInfo(msg='d455_depth=false — D455 뎁스 안 띄움 (perception_fusion 은 LiDAR 만, 뎁스 stale WARN)')]
+    try:
+        get_package_share_directory('realsense2_camera')
+    except PackageNotFoundError:
+        return [LogInfo(msg='⏭️ realsense2_camera 없음 — D455 뎁스 건너뜀 (colcon build 확인). '
+                            'perception_fusion 은 LiDAR 만으로 계속.')]
+    return [
+        LogInfo(msg='D455 뎁스 전용: realsense2_camera name=camera ns=camera, 424x240x15, 컬러·IR·IMU 끔 '
+                    '→ /camera/camera/depth/image_rect_raw (⚠️ 시작 로그로 프로필 확인)'),
+        Node(
+            package='realsense2_camera',
+            executable='realsense2_camera_node',
+            name='camera',
+            namespace='camera',
+            output='screen',
+            parameters=[d455_depth_params()],
+        ),
+    ]
+
+
+def _perception_fusion(context):
+    """8b) perception_fusion — /fused_objects (계약서_인식융합_20261112). perception_fusion:=false 면 안 뜬다.
+
+    미션 노드(ship_back·ship_turn·ship_gate)는 yaml distance_source 가 fill/fused 일 때만 이 토픽을 본다.
+    노드가 없거나 침묵하면 미션 노드는 LiDAR 로 되돌아가고 WARN 을 낸다(§4). 패키지가 없으면 **건너뛴다**.
+    """
+    if LaunchConfiguration('perception_fusion').perform(context) != 'true':
+        return [LogInfo(msg='perception_fusion=false — /fused_objects 없음. '
+                            '미션 노드 distance_source fill/fused 는 LiDAR 로 되돌아간다(WARN)')]
+    try:
+        get_package_share_directory('perception_fusion')
+    except PackageNotFoundError:
+        return [LogInfo(msg='⏭️ perception_fusion 없음 — 건너뜀 (colcon build 확인). 미션 노드는 LiDAR 로.')]
+    return [
+        Node(
+            package='perception_fusion',
+            executable='perception_fusion',
+            name='perception_fusion',          # = perception_fusion.yaml 의 /perception_fusion 절
+            output='screen',
+            parameters=[_pkg_yaml('perception_fusion')],
+        ),
+    ]
+
+
 def _blackbox(context):
     """13) blackbox(CSV 기록, 구독 전용·발행 0). ssf_tools 가 없으면 **건너뛴다** — launch 를 안 세운다.
 
@@ -305,6 +390,16 @@ def generate_launch_description():
         DeclareLaunchArgument(
             'record', default_value='true', choices=['true', 'false'],
             description='blackbox CSV 기록(~/ssf_logs): true(기본) / false'),
+        # 인식 융합(계약서_인식융합_20261112 §10 Q8: 대회에서 켬 → 기본 true). 롤백(대회 당일):
+        #   ros2 launch launch_files launch_files.launch.py boat:=A course:=main \
+        #       perception_fusion:=false d455_depth:=false
+        #   둘 다 false 면 이 계약 전과 같은 노드 구성. 미션 노드 쪽 롤백은 yaml distance_source: lidar.
+        DeclareLaunchArgument(
+            'd455_depth', default_value='true', choices=['true', 'false'],
+            description='D455 뎁스 전용 드라이버(컬러·IR·IMU 끔, 424x240x15): true(기본) / false'),
+        DeclareLaunchArgument(
+            'perception_fusion', default_value='true', choices=['true', 'false'],
+            description='perception_fusion(/fused_objects: LiDAR+D455 뎁스+검출기 방위): true(기본) / false'),
 
         # ============================================================
         # 0a) 코스 파일 확인 + LogInfo(course·붙인 파일). 없으면 raise
@@ -412,8 +507,17 @@ def generate_launch_description():
         # 패키지가 없으면 _oak_camera 가 LogInfo 만 찍고 건너뛴다(launch 전체를 세우지 않는다).
         #
         # D455 시절 기록(auto WB 실측, saturation 64, HID udev 로 IMU OFF, 뎁스 ON 시 USB 끊김)은
-        # camera.launch.py 와 git 이력 참고 — RealSense 경로는 CLAUDE.md §1-8 대로 유지, 대회 launch 에서만 뺐다.
+        # camera.launch.py 와 git 이력 참고 — RealSense 경로는 CLAUDE.md §1-8 대로 유지.
+        # 11-12 부터 D455 는 **뎁스 전용**으로 다시 들어온다(아래 7b, 컬러 없음 — 비전 검출은 OAK 그대로).
         OpaqueFunction(function=_oak_camera),
+
+        # ============================================================
+        # 7b) D455 뎁스 전용 (d455_depth:=true 기본, 계약서_인식융합_20261112 §10 Q9)
+        # ============================================================
+        # 🚨 camera.launch.py(물가 영상·벤치)와 동시에 띄우지 말 것 — 같은 이름 /camera/camera (_d455_depth 참고).
+        # 09-10 실측: 컬러+뎁스 동시엔 10.8 fps·끊김 13회 → 여기선 컬러를 끄고 뎁스만 424x240x15.
+        # 패키지가 없으면 _d455_depth 가 LogInfo 만 찍고 건너뛴다.
+        OpaqueFunction(function=_d455_depth),
 
         # ============================================================
         # 8) 비전 검출기 — **상주**. 각자 /wp_mode 를 보고 자기 차례일 때만 일한다
@@ -441,6 +545,12 @@ def generate_launch_description():
         Node(package='color_shape_detector', executable='basic_image_subscriberdock',
              name='image_subscriber_dock', output='screen', parameters=[VISION_CFG]),
         # basic_image_subscriberhsv 는 튜닝 전용 — 대회 launch 에 넣지 않는다.
+
+        # ============================================================
+        # 8b) perception_fusion — LiDAR 군집 + D455 뎁스 + 검출기 방위 → /fused_objects (구독·관찰 전용)
+        # ============================================================
+        # perception_fusion:=true 기본(§10 Q8). 미션 노드는 yaml distance_source(lidar|fill|fused)로 쓸지 정한다.
+        OpaqueFunction(function=_perception_fusion),
 
         # ============================================================
         # 9) SHIP mission nodes (WP 루틴)

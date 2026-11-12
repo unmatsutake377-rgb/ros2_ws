@@ -35,6 +35,27 @@ groups:
          change: water, when: "lost_sec 과 같이 본다",
          check: "물결로 검출이 끊길 때 SEARCH 로 너무 빨리 가는지", revert: "5.0"}
 
+  - name: 거리 출처 (인식 융합)
+    items:
+      - {pkg: ship_back, key: distance_source, label: 위치유지 거리 출처, choices: [lidar, fill, fused],
+         hint: "lidar = LiDAR 만 / fill = LiDAR 먼저, 못 볼 때만 /fused_objects(D455 뎁스 포함) / fused = /fused_objects 먼저, 없으면 LiDAR",
+         advice: "대회 fill(물 위 실측 0회라 평소 동작 불변인 쪽). fused 는 물 위 비교 뒤. 🚨 카메라 거리로 위치유지 '성공' 이 날 수 있다(위험 2)",
+         change: water, when: "현장 조정표에 기준 없음 — 계약서_인식융합_20261112 §10: 대회 fill, 거리가 이상하면 lidar",
+         check: "시작 로그 distance_source=fill · /fusion_status 가 1 Hz 로 오는지 · 출처 바뀜 INFO 로그 · 부표 앞 거리 연속",
+         revert: "lidar"}
+      - {pkg: ship_turn, key: distance_source, label: 선회 접근 거리 출처, choices: [lidar, fill, fused],
+         hint: "APPROACH(부표 접근)만 해당 — ORBIT 은 늘 LiDAR. lidar / fill(LiDAR 먼저) / fused(융합 먼저)",
+         advice: "대회 fill. fused 는 물 위 비교 뒤",
+         change: water, when: "현장 조정표에 기준 없음 — 계약서_인식융합_20261112 §10: 대회 fill, 거리가 이상하면 lidar",
+         check: "시작 로그 distance_source=fill · 접근 중 출처 바뀜 INFO 로그 · 선회 시작 거리",
+         revert: "lidar"}
+      - {pkg: ship_gate, key: distance_source, label: 게이트 부표 거리 출처, choices: [lidar, fill, fused],
+         hint: "게이트 짝 거리(재-arming)만 해당. lidar / fill(LiDAR 먼저) / fused(융합 먼저)",
+         advice: "대회 fill. fused 는 물 위 비교 뒤",
+         change: water, when: "현장 조정표에 기준 없음 — 계약서_인식융합_20261112 §10: 대회 fill, 거리가 이상하면 lidar",
+         check: "시작 로그 distance_source=fill · 게이트 통과 판정",
+         revert: "lidar"}
+
   - name: 회피·DWA
     items:
       - {pkg: ship_direction, key: dwa_enabled, label: DWA 회피 켜기,
