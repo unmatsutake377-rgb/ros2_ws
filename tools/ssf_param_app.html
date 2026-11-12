@@ -722,7 +722,13 @@ function lnPanel() {
     h("div", {class:"card", style:"padding:12px 14px"},
       h("div", {class:"label", text:"순서 · 주의"}),
       h("div", {class:"guide", style:"margin-top:6px"},
-        h("p", {}, h("span", {class:"k", text:"하루 한 번"}), "노트북을 켠 뒤 배 노트북 터미널에서 sudo ~/ros2_ws/tools/boat_boot.sh (비밀번호는 사람이). 안 했으면 켜기가 막힌다."),
+        h("p", {}, h("span", {class:"k", text:"하루 한 번"}), "배 노트북을 켤(재부팅할) 때마다 boat_boot 를 한 번 — 안 했으면 켜기가 막힌다. ",
+          "MacBook 터미널에서 아래 줄(배마다 하나). 맨 처음 찍히는 노트북 이름으로 어느 배인지 확인 → 그 배 ssfb 비밀번호. ",
+          "비밀번호 창은 두 배 다 'password for ssfb' 로 같다(계정 이름이 같다)."),
+        cmdLine("A번배 (ssfa)", "ssh -t boat-a 'hostname; sudo ~/ros2_ws/tools/boat_boot.sh'"),
+        cmdLine("B번배 (ssfb-IdeaPad…)", "ssh -t boat-b 'hostname; sudo ~/ros2_ws/tools/boat_boot.sh'"),
+        h("p", {}, h("span", {class:"k", text:"배 노트북에서"}), "이미 그 배 터미널 안이면 boat-a/boat-b 없이 sudo ~/ros2_ws/tools/boat_boot.sh 만 " +
+          "(배 노트북은 boat-a 라는 이름을 모른다 — 'Could not resolve hostname')."),
         h("p", {}, h("span", {class:"k", text:"켜기"}), "센서·아두이노(노트북 직결) 연결 → 조종기 수동 → 여기서 켜기 → 아래 확인 줄 → 배터리 1·2번 → 5·6번 → 삑 → 15~25 s."),
         h("p", {class:"adv"}, h("span", {class:"k", text:"출발"}), "조종기 SwD [아래]. 앱·노트북으로는 출발시키지 않는다. 위험하면 SwD [위]."),
         h("p", {}, h("span", {class:"k", text:"판 사이"}), "끄기(Ctrl+C) → '■ launch 끝' 줄 확인 → 다시 켜기. 다시 켜야 웨이포인트가 처음부터 시작한다."),
@@ -740,7 +746,8 @@ function lnUpdate() {
     !bc ? "—" : bc.ok ? "✅ 이번 부팅에 적용됨 (" + bc.items.map(i => `${i.name} ${i.detail}`).join(" · ") + ")" :
       h("span", {style:"color:var(--bad);font-weight:600",
         text:"❌ 안 됨 — " + bc.items.filter(i => i.ok === false).map(i => `${i.name} ${i.detail}`).join(" · ") +
-          " → 배 노트북 터미널: sudo ~/ros2_ws/tools/boat_boot.sh"})));
+          " → 아래 줄을 복사해 MacBook 터미널에서 실행(그 배 ssfb 비밀번호)"})),
+    bc && !bc.ok ? cmdLine("이 배", `ssh -t boat-${(st?.boat || S.state?.boat || "a").toLowerCase()} 'hostname; sudo ~/ros2_ws/tools/boat_boot.sh'`) : null);
   // 웨이포인트 목록(바뀔 때만 다시 그림 — 고른 값 유지)
   const names = (st?.files || []).map(f => f.name), key = names.join("|");
   if (P.wp.dataset.k !== key) {
