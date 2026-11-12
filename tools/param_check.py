@@ -168,6 +168,8 @@ def check_waypoints(path, course):
     warns = []
     if wps[-1][2] not in (5, 8):
         warns.append(f"마지막 WP mode {wps[-1][2]} — 코스 끝 즉시 정지(50000)는 마지막 mode 5·8 일 때만")
+    elif wps[-1][2] == 5:
+        warns.append("마지막 WP mode 5 — ship_avoid 가 코스 끝 뒤 최대 1 s 20000 을 더 내고(정지 지연) /wp_mode stale ERROR 가 남음. 마지막은 mode 8 권장")
     return [], warns, info
 
 

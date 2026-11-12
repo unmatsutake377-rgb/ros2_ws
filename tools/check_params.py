@@ -56,6 +56,7 @@ DEFAULT_FILES = [
     "src/ship_dock/config/ship_dock.yaml",
     "src/ship_turn/config/ship_turn.yaml",
     "src/ship_back/config/ship_back.yaml",
+    "src/ship_avoid/config/ship_avoid.yaml",
     "src/ssf_tools/config/ssf_tools.yaml",
 ]
 

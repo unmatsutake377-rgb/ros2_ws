@@ -89,6 +89,8 @@ def check_file(repo, path, course=None, template_modes=None, geofence=None):
     # 아래 경고는 전부 녹화절차 문서·param_check 에 있는 것만
     if wps[-1][2] not in (5, 8):
         out["warnings"].append(f"마지막 WP mode {wps[-1][2]} — 코스 끝 즉시 정지(50000)는 마지막 mode 5·8 일 때만")
+    elif wps[-1][2] == 5:
+        out["warnings"].append("마지막 WP mode 5 — ship_avoid 가 코스 끝 뒤 최대 1 s 20000 을 더 내고(정지 지연) /wp_mode stale ERROR 가 남음. 마지막은 mode 8 권장")
     old = [i for i, w in enumerate(wps) if w[2] in (2, 3) and w[3] > 1.0]
     if old:
         out["warnings"].append(f"mode 2·3 dwell 이 1 s 넘음(WP {', '.join(map(str, old))}) — 옛 녹화 파일일 수 있음, 0.5 권장")

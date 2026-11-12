@@ -52,6 +52,7 @@ def _stack(context):
     nodes.append(Node(package='ship_dock', executable='ship_dock', name='ship_dock',
                       output='screen', parameters=[m._pkg_yaml('ship_dock')]))
     nodes += m._search_nodes(context)                  # ship_back · ship_turn (search_behavior)
+    nodes += m._ship_avoid(context)                    # mode 5 담당(11-13 C2, 기본 lidar = 20000)
     nodes.append(Node(package='ship_direction', executable='ship_direction', name='ship_direction',
                       output='screen', parameters=[m._pkg_yaml('ship_direction')]))
     nodes.append(Node(package='motor_control', executable='motor_control', name='motor_control',
