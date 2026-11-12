@@ -42,12 +42,13 @@ def orbit_direction_cw(color):
 
     2026-11 경기규정: 빨강·초록 = 우현선회(시계, CW) / **노랑 = 좌현선회(반시계, CCW)**.
     흰색 = 반시계는 2025 규정 값 — 2026 에 없는 색이지만 충돌이 없어 남긴다(계약서_탐색선회_부표색_20261111 C2).
-    검정은 위치유지 전용이라 방향 없음(None) — 검출기 turn_color_logic.NO_ORBIT_DIRECTION 과 맞출 것.
+    **검정 = 좌현선회(반시계, CCW)** — 2026 OT(11-12). 예전엔 None(위치유지 전용)이라 SEARCH 에서 못 넘어가
+    선회 0회였다(계약서_탐색검정좌현_20261112 K1). 검출기 turn_color_logic.NO_ORBIT_DIRECTION 과 맞출 것.
     """
     c = (color or "").strip().lower()
     if c in ("red", "green"):
         return True
-    if c in ("yellow", "white"):
+    if c in ("yellow", "white", "black"):
         return False
     return None
 

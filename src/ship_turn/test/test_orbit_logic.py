@@ -51,8 +51,9 @@ def test_color_direction():
     # 2026-11 경기규정: 노랑 = 좌현선회(반시계). 수정 전엔 None 이라 노랑 공지 때 SEARCH 타임아웃.
     check("yellow → 반시계(CCW)", orbit_direction_cw("yellow") is False)
     check("YELLOW 공백 정리 → 반시계", orbit_direction_cw(" YELLOW ") is False)
-    # 검정 = 위치유지 전용, 선회 방향 없음.
-    check("black → None", orbit_direction_cw("black") is None)
+    # 2026 OT(11-12): 검정 = 좌현선회(반시계). 수정 전엔 None 이라 SEARCH 에서 못 넘어가 선회 0회.
+    check("black → 반시계(CCW)", orbit_direction_cw("black") is False)
+    check("BLACK 공백 정리 → 반시계", orbit_direction_cw(" BLACK ") is False)
     check("모르는 색 → None", orbit_direction_cw("blue") is None)
     check("빈 문자열 → None", orbit_direction_cw("") is None)
 

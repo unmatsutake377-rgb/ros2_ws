@@ -47,7 +47,8 @@ FSM: INIT → SEARCH → APPROACH → ORBIT → DONE (모드 3 이 끝날 때까
   (180 정확값 제외 — 그건 후진 260. 클램프 ±80 이라 여기선 안 나온다).
 
 색 토픽 = /image_color (String: "red"/"green"/"white"/"yellow"/"black"). 발행자는 basic_image_subscriberturn.
-   2026-11 경기규정: 빨강·초록 = 우현선회(시계) / 노랑 = 좌현선회(반시계). 검정 = 위치유지 전용(방향 없음).
+   2026-11 경기규정: 빨강·초록 = 우현선회(시계) / 노랑·검정 = 좌현선회(반시계).
+   검정 = 좌현선회는 2026 OT(11-12) — 예전엔 방향 없음이라 선회 0회였다(계약서_탐색검정좌현_20261112).
    🚨 [2026-09-23 정정] 종전엔 /buoy_color 를 구독했는데 그 이름을 발행하는 노드가 없었다.
    비전은 처음부터 /image_color 로 내보내고 있었다 — 토픽명 불일치로 탐색이 SEARCH 에서 영원히 멈췄을 것이다.
    못 받으면 회전 방향을 모른다 → 그동안 SEARCH 에 머문다(틀린 방향으로 돌지 않는다).
@@ -169,7 +170,7 @@ class ShipTurn(Node):
         self.get_logger().info(
             f"ship_turn 시작: enabled={self.enabled}, active_wp_mode={self.active_wp_mode}, "
             f"orbit r={self.orbit_radius_m}m(⚠️실측), 목표 {self.orbit_target_deg}°.\n"
-            f"   빨강·초록=시계 / 노랑·흰색=반시계. 거리는 LiDAR. /image_color 없으면 SEARCH 유지."
+            f"   빨강·초록=시계 / 노랑·흰색·검정=반시계. 거리는 LiDAR. /image_color 없으면 SEARCH 유지."
         )
         if not self.enabled:
             self.get_logger().warn(

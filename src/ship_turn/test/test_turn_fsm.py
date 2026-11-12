@@ -204,6 +204,17 @@ def test_search_with_color_and_angle_goes_approach():
     assert n.state == 'APPROACH' and n.dir_cw is False, (n.state, n.dir_cw)
 
 
+def test_search_with_black_goes_approach_ccw():
+    """2026 OT(11-12): 검정 = 좌현선회. 수정 전엔 None 이라 SEARCH 에 머물러 선회 0회."""
+    n = _node()
+    for _ in range(25):
+        _tick(n)
+    n.color_cb(_Msg('black'))
+    n.angle_cb(_Msg(5.0))
+    _tick(n)
+    assert n.state == 'APPROACH' and n.dir_cw is False, (n.state, n.dir_cw)
+
+
 # ─────────────── B. DONE 래치 ───────────────
 def _done_node():
     n = _orbit_node(cam_rel=-10.0, scan_points=[(-10.0, 3.0)], last_rel=-10.0)
