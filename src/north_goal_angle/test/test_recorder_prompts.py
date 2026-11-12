@@ -184,15 +184,19 @@ def test_skip_dock_block_2026_order():
     assert dock_block_start([[0, 0, 0, 1.0], [0, 0, 7, 1.0]], ["WP0", "WP3 도킹"]) is None
 
 
-def test_source_yaml_recording_order_has_no_dock_lines():
-    """소스 waypoints.yaml 녹화 기본값에 도킹 네 줄이 없고 mode 순서가 2026 규정 순서(도킹 제외)다."""
+def test_source_yaml_recording_order_includes_dock():
+    """소스 waypoints.yaml(OT 순서) 녹화 기본값 = 템플릿 전체 — 도킹 두 줄이 위치유지 바로 뒤에 그대로 나온다.
+
+    도킹 접근점 네 줄(dock_wp.py 방식)이 없으니 skip_dock_block 이 손대지 않는다(11-12 사용자: 녹화 순서 안에 도킹).
+    """
     if not _has_yaml():
         return
     t, reason = load_template(_WAYPOINTS_YAML)
     assert t is not None, reason
     rows, labels = t
-    assert not any("도킹" in lb for lb in labels), labels
-    assert [int(r[2]) for r in rows] == [0, 1, 2, 5, 3, 3, 3, 5, 2, 5, 5, 8], [int(r[2]) for r in rows]
+    assert [int(r[2]) for r in rows] == [0, 1, 2, 7, 7, 5, 3, 3, 3, 5, 5, 8], [int(r[2]) for r in rows]
+    assert "위치유지" in labels[2] and "도킹" in labels[3] and "도킹" in labels[4], labels
+    assert not any("위치유지 2" in lb for lb in labels), labels
 
 
 def test_load_template_missing_file():
