@@ -194,7 +194,7 @@ image_subscriber_dock:
     #   오타면 부팅 ERROR 1회 + 검출 안 함. 담당 모드(7)에서만 /image_angle=10000 + 5 s 주기 ERROR,
     #   그 외 모드에서는 발행 없음(조용히 못 찾는 것 방지 + turn 의 /image_angle 을 덮지 않음).
     target_color: "red"
-    target_shape: "Square"
+    target_shape: "Triangle"   # 11-12: 기본 = 빨강 삼각형(11-11 현장 짝 red+Triangle). 당일 공지로 교체
     # ---- D2: N프레임 시간 안정화 (열화 환경에선 confirm_frames·grace 를 올린다) ----
     confirm_frames: 3
     # ---- C(2026-11-08): 확인 창. 🚨 **정수로 써라** — 3.0 처럼 소수면 rclpy 가 부팅 때 노드를 세운다
