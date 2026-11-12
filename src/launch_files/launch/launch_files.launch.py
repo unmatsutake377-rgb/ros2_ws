@@ -225,12 +225,16 @@ def _oak_camera(context):
 def d455_depth_params():
     """D455 뎁스 전용 realsense2_camera 파라미터 (순수 함수, ROS 없이 테스트 — test_perception_launch.py).
 
-    계약서_인식융합_20261112 §10 Q9 + 계약서_거리융합_20261112 §4: 컬러·IR·IMU 끔, 뎁스만 424x240x15.
+    계약서_인식융합_20261112 §10 Q9 + 계약서_거리융합_20261112 §4: 컬러·IR·IMU 끔, 뎁스만.
+    프로필 480x270x15 (계약서_도리도리회피_v2_20261114 U0): 예전 424x240x15 는 2번배 D455
+    (FW 5.13.0.55, USB2) 지원 목록에 없어 기본 640x480 으로 되돌아갔다. 480x270@60/30/15/5 는 있다.
+    16:9 로 424x240 과 종횡비가 거의 같다(1.767 대 1.778, 행 띠 비율 각도 유지).
+    ⚠️ 1번배(FW 5.17.0.10, USB3.2)는 424x240x15 정상 확인(11-13), 480x270 은 미확인.
     🚨 값은 Python bool 로(문자열 'false' 는 타입 불일치). 래퍼 4.56.4 소스 확인(Mac, 11-12):
        · 이름 = depth_module.depth_profile (rs_launch.py:44 — 옛 depth_module.profile 아님)
-       · 구분자 x·, 둘 다 받음 (profile_manager.cpp:453 정규식 [xX,]) → '424x240x15'
-       ⚠️ Ubuntu 에서 확인: 시작 로그 'Open profile: ... Depth ... 424x240 ... 15' — 안 맞으면 대안 '424,240,15'.
-       ⚠️ D455 가 424x240x15 Z16 을 지원하는지(rs-enumerate-devices)도 그때 본다 — 없으면 래퍼가 기본 프로필로 연다.
+       · 구분자 x·, 둘 다 받음 (profile_manager.cpp:453 정규식 [xX,]) → '480x270x15'
+       ⚠️ 두 배 부팅 로그 확인: 'Open profile: ... Depth ... 480x270 ... 15' — 안 맞으면 대안 '480,270,15'.
+       ⚠️ 1번배는 rs-enumerate-devices -c 로 480x270 Z16 15 를 본다 — 없으면 래퍼가 기본 프로필로 연다.
     hole_filling 끔: 메운 값은 지어낸 거리다(§1-6). initial_reset 끔: USB 재열거로 허브째 끊길 수 있다.
     emitter 는 기본값(켬) 그대로 ⚠️ 물 위 영향 미확인.
     """
@@ -241,7 +245,7 @@ def d455_depth_params():
         'enable_infra2': False,
         'enable_gyro': False,
         'enable_accel': False,
-        'depth_module.depth_profile': '424x240x15',
+        'depth_module.depth_profile': '480x270x15',
         'pointcloud.enable': False,
         'align_depth.enable': False,
         'hole_filling_filter.enable': False,
@@ -267,7 +271,7 @@ def _d455_depth(context):
         return [LogInfo(msg='⏭️ realsense2_camera 없음 — D455 뎁스 건너뜀 (colcon build 확인). '
                             'perception_fusion 은 LiDAR 만으로 계속.')]
     return [
-        LogInfo(msg='D455 뎁스 전용: realsense2_camera name=camera ns=camera, 424x240x15, 컬러·IR·IMU 끔 '
+        LogInfo(msg='D455 뎁스 전용: realsense2_camera name=camera ns=camera, 480x270x15, 컬러·IR·IMU 끔 '
                     '→ /camera/camera/depth/image_rect_raw (⚠️ 시작 로그로 프로필 확인)'),
         Node(
             package='realsense2_camera',
@@ -421,7 +425,7 @@ def generate_launch_description():
         #   둘 다 false 면 이 계약 전과 같은 노드 구성. 미션 노드 쪽 롤백은 yaml distance_source: lidar.
         DeclareLaunchArgument(
             'd455_depth', default_value='true', choices=['true', 'false'],
-            description='D455 뎁스 전용 드라이버(컬러·IR·IMU 끔, 424x240x15): true(기본) / false'),
+            description='D455 뎁스 전용 드라이버(컬러·IR·IMU 끔, 480x270x15): true(기본) / false'),
         DeclareLaunchArgument(
             'perception_fusion', default_value='true', choices=['true', 'false'],
             description='perception_fusion(/fused_objects: LiDAR+D455 뎁스+검출기 방위): true(기본) / false'),
@@ -540,7 +544,8 @@ def generate_launch_description():
         # 7b) D455 뎁스 전용 (d455_depth:=true 기본, 계약서_인식융합_20261112 §10 Q9)
         # ============================================================
         # 🚨 camera.launch.py(물가 영상·벤치)와 동시에 띄우지 말 것 — 같은 이름 /camera/camera (_d455_depth 참고).
-        # 09-10 실측: 컬러+뎁스 동시엔 10.8 fps·끊김 13회 → 여기선 컬러를 끄고 뎁스만 424x240x15.
+        # 09-10 실측: 컬러+뎁스 동시엔 10.8 fps·끊김 13회 → 여기선 컬러를 끄고 뎁스만 480x270x15
+        # (424x240 은 2번배 USB2 목록에 없음 → U0 에서 480x270, 계약서_도리도리회피_v2_20261114).
         # 패키지가 없으면 _d455_depth 가 LogInfo 만 찍고 건너뛴다.
         OpaqueFunction(function=_d455_depth),
 

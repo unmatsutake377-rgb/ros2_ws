@@ -11,7 +11,8 @@ ROS 없이 돈다 — launch 파일에서 ast 로 함수만 떼어 가짜 Launch
   ③ true 면 Node 1개: realsense2_camera name=camera ns=camera / perception_fusion parameters=[_pkg_yaml]
   ④ 패키지가 없으면 Node 없이 LogInfo(launch 전체를 세우지 않는다)
   ⑤ D455 = 뎁스 전용: 컬러·IR·IMU·pointcloud·align·hole_filling·initial_reset 끔(Python bool), 뎁스 켬,
-     depth_module.depth_profile 이 래퍼 정규식([xX,] 구분, profile_manager.cpp:453)에 맞는 424x240x15
+     depth_module.depth_profile 이 래퍼 정규식([xX,] 구분, profile_manager.cpp:453)에 맞는 480x270x15
+     (424x240 은 2번배 D455 USB2 목록에 없음 — 계약서_도리도리회피_v2_20261114 U0)
   ⑥ 드라이버 이름(ns/name) → 토픽 = perception_fusion.yaml depth_topic·depth_info_topic
 """
 
@@ -167,7 +168,7 @@ def test_d455_depth_only_params():
     assert p['enable_depth'] is True
     prof = p['depth_module.depth_profile']
     m = RS_PROFILE_RE.fullmatch(prof)
-    assert m and m.groups() == ('424', '240', '15'), f'뎁스 프로필 {prof!r}'
+    assert m and m.groups() == ('480', '270', '15'), f'뎁스 프로필 {prof!r}'
     assert 'depth_module.profile' not in p, '옛 이름(4.56 에선 depth_module.depth_profile)'
 
 
