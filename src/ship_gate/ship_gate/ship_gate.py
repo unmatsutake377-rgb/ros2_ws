@@ -22,6 +22,8 @@
       → 그 두 토픽 구독을 버리고 /scan 을 구독. 부표는 '점 물체'라 표식-LiDAR 매칭이 통한다
         (도크와 다르다). 거리는 카운트 뒤 재-arming 의 '새 게이트' 판정에만 쓴다(⑥, [4])
         (LiDAR 가 부표를 못 봐 거리 미상이면 막지 않는다 — 카운트를 죽이면 안 되니까).
+      예외(계약서_인식융합_20261112 §10 Q1·Q6 승인): distance_source 가 fill/fused 면 이 재-arming 거리(pair_dist)
+      에 /fused_objects(LiDAR·D455 뎁스 융합 물체, 같은 색만 매칭) 거리를 쓴다. 조향·arming 은 그대로.
   [6] red_on_port 파라미터 (빨강이 좌현인가, 대회 규정 기본 true). 부호 규약은 vision_geom 좌 양수로
       확정(11-04 계약서_ship_gate부호_카운트) — 벤치 검증 항목 아님.
 
@@ -42,10 +44,13 @@ import rclpy
 from rclpy.node import Node
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
-from std_msgs.msg import Float32, Int32
+from std_msgs.msg import Float32, Int32, Float32MultiArray
 from sensor_msgs.msg import LaserScan
 
 from ship_gate.gate_logic import GateCounter, gate_candidate, rel_to_raw_0_360, clamp_pm180
+from ship_gate.gate_logic import (
+    check_distance_source, fused_allowed_src_ids, fused_color_id, parse_fused_objects,
+    fused_fresh, match_fused, choose_distance)
 
 INVALID_ANGLE = 10000.0       # /red_angle·/green_angle 의 '안 보임' 센티널 (작년 규약 유지)
 CANDIDATE_INVALID = 20000.0   # 게이트 없음 → ship_direction 자율(GPS)
@@ -62,6 +67,12 @@ LIDAR_FORWARD_DEG = 80.0      # LiDAR 프레임에서 정면 (상대각 0 에 �
 #       rclcpp::QoS(KeepLast(10)) = RELIABLE 로 발행한다 — 소스 확인함. 드라이버를 갈아도 안 깨진다.
 #   드롭이 생겨도 '콜백 부재 → 스테일 → 페일세이프 발동' 으로 안전한 방향으로 실패한다.
 SCAN_QOS = QoSProfile(
+    reliability=ReliabilityPolicy.BEST_EFFORT,
+    history=HistoryPolicy.KEEP_LAST,
+    depth=1,
+)
+# /fused_objects 구독 QoS(계약서_인식융합 §4): 발행 RELIABLE 10 ↔ 구독 BEST_EFFORT d1 — /scan 과 같은 이유.
+FUSED_QOS = QoSProfile(
     reliability=ReliabilityPolicy.BEST_EFFORT,
     history=HistoryPolicy.KEEP_LAST,
     depth=1,
@@ -105,6 +116,22 @@ class ShipGate(Node):
         self.angle_stale_sec = float(self.declare_parameter("angle_stale_sec", 0.7).value)
         self.scan_stale_sec = float(self.declare_parameter("scan_stale_sec", 1.0).value)
 
+        # 거리 출처(계약서_인식융합_20261112 §10) — 재-arming pair_dist 만. 코드 기본값 = yaml = 'fill'(대회값).
+        #   잘못된 값 → ERROR 후 lidar. lidar 면 /fused_objects 구독을 만들지 않는다. 구독보다 먼저 선언.
+        self.distance_source, src_err = check_distance_source(
+            self.declare_parameter("distance_source", "fill").value)
+        self.fused_topic = str(self.declare_parameter("fused_topic", "/fused_objects").value)
+        self.fused_stale_sec = float(self.declare_parameter("fused_stale_sec", 0.5).value)   # ⚠️ 실측
+        self.fused_match_deg = float(self.declare_parameter("fused_match_deg", 5.0).value)   # ⚠️ 실측
+        self.fused_min_conf = float(self.declare_parameter("fused_min_conf", 0.5).value)     # ⚠️ 실측
+        self.fused_allowed_ids, bad_src = fused_allowed_src_ids(
+            self.declare_parameter("fused_allowed_sources", ["lidar", "fused", "depth"]).value)
+        if src_err is not None:
+            self.get_logger().error(src_err)
+        if bad_src:
+            self.get_logger().error(
+                f"fused_allowed_sources 에 모르는 출처 {bad_src} → 무시(lidar|depth|fused|row 만)")
+
         # ---- 발행 ----
         self.pub_candidate = self.create_publisher(Float32, "/candidate_angle", qos)
         self.pub_gates = self.create_publisher(Int32, "/gates_passed", qos)   # 🚨 /gate_pass_count 아님
@@ -114,6 +141,8 @@ class ShipGate(Node):
         self.create_subscription(Float32, "/red_angle", self.red_angle_cb, qos)
         self.create_subscription(Float32, "/green_angle", self.green_angle_cb, qos)
         self.create_subscription(LaserScan, "/scan", self.scan_cb, SCAN_QOS)
+        if self.distance_source != "lidar":
+            self.create_subscription(Float32MultiArray, self.fused_topic, self.fused_cb, FUSED_QOS)
 
         # ---- 상태 ----
         self.wp_mode = -1
@@ -123,6 +152,9 @@ class ShipGate(Node):
         self.t_green = None
         self.latest_scan = None
         self.t_scan = None
+        self.fused_objs = None      # 마지막 정상 /fused_objects 물체 목록
+        self.t_fused = None         # 그 수신 시각(monotonic) — stale 판정
+        self.dist_src = {"red": None, "green": None}   # 색별 마지막 거리 출처 — 바뀔 때 INFO
 
         self.counter = GateCounter(self.pass_behind_deg, self.rearm_far_margin_m)
 
@@ -139,7 +171,9 @@ class ShipGate(Node):
         self.get_logger().info(
             f"ship_gate 시작: active_wp_modes={self.active_wp_modes}, red_on_port={self.red_on_port} "
             f"(좌 양수 규약). 쌍 제약 {self.pair_min_sep_deg}~{self.pair_max_sep_deg}°, "
-            f"통과 ±{self.pass_behind_deg}° (반화각 {self.cam_hfov_deg / 2.0:.2f}° 안) → /gates_passed."
+            f"통과 ±{self.pass_behind_deg}° (반화각 {self.cam_hfov_deg / 2.0:.2f}° 안) → /gates_passed. "
+            f"재-arming 거리 distance_source={self.distance_source}"
+            + ("" if self.distance_source == "lidar" else f"({self.fused_topic})") + "."
         )
 
     # ---------------------- 콜백 ----------------------
@@ -161,6 +195,17 @@ class ShipGate(Node):
         with self.lock:
             self.latest_scan = msg
             self.t_scan = time.monotonic()
+
+    def fused_cb(self, msg):
+        objs, err = parse_fused_objects(msg.data)
+        if err is not None:
+            # 형식 불일치 = 엉뚱한 칸을 거리로 읽을 위험(계약 위험 1) → 버리고 LiDAR. 5 s 주기.
+            self.get_logger().error(f"{self.fused_topic} 형식 불일치({err}) → 무시",
+                                    throttle_duration_sec=5.0)
+            return
+        with self.lock:
+            self.fused_objs = objs
+            self.t_fused = time.monotonic()
 
     # ---------------------- 보조 ----------------------
     def _fresh_angle(self, raw, t, now):
@@ -195,6 +240,34 @@ class ShipGate(Node):
                 best = r
         return best if math.isfinite(best) else None
 
+    def _fused_hit(self, rel_deg, color, now):
+        """/fused_objects 에서 부표 방위·색(red/green)에 맞는 물체 (거리, src_id). 없거나 stale → None."""
+        with self.lock:
+            objs, t_rx = self.fused_objs, self.t_fused
+        if not fused_fresh(t_rx, now, self.fused_stale_sec):
+            self.get_logger().warn(
+                f"distance_source={self.distance_source} 인데 {self.fused_topic} "
+                + ("미수신" if t_rx is None else f"{now - t_rx:.1f}s 묵음") + " → LiDAR 거리만",
+                throttle_duration_sec=5.0)
+            return None
+        return match_fused(objs, rel_deg, fused_color_id(color), self.fused_match_deg,
+                           self.fused_min_conf, self.fused_allowed_ids)
+
+    def _buoy_dist(self, rel_deg, color, now):
+        """부표(색 color) 방위의 거리 — distance_source 분기(gate_logic.choose_distance). lidar 면 그대로."""
+        lidar_d = self._lidar_dist_at(rel_deg, now)
+        if self.distance_source == "lidar":
+            return lidar_d
+        need = self.distance_source == "fused" or lidar_d is None
+        hit = self._fused_hit(rel_deg, color, now) if need else None
+        dist, label = choose_distance(self.distance_source, lidar_d, hit)
+        prev = self.dist_src.get(color)
+        if label is not None and label != prev:
+            if prev is not None:
+                self.get_logger().info(f"dist src {color} {prev}→{label}", throttle_duration_sec=1.0)
+            self.dist_src[color] = label
+        return dist
+
     # ---------------------- 메인 루프 ----------------------
     def timer_cb(self):
         with self.lock:
@@ -218,7 +291,9 @@ class ShipGate(Node):
         # 판정(카운트 시점 거리 + rearm_far_margin_m 보다 먼가)에만 쓴다. 미상(None)이면 막지 않는다.
         pair_dist = None
         if both_ahead:
-            dists = [d for d in (self._lidar_dist_at(a, now) for a in (red, green) if a is not None)
+            # distance_source 분기(lidar 면 _lidar_dist_at 그대로). 색별로 같은 색 물체만 매칭.
+            dists = [d for d in (self._buoy_dist(a, c, now) for a, c in ((red, "red"), (green, "green"))
+                                 if a is not None)
                      if d is not None]
             if dists:
                 pair_dist = min(dists)

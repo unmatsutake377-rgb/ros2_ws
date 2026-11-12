@@ -10,6 +10,9 @@
       노드 이름으로 찾을 때 ship_back 이 ship_turn 의 값을 받아버린다. → super().__init__('ship_back').
   [3] 거리는 LiDAR 에서. /image_distance(카메라 뎁스, OAK-1 에서 죽음) 폐기, /scan 사용.
       부표는 점 물체라 방위 매칭이 통한다. 부표 방위는 /image_angle(검출기 turn 의 모드별 색).
+      예외(계약서_인식융합_20261112 §10 Q1 승인): distance_source 가 fill/fused 면 /fused_objects
+      (perception_fusion: LiDAR·D455 뎁스 융합 물체 목록)의 거리를 쓴다 — 비전 방위 분기(_target) 한 곳만.
+      fill = LiDAR 먼저·못 보면 fused, fused = fused 먼저·없으면 LiDAR, lidar = 옛 동작(구독도 없음).
   [4] (계약 전체코스 §2-4·§2-5) 획득(SEARCH→HOLD)은 비전 색 확인으로만. LiDAR 전방 최근접은
       HOLD 유지 중 직전 비전 방위가 lost_sec 안일 때 보조로만(lidar_acquire=true 면 옛 동작).
       SEARCH 시간 초과로 DONE 래치하지 않는다(search_timeout_ends=true 면 옛 동작).
@@ -47,7 +50,7 @@ import rclpy
 from rclpy.node import Node
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
-from std_msgs.msg import Float32, Int32
+from std_msgs.msg import Float32, Int32, Float32MultiArray
 from sensor_msgs.msg import LaserScan
 
 from ship_back.hold_logic import station_keep_action, HoldTimer, should_reset_on_mode
@@ -55,6 +58,8 @@ from ship_back.hold_logic import target_source, counts_as_seen, search_timed_out
 from ship_back.hold_logic import search_timeout_warn, hold_total_exceeded
 from ship_back.hold_logic import reacquire_stop_active, reacquire_window_elapsed
 from ship_back.hold_logic import check_hold_params
+from ship_back.hold_logic import check_distance_source, fused_allowed_src_ids, parse_fused_objects
+from ship_back.hold_logic import fused_fresh, match_fused, choose_distance
 
 IMAGE_ANGLE_INVALID = 10000.0
 CANDIDATE_INVALID = 20000.0
@@ -78,6 +83,12 @@ STEER_LIMIT_DEG = 80.0
 #       rclcpp::QoS(KeepLast(10)) = RELIABLE 로 발행한다 — 소스 확인함. 드라이버를 갈아도 안 깨진다.
 #   드롭이 생겨도 '콜백 부재 → 스테일 → 페일세이프 발동' 으로 안전한 방향으로 실패한다.
 SCAN_QOS = QoSProfile(
+    reliability=ReliabilityPolicy.BEST_EFFORT,
+    history=HistoryPolicy.KEEP_LAST,
+    depth=1,
+)
+# /fused_objects 구독 QoS(계약서_인식융합 §4): 발행 RELIABLE 10 ↔ 구독 BEST_EFFORT d1 — /scan 과 같은 이유.
+FUSED_QOS = QoSProfile(
     reliability=ReliabilityPolicy.BEST_EFFORT,
     history=HistoryPolicy.KEEP_LAST,
     depth=1,
@@ -145,11 +156,29 @@ class ShipBack(Node):     # 🚨 작년엔 ShipTurn 이었다(복붙). 이름을
         # HOLD 중 비전 방위가 잠깐 끊길 때 LiDAR 전방 섹터 최근접을 부표로 본다(lidar_acquire 참조)
         self.front_sector_half_deg = float(self.declare_parameter('front_sector_half_deg', 30.0).value)
 
+        # 거리 출처(계약서_인식융합_20261112 §10). 코드 기본값 = yaml = 'fill'(대회값). 잘못된 값 → ERROR 후 lidar.
+        #   lidar 면 /fused_objects 구독을 만들지 않는다(DDS 그래프까지 옛 동작). 구독보다 먼저 선언.
+        self.distance_source, src_err = check_distance_source(
+            self.declare_parameter('distance_source', 'fill').value)
+        self.fused_topic = str(self.declare_parameter('fused_topic', '/fused_objects').value)
+        self.fused_stale_sec = float(self.declare_parameter('fused_stale_sec', 0.5).value)   # ⚠️ 실측
+        self.fused_match_deg = float(self.declare_parameter('fused_match_deg', 5.0).value)   # ⚠️ 실측
+        self.fused_min_conf = float(self.declare_parameter('fused_min_conf', 0.5).value)     # ⚠️ 실측
+        self.fused_allowed_ids, bad_src = fused_allowed_src_ids(
+            self.declare_parameter('fused_allowed_sources', ['lidar', 'fused', 'depth']).value)
+        if src_err is not None:
+            self.get_logger().error(src_err)
+        if bad_src:
+            self.get_logger().error(
+                f"fused_allowed_sources 에 모르는 출처 {bad_src} → 무시(lidar|depth|fused|row 만)")
+
         # ---- 발행/구독 (토픽 이름 불변, /image_distance 는 버림) ----
         self.pub_candidate = self.create_publisher(Float32, '/candidate_angle', qos)
         self.create_subscription(Int32, '/wp_mode', self.wp_cb, qos)
         self.create_subscription(Float32, '/image_angle', self.angle_cb, qos)
         self.create_subscription(LaserScan, '/scan', self.scan_cb, SCAN_QOS)
+        if self.distance_source != 'lidar':
+            self.create_subscription(Float32MultiArray, self.fused_topic, self.fused_cb, FUSED_QOS)
 
         # ---- 상태 ----
         self.wp_mode = -1
@@ -157,6 +186,9 @@ class ShipBack(Node):     # 🚨 작년엔 ShipTurn 이었다(복붙). 이름을
         self.t_angle = None
         self.latest_scan = None
         self.t_scan = None
+        self.fused_objs = None         # 마지막 정상 /fused_objects 물체 목록
+        self.t_fused = None            # 그 수신 시각(monotonic) — stale 판정
+        self.dist_src = None           # 마지막 거리 출처 이름('lidar'·'fused:depth' …) — 바뀔 때 INFO
 
         self.state = "INIT"
         self.state_t = None
@@ -175,7 +207,9 @@ class ShipBack(Node):     # 🚨 작년엔 ShipTurn 이었다(복붙). 이름을
             f"규정 {self.keep_radius_m}m 이내 {self.hold_time_sec}s. "
             f"search_timeout_ends={self.search_timeout_ends}, lidar_acquire={self.lidar_acquire}, "
             f"unknown_giveup={self.unknown_giveup_sec}s, hold_max={self.hold_max_sec}s, "
-            f"reacquire_stop={self.reacquire_stop_sec}s."
+            f"reacquire_stop={self.reacquire_stop_sec}s. "
+            f"distance_source={self.distance_source}"
+            + ("" if self.distance_source == 'lidar' else f"({self.fused_topic})") + "."
         )
 
     # ---------------------- 콜백 ----------------------
@@ -208,6 +242,17 @@ class ShipBack(Node):     # 🚨 작년엔 ShipTurn 이었다(복붙). 이름을
         with self.lock:
             self.latest_scan = msg
             self.t_scan = time.monotonic()
+
+    def fused_cb(self, msg):
+        objs, err = parse_fused_objects(msg.data)
+        if err is not None:
+            # 형식 불일치 = 엉뚱한 칸을 거리로 읽을 위험(계약 위험 1) → 버리고 LiDAR. 5 s 주기.
+            self.get_logger().error(f"{self.fused_topic} 형식 불일치({err}) → 무시",
+                                    throttle_duration_sec=5.0)
+            return
+        with self.lock:
+            self.fused_objs = objs
+            self.t_fused = time.monotonic()
 
     # ---------------------- 보조 ----------------------
     def set_state(self, s):
@@ -249,6 +294,33 @@ class ShipBack(Node):     # 🚨 작년엔 ShipTurn 이었다(복붙). 이름을
         hi = min(len(s.ranges) - 1, int((target + self.lidar_match_half_deg - a_min) / inc))
         return _min_range(s.ranges, lo, hi)
 
+    def _fused_hit(self, rel_deg, now):
+        """/fused_objects 에서 부표 방위(색 모름 → 방위만)에 맞는 물체 (거리, src_id). 없거나 stale 이면 None."""
+        with self.lock:
+            objs, t_rx = self.fused_objs, self.t_fused
+        if not fused_fresh(t_rx, now, self.fused_stale_sec):
+            self.get_logger().warn(
+                f"distance_source={self.distance_source} 인데 {self.fused_topic} "
+                + ("미수신" if t_rx is None else f"{now - t_rx:.1f}s 묵음") + " → LiDAR 거리만",
+                throttle_duration_sec=5.0)
+            return None
+        return match_fused(objs, rel_deg, 0, self.fused_match_deg, self.fused_min_conf,
+                           self.fused_allowed_ids)
+
+    def _buoy_dist(self, rel_deg, now):
+        """부표 방위의 거리 — distance_source 분기(hold_logic.choose_distance). lidar 면 _dist_at 그대로."""
+        lidar_d = self._dist_at(rel_deg, now)
+        if self.distance_source == 'lidar':
+            return lidar_d
+        need = self.distance_source == 'fused' or lidar_d is None
+        hit = self._fused_hit(rel_deg, now) if need else None
+        dist, label = choose_distance(self.distance_source, lidar_d, hit)
+        if label is not None and label != self.dist_src:
+            if self.dist_src is not None:
+                self.get_logger().info(f"dist src {self.dist_src}→{label}", throttle_duration_sec=1.0)
+            self.dist_src = label
+        return dist
+
     def _front_nearest(self, now):
         """전방 섹터 최근접 (거리, 상대방위). 부표 방위를 못 받을 때의 대체. 모르면 (None,None)."""
         info = self._scan_fresh(now)
@@ -280,7 +352,7 @@ class ShipBack(Node):     # 🚨 작년엔 ShipTurn 이었다(복붙). 이름을
             state = self.state
         src = target_source(state, fresh, since_seen, self.lost_sec, self.lidar_acquire)
         if src == 'vision':
-            return self._dist_at(rel, now), rel, src
+            return self._buoy_dist(rel, now), rel, src     # distance_source 분기(lidar 면 _dist_at 그대로)
         if src == 'lidar':
             d, r = self._front_nearest(now)
             return d, r, src

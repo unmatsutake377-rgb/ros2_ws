@@ -46,3 +46,16 @@
     # ---- 신선도 ----
     angle_stale_sec: 0.7     # /red_angle·/green_angle 이 이보다 묵으면 '안 보임'
     scan_stale_sec: 1.0
+
+    # ---- 거리 출처 (계약서_인식융합_20261112 §10 — CLAUDE.md §3 '거리는 LiDAR' 원칙의 승인된 예외) ----
+    # lidar = /scan 만(옛 동작, /fused_objects 구독도 안 만듦) / fill = LiDAR 먼저, LiDAR 가 못 볼 때(None)만
+    #   /fused_objects(perception_fusion) 거리 / fused = /fused_objects 먼저, 맞는 물체 없으면 LiDAR.
+    #   잘못된 값 → ERROR 후 lidar. 볼 차례에 /fused_objects 가 없거나 묵으면(fused_stale_sec) LiDAR 거리만 + 5 s 주기 WARN.
+    #   대회(11-13) = fill(실측 0회 — 평소 동작 불변 쪽). 롤백 = lidar 한 줄. 코드 기본값과 같이 고칠 것.
+    # 🚨 ship_gate 는 통과 카운트 재-arming 거리(pair_dist)에만 쓴다 — 조향·arming 은 거리를 안 쓴다(Q6).
+    distance_source: "fill"
+    fused_topic: "/fused_objects"
+    fused_stale_sec: 0.5     # ⚠️ 실측 필요 — 마지막 정상 수신 뒤 이보다 묵으면 안 쓴다
+    fused_match_deg: 5.0     # ⚠️ 실측 필요 — 카메라 방위 ±이 각도 안의 물체만(그중 방위 최근접 하나)
+    fused_min_conf: 0.5      # ⚠️ 실측 필요 — 고른 물체의 conf 가 이보다 낮으면 안 씀(다른 물체로 안 넘어감)
+    fused_allowed_sources: ["lidar", "fused", "depth"]   # 쓸 물체 출처(row 제외, §10 Q3)

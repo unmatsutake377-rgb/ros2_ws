@@ -92,7 +92,7 @@ def _load_node_module():
         'rclpy.qos': {n: _qos_cls(n) for n in
                       ('QoSProfile', 'ReliabilityPolicy', 'HistoryPolicy')},
         'std_msgs': {},
-        'std_msgs.msg': dict(Float32=_Msg, Int32=_Msg, String=_Msg, Float64=_Msg),
+        'std_msgs.msg': dict(Float32=_Msg, Int32=_Msg, String=_Msg, Float64=_Msg, Float32MultiArray=_Msg),
         'sensor_msgs': {},
         'sensor_msgs.msg': dict(LaserScan=object),
     }

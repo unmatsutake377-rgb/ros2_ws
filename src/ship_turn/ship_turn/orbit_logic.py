@@ -12,6 +12,9 @@ enabled 스위치가 얽히는 자리라 노드 밖에서 표로 검증한다.
 시계방향(CW) = 위에서 볼 때 시계. 나침반 yaw 는 CW 양수(북 0, 동 90).
 """
 
+import math
+from collections import namedtuple
+
 
 def clamp(x, lo, hi):
     return max(lo, min(hi, x))
@@ -137,3 +140,163 @@ class OrbitProgress:
 
     def progress_deg(self):
         return abs(self.total)
+
+
+# ==================== /fused_objects 거리 출처 (계약서_인식융합_20261112 §4·§10) ====================
+# 🚨 형식 사본 — perception_fusion(발행)·ship_back·ship_turn·ship_gate 가 같은 값을 따로 갖는다
+#    (공유 모듈 금지 CLAUDE.md §1-8). 어긋나면 엉뚱한 칸을 거리로 읽는다(계약 위험 1) → 머리(VER·STRIDE)
+#    검사 + 각 패키지 test_fused_match 의 사본 일치 검사. 바꿀 때 네 곳 동시에.
+# Float32MultiArray data = [VER, STRIDE, N, 그 뒤 N × STRIDE 칸:
+#   color_id, bearing_deg(상대방위 0 = 정면, 좌 +, LiDAR 원점), range_m, conf(0~1), src_id, age_s,
+#   track_id(-1 = 없음), flags]
+FUSED_VER = 1
+FUSED_STRIDE = 8
+FUSED_HEAD = 3            # 머리 칸 수 [VER, STRIDE, N]
+FUSED_I_COLOR = 0         # 물체 한 칸 안의 열 위치
+FUSED_I_BEARING = 1
+FUSED_I_RANGE = 2
+FUSED_I_CONF = 3
+FUSED_I_SRC = 4
+FUSED_I_AGE = 5
+FUSED_I_TRACK = 6
+FUSED_I_FLAGS = 7
+# color_id (🚨 /avoid_detections cls 열거형과 다르다)
+FUSED_COLOR_IDS = {'unknown': 0, 'red': 1, 'green': 2, 'white': 3, 'yellow': 4,
+                   'black': 5, 'orange': 6, 'blue': 7}
+FUSED_SRC_IDS = {'lidar': 0, 'depth': 1, 'fused': 2, 'row': 3}
+# distance_source: lidar = /scan 만(구독도 안 만듦) / fill = LiDAR 먼저, None 일 때만 fused
+#   / fused = fused 먼저, 맞는 물체 없으면 LiDAR. (§10 Q2)
+DISTANCE_SOURCES = ('lidar', 'fill', 'fused')
+
+FusedObj = namedtuple('FusedObj', 'color_id bearing_deg range_m conf src_id')
+
+
+def _fused_wrap180(a):
+    return (a + 180.0) % 360.0 - 180.0
+
+
+def check_distance_source(value):
+    """파라미터 distance_source → (쓸 모드, 오류 메시지 or None). 순수 함수.
+
+    lidar|fill|fused(앞뒤 공백·대소문자 무시) 밖이면 'lidar'(지금 동작, /fused_objects 구독 없음) + 메시지.
+    노드는 시작 때 한 번 부르고 메시지가 있으면 ERROR 한 줄.
+    """
+    v = value.strip().lower() if isinstance(value, str) else None
+    if v in DISTANCE_SOURCES:
+        return v, None
+    return 'lidar', (f"🚨 distance_source={value!r} 는 lidar|fill|fused 가 아님 → lidar 로 돈다"
+                     f"(/fused_objects 구독 안 함). yaml 확인.")
+
+
+def fused_allowed_src_ids(names):
+    """파라미터 fused_allowed_sources(이름 배열) → (src_id 집합, [모르는 이름]). 순수 함수.
+
+    배열이 아니면(문자열 하나 등) 빈 집합 + 오류 — 아무 출처도 허용하지 않는다(모르면 입 다문다).
+    """
+    if isinstance(names, str) or not isinstance(names, (list, tuple)):
+        return set(), [repr(names)]
+    ids, bad = set(), []
+    for nm in names:
+        key = nm.strip().lower() if isinstance(nm, str) else None
+        if key in FUSED_SRC_IDS:
+            ids.add(FUSED_SRC_IDS[key])
+        else:
+            bad.append(str(nm))
+    return ids, bad
+
+
+def fused_color_id(color):
+    """색 문자열('red' …) → color_id. 모르는 색·빈 값·None → 0(모름 = 방위만 매칭)."""
+    c = color.strip().lower() if isinstance(color, str) else ''
+    return FUSED_COLOR_IDS.get(c, 0)
+
+
+def parse_fused_objects(data):
+    """/fused_objects data → ([FusedObj, …], None) 또는 (None, 오류 사유). 순수 함수.
+
+    머리 VER·STRIDE 불일치, N 이 0 이상 정수가 아님, 길이 ≠ 3 + N × STRIDE, 숫자 아님 → (None, 사유):
+      노드는 메시지를 버리고 ERROR(5 s 주기). N = 0 은 '살아 있고 물체 없음' → ([], None).
+    거리가 없는(0·음수·비유한) 물체, 방위·conf 가 비유한인 물체는 거리로 쓰지 않으므로 뺀다.
+    """
+    try:
+        vals = [float(x) for x in data]
+    except (TypeError, ValueError):
+        return None, '숫자 배열 아님'
+    if len(vals) < FUSED_HEAD:
+        return None, f'길이 {len(vals)} < 머리 {FUSED_HEAD}'
+    ver, stride, n = vals[0], vals[1], vals[2]
+    if ver != FUSED_VER:
+        return None, f'VER {ver:g} ≠ {FUSED_VER}'
+    if stride != FUSED_STRIDE:
+        return None, f'STRIDE {stride:g} ≠ {FUSED_STRIDE}'
+    if not math.isfinite(n) or n < 0 or n != int(n):
+        return None, f'N {n!r} 이 0 이상 정수 아님'
+    n = int(n)
+    if len(vals) != FUSED_HEAD + n * FUSED_STRIDE:
+        return None, f'길이 {len(vals)} ≠ {FUSED_HEAD} + {n}×{FUSED_STRIDE}'
+    objs = []
+    for k in range(n):
+        row = vals[FUSED_HEAD + k * FUSED_STRIDE: FUSED_HEAD + (k + 1) * FUSED_STRIDE]
+        col, brg, rng = row[FUSED_I_COLOR], row[FUSED_I_BEARING], row[FUSED_I_RANGE]
+        conf, src = row[FUSED_I_CONF], row[FUSED_I_SRC]
+        if not all(math.isfinite(x) for x in (col, brg, rng, conf, src)) or rng <= 0.0:
+            continue
+        objs.append(FusedObj(int(round(col)), _fused_wrap180(brg), rng, conf, int(round(src))))
+    return objs, None
+
+
+def fused_fresh(t_rx, now, stale_sec):
+    """마지막 정상 /fused_objects 수신(monotonic) 뒤 stale_sec 안인가. 미수신(None)·비유한 → False."""
+    return t_rx is not None and (now - t_rx) <= stale_sec
+
+
+def match_fused(objs, rel_deg, color_id, match_deg, min_conf, allowed_src_ids):
+    """노드의 카메라 방위 rel_deg 에 맞는 물체 → (range_m, src_id) 또는 None. 순수 함수.
+
+    1) |방위 차| ≤ match_deg, color_id 가 0 이 아니면 같은 색만(0 = 색 모름 → 방위만).
+    2) 그중 방위 최근접(동점이면 거리 짧은 것) **하나**를 고른다.
+    3) 그 물체가 conf ≥ min_conf 이고 src_id ∈ allowed_src_ids 일 때만 거리. 아니면 None —
+       더 먼 방위의 다른 물체로 넘어가지 않는다(같은 창 안 다른 물체 = 다른 부표일 수 있다).
+    NaN 파라미터는 비교가 거짓이 되어 None(닫힌 쪽으로 실패).
+    """
+    if not objs or rel_deg is None or not math.isfinite(rel_deg):
+        return None
+    want = int(color_id) if color_id else 0
+    best, best_key = None, None
+    for o in objs:
+        if want and o.color_id != want:
+            continue
+        d = abs(_fused_wrap180(o.bearing_deg - rel_deg))
+        if not d <= match_deg:
+            continue
+        key = (d, o.range_m)
+        if best is None or key < best_key:
+            best, best_key = o, key
+    if best is None or not best.conf >= min_conf or best.src_id not in allowed_src_ids:
+        return None
+    return best.range_m, best.src_id
+
+
+def fused_src_label(src_id):
+    """출처 로그 이름: fused 물체 → 'fused:<src 이름>'."""
+    for k, v in FUSED_SRC_IDS.items():
+        if v == src_id:
+            return f'fused:{k}'
+    return f'fused:src{src_id}'
+
+
+def choose_distance(mode, lidar_d, fused_hit):
+    """distance_source 분기 → (거리 or None, 출처 이름 or None). 순수 함수.
+
+    lidar_d   : 노드 자신의 /scan 방위 매칭 거리(None = 못 봄).
+    fused_hit : match_fused 결과 (range_m, src_id). /fused_objects 가 stale·미수신이면 None 으로 넘긴다.
+    출처 이름: 'lidar' = 이 노드의 /scan, 'fused:<src>' = /fused_objects 물체.
+    lidar: LiDAR 그대로 / fill: LiDAR 먼저, None 일 때만 fused / fused: fused 먼저, None 이면 LiDAR.
+    """
+    lid = (lidar_d, 'lidar') if lidar_d is not None else (None, None)
+    fus = (fused_hit[0], fused_src_label(fused_hit[1])) if fused_hit is not None else (None, None)
+    if mode == 'fill':
+        return lid if lid[0] is not None else fus
+    if mode == 'fused':
+        return fus if fus[0] is not None else lid
+    return lid

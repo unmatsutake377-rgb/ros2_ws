@@ -8,6 +8,9 @@
       엉뚱했다(red→left 등). → /image_color 로 색을 받아 회전 방향을 정한다.
   [3] 거리는 LiDAR 에서. /image_distance(카메라 뎁스, OAK-1 에서 죽음) 구독 폐기, /scan 사용.
       부표는 '점 물체'라 방위 매칭이 통한다(도크와 다르다).
+      예외(계약서_인식융합_20261112 §10 Q1 승인): distance_source 가 fill/fused 면 **APPROACH 의 카메라 방위
+      분기 한 곳만** /fused_objects(LiDAR·D455 뎁스 융합 물체) 거리를 쓴다(같은 색만 매칭). ORBIT 의 LiDAR
+      추적(lidar_track)·ORBIT 거리는 그대로 — 카메라 시야 밖이라 바꾸면 추적을 잃는다(계약 위험 4).
   [4] 🚨 [2026-11-04] ORBIT 진입 직후 노드가 죽었다(계약서_ship_turn선회_20261104). 세 가지가 겹쳤다:
       (C) orbit_logic 이 "+ = 우현" 으로 쓰여 좌 양수 입·출력과 반대 → CW 요청에 CCW. 좌 양수로 정정.
       (A) orbit 자세(부표 ±90°)는 카메라 HFOV(±40°) 밖이라 /image_angle 이 10000 → rel None →
@@ -62,12 +65,15 @@ import rclpy
 from rclpy.node import Node
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
-from std_msgs.msg import Float32, Int32, String, Float64
+from std_msgs.msg import Float32, Int32, String, Float64, Float32MultiArray
 from sensor_msgs.msg import LaserScan
 
 from ship_turn.orbit_logic import (
     orbit_steer, orbit_expected_rel, orbit_source, buoy_world_bearing, OrbitProgress,
     orbit_direction_cw, clamp, clamp_pm180, is_active)
+from ship_turn.orbit_logic import (
+    check_distance_source, fused_allowed_src_ids, fused_color_id, parse_fused_objects,
+    fused_fresh, match_fused, choose_distance)
 from ship_turn.lidar_track import lidar_track
 
 IMAGE_ANGLE_INVALID = 10000.0
@@ -90,6 +96,12 @@ STEER_LIMIT_DEG = 80.0
 #       rclcpp::QoS(KeepLast(10)) = RELIABLE 로 발행한다 — 소스 확인함. 드라이버를 갈아도 안 깨진다.
 #   드롭이 생겨도 '콜백 부재 → 스테일 → 페일세이프 발동' 으로 안전한 방향으로 실패한다.
 SCAN_QOS = QoSProfile(
+    reliability=ReliabilityPolicy.BEST_EFFORT,
+    history=HistoryPolicy.KEEP_LAST,
+    depth=1,
+)
+# /fused_objects 구독 QoS(계약서_인식융합 §4): 발행 RELIABLE 10 ↔ 구독 BEST_EFFORT d1 — /scan 과 같은 이유.
+FUSED_QOS = QoSProfile(
     reliability=ReliabilityPolicy.BEST_EFFORT,
     history=HistoryPolicy.KEEP_LAST,
     depth=1,
@@ -135,6 +147,22 @@ class ShipTurn(Node):
         self.lidar_track_window_deg = float(self.declare_parameter('lidar_track_window_deg', 25.0).value)
         self.lidar_track_max_m = float(self.declare_parameter('lidar_track_max_m', 5.0).value)  # = orbit_radius 3 + 2
 
+        # 거리 출처(계약서_인식융합_20261112 §10) — APPROACH 카메라 분기만. 코드 기본값 = yaml = 'fill'(대회값).
+        #   잘못된 값 → ERROR 후 lidar. lidar 면 /fused_objects 구독을 만들지 않는다. 구독보다 먼저 선언.
+        self.distance_source, src_err = check_distance_source(
+            self.declare_parameter('distance_source', 'fill').value)
+        self.fused_topic = str(self.declare_parameter('fused_topic', '/fused_objects').value)
+        self.fused_stale_sec = float(self.declare_parameter('fused_stale_sec', 0.5).value)   # ⚠️ 실측
+        self.fused_match_deg = float(self.declare_parameter('fused_match_deg', 5.0).value)   # ⚠️ 실측
+        self.fused_min_conf = float(self.declare_parameter('fused_min_conf', 0.5).value)     # ⚠️ 실측
+        self.fused_allowed_ids, bad_src = fused_allowed_src_ids(
+            self.declare_parameter('fused_allowed_sources', ['lidar', 'fused', 'depth']).value)
+        if src_err is not None:
+            self.get_logger().error(src_err)
+        if bad_src:
+            self.get_logger().error(
+                f"fused_allowed_sources 에 모르는 출처 {bad_src} → 무시(lidar|depth|fused|row 만)")
+
         # ---- 발행/구독 (토픽 이름 불변, /image_distance 는 버림) ----
         self.pub_candidate = self.create_publisher(Float32, '/candidate_angle', qos)
         self.create_subscription(Int32, '/wp_mode', self.wp_cb, qos)
@@ -145,6 +173,8 @@ class ShipTurn(Node):
         self.create_subscription(String, '/image_color', self.color_cb, qos)
         self.create_subscription(LaserScan, '/scan', self.scan_cb, SCAN_QOS)
         self.create_subscription(Float64, '/imu/yaw', self.yaw_cb, qos)       # orbit 진행각용
+        if self.distance_source != 'lidar':
+            self.create_subscription(Float32MultiArray, self.fused_topic, self.fused_cb, FUSED_QOS)
 
         # ---- 상태 ----
         self.wp_mode = -1
@@ -156,6 +186,9 @@ class ShipTurn(Node):
         self.t_scan = None
         self.yaw = None
         self.t_yaw = None
+        self.fused_objs = None      # 마지막 정상 /fused_objects 물체 목록
+        self.t_fused = None         # 그 수신 시각(monotonic) — stale 판정
+        self.dist_src = None        # 마지막 APPROACH 거리 출처('lidar'·'fused:depth' …) — 바뀔 때 INFO
 
         self.state = "INIT"
         self.state_t = None
@@ -170,7 +203,9 @@ class ShipTurn(Node):
         self.get_logger().info(
             f"ship_turn 시작: enabled={self.enabled}, active_wp_mode={self.active_wp_mode}, "
             f"orbit r={self.orbit_radius_m}m(⚠️실측), 목표 {self.orbit_target_deg}°.\n"
-            f"   빨강·초록=시계 / 노랑·흰색·검정=반시계. 거리는 LiDAR. /image_color 없으면 SEARCH 유지."
+            f"   빨강·초록=시계 / 노랑·흰색·검정=반시계. 거리는 LiDAR. /image_color 없으면 SEARCH 유지.\n"
+            f"   APPROACH 거리 distance_source={self.distance_source}"
+            + ("" if self.distance_source == 'lidar' else f"({self.fused_topic})") + "."
         )
         if not self.enabled:
             self.get_logger().warn(
@@ -208,6 +243,17 @@ class ShipTurn(Node):
         with self.lock:
             self.yaw = float(msg.data)
             self.t_yaw = time.monotonic()
+
+    def fused_cb(self, msg):
+        objs, err = parse_fused_objects(msg.data)
+        if err is not None:
+            # 형식 불일치 = 엉뚱한 칸을 거리로 읽을 위험(계약 위험 1) → 버리고 LiDAR. 5 s 주기.
+            self.get_logger().error(f"{self.fused_topic} 형식 불일치({err}) → 무시",
+                                    throttle_duration_sec=5.0)
+            return
+        with self.lock:
+            self.fused_objs = objs
+            self.t_fused = time.monotonic()
 
     # ---------------------- 보조 ----------------------
     def _reset(self, state):
@@ -265,6 +311,33 @@ class ShipTurn(Node):
                 best = r
         return best if math.isfinite(best) else None
 
+    def _fused_hit(self, rel_deg, color, now):
+        """/fused_objects 에서 부표 방위·색(/image_color, 모르면 방위만)에 맞는 물체 (거리, src_id). 없거나 stale → None."""
+        with self.lock:
+            objs, t_rx = self.fused_objs, self.t_fused
+        if not fused_fresh(t_rx, now, self.fused_stale_sec):
+            self.get_logger().warn(
+                f"distance_source={self.distance_source} 인데 {self.fused_topic} "
+                + ("미수신" if t_rx is None else f"{now - t_rx:.1f}s 묵음") + " → LiDAR 거리만",
+                throttle_duration_sec=5.0)
+            return None
+        return match_fused(objs, rel_deg, fused_color_id(color), self.fused_match_deg,
+                           self.fused_min_conf, self.fused_allowed_ids)
+
+    def _approach_dist(self, rel_deg, color, now):
+        """APPROACH 카메라 방위의 거리 — distance_source 분기(orbit_logic.choose_distance). lidar 면 그대로."""
+        lidar_d = self._lidar_dist_at(rel_deg, now)
+        if self.distance_source == 'lidar':
+            return lidar_d
+        need = self.distance_source == 'fused' or lidar_d is None
+        hit = self._fused_hit(rel_deg, color, now) if need else None
+        dist, label = choose_distance(self.distance_source, lidar_d, hit)
+        if label is not None and label != self.dist_src:
+            if self.dist_src is not None:
+                self.get_logger().info(f"dist src {self.dist_src}→{label}", throttle_duration_sec=1.0)
+            self.dist_src = label
+        return dist
+
     def _lidar_track(self, expected_rel, now):
         """(B) 카메라 방위가 없을 때: 예상 방위 ±lidar_track_window_deg, 거리 ≤ lidar_track_max_m 의
         최근접 빔을 부표로 → (rel, dist). 스캔이 묵었거나 창 안에 없으면 None."""
@@ -308,7 +381,10 @@ class ShipTurn(Node):
         if src == "lidar":
             rel, dist = lidar_hit
         elif src == "cam":
-            dist = self._lidar_dist_at(rel, now)
+            if self.state == "APPROACH":
+                dist = self._approach_dist(rel, col, now)   # distance_source 분기 — APPROACH 만(계약 §1)
+            else:
+                dist = self._lidar_dist_at(rel, now)        # ORBIT 등은 LiDAR 그대로(계약 위험 4)
         if rel is not None:
             self.last_seen_t = now
             self.last_rel = rel
