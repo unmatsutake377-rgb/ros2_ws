@@ -1,0 +1,107 @@
+# SSF 파라미터 앱 — '오늘 시험' 탭 내용 (11-12 저녁 실해역, 사용자 요청)
+# 앱은 이 파일을 읽어 순서대로 보여 준다. 체크 표시는 보는 브라우저에만 저장된다(배·저장소엔 안 남음).
+#   date / title / note : 탭 머리
+#   tests[]             : id · title · why(왜 하나) · prep(준비) · steps[] · pass[](합격 기준) · record[](적을 것) · params[](관련 값 pkg/key)
+#   steps[]             : text · cmd(선택 — {b} 는 배 글자 소문자 a/b, {B} 는 대문자 A/B 로 바뀐다)
+# 🚨 여기 적는 건 절차·기준뿐 — 값은 각 패키지 config yaml 이 기준(앱 '현장 조정' 탭에서 바꾼다).
+# 근거: docs/절차/실해역_시험_정리_20261109.md §9-0 (9-0c 허브, 9-0d 라이다 수평, 9-0e 줄자 배치, 9-0g IMU), §9-5 회피.
+
+date: "2026-11-12 저녁"
+title: "실해역 저녁 시험 — 라이다 부표 인식 · 회피 · 허브/IMU"
+note: >-
+  순서대로 한다. 1 이 안 되면 2 의 결과를 믿지 않는다(회피는 라이다만 본다).
+  3 은 처음부터 끝까지 커널 로그를 켜 둔 채로 — 1·2 를 하는 동안의 끊김도 3 의 판정에 들어간다.
+  모드 전환은 조종기로만. 자율 중 이상하면 바로 MANUAL.
+  1번배·2번배 둘 다 같은 순서로(사용자 11-12). 배마다 결과를 따로 적는다.
+  2번배: 낮에 노트북 USB 컨트롤러가 죽었었다 — 시작 전 lsusb·ls /dev/IMU /dev/ttyMEGA /dev/ttyUSB* 로 IMU·라이다·Mega·GPS 가 다 보이는지부터.
+
+tests:
+  - id: lidar
+    title: "1. 라이다가 부표를 잡나"
+    why: >-
+      회피(mode 5)·탐색 접근·위치유지 거리는 전부 라이다 거리다. 11-12 낮 1번배: 물 위에서 360° 반사점 16~60 → 0~10점,
+      게이트 부표 방위에 반사 0회(25회) — 레이저가 부표 위로 지나간 것으로 추정(장착 각도).
+    prep:
+      - "라이다 장착 수평 확인(수평계, 물 위에서 앞 숙임·들림 없이 0°) — 9-0d"
+      - "부표: 흰·노랑·검정 + 장애물(주황) 하나씩, 줄자로 1·2·3·4·5 m 거리에 차례로(또는 배를 그 거리에 대고)"
+      - "카메라 높이(수면→렌즈)도 같이 잰다"
+    steps:
+      - text: "대회 launch 를 띄운다(라이다·카메라·GPS)"
+        cmd: "ros2 launch launch_files launch_files.launch.py boat:={B}"
+      - text: "녹화 시작 — 거리마다 정지 30 s · 물결 30 s"
+        cmd: "ros2 bag record -o ~/ssf_logs/lidar_buoy_$(date +%H%M) /scan /oak/rgb/image_raw /obstacle_distance_array"
+      - text: "부표마다 1 → 5 m 로 옮기며 각 거리에서 /scan 에 부표 반사가 있는지 본다(rviz 또는 아래 한 줄)"
+        cmd: "ros2 topic echo --once /scan | head -40"
+      - text: "들림이 의심되면 수평을 고치고 같은 거리에서 다시"
+    pass:
+      - "흰 부표 1~5 m 에서 반사 잡힘 70 % 이상(9-0e 기준)"
+      - "정면 ±30° 1.5 m 안에 부표가 없을 때 거짓 반사 없음(9-0d)"
+      - "주황 장애물 부표도 회피 거리(3~5 m)에서 잡힘"
+    record:
+      - "부표 색 × 거리별 반사 있음/없음(정지·물결)"
+      - "라이다 수평 각도, 카메라 높이"
+      - "bag 파일 이름"
+
+  - id: avoid
+    title: "2. 회피 로직이 정상인가"
+    why: >-
+      대회 회피(mode 5)는 ship_direction 순수 회피(main 은 DWA 끔). 1 에서 라이다가 부표를 잡아야 의미가 있다.
+      합성 시뮬 §9-5: B 선체는 3 m 간격에서 나빠지고 DWA(mode 5, dwa_hull 맞춤)로 좋아짐 — 물 위 비교는 아직 없음.
+    prep:
+      - "주황 부표 몇 개를 3~5 m 간격으로 띄운 회피 구간(실제 장애물 구역처럼)"
+      - "연습 웨이포인트 녹화: 회피 시작(구간 앞)·회피 끝(구간 뒤) 두 점 — 앱 '웨이포인트' 탭 연습(avoid) 또는 아래 명령"
+    steps:
+      - text: "회피 연습 웨이포인트 녹화(2점, mode 5)"
+        cmd: "ssf {b} wp practice avoid"
+      - text: "그 파일로 launch — 저속·조종기 즉시 MANUAL 준비"
+        cmd: "ros2 launch launch_files launch_files.launch.py boat:={B} course:=main waypoints_file:=$HOME/ssf_logs/practice_avoid.yaml"
+      - text: "AUTO → 구간 통과 2~3회(같은 진입). 영상 + 블랙박스"
+      - text: "(시간 되면) dwa_enabled true / dwa_modes [5] 로 같은 구간 2회 — 배별 dwa_hull 맞는지 먼저(1번배 A, 2번배 B). 끝나면 원래 값으로"
+    pass:
+      - "부표 접촉 0, 회피 끝 점까지 도달"
+      - "부표 앞에서 멈칫·제자리 돌기 반복 없음, 후진은 짧게(0.5 s)만"
+      - "DWA 비교를 했다면 접촉·소요 시간 off/on 나란히"
+    record:
+      - "회차별 접촉 수·소요 시간·멈춘 곳(영상 시각)"
+      - "DWA off/on 여부와 그때 값"
+    params:
+      - ship_direction/dwa_enabled
+      - ship_direction/dwa_modes
+      - ship_direction/dwa_lidar_x_m
+      - ship_direction/side_escape_deg
+      - ship_direction/reverse_duration_sec
+      - north_goal_angle/geofence_avoid_polygon
+
+  - id: hub_imu
+    title: "3. 허브가 안 끊기면 IMU 를 미리 맞춰 둘 수 있나"
+    why: >-
+      1번배 IMU 는 지자기를 안 쓴다 — /imu/yaw_raw 는 'IMU USB 전원 들어온 순간 뱃머리 = 0°'. 허브가 끊기거나 전원을 끄면 기준이 바뀐다.
+      그래서 오늘 맞춘 mount_offset_deg 는 내일 IMU 전원을 다시 넣으면 그대로 못 쓴다 — 단, 내일도 **같은 방향으로 뱃머리를 둔 채**
+      IMU 전원을 넣으면 같은 값이 다시 맞는다(아래 기준선 방법). 허브가 끊기면 GPS 도 끊겨 launch 가 끝난다.
+      2번배는 아직 확인 전(같은 IMU 라 같을 가능성 높음) — 아래 절차는 어느 쪽이든 그대로 맞는다.
+      2번배는 끝에 '전원 껐다 켠 뒤 off 가 같은가' 한 번 더 보면 지자기 사용 여부도 같이 알 수 있다.
+    prep:
+      - "D455 는 허브 그대로(빈 포트 없음). 케이블·허브 전원 고정"
+      - "기준선: 부두·선착장에 뱃머리를 댈 곧은 선 하나를 정하고 표시(테이프). 내일 아침도 이 선에 맞춰 IMU 전원을 넣는다"
+    steps:
+      - text: "배 노트북 별도 터미널에서 커널 로그 기록 — 1·2 하는 내내 켜 둔다"
+        cmd: "journalctl -k -f | tee ~/ssf_logs/kern_evening_$(date +%H%M).log"
+      - text: "배를 기준선에 대고 IMU USB(또는 허브 전원)를 켠다 → launch(라이다·D455 까지 다 켠 뒤)"
+      - text: "RC MANUAL 로 전진만 0.8 m/s 이상 30~40 s 직진(선회·후진 없이)"
+      - text: "방위 상태 줄(imu_relative:OK n=… R=… off=…)에서 R ≥ 0.9 이고 off 가 '--' 가 아닐 때 off 값을 읽는다(rej=no_reverse_gate 면 motor_control 이 안 떠 있는 것)"
+        cmd: "ros2 topic echo /heading_status"
+      - text: "off 값을 ssf_heading 배별 파일 mount_offset_deg 에 소수점으로(1번배 = ssf_heading_A.yaml, 2번배 = ssf_heading_B.yaml, 커밋 안 함) → launch 재시작(USB 그대로)"
+      - text: "반대 방향으로 한 번 더 직진 → off 가 앞 값 ±5° 안, /imu/yaw 가 지도·휴대폰 방위 ±10° 안"
+      - text: "끝: 전원 끄기 전에 값 기록. 내일 아침 = 기준선에 뱃머리 → IMU 전원 → 직진 1회로 off 가 같은지만 확인"
+      - text: "(2번배) 기준선이 아닌 다른 방향(약 90°)으로 돌려 IMU 전원 껐다 켜기 → 직진 1회: off 가 그대로면 지자기 사용(절대방위), 90° 가까이 바뀌면 1번배와 같은 상대각"
+    pass:
+      - "1·2·3 동안 커널 로그에 USB disconnect / error -71 0회"
+      - "off 두 방향 ±5° 안, /imu/yaw 지도 ±10° 안"
+      - "허브 끊김이 한 번이라도 있으면: '미리 맞춰 두기' 불가로 판정 — 내일 출발 직전 9-0g 전체를 다시"
+    record:
+      - "끊김 횟수·시각·원인 줄(D455 -71 여부)"
+      - "기준선 위치·방위(지도), IMU 전원 넣은 시각"
+      - "off·R·n, 두 방향 비교, 넣은 mount_offset_deg"
+    params:
+      - ssf_heading/mount_offset_deg
+      - ssf_heading/invert_yaw

@@ -11,6 +11,7 @@
   · Host 헤더가 localhost/127.0.0.1 이 아니면 거부(DNS 리바인딩 방지).
   · 쓰기(POST)는 'X-SSF: 1' 헤더가 있어야 한다(다른 사이트가 브라우저로 몰래 보내는 요청 차단).
   · NTRIP 파일은 엔진이 아예 목록에 안 올린다. 웨이포인트 파일은 '웨이포인트' 탭에서 보기·검사만(쓰기 API 없음).
+  · '오늘 시험' 탭(tools/ssf_test_plan.yaml)도 보기만 — 체크 표시는 브라우저 localStorage 에만 남는다.
 ROS 없이 돈다(파이썬 3.8+ · PyYAML). launch 는 건드리지 않는다.
 """
 import argparse
@@ -80,6 +81,8 @@ def make_handler(repo, port):
                     return self._send(200, dict(repo.gps(), ok=True))
                 if path == "/api/cam":             # D455 영상 송신 상태
                     return self._send(200, dict(repo.cam("status"), ok=True))
+                if path == "/api/plan":            # '오늘 시험' 탭(tools/ssf_test_plan.yaml, 보기 전용)
+                    return self._send(200, dict(repo.test_plan(), ok=True))
                 if path == "/api/wp/rec":          # 녹화 화면(tmux) 읽기
                     return self._send(200, dict(repo.wp_rec("status"), ok=True))
             except core.ParamError as e:

@@ -442,6 +442,143 @@ def load_catalog(path=None):
         return {}
 
 
+# ---------------------------------------------------------------- '오늘 시험' 계획(tools/ssf_test_plan.yaml)
+# 절차·기준만 담은 파일 — 값은 config yaml 이 기준. 앱 '오늘 시험' 탭이 보여 준다(보기 전용).
+
+PLAN_PATH = os.path.join(HERE, "ssf_test_plan.yaml")
+PLAN_TEST_KEYS = {"id", "title", "why", "prep", "steps", "pass", "record", "params"}
+PLAN_STEP_KEYS = {"text", "cmd"}
+PLAN_VARS = {"b", "B"}               # cmd 안 {b} → a/b, {B} → A/B
+_PLAN_PARAM_RE = re.compile(r"^[A-Za-z0-9_]+/[A-Za-z_][\w.]*$")
+_PLAN_VAR_RE = re.compile(r"(?<!\$)\{([A-Za-z_]\w*)\}")      # ${HOME} 같은 셸 변수는 빼고
+
+
+def plan_cmd(cmd, boat):
+    """cmd 의 {b}·{B} 를 배 글자로(앱 화면 JS 와 같은 규칙)."""
+    b = str(boat).upper()
+    return cmd.replace("{b}", b.lower()).replace("{B}", b)
+
+
+def _plan_text(v):
+    if isinstance(v, (datetime.date, datetime.datetime)):     # date: 2026-11-13 (따옴표 없이) 도 받는다
+        return v.isoformat()
+    return v.strip() if isinstance(v, str) else v
+
+
+def check_test_plan(doc):
+    """시험 계획 dict 검사 → 정리한 dict. 문제가 있으면 ParamError(사유 전부)."""
+    errs = []
+    if not isinstance(doc, dict):
+        raise ParamError("시험 계획 파일: 맨 위가 date/title/note/tests 묶음이 아니다")
+    out = {}
+    for k in ("date", "title", "note"):
+        v = _plan_text(doc.get(k, ""))
+        if v is None:
+            v = ""
+        if not isinstance(v, str):
+            errs.append(f"{k}: 글자여야 한다")
+        out[k] = v if isinstance(v, str) else ""
+    extra = set(doc) - {"date", "title", "note", "tests"}
+    if extra:
+        errs.append("모르는 항목 " + ", ".join(sorted(map(str, extra))))
+    tests = doc.get("tests")
+    if not isinstance(tests, list) or not tests:
+        errs.append("tests: 시험이 하나 이상 있는 목록이어야 한다")
+        tests = []
+    seen = set()
+    out["tests"] = []
+    for i, t in enumerate(tests):
+        w = f"tests[{i}]"
+        if not isinstance(t, dict):
+            errs.append(f"{w}: 묶음(id·title·steps …)이 아니다")
+            continue
+        tid = t.get("id")
+        if isinstance(tid, str) and tid.strip():
+            tid = tid.strip()
+            w = f"tests[{i}] ({tid})"
+            if tid in seen:
+                errs.append(f"{w}: id 가 겹친다")
+            seen.add(tid)
+        else:
+            errs.append(f"{w}: id 필요(글자)")
+            tid = ""
+        extra = set(t) - PLAN_TEST_KEYS
+        if extra:
+            errs.append(f"{w}: 모르는 항목 " + ", ".join(sorted(map(str, extra))))
+        title = _plan_text(t.get("title"))
+        if not (isinstance(title, str) and title):
+            errs.append(f"{w}: title 필요(글자)")
+            title = ""
+        why = _plan_text(t.get("why", "")) or ""
+        if not isinstance(why, str):
+            errs.append(f"{w}: why 는 글자")
+            why = ""
+        item = {"id": tid, "title": title, "why": why}
+        for k in ("prep", "pass", "record"):
+            v = t.get(k) or []
+            if not isinstance(v, list) or not all(isinstance(x, str) and x.strip() for x in v):
+                errs.append(f"{w}: {k} 는 글자 목록(- \"…\")")
+                v = []
+            item[k] = [x.strip() for x in v]
+        steps = t.get("steps")
+        if not isinstance(steps, list) or not steps:
+            errs.append(f"{w}: steps 필요(하나 이상)")
+            steps = []
+        item["steps"] = []
+        for j, s in enumerate(steps):
+            sw = f"{w} steps[{j}]"
+            if not isinstance(s, dict):
+                errs.append(f"{sw}: text(·cmd) 묶음이 아니다")
+                continue
+            extra = set(s) - PLAN_STEP_KEYS
+            if extra:
+                errs.append(f"{sw}: 모르는 항목 " + ", ".join(sorted(map(str, extra))))
+            text = _plan_text(s.get("text"))
+            if not (isinstance(text, str) and text):
+                errs.append(f"{sw}: text 필요(글자)")
+                text = ""
+            st = {"text": text}
+            cmd = s.get("cmd")
+            if cmd is not None:
+                if not (isinstance(cmd, str) and cmd.strip()):
+                    errs.append(f"{sw}: cmd 는 글자")
+                else:
+                    bad = sorted(set(_PLAN_VAR_RE.findall(cmd)) - PLAN_VARS)
+                    if bad:
+                        errs.append(f"{sw}: cmd 의 모르는 자리표시 " + ", ".join("{" + x + "}" for x in bad)
+                                    + " — {b}(a/b)·{B}(A/B) 만")
+                    st["cmd"] = cmd.strip()
+            item["steps"].append(st)
+        params = t.get("params") or []
+        if not isinstance(params, list):
+            errs.append(f"{w}: params 는 'pkg/key' 목록")
+            params = []
+        item["params"] = []
+        for x in params:
+            if isinstance(x, str) and _PLAN_PARAM_RE.match(x.strip()):
+                item["params"].append(x.strip())
+            else:
+                errs.append(f"{w}: params 항목 {x!r} — 'pkg/key' 꼴(예: ship_direction/dwa_enabled)")
+        out["tests"].append(item)
+    if errs:
+        raise ParamError("시험 계획 파일 문제: " + " / ".join(errs))
+    return out
+
+
+def load_test_plan(path=None):
+    """tools/ssf_test_plan.yaml 읽기·검사. 못 읽거나 틀리면 ParamError."""
+    path = path or PLAN_PATH
+    name = os.path.basename(path)
+    try:
+        with open(path, encoding="utf-8") as f:
+            doc = yaml.safe_load(f)
+    except FileNotFoundError:
+        raise ParamError(f"시험 계획 파일이 없다: {name}")
+    except yaml.YAMLError as e:
+        raise ParamError(f"{name}: YAML 문법 오류: {e}")
+    return check_test_plan(doc)
+
+
 def catalog_index(cat):
     """{(패키지, 키, 절 또는 None): 항목}"""
     idx = {}
@@ -903,6 +1040,10 @@ class Repo:
     def waypoints(self):
         import ssf_waypoints as wpm
         return wpm.list_files(self.repo, self.home, self.geofence())
+
+    def test_plan(self):
+        """'오늘 시험' 탭 내용(tools/ssf_test_plan.yaml, 보기 전용). 요청마다 새로 읽는다 — git pull 뒤 앱 재시작 불필요."""
+        return load_test_plan(PLAN_PATH)
 
     def wp_prepare(self, course="main", lane=None):
         """녹화 전: 배 확인 → 출력·템플릿 경로 → 기존 녹화본 백업."""

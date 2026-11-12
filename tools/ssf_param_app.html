@@ -148,6 +148,14 @@ td.m{font-family:var(--mono);font-size:12.5px;word-break:break-all}
 .right{display:flex;justify-content:flex-end;gap:8px;margin-top:14px;flex-wrap:wrap}
 .empty{padding:28px;text-align:center;color:var(--ink3)}
 pre.out{font-family:var(--mono);font-size:12px;background:var(--bg);padding:10px;border-radius:8px;overflow-x:auto;max-height:240px}
+/* 오늘 시험 */
+.plan ul{margin:0 0 2px;padding-left:18px}
+.plan code{word-break:break-all}
+.plan .stp{display:flex;gap:8px;align-items:flex-start;cursor:pointer;margin:0}
+.plan .stp input{margin:4px 0 0;width:18px;height:18px;flex:none}
+.plan .stp.done .tx{color:var(--ink3);text-decoration:line-through}
+.plan .ind{margin:0 0 4px 26px}
+.p.flash{outline:2px solid var(--accent);outline-offset:-2px}
 @media (max-width:720px){
   .p{grid-template-columns:minmax(0,1fr)}
   .side{align-items:flex-start;text-align:left;flex-direction:row;flex-wrap:wrap;gap:8px}
@@ -171,6 +179,7 @@ pre.out{font-family:var(--mono);font-size:12px;background:var(--bg);padding:10px
       </div>
     </div>
     <nav class="tabs" id="tabs">
+      <button data-t="plan">오늘 시험</button>
       <button data-t="field" class="sel">현장 조정</button>
       <button data-t="all">전체 파라미터</button>
       <button data-t="diff">저장소와 다른 값<span class="count" id="diffcount" hidden>0</span></button>
@@ -373,7 +382,7 @@ function paramRow(p) {
   const pend = S.pending.get(pk);
   const cur = pend ? pend.value : (e ? e.show : "");
   const c = p.catalog || {};
-  const row = h("div", {class:"p" + (pend ? " pending" : "") + (p.readonly || !e ? " ro" : "")});
+  const row = h("div", {class:"p" + (pend ? " pending" : "") + (p.readonly || !e ? " ro" : ""), "data-pid":p.id});
   const chips = h("div", {class:"chips"}, layerChip(e),
     h("span", {class:"chip t", text:p.type_ko + (p.elem ? " 리스트(" + p.elem + ")" : "")}),
     p.section !== "/" + p.pkg ? h("span", {class:"chip", text:p.section}) : null,
@@ -731,6 +740,109 @@ async function loadWp() {
   render();
 }
 
+// ---- 오늘 시험: tools/ssf_test_plan.yaml(보기 전용). 체크 표시는 이 브라우저 localStorage 에만(배·저장소엔 안 남음).
+//   localStorage 를 못 쓰면(사생활 창 등) 이 창 안에서만 기억 — 화면은 그대로 돈다.
+const PLAN_MEM = new Map();
+function planKey(t, i) { return "ssf_plan|" + (S.plan?.date || "") + "|" + t.id + "|" + i; }
+function planGet(k) {
+  try { const v = localStorage.getItem(k); if (v != null) return v === "1"; } catch (_) {}
+  return PLAN_MEM.get(k) === true;
+}
+function planSet(k, on) {
+  PLAN_MEM.set(k, on);
+  try { if (on) localStorage.setItem(k, "1"); else localStorage.removeItem(k); } catch (_) {}
+}
+function planClear() {
+  if (!S.plan?.tests || !confirm("이 시험 계획의 체크를 모두 지울까요?")) return;
+  for (const t of S.plan.tests) t.steps.forEach((_, i) => planSet(planKey(t, i), false));
+  try {     // 계획에서 빠진 단계의 옛 체크도(같은 날짜)
+    const pre = "ssf_plan|" + (S.plan.date || "") + "|";
+    const old = [];
+    for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k && k.startsWith(pre)) old.push(k); }
+    for (const k of old) localStorage.removeItem(k);
+  } catch (_) {}
+  render();
+}
+function planCmd(c) {          // {b} → a/b, {B} → A/B (ssf_param_core.plan_cmd 와 같은 규칙)
+  const B = S.state?.boat;
+  return B ? c.split("{b}").join(B.toLowerCase()).split("{B}").join(B.toUpperCase()) : c;
+}
+function goParam(p) {          // 값 고치기는 기존 탭에서 — 카탈로그 항목은 '현장 조정', 나머지는 '전체 파라미터'(이름 검색)
+  if (p.catalog) { S.tab = "field"; S.chg = null; } else { S.tab = "all"; S.q = p.key; }
+  render();
+  requestAnimationFrame(() => {
+    const row = [...document.querySelectorAll("#main [data-pid]")].find(el => el.dataset.pid === p.id);
+    if (!row) return;
+    row.scrollIntoView({block:"center"}); row.classList.add("flash");
+    setTimeout(() => row.classList.remove("flash"), 2000);
+  });
+}
+function planCard(t) {
+  const n = t.steps.length, d = t.steps.filter((_, i) => planGet(planKey(t, i))).length;
+  const g = h("div", {class:"guide", style:"margin-top:8px"});
+  const list = (label, xs, cls) => xs.length ? [h("p", {class:cls}, h("span", {class:"k", text:label})),
+    h("ul", {}, xs.map(x => h("li", {text:x})))] : [];
+  if (t.why) g.append(h("p", {}, h("span", {class:"k", text:"왜"}), t.why));
+  g.append(...list("준비", t.prep));
+  g.append(h("p", {}, h("span", {class:"k", text:"순서"}), "끝난 단계는 체크"));
+  t.steps.forEach((s, i) => {
+    const k = planKey(t, i), on = planGet(k);
+    g.append(h("label", {class:"stp" + (on ? " done" : "")},
+      h("input", {type:"checkbox", checked:on, onchange:e => { planSet(k, e.target.checked); render(); }}),
+      h("span", {class:"tx"}, h("b", {text:(i + 1) + ". "}), s.text)));
+    if (s.cmd) { const c = cmdLine("명령", planCmd(s.cmd)); c.classList.add("ind"); g.append(c); }
+  });
+  g.append(...list("합격", t.pass, "adv"), ...list("적을 것", t.record));
+  if (t.params.length) {
+    g.append(h("p", {}, h("span", {class:"k", text:"관련 값"}),
+      `${S.state?.boat_ko || ""} · ${COURSE_KO[S.course]} 에서 실제로 읽는 값 — 고치기는 아래 링크(기존 탭)`));
+    for (const id of t.params) {
+      const [pkg, key] = id.split("/");
+      const ms = S.params.filter(p => p.pkg === pkg && p.key === key);
+      if (!ms.length) {
+        g.append(h("p", {class:"ind"}, h("code", {text:id}), " ",
+          h("span", {class:"hint", text:S.params.length ? "이 배 설정 파일에 없다" : "값 읽는 중…"})));
+        continue;
+      }
+      for (const p of ms) {
+        const e = eff(p), pend = S.pending.get(pkey(p));
+        g.append(h("p", {class:"ind"}, h("b", {text:(p.catalog?.label || p.key) + " "}), h("code", {text:e ? e.show : "—"}), " ",
+          pend ? h("span", {class:"chip", style:"color:var(--pend)", text:"적용 대기 " + pend.value}) : null, " ",
+          layerChip(e), " ", h("span", {class:"key", text:p.key + (ms.length > 1 ? " · " + p.section : "")}), " ",
+          h("button", {class:"linkbtn", text:(p.catalog ? "현장 조정" : "전체 파라미터") + "에서 고치기 →", onclick:() => goParam(p)})));
+      }
+    }
+  }
+  return h("div", {class:"card plan", style:"padding:12px 14px;margin-bottom:12px"},
+    h("div", {class:"label", text:t.title}),
+    h("div", {class:"chips"}, h("span", {class:"chip " + (d === n ? "b" : "t"), text:`${d}/${n} 단계`})), g);
+}
+function viewPlan() {
+  const P = S.plan;
+  if (!P) return [h("div", {class:"empty", text:"읽는 중…"})];
+  const out = [];
+  if (P.error) out.push(h("div", {class:"banner bad", text:"❌ " + P.error}));
+  const tools = h("div", {class:"tools"}, h("button", {class:"btn", text:"↻ 다시 읽기", onclick:loadPlan}),
+    P.tests ? h("button", {class:"btn", text:"체크 모두 지우기", onclick:planClear}) : null,
+    h("span", {class:"hint", text:"체크는 이 브라우저에만 남는다(배·저장소엔 안 남음) · 내용: tools/ssf_test_plan.yaml"}));
+  if (!P.tests) return [...out, tools];
+  let all = 0, done = 0;
+  for (const t of P.tests) t.steps.forEach((_, i) => { all++; if (planGet(planKey(t, i))) done++; });
+  out.push(h("div", {class:"card plan", style:"padding:12px 14px;margin-bottom:12px"},
+    h("div", {class:"label", text:P.title || "오늘 시험"}),
+    h("div", {class:"chips"}, P.date ? h("span", {class:"chip c", text:P.date}) : null,
+      h("span", {class:"chip t", text:`체크 ${done}/${all}`}),
+      S.state ? h("span", {class:"chip b", text:`명령은 ${S.state.boat_ko} 기준`}) : null),
+    P.note ? h("div", {class:"guide", style:"margin-top:8px;white-space:pre-line"}, h("p", {text:P.note})) : null), tools);
+  for (const t of P.tests) out.push(planCard(t));
+  return out;
+}
+async function loadPlan() {
+  try { const r = await api("/api/plan"); S.plan = r.ok === false ? {error:r.error} : r; }
+  catch (e) { S.plan = S.plan?.tests ? Object.assign({}, S.plan, {error:e.message + " — 아래는 마지막으로 읽은 내용"}) : {error:e.message}; }
+  render();
+}
+
 function viewLog() {
   if (!S.log.length) return [h("div", {class:"card"}, h("div", {class:"empty", text:"아직 바꾼 기록 없음 (~/ssf_logs/param_changes.tsv)"}))];
   return [h("div", {class:"card tablewrap"}, h("table", {},
@@ -877,7 +989,7 @@ function render(keepFocus) {
   if (S.applied.length && S.tab !== "log") kids.push(restartBanner());
   if (S.tab === "field" || S.tab === "all")
     kids.push(h("p", {class:"hint", text:`보는 코스: ${COURSE_KO[S.course]} — 칸의 값 = 이 배가 이 코스에서 실제로 읽는 값. 바꾸면 그 값을 정하는 파일이 고쳐진다.`}));
-  const v = {field:viewField, all:viewAll, diff:viewDiff, wp:viewWp, cam:viewCam, log:viewLog}[S.tab]();
+  const v = {plan:viewPlan, field:viewField, all:viewAll, diff:viewDiff, wp:viewWp, cam:viewCam, log:viewLog}[S.tab]();
   m.replaceChildren(...kids, ...v);
   if (S.tab === "wp") requestAnimationFrame(recScroll);   // 다시 붙인 녹화 화면의 스크롤 되돌리기
   if (keepFocus && selStart != null) { const s = $(".search"); s.focus(); s.setSelectionRange(selStart, selStart); }
@@ -894,7 +1006,7 @@ async function refresh() {
 
 $("#course").addEventListener("click", e => { const c = e.target.dataset?.c; if (c) { S.course = c; render(); } });
 $("#tabs").addEventListener("click", e => { const t = e.target.closest("button")?.dataset.t;
-  if (t) { S.tab = t; render(); if (t === "wp") { loadWp(); recPoll(); } if (t === "cam") camPoll(); } });
+  if (t) { S.tab = t; render(); if (t === "wp") { loadWp(); recPoll(); } if (t === "cam") camPoll(); if (t === "plan") loadPlan(); } });
 $("#discard").addEventListener("click", () => { S.pending.clear(); render(); });
 $("#review").addEventListener("click", review);
 $("#modal").addEventListener("click", e => { if (e.target.id === "modal") { $("#modal").hidden = true; render(); } });

@@ -1037,3 +1037,102 @@ def test_server_gps_route(server, monkeypatch):
     port, _ = server
     st, d = _req(port, "/api/gps")
     assert st == 200 and d["ok"] and d["level"] == "none"
+
+
+# ---------------------------------------------------------------- 오늘 시험(tools/ssf_test_plan.yaml)
+
+def test_plan_file_passes_schema():
+    """실제 계획 파일이 스키마를 통과하고 id 가 겹치지 않는다."""
+    p = core.load_test_plan()
+    ids = [t["id"] for t in p["tests"]]
+    assert ids and len(ids) == len(set(ids))
+    assert p["title"] and p["date"]
+    for t in p["tests"]:
+        assert t["title"] and t["steps"] and all(s["text"] for s in t["steps"])
+        for k in ("prep", "pass", "record", "params"):
+            assert isinstance(t[k], list)
+
+
+@pytest.mark.parametrize("b", ["A", "B"])
+def test_plan_params_exist_in_config(boat, b):
+    """params 의 pkg/key 가 그 배가 읽는 config yaml 에 있다(오타면 탭에서 '없다'로 뜬다). launch 가 덮는 키도 아님."""
+    _, groups = boat.load(b)
+    have = {(g[0], g[2]) for g in groups}
+    n = 0
+    for t in core.load_test_plan()["tests"]:
+        for pk in t["params"]:
+            pkg, key = pk.split("/")
+            assert (pkg, key) in have, (b, t["id"], pk)
+            assert (pkg, key) not in core.LAUNCH_OVERRIDES, pk
+            n += 1
+    assert n
+
+
+def test_plan_cmd_placeholders():
+    assert core.plan_cmd("ssf {b} wp practice avoid", "A") == "ssf a wp practice avoid"
+    assert core.plan_cmd("boat:={B} x {b}", "b") == "boat:=B x b"
+    shell = "tee ~/ssf_logs/k_$(date +%H%M).log ${HOME}"
+    assert core.plan_cmd(shell, "A") == shell
+    cmds = [s["cmd"] for t in core.load_test_plan()["tests"] for s in t["steps"] if "cmd" in s]
+    assert any("{B}" in c for c in cmds) and any("{b}" in c for c in cmds)
+    for c in cmds:
+        for b in "AB":
+            out = core.plan_cmd(c, b)
+            assert "{b}" not in out and "{B}" not in out
+    assert any("boat:=B" in core.plan_cmd(c, "B") for c in cmds)
+    assert any(core.plan_cmd(c, "B").startswith("ssf b ") for c in cmds)
+
+
+def _plan(**over):
+    t = {"id": "x", "title": "T", "steps": [{"text": "s", "cmd": "ssf {b} wp"}], "params": ["ship_back/hold_dist_m"]}
+    t.update(over)
+    return {"date": "2026-11-12", "title": "t", "tests": [t]}
+
+
+@pytest.mark.parametrize("doc,why", [
+    ({"date": "d", "tests": [_plan()["tests"][0], _plan()["tests"][0]]}, "id 가 겹친다"),
+    (_plan(title=""), "title 필요"),
+    (_plan(id=None), "id 필요"),
+    (_plan(steps=[]), "steps 필요"),
+    (_plan(steps=[{"cmd": "ls"}]), "text 필요"),
+    (_plan(steps=[{"text": "s", "cmd": "ssf {boat} wp"}]), "{boat}"),
+    (_plan(params=["hold_dist_m"]), "pkg/key"),
+    (_plan(params="ship_back/hold_dist_m"), "params 는"),
+    (_plan(pas=["x"]), "모르는 항목 pas"),
+    (_plan(prep="한 줄"), "prep 는"),
+    ({"date": "d", "tests": []}, "tests"),
+    ([1, 2], "맨 위"),
+])
+def test_plan_schema_rejects(doc, why):
+    with pytest.raises(core.ParamError) as e:
+        core.check_test_plan(doc)
+    assert why in str(e.value)
+
+
+def test_plan_schema_defaults_and_unquoted_date(tmp_path):
+    f = tmp_path / "p.yaml"
+    f.write_text("date: 2026-11-13\ntests:\n  - id: a\n    title: A\n    steps:\n      - text: s\n", encoding="utf-8")
+    p = core.load_test_plan(str(f))
+    assert p["date"] == "2026-11-13" and p["title"] == "" and p["note"] == ""
+    t = p["tests"][0]
+    assert t["prep"] == t["pass"] == t["record"] == t["params"] == [] and t["why"] == ""
+    assert "cmd" not in t["steps"][0]
+    f.write_text("tests: [\n", encoding="utf-8")
+    with pytest.raises(core.ParamError, match="YAML 문법"):
+        core.load_test_plan(str(f))
+    with pytest.raises(core.ParamError, match="없다"):
+        core.load_test_plan(str(tmp_path / "none.yaml"))
+
+
+def test_server_plan_route(server, monkeypatch, tmp_path):
+    port, _ = server
+    st, d = _req(port, "/api/plan")
+    assert st == 200 and d["ok"] is True
+    assert [t["id"] for t in d["tests"]] == [t["id"] for t in core.load_test_plan()["tests"]]
+    st, page = _req(port, "/")
+    assert b'data-t="plan"' in page and b"/api/plan" in page
+    bad = tmp_path / "bad.yaml"
+    bad.write_text("tests:\n  - id: a\n", encoding="utf-8")
+    monkeypatch.setattr(core, "PLAN_PATH", str(bad))
+    st, d = _req(port, "/api/plan")
+    assert st == 200 and d["ok"] is False and "title 필요" in d["error"]
