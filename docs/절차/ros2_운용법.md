@@ -165,7 +165,7 @@ ros2 launch launch_files launch_files.launch.py boat:=A course:=main   # 🚨 �
 | 5·6 | `north_goal_angle`, `ship_goal_angle` |
 | 7 | RealSense D455 (640x480x30) |
 | 8 | 비전 검출기 3종 (gate·turn·dock, **상주 + 모드 게이팅**) |
-| 9 | 미션 노드 5종 (`ship_gate`·`ship_dock`·`ship_turn`·`ship_back`·`ship_avoid`(mode 5, 기본 `avoid_mode: lidar` = 20000 만, 11-13)) |
+| 9 | 미션 노드 5종 (`ship_gate`·`ship_dock`·`ship_turn`·`ship_back`·`ship_avoid`(mode 5, 기본 `avoid_mode: fused` — 구역 신호·검출기 전엔 20000 만, 11-14)) |
 | 10·11 | `ship_direction`, `motor_control` |
 
 ### ③ 🚨 메인 launch 에 **안 들어 있는** 것 — 터미널 2·3

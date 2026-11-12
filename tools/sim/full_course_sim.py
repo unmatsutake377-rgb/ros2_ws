@@ -59,7 +59,7 @@
   검출기 dock → /image_angle → ship_back·ship_turn·ship_dock
   ship_goal_angle → /yaw_error → ship_direction
   ship_gate·ship_back·ship_turn·ship_dock·ship_avoid → /candidate_angle → ship_direction (발행자를 틱마다 기록)
-    ship_avoid 는 yaml 기본 avoid_mode lidar(mode 5 에서 매 틱 20000 — 예전 north 폴백과 같은 값)로 돌린다.
+    ship_avoid 는 yaml 기본 avoid_mode fused 로 돌린다(/avoid_zone·검출 미배선 → mode 5 매 틱 20000 — 예전 north 폴백과 같은 값).
     lidar 모드는 /wp_mode 만 본다 → /scan·/imu·GPS·/avoid_detections 는 연결하지 않는다(도리도리는 doridori_sim).
   /candidate_angle(모든 발행자, north 자기 발행 포함) → north_goal_angle.candidate_cb
                           (C2 dwell 대기: mode 2·3 은 담당 노드가 손 뗀 동안만 dwell)
@@ -592,7 +592,7 @@ def node_params(wp_file, overrides=None, search_behavior="orbit"):
     rosstub.PARAMS["ship_goal_angle"] = dict(P_SGA)
     for n in ("ship_direction", "motor_control", "ship_gate", "ship_dock"):
         rosstub.PARAMS[n] = {}
-    rosstub.PARAMS["ship_avoid"] = dict(P_SA)          # avoid_mode lidar 등 yaml 그대로(--param ship_avoid.* 로 덮음)
+    rosstub.PARAMS["ship_avoid"] = dict(P_SA)          # avoid_mode fused 등 yaml 그대로(--param ship_avoid.* 로 덮음)
     for node, kv in SEARCH_BEHAVIOR_PARAMS[search_behavior].items():
         rosstub.PARAMS[node] = dict(kv)
     for node, kv in (overrides or {}).items():         # --param 노드.키=값 (11-06, 계약서_DWA 결정 11)

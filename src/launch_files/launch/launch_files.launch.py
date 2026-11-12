@@ -313,7 +313,7 @@ def _ship_avoid(context):
 
     🚨 원자 묶음: north_goal_angle FALLBACK_MODES (8,)(mode 5 폴백 뺌) · ssf_tools wp_nodes 5→ship_avoid ·
        test_avoid_mission 과 한 커밋. 하나만 되돌리면 mode 5 발행자가 2개(값 섞임)이거나 healthcheck 거짓 경보.
-    방식은 yaml avoid_mode(기본 'lidar' = 매 틱 20000, 예전 north 폴백과 같은 동작) — 바꾸면 launch 재시작.
+    방식은 yaml avoid_mode(기본 'fused' — /avoid_zone·검출기 전엔 매 틱 20000) — 바꾸면 launch 재시작.
     패키지가 없으면 **건너뛴다**(launch 전체를 세우지 않는다). 그때 mode 5 는 발행자 0 — ship_direction 이
     모드 전환 때 20000 으로 리셋하고 못 받은 동안 20000 을 쓰므로 주행은 같다. healthcheck 는 담당 침묵으로 알린다.
     """
@@ -563,7 +563,7 @@ def generate_launch_description():
         #      mode 3   → ship_turn(orbit 기본) / ship_back(search_behavior:=hold)
         #                            ← turn 검출기 (turn_color_mode3 부표) — 검출기 쪽은 스위치와 무관
         #      mode 7   → ship_dock  ← dock 검출기 (/image_angle)
-        #      mode 5   → ship_avoid (avoid_mode 기본 lidar = 20000) ← 검출기 없음(C6 전까지) → 검출기 전부 비활성
+        #      mode 5   → ship_avoid (avoid_mode 기본 fused, 구역 신호·검출기 전엔 20000) ← 검출기 없음(U3 전까지) → 검출기 전부 비활성
         #      mode 8   → 순수 회피(담당 없음, north 20000 폴백) → 검출기 전부 비활성
         #
         #    🚨 dock 과 turn 은 둘 다 /image_angle 을 발행한다. 모드가 겹치면 한 토픽에
@@ -593,7 +593,7 @@ def generate_launch_description():
              parameters=[_pkg_yaml('ship_dock')]),
         # ship_turn·ship_back 은 search_behavior 인자에 따라 파라미터가 달라 _search_nodes 가 띄운다.
         OpaqueFunction(function=_search_nodes),
-        # 9b) ship_avoid — mode 5 담당(기본 avoid_mode lidar = 20000). 패키지 없으면 _ship_avoid 가 건너뛴다.
+        # 9b) ship_avoid — mode 5 담당(기본 avoid_mode fused, 구역 신호·검출기 전엔 20000). 패키지 없으면 _ship_avoid 가 건너뛴다.
         OpaqueFunction(function=_ship_avoid),
 
         # ============================================================
