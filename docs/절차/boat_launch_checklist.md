@@ -67,7 +67,7 @@ FS-i6 는 켤 때 아래가 안 맞으면 **송신을 시작하지 않는다.** 
 ```
 ① 노트북: sudo tools/boat_boot.sh → ros2 launch launch_files launch_files.launch.py boat:=A|B course:=main|tournament (🚨 boat·course 둘 다 필수 — boat 10-29, course 11-09. 브릿지 포트 여는 리셋을 배터리 전에 끝낸다 — §1)
    탐색(wp_mode 3)은 기본 원 선회(search_behavior 기본 orbit, 2026-11 경기규정 — 11-11 hold 에서 변경). 위치유지로 돌릴 때만 뒤에 search_behavior:=hold
-   🚨 출발 전 vision.yaml 확인: turn_color_mode3 = 공지된 탐색 색(red·green 시계 / yellow 반시계), turn_color_mode2 = 공지된 위치유지 색(green·red·black — 기본 white 그대로 두지 말 것)
+   🚨 출발 전 vision.yaml 확인: turn_color_mode3 = 공지된 탐색 색(red·green 시계 / yellow·black 반시계 — OT 11-12: 검정 = 좌현선회), turn_color_mode2 = 공지된 위치유지 색(green·red·black — 기본 white 그대로 두지 말 것)
 ② 아두이노는 노트북 직결 (§2)
 ③ 조종기 ON — 스위치 전부 [위] + 왼쪽 스틱 맨 아래 → 수동 상태로 켜진다. 스틱에서 손 뗀다
 ④ 배터리 1·2번 → 5·6번 (접촉기 붙는 소리)

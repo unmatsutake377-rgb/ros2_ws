@@ -86,7 +86,7 @@
     규정 기하(빨강 5 m 이내 연속 5 s)도 따로 적는다.
   · 탐색(orbit) = ship_turn 이 ORBIT 에서 진행각 orbit_target_deg 를 채워 DONE(안전 타임아웃 DONE 은 실패)
     + 기하: mode 3 동안 공지 색 부표(turn_color_mode3) 8 m 안에서 배 위치 방위의 부호 있는 누적이
-    규정 방향(빨강·초록 시계 / 노랑·흰색 반시계)으로 ≥ 350°. 둘 다 맞아야 성공.
+    규정 방향(빨강·초록 시계 / 노랑·흰색·검정 반시계 — 검정은 2026 OT 11-12)으로 ≥ 350°. 둘 다 맞아야 성공.
   · 포기 = ship_back 이 ERROR '포기'(거리 unknown 10 s 또는 HOLD 총 60 s)를 남기고 DONE — 성공으로 세지 않는다.
   · 도킹 = ship_dock 이 CONTACT 에 들어간 순간 배 중심이 목표 칸 중심 ±0.5 m(칸 폭) 안 → '칸 안 접안'.
     후진 이탈 = BACKOFF→DONE 이 거리(2.5 m) 도달로 끝남. SEARCH 타임아웃 = SEARCH→DONE.
@@ -267,7 +267,7 @@ def build_world(world_wps, seed):
     W["hold_by_wp"] = {}                     # 위치유지 WP 순번 → 부표 index (2026 규정: 2회)
     for i2 in [i for i, m in enumerate(by_mode) if m == 2]:
         add_buoy(P[i2], "white", "hold"); W["hold_by_wp"][i2] = len(W["buoys"]) - 1
-    col_kw = {"초록": "green", "빨강": "red", "하양": "white", "흰": "white"}
+    col_kw = {"초록": "green", "빨강": "red", "하양": "white", "흰": "white", "검정": "black"}
     for i, w in enumerate(world_wps):
         if w["mode"] == 3:
             col = next((v for kk, v in col_kw.items() if kk in w["label"]), "red")
@@ -556,7 +556,8 @@ def run(seed, variant="A", wp_file=None, world_wp_file=WP_DEFAULT, gps_sigma=0.0
     reds = [(b["x"], b["y"]) for b in W["buoys"] if b["color"] == "red"]
     greens = [(b["x"], b["y"]) for b in W["buoys"] if b["color"] == "green"]
     whites = [(b["x"], b["y"]) for b in W["buoys"] if b["color"] == "white"]
-    by_color = {"red": reds, "green": greens, "white": whites}
+    blacks = [(b["x"], b["y"]) for b in W["buoys"] if b["color"] == "black"]   # 탐색 검정(11-12)
+    by_color = {"red": reds, "green": greens, "white": whites, "black": blacks}
 
     x, y = float(W["start"][0]), float(W["start"][1]); psi = W["psi0"]; v = w = 0.0
     boat3 = None
@@ -910,7 +911,7 @@ def run(seed, variant="A", wp_file=None, world_wp_file=WP_DEFAULT, gps_sigma=0.0
         out["orbit_node"] = "완주" if done_t[0][4] >= target - 1e-6 else "안전 타임아웃"
     else:
         out["orbit_node"] = "미완"
-    want_cw = {"red": True, "green": True, "yellow": False, "white": False}.get(c3)
+    want_cw = {"red": True, "green": True, "yellow": False, "white": False, "black": False}.get(c3)
     geo = max(orb_sum.values(), key=abs) if orb_sum else 0.0
     out["orbit_geo_deg"] = round(geo, 1)
     out["orbit_geo_ok"] = want_cw is not None and abs(geo) >= ORBIT_GEO_MIN_DEG and (geo > 0) == want_cw
@@ -1241,7 +1242,7 @@ def plot(r, path):
         if i == len(X) or M[i] != M[i0]:
             ax.plot(X[i0:i + 1], Y[i0:i + 1], color=MODE_COL.get(M[i0], "k"), lw=1.6)
             i0 = i
-    colmap = {"red": "crimson", "green": "seagreen", "white": "white", "orange": "#ff7f0e"}
+    colmap = {"red": "crimson", "green": "seagreen", "white": "white", "orange": "#ff7f0e", "black": "#222"}
     for b in W["buoys"]:
         ax.add_patch(plt.Circle((b["x"], b["y"]), 0.45 if b["kind"] in ("hold",) or b["kind"].startswith("search") else 0.3,
                                 fc=colmap[b["color"]], ec="k", lw=0.7, zorder=4))
