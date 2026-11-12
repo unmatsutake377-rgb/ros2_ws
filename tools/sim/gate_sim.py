@@ -71,7 +71,9 @@ def make_course(seed):
     gates = []
     for gx in GATE_X:
         w = rng.uniform(3.0, 6.0); yc = 3.0 + rng.uniform(-1.0, 1.0)
-        gates.append(dict(x=gx, yc=yc, w=w, red=(gx, yc + w / 2), green=(gx, yc - w / 2)))   # 동진 기준 좌현 = +y = 빨강
+        port, stbd = (gx, yc + w / 2), (gx, yc - w / 2)   # 동진 기준 좌현 = +y
+        red, green = (port, stbd) if P_SG["red_on_port"] else (stbd, port)   # 세계 = yaml red_on_port(11-12 창원: 초록 좌현)
+        gates.append(dict(x=gx, yc=yc, w=w, red=red, green=green))
     start = (5.0, 3.0 + rng.uniform(-1.0, 1.0)); psi0 = 90.0 + rng.uniform(-30.0, 30.0)
     return gates, start, psi0
 
@@ -143,14 +145,14 @@ def run(seed, variant, tau=0.0):
         for i, (bx, by, br) in enumerate(buoys):
             if math.hypot(x - bx, y - by) - br < K.BOAT_HALF_W and not hit_flag.get(i):
                 hits += 1; hit_flag[i] = True
-    passed = [c is not None and g["green"][1] < c < g["red"][1] for c, g in zip(crossed, gates)]
+    passed = [c is not None and min(g["green"][1], g["red"][1]) < c < max(g["green"][1], g["red"][1]) for c, g in zip(crossed, gates)]
     lat = [abs(c - g["yc"]) / (g["w"] / 2) for c, g in zip(crossed, gates) if c is not None]
     node_count = sg.pubs["/gates_passed"].last.data if sg and sg.pubs["/gates_passed"].last is not None else -1
     return dict(seed=seed, variant=variant, traj=np.array(traj), t=t, hits=hits, passed=sum(passed), reached=x >= X_END,
                 lat=lat, node_count=node_count, n_cand=n_cand, n_fallback=n_fallback, gates=gates)
 
 
-VARIANTS = [("vision", "비전 게이트 — 부호·카운트 수정 후 (red_on_port=true)"), ("flip", "비전 게이트 — 수정 전 부호와 동일 (red_on_port=false)"), ("gps", "GPS 웨이포인트만 (비전 없음, 중점 좌표를 안다고 가정)")]
+VARIANTS = [("vision", "비전 게이트 — yaml red_on_port 그대로(세계도 같은 배치)"), ("flip", "비전 게이트 — red_on_port 반대(설정 틀림 재현)"), ("gps", "GPS 웨이포인트만 (비전 없음, 중점 좌표를 안다고 가정)")]
 
 
 def stress(spacing, wmin=4.0, wmax=8.0, N=40):

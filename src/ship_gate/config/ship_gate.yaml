@@ -13,12 +13,13 @@
                              # (80 > 2×31.95 = 63.9(OAK HFOV) 이라 사실상 카메라 FOV 가 상한. 11-04 OAK 전환)
     single_offset_deg: 40.0  # 한쪽만 보일 때 게이트 중심 쪽으로 트는 각
 
-    # 🚨 빨강이 좌현인가 — 한쪽만 보일 때 트는 방향을 정한다 [6]. 대회 규정 기본 true.
+    # 🚨 빨강이 좌현인가 — 한쪽만 보일 때 트는 방향을 정한다 [6]. 규정은 어느 쪽인지 정하지 않는다 → 현장 배치대로.
     #    부호 규약(11-04 확정): /red_angle·/green_angle 은 상대각, 왼쪽 양수(vision_geom.angle_from_pixel).
     #    /candidate_angle·LiDAR a−80 과 같은 부호. 빨강이 좌현이면 /red_angle > 0.
-    #    🚨 false 로 '고치지' 말 것 — 파라미터 뜻이 거꾸로 된다. 대회 launch 가 이 yaml 을 넘기므로
-    #       (11-05) 여기 값이 그대로 대회값이다 — false 면 한쪽만 보일 때 반대로 튼다.
-    red_on_port: true
+    #    11-12 창원 대회장: 배 진행 방향(출발 → 마지막 게이트) 기준 **왼쪽 = 초록** (사용자 확인, 2025-11 규정 그림도 같음)
+    #    → false. 대회 launch 가 이 yaml 을 넘기므로(11-05) 여기 값이 대회값이다(코드 기본 true 는 동결 중이라 그대로).
+    #    🚨 '물가에서 마주 보고' 왼쪽이 아니라 '배가 지나가는 방향' 왼쪽이다 — 틀리면 한쪽만 보일 때 반대로 튼다.
+    red_on_port: false
 
     # ---- 순차 통과 카운트 [4] → /gates_passed ----
     # 🚨 대회 launch(launch_files.launch.py) 가 ship_gate 에 이 yaml 을 넘긴다(11-05) → yaml 이 대회값.
