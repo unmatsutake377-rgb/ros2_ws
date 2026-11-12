@@ -39,6 +39,14 @@ FSM: INIT → SEARCH → HOLD → DONE.
   /candidate_angle 은 0~360(0=정면) 규약. LiDAR 80°=정면.
   전진 조향만 발행 직전 ±STEER_LIMIT_DEG(80) 클램프 — 180.0(후진 신호)이 우연히 나가지 않게.
 
+[6] (계약서_GPS위치유지_20261113, 사용자 결정 11-13) hold_source 기본 gps — mode 2 만:
+    INIT 20000 1 s → SEARCH 20000(north 가 WP 로) → /goal_distance(쓸 수 있는 값: 유한 ≥ 0, goal_dist_stale_sec
+    안, 모드 진입 1.0 s 뒤 수신) < gps_enter_m 이면 HOLD → 50000(정지), 거리 > gps_resume_m 이면 < gps_enter_m
+    까지 20000(재접근, north LOS) → gps_keep_radius_m 안 연속 gps_hold_time_sec 이면 DONE(20000).
+    거리 없음 → 50000, unknown_giveup_sec 뒤 포기 DONE. hold_max_sec 그대로. 180·조향각은 내지 않는다.
+    hold_source=vision 이면 위 [1]~[5] 그대로(출력 비트 동일, /goal_distance 구독도 안 만듦).
+    search_behavior:=hold 의 mode 3 은 늘 vision 경로. ⚠️ 위치유지 WP = 부표 옆 대기점(2~3 m)에 찍는다.
+
 ⚠️ ship_last 는 6b 에서 이미 제거됨(6d-[3]). 여기선 ship_back 만 다룬다.
 """
 
@@ -60,6 +68,8 @@ from ship_back.hold_logic import reacquire_stop_active, reacquire_window_elapsed
 from ship_back.hold_logic import check_hold_params
 from ship_back.hold_logic import check_distance_source, fused_allowed_src_ids, parse_fused_objects
 from ship_back.hold_logic import fused_fresh, match_fused, choose_distance
+from ship_back.hold_logic import check_hold_source, gps_hold_applies, check_gps_hold_params
+from ship_back.hold_logic import goal_dist_usable, gps_hold_action
 
 IMAGE_ANGLE_INVALID = 10000.0
 CANDIDATE_INVALID = 20000.0
@@ -172,6 +182,23 @@ class ShipBack(Node):     # 🚨 작년엔 ShipTurn 이었다(복붙). 이름을
             self.get_logger().error(
                 f"fused_allowed_sources 에 모르는 출처 {bad_src} → 무시(lidar|depth|fused|row 만)")
 
+        # 위치유지 출처(계약서_GPS위치유지_20261113 결정 1). 코드 기본값 = yaml = 'gps'. 잘못된 값 → ERROR 후 gps.
+        #   vision 이면 /goal_distance 구독을 만들지 않는다(DDS 그래프까지 지금 그대로). 구독보다 먼저 선언.
+        #   gps_* 는 vision 이어도 선언·검사한다(yaml 키가 버려지지 않게, 다시 gps 로 바꿀 때 같은 기준).
+        self.hold_source, hs_err = check_hold_source(
+            self.declare_parameter('hold_source', 'gps').value)
+        (self.gps_enter_m, self.gps_resume_m, self.gps_keep_radius_m, self.gps_hold_time_sec,
+         self.goal_dist_stale_sec, gps_issues) = check_gps_hold_params(
+            self.declare_parameter('gps_enter_m', 3.5).value,
+            self.declare_parameter('gps_resume_m', 4.0).value,
+            self.declare_parameter('gps_keep_radius_m', 4.5).value,
+            self.declare_parameter('gps_hold_time_sec', 6.0).value,
+            self.declare_parameter('goal_dist_stale_sec', 2.0).value)
+        if hs_err is not None:
+            self.get_logger().error(hs_err)
+        for _level, text in gps_issues:      # 가드는 ERROR 만 낸다
+            self.get_logger().error(text)
+
         # ---- 발행/구독 (토픽 이름 불변, /image_distance 는 버림) ----
         self.pub_candidate = self.create_publisher(Float32, '/candidate_angle', qos)
         self.create_subscription(Int32, '/wp_mode', self.wp_cb, qos)
@@ -179,6 +206,9 @@ class ShipBack(Node):     # 🚨 작년엔 ShipTurn 이었다(복붙). 이름을
         self.create_subscription(LaserScan, '/scan', self.scan_cb, SCAN_QOS)
         if self.distance_source != 'lidar':
             self.create_subscription(Float32MultiArray, self.fused_topic, self.fused_cb, FUSED_QOS)
+        if self.hold_source == 'gps':
+            # 새 토픽 아님 — north 발행(RELIABLE d2) 구독자 추가. 구독 RELIABLE d5(ship_dock 과 같음).
+            self.create_subscription(Float32, '/goal_distance', self.goal_distance_cb, qos)
 
         # ---- 상태 ----
         self.wp_mode = -1
@@ -199,6 +229,12 @@ class ShipBack(Node):     # 🚨 작년엔 ShipTurn 이었다(복붙). 이름을
         self.hold_enter_t = None       # 지금 HOLD 구간 시작 시각(None = HOLD 아님)
         self.reacquire_t0 = None       # 재획득 정지 창 시작(HOLD→SEARCH lost) 시각, None = 창 없음
         self.hold_timer = HoldTimer(self.keep_radius_m, self.hold_time_sec)
+        # GPS 위치유지(hold_source=gps, mode 2) 상태
+        self.goal_dist = None          # 마지막 /goal_distance 값(m, 검사 전 그대로)
+        self.goal_dist_t = None        # 그 수신 시각(monotonic)
+        self.mode_enter_t = None       # 담당 모드 진입(리셋) 시각 — 진입 가드 기준
+        self.gps_approach = False      # 직전 HOLD 출력이 재접근(20000)이었나 — 히스테리시스 기억
+        self.gps_hold_timer = HoldTimer(self.gps_keep_radius_m, self.gps_hold_time_sec)
 
         self.create_timer(self.period_sec, self.timer_cb)
         self.get_logger().info(
@@ -209,7 +245,12 @@ class ShipBack(Node):     # 🚨 작년엔 ShipTurn 이었다(복붙). 이름을
             f"unknown_giveup={self.unknown_giveup_sec}s, hold_max={self.hold_max_sec}s, "
             f"reacquire_stop={self.reacquire_stop_sec}s. "
             f"distance_source={self.distance_source}"
-            + ("" if self.distance_source == 'lidar' else f"({self.fused_topic})") + "."
+            + ("" if self.distance_source == 'lidar' else f"({self.fused_topic})") + ". "
+            f"hold_source={self.hold_source}"
+            + ("" if self.hold_source != 'gps' else
+               f"(mode 2: /goal_distance < {self.gps_enter_m}m 정지, > {self.gps_resume_m}m 재접근, "
+               f"{self.gps_keep_radius_m}m 안 연속 {self.gps_hold_time_sec}s 완료, "
+               f"stale {self.goal_dist_stale_sec}s)") + "."
         )
 
     # ---------------------- 콜백 ----------------------
@@ -228,6 +269,15 @@ class ShipBack(Node):     # 🚨 작년엔 ShipTurn 이었다(복붙). 이름을
                 self.hold_enter_t = None
                 self.reacquire_t0 = None       # 재획득 정지 창 닫음 — 첫 SEARCH 는 20000
                 self.hold_timer.reset()
+                self.mode_enter_t = self.state_t   # GPS 진입 가드 기준(이 뒤 1.0 s 지나 받은 거리만)
+                self.gps_approach = False
+                self.gps_hold_timer.reset()
+
+    def goal_distance_cb(self, msg):
+        """/goal_distance(north, 현재 WP 까지 m). hold_source=gps 일 때만 구독된다. 검사는 쓸 때(goal_dist_usable)."""
+        with self.lock:
+            self.goal_dist = float(msg.data)
+            self.goal_dist_t = time.monotonic()
 
     def angle_cb(self, msg):
         with self.lock:
@@ -382,6 +432,11 @@ class ShipBack(Node):     # 🚨 작년엔 ShipTurn 이었다(복붙). 이름을
             if self.state_t is None:
                 self.state_t = now
 
+        # hold_source=gps 의 mode 2 는 GPS 경로. 그 밖(vision, mode 3)은 아래 비전 경로 그대로.
+        if gps_hold_applies(self.hold_source, self.wp_mode):
+            self._gps_tick(now)
+            return
+
         dist, rel, src = self._target(now)
         # '봤다' = 비전 색 확인(lidar_acquire=false). LiDAR 보조는 last_seen 을 늘리지 않는다.
         seen = rel is not None and counts_as_seen(src, self.lidar_acquire)
@@ -483,6 +538,84 @@ class ShipBack(Node):     # 🚨 작년엔 ShipTurn 이었다(복붙). 이름을
 
         # ---- DONE: 손 떼(autonomous 가 다음 WP) ----
         self.publish(CANDIDATE_INVALID)
+
+    def _gps_tick(self, now):
+        """hold_source=gps, mode 2 한 틱(계약서_GPS위치유지 §2). 틱마다 20000 / 50000 중 하나만 낸다.
+
+        180(후진)·조향각은 내지 않는다 — 재접근 방향은 north LOS(20000 → ship_direction (C)).
+        상태 이름은 INIT/SEARCH/HOLD/DONE 그대로(시뮬 분류가 'HOLD' 문자열을 본다).
+        """
+        with self.lock:
+            dist = goal_dist_usable(self.goal_dist, self.goal_dist_t, self.mode_enter_t, now,
+                                    self.goal_dist_stale_sec)
+
+        # ---- INIT: 진입 직후 손 떼(north 가 WP 로) ----
+        if self.state == "INIT":
+            self.publish(CANDIDATE_INVALID)
+            if self.elapsed() >= 1.0:
+                self.set_state("SEARCH")
+            return
+
+        # ---- SEARCH: WP 접근 중(north). 쓸 수 있는 거리 < enter 면 같은 틱에 HOLD(정지) ----
+        if self.state == "SEARCH":
+            if dist is None or dist >= self.gps_enter_m:
+                self.publish(CANDIDATE_INVALID)
+                return
+            self.get_logger().info(
+                f"WP {dist:.1f}m < {self.gps_enter_m:g}m → GPS 정지 유지 시작"
+                f"({self.gps_keep_radius_m:g}m 안 연속 {self.gps_hold_time_sec:g}s)")
+            self.gps_hold_timer.reset()
+            self.gps_approach = False
+            self.set_state("HOLD")
+
+        # ---- DONE: 손 떼(north 가 반경 안 dwell 뒤 다음 WP) ----
+        if self.state == "DONE":
+            self.publish(CANDIDATE_INVALID)
+            return
+
+        # ---- HOLD: 정지 / 반경 넘으면 재접근 ----
+        # 판정: gps_keep_radius 안 연속 gps_hold_time (거리 모름 = 반경 밖으로 보고 0 부터)
+        if self.gps_hold_timer.satisfied(dist, now):
+            self.get_logger().info(
+                f"✅ 위치유지(GPS) {self.gps_keep_radius_m:g}m 안 {self.gps_hold_time_sec:g}s 달성 → 완료")
+            self.set_state("DONE")
+            self.publish(CANDIDATE_INVALID)
+            return
+
+        # HOLD 총시간 상한(§10-추가 5): 성공 판정 뒤 — 같은 틱이면 성공이 우선
+        if hold_total_exceeded(self.hold_total, self.hold_enter_t, now, self.hold_max_sec):
+            self.get_logger().error(
+                f"HOLD 총 {self.hold_max_sec:g} s 넘음(GPS 위치유지 성공 못 함) → 포기, DONE")
+            self.set_state("DONE")           # DONE 은 래치 — ERROR 는 이 전이에서 1회
+            self.publish(CANDIDATE_INVALID)
+            return
+
+        action = gps_hold_action(dist, self.gps_approach, self.gps_enter_m, self.gps_resume_m)
+        if action != 'unknown':
+            self.unknown_t0 = None
+        elif self.unknown_t0 is None:
+            self.unknown_t0 = now
+            self.get_logger().warn(
+                f"/goal_distance 없음·stale({self.goal_dist_stale_sec:g}s)·비정상 → 정지(50000), "
+                f"{self.unknown_giveup_sec:g}s 이어지면 포기")
+        if unknown_giveup(self.unknown_t0, now, self.unknown_giveup_sec):
+            self.get_logger().error(
+                f"GPS 거리(/goal_distance) 없음 {now - self.unknown_t0:.1f}s → 포기, DONE")
+            self.set_state("DONE")           # DONE 은 래치 — ERROR 는 이 전이에서 1회
+            self.publish(CANDIDATE_INVALID)
+            return
+
+        if action == 'approach':
+            if not self.gps_approach:
+                self.get_logger().info(
+                    f"WP {dist:.1f}m > {self.gps_resume_m:g}m → 재접근(20000, {self.gps_enter_m:g}m 안까지)")
+            self.gps_approach = True
+            self.publish(CANDIDATE_INVALID)
+            return
+        if action == 'stop' and self.gps_approach:
+            self.get_logger().info(f"WP {dist:.1f}m < {self.gps_enter_m:g}m → 다시 정지(50000)")
+        self.gps_approach = False            # stop·unknown 모두 정지 — 돌아오면 '정지' 기준으로 본다
+        self.publish(STOP_HOLD)
 
 
 def clamp_pm180(a):

@@ -23,6 +23,12 @@
         --dock-target -1|0|1|random                    목표 칸(기본 random = 시드)
         --dock-align wp|target                         target = 정렬·WP8·WP9 를 목표 칸 축으로 옮긴 사본
         형상은 dock_geometry.py(순수 함수, test_dock_geometry.py). 도크 상세 요약 줄(분류·접안 깊이)은 이 옵션을 줄 때만.
+  위치유지 세계 (계약서_GPS위치유지_20261113, 옵션을 안 주면 옛 배치와 같다):
+        --hold-standoff 2.5        위치유지 부표를 WP 에서 진입 구간(직전 WP→위치유지 WP) 왼쪽 수직으로 M m 옮긴다
+                                   (= 'WP 는 부표 옆 대기점'. 음수 = 오른쪽). 판정(5 m·5 s)·접촉은 옮긴 부표 기준.
+        --hold-color-mismatch      위치유지 부표 색을 검출기 mode 2 대상 색(turn_color_mode2)이 아닌 색으로 —
+                                   vision 경로가 부표를 못 잡고 그냥 지나가는 경우 재현. GPS 경로는 색과 무관.
+        ship_back 위치유지 출처는 --param ship_back.hold_source=vision|gps (기본 = 노드 기본 gps).
 
 실제로 돌리는 노드 코드 (한 줄도 안 바꾼다. 파라미터는 아래 — 대회 launch 와 값은 같다)
   north_goal_angle  ← north_goal_angle.yaml + waypoints_file (launch 가 둘 다 넘김)
@@ -45,6 +51,7 @@
   north_goal_angle(0.5 s) → /wp_mode → ship_direction·ship_gate·ship_back·ship_turn·ship_dock·검출기 3종
                           → /north_goal_angle_tp → ship_goal_angle, /geofence_state → ship_direction,
                           → /goal_distance → ship_dock (C4 TRANSIT→INIT, north 순서대로 /wp_mode 보다 먼저)
+                                             → ship_back (hold_source=gps 일 때만 — vision 이면 노드가 구독 안 함)
                           → /wp_remaining_time → ship_dock (C4 WP8→WP9 전환 감지, /wp_mode 뒤)
                           → /candidate_angle(20000, mode 5·8) → ship_direction
   검출기 gate → /red_angle·/green_angle → ship_gate;  turn → /image_angle·/image_color → ship_back·ship_turn;
@@ -303,8 +310,16 @@ def resolve_dock_cfg(world=None, dock_cfg=None):
 
 
 # ───────────────────────── 세계 ─────────────────────────
-def build_world(world_wps, seed, dock_cfg=None, world=None):
-    """dock_cfg = resolve_dock_cfg() 결과(None 이면 기본 = 옛 형상), world = load_world() 결과(None 이면 옛 규칙)."""
+def hold_mismatch_color():
+    """검출기 turn 의 어느 모드 대상 색도 아닌 색 — 위치유지 부표가 비전에 안 잡히게(--hold-color-mismatch)."""
+    used = {c for cols in TURN_COLOR_MAP.values() for c in (cols or [])}
+    return next(c for c in ("yellow", "blue", "purple") if c not in used)
+
+
+def build_world(world_wps, seed, dock_cfg=None, world=None, hold_standoff=0.0, hold_color_mismatch=False):
+    """dock_cfg = resolve_dock_cfg() 결과(None 이면 기본 = 옛 형상), world = load_world() 결과(None 이면 옛 규칙).
+    hold_standoff = 위치유지 부표를 WP 에서 진입 구간 왼쪽 수직으로 옮길 거리(m, 0 = WP 위 — 옛 배치),
+    hold_color_mismatch = 위치유지 부표 색을 검출기 대상 밖 색으로(False = 흰색 — 옛 배치). 난수는 안 쓴다."""
     rng = random.Random(seed)
     dcfg = dock_cfg if dock_cfg is not None else resolve_dock_cfg(world)
     geo = world_geo(world) if world is not None else Geo(world_wps[0]["lat"], world_wps[0]["lon"])
@@ -334,8 +349,13 @@ def build_world(world_wps, seed, dock_cfg=None, world=None):
     # 미션 부표 (구역 이름대로)
     by_mode = [w["mode"] for w in world_wps]
     W["hold_by_wp"] = {}                     # 위치유지 WP 순번 → 부표 index (2026 규정: 2회)
+    hold_col = hold_mismatch_color() if hold_color_mismatch else "white"
     for i2 in [i for i, m in enumerate(by_mode) if m == 2]:
-        add_buoy(P[i2], "white", "hold"); W["hold_by_wp"][i2] = len(W["buoys"]) - 1
+        hp = P[i2]
+        if hold_standoff and i2 > 0:         # WP = 부표 옆 대기점: 부표를 진입 구간 왼쪽 수직으로
+            d_in = P[i2] - P[i2 - 1]; d_in = d_in / np.linalg.norm(d_in)
+            hp = P[i2] + np.array([-d_in[1], d_in[0]]) * float(hold_standoff)
+        add_buoy(hp, hold_col, "hold"); W["hold_by_wp"][i2] = len(W["buoys"]) - 1
     col_kw = {"초록": "green", "빨강": "red", "하양": "white", "흰": "white", "검정": "black"}
     for i, w in enumerate(world_wps):
         if w["mode"] == 3:
@@ -607,7 +627,7 @@ def apply_dwell(path, overrides):
 def run(seed, variant="A", wp_file=None, world_wp_file=WP_DEFAULT, gps_sigma=0.03, current=(0.0, 0.0),
         t_max=1500.0, tail=90.0, record=False, dwell_override=None, fault=None, dyn="legacy", hull=None,
         node_overrides=None, lidar_noise=False, search_behavior="orbit", avoid_zone=0.0, avoid_measure_only=False,
-        world=None, dock_cfg=None, dock_align="wp"):
+        world=None, dock_cfg=None, dock_align="wp", hold_standoff=0.0, hold_color_mismatch=False):
     """world = 세계 파일 경로(--world, None = 옛 규칙), dock_cfg = {bay_w, gap, depth, target}(None 값은 기본·세계 파일),
     dock_align = "wp"(웨이포인트 파일 그대로) | "target"(정렬·WP8·WP9 를 목표 칸 축으로 옮긴 사본)."""
     world_d = load_world(world) if isinstance(world, str) else world
@@ -619,7 +639,7 @@ def run(seed, variant="A", wp_file=None, world_wp_file=WP_DEFAULT, gps_sigma=0.0
     dock_custom = world_d is not None or any(v is not None for v in (dock_cfg or {}).values()) or dock_align != "wp"
     world_wps = load_wps(world_wp_file)
     nrng = np.random.default_rng(20_000 + seed) if lidar_noise else None
-    W = build_world(world_wps, seed, dcfg, world_d)
+    W = build_world(world_wps, seed, dcfg, world_d, hold_standoff=hold_standoff, hold_color_mismatch=hold_color_mismatch)
     geo = W["geo"]; dock = W["dock"]
     if wp_file is None:
         wp_file = variant_b_file(W) if variant == "B" else world_wp_file
@@ -739,6 +759,9 @@ def run(seed, variant="A", wp_file=None, world_wp_file=WP_DEFAULT, gps_sigma=0.0
                     sk.goal_distance_cb(nga.pubs["/goal_distance"].last)   # 거리 → /wp_mode 순서
                     # motor_control 목표 근접 감속 (계약서_목표근접감속_20261106)
                     mc.goal_distance_cb(nga.pubs["/goal_distance"].last)
+                    # ship_back GPS 위치유지(계약서_GPS위치유지_20261113) — vision 이면 노드가 구독을 안 만든다
+                    if getattr(sb, "hold_source", None) == "gps":
+                        sb.goal_distance_cb(nga.pubs["/goal_distance"].last)
                 if nga.pubs["/wp_mode"].count > c0["/wp_mode"]:
                     m = nga.pubs["/wp_mode"].last
                     sd.wp_mode_cb(m); sg.wp_mode_cb(m); sb.wp_cb(m); st.wp_cb(m); sk.wp_mode_cb(m)
@@ -1441,7 +1464,8 @@ def plot(r, path):
         if i == len(X) or M[i] != M[i0]:
             ax.plot(X[i0:i + 1], Y[i0:i + 1], color=MODE_COL.get(M[i0], "k"), lw=1.6)
             i0 = i
-    colmap = {"red": "crimson", "green": "seagreen", "white": "white", "orange": "#ff7f0e", "black": "#222"}
+    colmap = {"red": "crimson", "green": "seagreen", "white": "white", "orange": "#ff7f0e", "black": "#222",
+              "yellow": "gold", "blue": "royalblue", "purple": "purple"}   # 뒤 셋 = --hold-color-mismatch
     for b in W["buoys"]:
         ax.add_patch(plt.Circle((b["x"], b["y"]), 0.45 if b["kind"] in ("hold",) or b["kind"].startswith("search") else 0.3,
                                 fc=colmap[b["color"]], ec="k", lw=0.7, zorder=4))
@@ -1630,6 +1654,10 @@ def main():
     ap.add_argument("--dock-depth", type=float, default=None, help="칸 깊이 m (기본 0.5)")
     ap.add_argument("--dock-target", default="random", choices=["-1", "0", "1", "random"],
                     help="목표 칸(가로 t 방향 번호, t = 물 쪽 n 을 시계로 90°). random = 시드 무작위(기본)")
+    ap.add_argument("--hold-standoff", type=float, default=0.0, metavar="m",
+                    help="위치유지 부표를 WP 에서 진입 구간 왼쪽 수직으로 m 옮김(WP = 부표 옆 대기점, 기본 0 = WP 위)")
+    ap.add_argument("--hold-color-mismatch", action="store_true",
+                    help="위치유지 부표 색을 검출기 mode 2 대상 색 밖으로(vision 경로가 못 잡고 지나가는 경우)")
     ap.add_argument("--dock-align", default="wp", choices=["wp", "target"],
                     help="wp = 웨이포인트 그대로(정렬점 = 파일 값) / target = 정렬·WP8·WP9 를 목표 칸 축으로 옮긴 사본")
     a = ap.parse_args()
@@ -1648,7 +1676,8 @@ def main():
     kw = dict(wp_file=a.wp_file, world_wp_file=a.world_wp_file, gps_sigma=a.gps_sigma, current=tuple(a.current), t_max=a.t_max, tail=a.tail, dyn=a.dyn, hull=a.hull,
               dwell_override=dov, node_overrides=parse_param_overrides(a.param), lidar_noise=a.lidar_noise,
               search_behavior=a.search_behavior, avoid_zone=a.avoid_zone,
-              avoid_measure_only=a.avoid_measure_only, world=a.world, dock_cfg=dock_cfg, dock_align=a.dock_align)
+              avoid_measure_only=a.avoid_measure_only, world=a.world, dock_cfg=dock_cfg, dock_align=a.dock_align,
+              hold_standoff=a.hold_standoff, hold_color_mismatch=a.hold_color_mismatch)
     variants = ["A", "B"] if a.variant == "AB" else [a.variant]
     if a.plot_seed is not None:
         for vv in variants:

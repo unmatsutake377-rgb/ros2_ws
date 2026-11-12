@@ -12,6 +12,23 @@
     hold_dist_m: 2.5         # ⚠️ 실측 필요 — 능동 유지 목표 거리(충돌 여유 + 5m 안을 동시에 만족)
     dist_tol_m: 0.4          # 데드밴드(±). 벗어나면 전/후진으로 되돌린다(표류를 ~tol 로 제한)
 
+    # ---- 위치유지 출처 (계약서_GPS위치유지_20261113, 사용자 결정 11-13) ----
+    # gps = mode 2 를 'WP 반경에 들어가면 GPS(/goal_distance) 기준 정지 유지'로 돈다(기본, 코드 기본값과 같이 고칠 것).
+    #   SEARCH 20000(north 가 WP 로) → 거리 < gps_enter_m 이면 정지(50000) → 거리 > gps_resume_m 이면 < gps_enter_m
+    #   까지 20000(재접근) → gps_keep_radius_m 안 연속 gps_hold_time_sec 이면 완료. 180(후진)·조향각은 안 낸다.
+    #   ⚠️ 위치유지 WP 는 부표 좌표가 아니라 부표 옆 2~3 m 물 위 대기점에 찍는다(GPS 지연 ~1 m + 관성 → 접촉 위험).
+    # vision = 부표 색(검출기 turn_color_mode2) + LiDAR 거리 능동 유지(위 hold_dist_m, 옛 동작). 롤백 = 이 한 줄.
+    #   잘못된 값 → ERROR 후 gps. search_behavior:=hold 의 mode 3 은 이 값과 무관하게 vision.
+    hold_source: "gps"
+    # 🚨 gps_enter_m ≥ north arrive_radius_hold_modes_m(3.5), gps_resume_m ≥ gps_enter_m,
+    #    gps_keep_radius_m > gps_resume_m — 어기면 시작 ERROR + 셋 모두 기본값.
+    #    (enter < 3.5 면 20000 동안 north 가 3.5 m 안 dwell 0.5 s 로 WP 를 넘겨 정지 전에 끝난다)
+    gps_enter_m: 3.5         # 이 거리 미만이면 정지 시작 / 재접근 끝
+    gps_resume_m: 4.0        # 정지 중 이 거리 초과면 재접근 (히스테리시스)
+    gps_keep_radius_m: 4.5   # 판정 반경 — 규정 5 m 보다 안쪽(GPS 필터 지연 ⚠️ 미실측)
+    gps_hold_time_sec: 6.0   # 판정 시간 — 규정 5 s + 여유. 반경을 벗어나면 0 부터
+    goal_dist_stale_sec: 2.0 # /goal_distance 가 이보다 묵으면 모름 → 정지, unknown_giveup_sec 뒤 포기
+
     # ---- 탐색/신선도 ----
     # SEARCH 시간 초과로 DONE 래치할지(계약 전체코스 §2-4). false(기본) = 계속 SEARCH(20000),
     #   다음 WP 진행은 north 의 WP 시간 초과. true 면 옛 동작(search_timeout_sec 뒤 DONE).

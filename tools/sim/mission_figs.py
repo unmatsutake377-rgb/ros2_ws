@@ -164,7 +164,8 @@ def _single_buoy_run(node_kind, t_max=60.0, current=(0.0, 0.0), color="red", mod
 
 def fig_back():
     import numpy as np
-    r = _single_buoy_run("back", t_max=60.0, current=(0.3, 0.0), color="white")   # 조류 0.3 m/s 동쪽으로
+    r = _single_buoy_run("back", t_max=60.0, current=(0.3, 0.0), color="white",
+                         param_override={"hold_source": "vision"})   # 조류 0.3 m/s 동쪽. 부표 비전 경로 그림(11-13 기본 gps)
     tr = np.array(r["traj"]); P = r["P"]
     fig, ax = plt.subplots(figsize=(7.5, 6.2))
     ax.add_patch(plt.Circle((0, 0), P["keep_radius_m"], color="gold", alpha=0.15)); ax.text(0, P["keep_radius_m"] + 0.3, "규정: 5 m 이내 5 s", ha="center", fontsize=8.5, color="#8a6d00")

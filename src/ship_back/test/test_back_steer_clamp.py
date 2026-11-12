@@ -59,7 +59,7 @@ class _Pub:
 # launch 가 넘기는 값으로 덮는 파라미터. 이 파일의 mode 3 시나리오(3→3 래치 등)는 search_behavior:=hold
 #   옵션 경로다 — 2026-11-11 기본이 orbit(코드 기본 [2])으로 바뀌어, hold 때 launch 가 넘기는 [2, 3] 을 준다
 #   (계약서_탐색선회_부표색_20261111 C3). DECLARED 에는 코드 기본값을 그대로 기록한다(yaml 대조용).
-PARAM_OVERRIDES = {'active_wp_modes': [2, 3]}
+PARAM_OVERRIDES = {'active_wp_modes': [2, 3], 'hold_source': 'vision'}  # vision 경로 고정(11-13 기본 gps)
 
 
 class _Node:

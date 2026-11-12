@@ -5,6 +5,8 @@
     from ship_back.hold_logic import unknown_giveup, search_timeout_warn, hold_total_exceeded
     from ship_back.hold_logic import reacquire_stop_active, reacquire_window_elapsed
     from ship_back.hold_logic import check_hold_params, DEFAULT_HOLD_DIST_M, DEFAULT_DIST_TOL_M
+    from ship_back.hold_logic import check_hold_source, gps_hold_applies, check_gps_hold_params
+    from ship_back.hold_logic import goal_dist_usable, gps_hold_action
 
 규정: '부표 5m 이내 5초 유지'. 작년 코드는 그냥 5초간 PWM 중립이라 조류에 밀려 실패했다.
 → LiDAR 로 잰 거리로 전진/후진을 결정해 능동적으로 위치를 유지한다(bang-bang + 데드밴드).
@@ -239,6 +241,121 @@ class HoldTimer:
 
     def satisfied(self, dist, now):
         return self.update(dist, now) >= self.hold_time
+
+
+# ==================== GPS 위치유지 hold_source=gps (계약서_GPS위치유지_20261113) ====================
+# 사용자 결정 11-13: 위치유지(mode 2) = 'WP 반경에 들어가면 GPS 기준 정지 유지'. 기본 gps, 부표 비전 경로는
+#   hold_source=vision 옵션(지금 동작 그대로). ⚠️ CLAUDE.md §6-2 'LiDAR 유지, RTK 폴백' 과 반대 — 계약서가 근거.
+# 아래 DEFAULT_* = ship_back.py declare_parameter 리터럴 = config/ship_back.yaml (test_gps_hold 가 묶음).
+HOLD_SOURCES = ('vision', 'gps')
+DEFAULT_HOLD_SOURCE = 'gps'
+GPS_HOLD_MODES = (2,)               # search_behavior:=hold 의 mode 3 은 vision 경로 그대로(결정 4)
+DEFAULT_GPS_ENTER_M = 3.5           # 이 거리 미만이면 정지 시작 / 재접근 끝
+DEFAULT_GPS_RESUME_M = 4.0          # 정지 중 이 거리 초과면 재접근(20000)
+DEFAULT_GPS_KEEP_RADIUS_M = 4.5     # 판정 반경(결정 3) — 규정 5 m 보다 GPS 필터 지연만큼 안쪽
+DEFAULT_GPS_HOLD_TIME_SEC = 6.0     # 판정 시간(결정 3) — 규정 5 s + 여유
+DEFAULT_GOAL_DIST_STALE_SEC = 2.0   # ship_dock·motor_control 과 같은 값
+# 🚨 사본: north_goal_angle.yaml arrive_radius_hold_modes_m(= los_logic.DEFAULT_ARRIVE_RADIUS_HOLD_MODES_M).
+#   gps_enter_m 이 이보다 작으면 배가 3.5 m 안에서 20000 인 동안 north 가 dwell 0.5 s 로 WP 를 넘겨
+#   정지 전에 끝난다(wp_advance). 공유 모듈 금지(§1-8) → test_gps_hold 가 north yaml 과 대조.
+NORTH_ARRIVE_HOLD_M = 3.5
+# 모드 진입 뒤 이 시간 이상 지나서 받은 /goal_distance 만 쓴다 — 직전 WP(도착해 ≈0 m) 거리가 늦게 와서
+#   새 WP 40 m 앞에서 정지·타이머를 시작하는 오판 방지. ship_dock GOAL_DIST_ENTRY_GUARD_SEC 와 같은 장치·값
+#   (north 주기 0.5 s × 2). 계약서 §5 파라미터 목록에 없어 상수.
+GOAL_DIST_ENTRY_GUARD_SEC = 1.0
+
+
+def check_hold_source(value):
+    """파라미터 hold_source → (쓸 값, 오류 메시지 or None). 순수 함수.
+
+    vision|gps(앞뒤 공백·대소문자 무시) 밖이면 기본(gps, 결정 1 — 기본과 같은 쪽) + 메시지.
+    """
+    v = value.strip().lower() if isinstance(value, str) else None
+    if v in HOLD_SOURCES:
+        return v, None
+    return DEFAULT_HOLD_SOURCE, (f"🚨 hold_source={value!r} 는 vision|gps 가 아님 → {DEFAULT_HOLD_SOURCE} 로 돈다"
+                                 f"(mode 2 = /goal_distance 정지 유지). ship_back.yaml 확인.")
+
+
+def gps_hold_applies(hold_source, wp_mode):
+    """이 모드를 GPS 위치유지로 돌지. gps 이고 mode 2 일 때만(mode 3 hold 옵션은 vision)."""
+    return hold_source == 'gps' and wp_mode in GPS_HOLD_MODES
+
+
+def _finite_float(v):
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return None
+    return f if math.isfinite(f) else None
+
+
+def check_gps_hold_params(enter_m, resume_m, keep_m, hold_time, stale_sec,
+                          north_arrive_m=NORTH_ARRIVE_HOLD_M):
+    """gps_* 시작 가드. 순수 함수. → (enter, resume, keep, hold_time, stale, [('ERROR', 메시지), …]).
+
+    거리 셋(한 묶음): 숫자 아님·비유한, enter < north_arrive_m(3.5), resume < enter, keep ≤ resume 중 하나라도
+      → ERROR 1줄 + **셋 모두** 기본값(3.5/4.0/4.5). (계약서 §2-9)
+    hold_time·stale_sec: 숫자 아님·비유한·0 이하 → 그 값만 기본값(6.0 / 2.0) + ERROR 1줄씩.
+    노드는 시작 때 한 번만 부르고 줄마다 ERROR 로 찍는다.
+    """
+    issues = []
+    e, r, k = _finite_float(enter_m), _finite_float(resume_m), _finite_float(keep_m)
+    if e is None or r is None or k is None or e < north_arrive_m or r < e or k <= r:
+        issues.append(('ERROR',
+                       f"🚨 gps_enter_m={enter_m!r}, gps_resume_m={resume_m!r}, gps_keep_radius_m={keep_m!r} "
+                       f"는 잘못된 값(숫자 아님·NaN·inf, enter < north 도착 반경 {north_arrive_m:g}, "
+                       f"resume < enter, keep ≤ resume 중 하나) → 셋 모두 기본값 "
+                       f"{DEFAULT_GPS_ENTER_M:g}/{DEFAULT_GPS_RESUME_M:g}/{DEFAULT_GPS_KEEP_RADIUS_M:g} m. "
+                       f"ship_back.yaml 확인."))
+        e, r, k = DEFAULT_GPS_ENTER_M, DEFAULT_GPS_RESUME_M, DEFAULT_GPS_KEEP_RADIUS_M
+    ht = _finite_float(hold_time)
+    if ht is None or ht <= 0.0:
+        issues.append(('ERROR', f"🚨 gps_hold_time_sec={hold_time!r} 는 잘못된 값(양수 아님) → "
+                                f"기본 {DEFAULT_GPS_HOLD_TIME_SEC:g} s."))
+        ht = DEFAULT_GPS_HOLD_TIME_SEC
+    st = _finite_float(stale_sec)
+    if st is None or st <= 0.0:
+        issues.append(('ERROR', f"🚨 goal_dist_stale_sec={stale_sec!r} 는 잘못된 값(양수 아님) → "
+                                f"기본 {DEFAULT_GOAL_DIST_STALE_SEC:g} s."))
+        st = DEFAULT_GOAL_DIST_STALE_SEC
+    return e, r, k, ht, st, issues
+
+
+def goal_dist_usable(dist, t_rx, mode_enter_t, now, stale_sec, guard_sec=GOAL_DIST_ENTRY_GUARD_SEC):
+    """마지막 /goal_distance 를 쓸 수 있으면 그 값(m), 아니면 None(모른다). 순수 함수.
+
+    dist·t_rx    : 마지막 값과 받은 시각(monotonic). 없으면 None.
+    mode_enter_t : 담당 모드 진입(wp_cb 리셋) 시각.
+    모르면 None: 값·시각 없음, 비유한·음수, 진입 뒤 guard_sec 전 수신, now − t_rx > stale_sec.
+    경계(ship_dock transit_engage 와 같음): 수신 − 진입 == guard 는 사용, 지금 − 수신 == stale 은 신선.
+    """
+    if dist is None or t_rx is None or mode_enter_t is None:
+        return None
+    d = _finite_float(dist)
+    if d is None or d < 0.0:
+        return None
+    if (t_rx - mode_enter_t) < guard_sec:
+        return None
+    if (now - t_rx) > stale_sec:
+        return None
+    return d
+
+
+def gps_hold_action(dist, approaching, enter_m, resume_m):
+    """HOLD(GPS) 한 틱 동작. 순수 함수. → 'stop'(50000) / 'approach'(20000) / 'unknown'(50000).
+
+    dist        : goal_dist_usable 결과(None = 모름).
+    approaching : 직전 틱이 재접근이었나(히스테리시스 기억). unknown 뒤에는 False(정지했으므로).
+    정지 중이면 dist > resume_m 일 때만 재접근, 재접근 중이면 dist < enter_m 일 때만 정지.
+    ★ 180(후진)·조향각은 없다 — GPS 1 Hz·필터 지연이라 후진 방향을 모르고 후진 추력 미실측(계약서 §2-7).
+      재접근 방향은 north LOS(20000 → ship_direction (C)).
+    """
+    if dist is None:
+        return 'unknown'
+    if approaching:
+        return 'stop' if dist < enter_m else 'approach'
+    return 'approach' if dist > resume_m else 'stop'
 
 
 # ==================== /fused_objects 거리 출처 (계약서_인식융합_20261112 §4·§10) ====================

@@ -485,7 +485,7 @@ def test_node_fused_defaults_equal_yaml():
 
 def _hold(mode, lidar_dist, rel=0.0):
     """HOLD 중, 비전 방위 rel(신선), LiDAR 는 그 방위에 lidar_dist(None = 못 봄)."""
-    n = _make(distance_source=mode)
+    n = _make(distance_source=mode, hold_source='vision')  # vision 경로 고정(11-13 기본 gps)
     n.wp_mode = n.active_wp_modes[0]
     n.state = 'HOLD'
     n.state_t = CLOCK.t
