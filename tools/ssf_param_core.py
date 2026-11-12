@@ -376,6 +376,8 @@ def _hsv_check(repo, v, color):
 # 노드가 받는 값 목록 — 카탈로그 choices 를 노드 코드에서 덮어쓴다(규칙 한 곳, 11-11).
 #   카탈로그만 믿으면 노드가 모르는 색(예: 탐색 yellow)을 골라도 적용이 통과하고, 노드는 부팅 ERROR 후
 #   그 모드 검출을 통째로 끈다. 노드가 나중에 색을 늘리면 앱도 따라간다. 못 읽으면 카탈로그 값 그대로.
+#   카탈로그 항목에 field_choices 가 있으면 노드 목록 중 그 안의 값만 남긴다(현장 좁히기, 11-12:
+#   도킹 색 = 빨강·초록·파랑). 노드가 안 받는 값은 field_choices 에 있어도 빠진다. 교집합이 비면 노드 목록.
 NODE_CHOICES = {
     # (패키지, 절, 키): (모듈 상대 경로, 상수 이름)
     ("color_shape_detector", "image_subscriber_turn", "turn_color_mode2"):
@@ -414,7 +416,9 @@ def apply_node_choices(cidx, repo):
             continue
         v = _node_const(repo, rel, name)
         if v:
-            it["choices"] = list(v)
+            field = it.get("field_choices")
+            narrowed = [c for c in v if c in field] if field else []
+            it["choices"] = narrowed or list(v)
             done[key] = f"{rel}:{name}"
     return done
 

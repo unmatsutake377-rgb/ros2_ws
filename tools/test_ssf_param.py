@@ -307,8 +307,24 @@ def test_dock_shape_and_color_choices_follow_node(boat):
     with pytest.raises(core.ParamError, match="target_shape"):
         boat.apply(sh["id"], "square", course="main")
     col = _pid(boat, "target_color")
-    assert "yellow" in col["catalog"]["choices"]
-    boat.apply(col["id"], "yellow", course="main")
+    # 11-12: 현장 도크 색은 빨강·초록·파랑뿐 — 카탈로그 field_choices 로 노드 VALID_COLORS 를 좁힌다.
+    assert col["catalog"]["choices"] == ["red", "green", "blue"]
+    for bad in ("yellow", "orange", "white"):
+        with pytest.raises(core.ParamError, match="target_color"):
+            boat.apply(col["id"], bad, course="main")
+    boat.apply(col["id"], "blue", course="main")
+
+
+def test_field_choices_never_adds_value_node_rejects(boat):
+    """field_choices 는 좁히기만 한다 — 노드가 모르는 값은 빠지고, 교집합이 비면 노드 목록 그대로."""
+    _copy_node_modules(boat)
+    it = boat.cidx[("color_shape_detector", "target_color", "image_subscriber_dock")]
+    it["field_choices"] = ["red", "navy"]
+    core.apply_node_choices(boat.cidx, boat.repo)
+    assert it["choices"] == ["red"]
+    it["field_choices"] = ["navy"]
+    core.apply_node_choices(boat.cidx, boat.repo)
+    assert "yellow" in it["choices"] and "navy" not in it["choices"]
 
 
 def test_node_choices_missing_module_keeps_catalog(boat):
