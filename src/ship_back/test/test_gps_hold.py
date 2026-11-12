@@ -402,7 +402,7 @@ def test_defaults_equal_yaml_and_hold_logic():
             'gps_hold_time_sec': DEFAULT_GPS_HOLD_TIME_SEC, 'goal_dist_stale_sec': DEFAULT_GOAL_DIST_STALE_SEC}
     for k, v in want.items():
         assert DECLARED[k] == v and y[k] == v, (k, DECLARED[k], y.get(k), v)
-        assert type(DECLARED[k]) is type(y[k]) is type(v), (k, type(DECLARED[k]), type(y[k]))
+        assert type(DECLARED[k]) is type(y[k]) is type(v), (k, type(DECLARED[k]), type(y[k]))  # noqa: E721
     # 기존 vision·포기 값 불변
     for k, v in (('keep_radius_m', 5.0), ('hold_time_sec', 5.0), ('unknown_giveup_sec', 10.0),
                  ('hold_max_sec', 60.0)):

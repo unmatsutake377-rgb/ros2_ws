@@ -106,7 +106,7 @@ def test_yaml_equals_declared_with_types():
     y = _yaml_params()
     assert set(y) == set(dec), f'yaml 키 차이 {set(y) ^ set(dec)}'
     for k, v in y.items():
-        assert v == dec[k] and type(v) is type(dec[k]), f'{k}: yaml {v!r} ≠ 선언 {dec[k]!r}'
+        assert v == dec[k] and type(v) is type(dec[k]), f'{k}: yaml {v!r} ≠ 선언 {dec[k]!r}'  # noqa: E721
 
 
 def test_logic_fallback_defaults_equal_declared():

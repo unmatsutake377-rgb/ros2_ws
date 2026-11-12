@@ -480,7 +480,7 @@ def test_node_fused_defaults_equal_yaml():
             'fused_match_deg': 5.0, 'fused_min_conf': 0.5, 'fused_allowed_sources': ['lidar', 'fused', 'depth']}
     for k, v in want.items():
         assert DECLARED[k] == v and y[k] == v, (k, DECLARED[k], y.get(k))
-        assert type(DECLARED[k]) is type(y[k]), (k, type(DECLARED[k]), type(y[k]))
+        assert type(DECLARED[k]) is type(y[k]), (k, type(DECLARED[k]), type(y[k]))  # noqa: E721
 
 
 def _hold(mode, lidar_dist, rel=0.0):
