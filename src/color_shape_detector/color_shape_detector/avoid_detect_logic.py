@@ -2,18 +2,21 @@
 
 계약서: docs/문제와작업/계약서_도리도리회피_v2_20261114.md U3 (=C6a, 비전 원자 그룹)
         + G1 (a) 형식 · U1 리뷰 메모 W3(age_s ≥ 0 clamp) · U2 리뷰 메모(mode 5 진입부터 하트비트)
+        + docs/문제와작업/계약서_흰부표_거리융합_v3_20261114.md W1 (장애물 색 = obstacle_color, 기본 흰색 — G-1)
 
     from color_shape_detector.avoid_detect_logic import (
         intrinsics_from_camera_info, detect_blobs, blobs_to_detections, frame_age_s, pack_detections)
 
 하는 일
-  OAK 컬러 프레임에서 빨강(낮은 장애물 후보)·노랑(부표) 윤곽을 **여러 개** 찾아,
+  OAK 컬러 프레임에서 장애물 색(obstacle_color, 기본 흰색)·노랑(부표) 윤곽을 **여러 개** 찾아,
   ship_avoid 가 읽는 /avoid_detections 한 줄로 만든다. 거리(range_m)는 U3 에선 늘 NaN(= 모름) —
   D455 창 거리는 U4. ship_avoid core 가 NaN 이면 단안(수면 기준) 거리로 대신한다.
 
 /avoid_detections (Float32MultiArray) — G1 (a). ship_avoid avoid_mode_logic.parse_detections 와 **정확히** 같다.
   [VER=1, STRIDE=6, N, N × (cls, bearing_left_deg, v_norm, range_m, conf, age_s)]
-    cls          0 = 빨강, 2 = 노랑 (/fused_objects color_id 와 **다른 번호** — 섞지 말 것)
+    cls          0 = 장애물(obstacle_color 로 정한 색, 기본 흰색 — W1 전엔 빨강 고정), 2 = 노랑
+                 (/fused_objects color_id 와 **다른 번호** — 섞지 말 것). 장애물 색을 바꿔도 cls 값 집합 {0, 2}·
+                 VER·STRIDE 는 그대로다 — ship_avoid 는 cls 0 을 '장애물 표'로만 쓴다(core cls == 0).
     bearing      좌 +(deg) = −atan((u − cx)/fx). u = 윤곽 질량중심 x(px). fx·cx 는 camera_info K
     v_norm       (v_bottom − cy)/fy, 아래 +. v_bottom = 윤곽 맨 아래 행(px, 수면 접점 근사)
     range_m      NaN (U3). U4 에서 D455 창 거리
@@ -38,6 +41,7 @@ conf (0~1) 근거 — 지금 ship_avoid core 는 conf 를 **읽지 않는다**(c
 
 import math
 
+from color_shape_detector.hsv_ranges import VALID_COLORS as _HSV_COLORS
 from color_shape_detector.vision_geom import solidity as _solidity
 
 # ---- /avoid_detections 형식 — ship_avoid/avoid_mode_logic.py 의 사본(일치는 테스트가 검사) ----
@@ -45,16 +49,32 @@ DET_VER = 1
 DET_STRIDE = 6
 DET_HEADER = 3                      # VER, STRIDE, N
 
-CLS_RED = 0
+CLS_OBSTACLE = 0                    # 장애물(obstacle_color 의 색). W1 전 이름 CLS_RED — 값 0 은 그대로
 CLS_YELLOW = 2
-# 이 검출기가 찾는 색 → cls. 색 이름은 hsv_ranges / vision.yaml hsv.<색> 키와 같다.
-COLOR_CLS = {'red': CLS_RED, 'yellow': CLS_YELLOW}
+VALID_CLS = (CLS_OBSTACLE, CLS_YELLOW)
+
+# ---- 장애물 색 (W1, G-1: 흰색 교체는 미션 5 장애물만) ----
+# 허용 = hsv_ranges 가 HSV 범위를 아는 색 중 노랑 제외. 노랑은 cls 2(부표·벽) 자리라 장애물과 같은 색이면
+#   둘을 가를 수 없다(같은 윤곽이 cls 0 과 2 로 두 번 나간다). 모르는 색은 HSV 를 못 읽어 아무것도 못 찾는다.
+YELLOW = 'yellow'
+OBSTACLE_COLORS = tuple(c for c in _HSV_COLORS if c != YELLOW)
+DEFAULT_OBSTACLE_COLOR = 'white'    # = 노드 declare_parameter 리터럴 = vision.yaml image_subscriber_avoid 절
+
+
+def color_cls(obstacle_color):
+    """장애물 색 → {색: cls} (검출기가 HSV 를 읽고 찾는 색 표). 색 이름은 hsv_ranges / vision.yaml hsv.<색> 키."""
+    return {obstacle_color: CLS_OBSTACLE, YELLOW: CLS_YELLOW}
+
+
+# 기본 장애물 색일 때의 표 = {'white': 0, 'yellow': 2}.
+COLOR_CLS = color_cls(DEFAULT_OBSTACLE_COLOR)
 
 RANGE_UNKNOWN = float('nan')        # U3: D455 거리 없음 → NaN (지어내지 않는다)
 
 # 노드 declare_parameter 리터럴 = vision.yaml image_subscriber_avoid 절 = 아래 값(test_avoid_detect_logic 이 묶는다).
 #   잘못된 값일 때 돌아갈 값이기도 하다. ⚠️ 실측 필요(전부).
 DEFAULT_PARAMS = {
+    'obstacle_color': DEFAULT_OBSTACLE_COLOR,
     'min_area_px': 40.0,
     'min_solidity': 0.7,
     'conf_full_area_px': 400.0,
@@ -73,6 +93,7 @@ def check_params(raw):
       min_solidity       0 ≤ x ≤ 1 (solidity 정의역. 1 넘으면 모든 윤곽을 버려 '본 것 없음' 만 낸다)
       conf_full_area_px  > 0 유한(0 이면 conf 가 늘 0)
       max_detections     정수 ≥ 1 (0 이면 늘 N=0 — 살아 있는데 아무것도 안 보는 침묵 고장)
+      obstacle_color     OBSTACLE_COLORS 중 하나(대소문자·앞뒤 공백 무관). yellow·모르는 색·문자열 아님 → 'white'
     빠진 키는 기본값(오류 아님).
     """
     out, errs = {}, []
@@ -99,6 +120,14 @@ def check_params(raw):
         out['max_detections'] = v
     else:
         bad('max_detections', '1 이상 정수')
+    v = raw.get('obstacle_color', DEFAULT_PARAMS['obstacle_color'])
+    c = v.strip().lower() if isinstance(v, str) else None
+    if c in OBSTACLE_COLORS:
+        out['obstacle_color'] = c
+    elif c == YELLOW:
+        bad('obstacle_color', 'yellow 는 cls 2(노랑 부표·벽) 색이라 장애물 색으로 못 씀')
+    else:
+        bad('obstacle_color', f"허용 {', '.join(OBSTACLE_COLORS)}")
     return out, errs
 
 
@@ -169,10 +198,11 @@ def frame_age_s(now_s, stamp_s, proc_s):
     return max(0.0, raw), raw, src
 
 
-def detect_blobs(bgr, color_ranges, min_area_px, min_solidity, max_detections):
+def detect_blobs(bgr, color_ranges, min_area_px, min_solidity, max_detections, cls_of=None):
     """BGR 프레임 → 윤곽 목록 [{cls, color, u, v_bottom, area, solidity, contour}] (면적 큰 순, 최대 max_detections).
 
-    color_ranges: {색: [(lo, hi), …]} — hsv_ranges.load 가 돌려주는 모양. COLOR_CLS 에 없는 색은 무시.
+    color_ranges: {색: [(lo, hi), …]} — hsv_ranges.load 가 돌려주는 모양. cls_of 에 없는 색은 무시.
+    cls_of      : {색: cls} — 노드는 color_cls(obstacle_color). None 이면 COLOR_CLS(기본 흰색).
     색마다 마스크(범위 OR) → medianBlur 3 → 바깥 윤곽(gate 검출기와 같은 전처리) →
       면적 < min_area_px 버림 → solidity < min_solidity 버림(윤슬·물보라 조각) → 질량중심 u, 맨 아래 행 v_bottom.
     🚨 cv2·numpy 는 여기서만 쓴다(나머지 함수는 cv2 없이 테스트된다).
@@ -180,10 +210,12 @@ def detect_blobs(bgr, color_ranges, min_area_px, min_solidity, max_detections):
     import cv2
     import numpy as np
 
+    if cls_of is None:
+        cls_of = COLOR_CLS
     hsv = cv2.cvtColor(bgr, cv2.COLOR_BGR2HSV)
     out = []
     for color, ranges in color_ranges.items():
-        cls = COLOR_CLS.get(color)
+        cls = cls_of.get(color)
         if cls is None:
             continue
         mask = np.zeros(hsv.shape[:2], dtype=np.uint8)
@@ -223,12 +255,12 @@ def _finite(v):
 def pack_detections(dets):
     """[(cls, bearing, v_norm, range_m, conf, age_s)] → (data 리스트, 버린 수).
 
-    빈 목록 → [1.0, 6.0, 0.0] (하트비트). cls 가 COLOR_CLS 값이 아니거나 bearing·v_norm·conf·age_s 가
+    빈 목록 → [1.0, 6.0, 0.0] (하트비트). cls 가 VALID_CLS(0·2)가 아니거나 bearing·v_norm·conf·age_s 가
     유한수가 아니거나 age_s < 0 인 검출은 **그 검출만** 빼고 N 을 맞춘다(ship_avoid 가 메시지 전체를 버리지 않게).
     range_m 은 유한하지 않으면 NaN 으로 낸다.
     """
     rows, dropped = [], 0
-    valid_cls = set(COLOR_CLS.values())
+    valid_cls = set(VALID_CLS)
     for d in dets:
         cls, brg, vn, rng, conf, age = d
         if (cls not in valid_cls or not all(_finite(v) for v in (brg, vn, conf, age)) or age < 0.0):

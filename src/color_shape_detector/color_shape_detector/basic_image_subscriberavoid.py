@@ -2,12 +2,13 @@
 
 계약서: docs/문제와작업/계약서_도리도리회피_v2_20261114.md U3 (=C6a, 비전 원자 그룹 — vision.yaml·setup.py·
         test_mode_gate.py·launch 와 같은 커밋)
+        + 계약서_흰부표_거리융합_v3_20261114.md W1 — 장애물 색 obstacle_color(기본 "white", G-1 미션 5 장애물만)
 
 입력  OAK  /oak/rgb/image_raw (image_topic, vision.yaml `/**`) + /oak/rgb/camera_info (camera_info_topic)
       — SENSOR_QOS(BEST_EFFORT, depth 1, gate 검출기와 같음)
       /wp_mode (RELIABLE 10) — ModeGate, 담당 active_wp_modes [5]
 출력  /avoid_detections  Float32MultiArray  RELIABLE 10
-      [VER=1, STRIDE=6, N, N × (cls 0빨강/2노랑, bearing_left_deg, v_norm, range_m=NaN, conf, age_s)]
+      [VER=1, STRIDE=6, N, N × (cls 0장애물(obstacle_color)/2노랑, bearing_left_deg, v_norm, range_m=NaN, conf, age_s)]
       형식·각 칸의 뜻은 avoid_detect_logic docstring. 구독자 = ship_avoid(avoid_mode_logic.parse_detections).
 
 발행 시점 = **프레임 콜백**(고정 주기 타이머가 아니다) — 기존 검출기 3종과 같은 관례.
@@ -78,15 +79,13 @@ class ImageSubscriberAvoid(Node):
         self._last_gate_log = 0.0
         # 🚨 §7-2: 헤드리스에서 cv2.imshow 는 노드를 죽인다 → 기본 false.
         self.debug_view = bool(self.declare_parameter('debug_view', False).value)
-        # HSV — vision.yaml `/**` 의 hsv.red(두 구간)·hsv.yellow 가 단일 출처(gate·turn·dock 과 같은 값).
-        #   잘못된 값이면 기본값 + ERROR(hsv_ranges.load).
-        self.color_ranges = hsv_ranges.load(
-            lambda n, d: self.declare_parameter(n, d).value,
-            tuple(adl.COLOR_CLS),
-            on_error=self.get_logger().error)
-        # ⚠️ 실측 필요 — 아래 넷은 vision.yaml image_subscriber_avoid 절 = adl.DEFAULT_PARAMS(test_avoid_detect_logic).
+        # 아래는 vision.yaml image_subscriber_avoid 절 = adl.DEFAULT_PARAMS(test_avoid_detect_logic).
         #   범위 밖이면 그 값만 기본값 + 부팅 ERROR 1회(adl.check_params).
+        #   obstacle_color(W1): cls 0 으로 낼 장애물 색. 허용 = adl.OBSTACLE_COLORS(hsv 색 중 yellow 제외),
+        #   yellow·모르는 색 → ERROR + "white". 🚨 HSV 를 읽기 전에 정해야 그 색의 hsv.<색> 을 선언한다.
+        #   ⚠️ 실측 필요 — min_area_px·min_solidity·conf_full_area_px·max_detections.
         raw = {
+            'obstacle_color': self.declare_parameter('obstacle_color', 'white').value,
             'min_area_px': self.declare_parameter('min_area_px', 40.0).value,
             'min_solidity': self.declare_parameter('min_solidity', 0.7).value,
             'conf_full_area_px': self.declare_parameter('conf_full_area_px', 400.0).value,
@@ -99,6 +98,15 @@ class ImageSubscriberAvoid(Node):
         self.min_solidity = vals['min_solidity']
         self.conf_full_area_px = vals['conf_full_area_px']
         self.max_detections = vals['max_detections']
+        self.obstacle_color = vals['obstacle_color']
+        self.cls_of = adl.color_cls(self.obstacle_color)
+        # HSV — vision.yaml `/**` 의 hsv.<obstacle_color>·hsv.yellow 가 단일 출처(gate·turn·dock 과 같은 값).
+        #   🚨 hsv.white 는 turn mode 2(turn_color_mode2)·dock white 표식과 공유 — 고치면 같이 바뀐다.
+        #   잘못된 값이면 기본값 + ERROR(hsv_ranges.load).
+        self.color_ranges = hsv_ranges.load(
+            lambda n, d: self.declare_parameter(n, d).value,
+            tuple(self.cls_of),
+            on_error=self.get_logger().error)
 
         self.br = CvBridge()
         self.cam_info = None
@@ -112,8 +120,9 @@ class ImageSubscriberAvoid(Node):
         self.get_logger().info(
             f"도리도리 검출기 시작: mode {sorted(self.mode_gate.active_modes)} 에서 {self.image_topic} + "
             f"{self.camera_info_topic} → /avoid_detections [VER {adl.DET_VER}, STRIDE {adl.DET_STRIDE}, N, …] "
-            f"(색 {list(self.color_ranges)}, min_area_px {self.min_area_px:g}, min_solidity {self.min_solidity:g}, "
-            f"최대 {self.max_detections}개, range_m NaN, debug_view {self.debug_view})")
+            f"(장애물 cls 0 = {self.obstacle_color}, 노랑 cls 2, min_area_px {self.min_area_px:g}, "
+            f"min_solidity {self.min_solidity:g}, 최대 {self.max_detections}개, range_m NaN, "
+            f"debug_view {self.debug_view})")
 
     # ------------------------------------------------------------------ 콜백
     def wp_mode_callback(self, msg):
@@ -143,7 +152,7 @@ class ImageSubscriberAvoid(Node):
 
         frame = self.br.imgmsg_to_cv2(msg, desired_encoding='bgr8')
         blobs = adl.detect_blobs(frame, self.color_ranges, self.min_area_px, self.min_solidity,
-                                 self.max_detections)
+                                 self.max_detections, self.cls_of)
         age, raw, src = adl.frame_age_s(self.get_clock().now().nanoseconds * 1e-9,
                                         _stamp_s(msg.header.stamp), time.monotonic() - t0)
         if raw < 0.0:

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""도리도리 회피 검출기(image_subscriber_avoid) 테스트 — 계약서_도리도리회피_v2_20261114 U3.
+"""도리도리 회피 검출기(image_subscriber_avoid) 테스트 — 계약서_도리도리회피_v2_20261114 U3
++ 계약서_흰부표_거리융합_v3_20261114 W1(obstacle_color, 기본 흰색).
 
     tools/run_tests.sh color_shape_detector
 
@@ -7,7 +8,10 @@
   · 형식 사본(VER·STRIDE·머리·cls) == ship_avoid avoid_mode_logic (파일 경로로 읽기만 — 다른 패키지 수정 없음)
   · 검출기 pack → ship_avoid parse_detections 왕복(float32 반올림 포함, NaN range, N=0 하트비트)
   · camera_info K 검사, 방위 좌 +, v_norm 아래 +, age_s ≥ 0 clamp(W3), conf 0~1
-  · 합성 이미지: 빨강(두 H 구간)·노랑 다중 윤곽, 작은 덩어리·들쭉날쭉한 조각 버림, 빈 프레임 → 0개, 최대 개수
+  · 합성 이미지: 장애물 색(흰색 기본 / 빨강 두 H 구간)·노랑 다중 윤곽, 작은 덩어리·들쭉날쭉한 조각 버림,
+    빈 프레임 → 0개, 최대 개수
+  · W1: 기본 white → 흰 물체 cls 0·빨강 안 잡힘, obstacle_color red → W1 전 동작, yellow·모르는 값 → ERROR + white,
+    cls 값 집합 {0,2}·VER·STRIDE 불변(ship_avoid 왕복)
   · 노드 선언 리터럴 == vision.yaml image_subscriber_avoid 절(키·값·타입), HSV 는 `/**` 단일 출처
   · 스텁 rclpy 로 실제 노드: 게이트 밖 침묵, camera_info 없음·K 무효·해상도 불일치 → 발행 안 함 + ERROR,
     mode 5 첫 프레임부터 하트비트, 미래 stamp → age 0 + WARN, 로거 심각도 고정(§1-7), 선언이 구독보다 먼저
@@ -65,10 +69,45 @@ def _f32(data):
 def test_format_constants_match_ship_avoid():
     ml = _ship_avoid_logic()
     assert (adl.DET_VER, adl.DET_STRIDE, adl.DET_HEADER) == (ml.DET_VER, ml.DET_STRIDE, ml.DET_HEADER)
-    # cls 번호 — ship_avoid core.add_detections: 0 = 빨강(낮은 장애물), 2 = 노랑, 그 외 무시
-    assert adl.CLS_RED == 0 and adl.CLS_YELLOW == 2
-    assert adl.COLOR_CLS == {'red': 0, 'yellow': 2}
+    # cls 번호 — ship_avoid core.add_detections: 0 = 장애물(W1 전엔 빨강), 2 = 노랑, 그 외 무시
+    assert adl.CLS_OBSTACLE == 0 and adl.CLS_YELLOW == 2
+    assert adl.VALID_CLS == (0, 2)
+    assert adl.COLOR_CLS == {'white': 0, 'yellow': 2}, 'W1: 기본 장애물 색 = 흰색'
     assert set(adl.COLOR_CLS) <= set(hsv_ranges.VALID_COLORS)
+    assert (ml.DET_VER, ml.DET_STRIDE) == (1, 6), 'W1 은 VER 을 올리지 않는다'
+
+
+# ================================================================ W1 장애물 색
+def test_obstacle_colors_are_hsv_colors_minus_yellow():
+    assert adl.OBSTACLE_COLORS == tuple(c for c in hsv_ranges.VALID_COLORS if c != 'yellow')
+    assert 'yellow' not in adl.OBSTACLE_COLORS and {'white', 'red'} <= set(adl.OBSTACLE_COLORS)
+    assert adl.DEFAULT_OBSTACLE_COLOR == 'white' == adl.DEFAULT_PARAMS['obstacle_color']
+
+
+@pytest.mark.parametrize('color', adl.OBSTACLE_COLORS)
+def test_color_cls_value_set_unchanged_for_every_obstacle_color(color):
+    """어떤 장애물 색이든 cls 값 집합은 {0, 2} — ship_avoid core 가 (0,2) 밖을 조용히 버리지 않게."""
+    m = adl.color_cls(color)
+    assert m == {color: 0, 'yellow': 2}
+    assert set(m.values()) == set(adl.VALID_CLS)
+
+
+@pytest.mark.parametrize('value,want', [
+    ('white', 'white'), ('red', 'red'), ('black', 'black'), (' White ', 'white'), ('RED', 'red'),
+])
+def test_obstacle_color_accepted(value, want):
+    vals, errs = adl.check_params({'obstacle_color': value})
+    assert errs == [] and vals['obstacle_color'] == want
+
+
+@pytest.mark.parametrize('value', ['yellow', ' Yellow', 'purple', '', 'pink', None, 3, True, ['white']])
+def test_obstacle_color_bad_falls_back_to_white_with_error(value):
+    vals, errs = adl.check_params({'obstacle_color': value})
+    assert vals['obstacle_color'] == 'white', f'{value!r} → white'
+    assert len(errs) == 1 and 'obstacle_color' in errs[0] and 'image_subscriber_avoid' in errs[0]
+    assert "'white'" in errs[0], '돌아갈 값을 로그에 적는다'
+    if isinstance(value, str) and value.strip().lower() == 'yellow':
+        assert 'cls 2' in errs[0], 'yellow 를 왜 못 쓰는지 적는다'
 
 
 def test_roundtrip_through_ship_avoid_parser():
@@ -175,6 +214,7 @@ def test_check_params_defaults_pass():
     ('conf_full_area_px', 0.0), ('conf_full_area_px', float('inf')), ('conf_full_area_px', -1.0),
     ('min_solidity', -0.01), ('min_solidity', 1.01), ('min_solidity', float('nan')), ('min_solidity', None),
     ('max_detections', 0), ('max_detections', -3), ('max_detections', 2.0), ('max_detections', True),
+    ('obstacle_color', 'yellow'), ('obstacle_color', 'magenta'), ('obstacle_color', 1),
 ])
 def test_check_params_bad_value_falls_back_with_error(name, value):
     raw = dict(adl.DEFAULT_PARAMS, **{name: value})
@@ -210,43 +250,90 @@ def _hsv_bgr(h, s=255, v=255):
     return tuple(int(c) for c in cv2.cvtColor(px, cv2.COLOR_HSV2BGR)[0, 0])
 
 
-def _scene():
-    """빨강 H0 원(왼쪽) · 빨강 H175 원(오른쪽) · 노랑 사각(가운데 아래) · 작은 빨강 점 · 빨강 십자(들쭉날쭉)."""
+# 장애물 색별 합성 색 (두 원, 점·십자). 흰색: 순백 + 살짝 붉은 흰(S 30 ≤ 40, V 230 ≥ 220 — hsv.white 안).
+#   빨강: H0 · H175 (hsv.red 두 구간).
+_OBST_BGR = {
+    'white': (lambda: (255, 255, 255), lambda: _hsv_bgr(0, 30, 230)),
+    'red': (lambda: _hsv_bgr(0), lambda: _hsv_bgr(175)),
+}
+
+
+def _scene(obst='white'):
+    """장애물 색 원 A(왼쪽) · 원 B(오른쪽) · 노랑 사각(가운데 아래) · 작은 장애물 색 점 · 장애물 색 십자(들쭉날쭉)."""
     cv2 = pytest.importorskip('cv2')
     np = pytest.importorskip('numpy')
+    a, b = (f() for f in _OBST_BGR[obst])
     img = np.zeros((H, W, 3), dtype=np.uint8)
-    cv2.circle(img, (120, 200), 25, _hsv_bgr(0), -1)
-    cv2.circle(img, (540, 160), 20, _hsv_bgr(175), -1)
+    cv2.circle(img, (120, 200), 25, a, -1)
+    cv2.circle(img, (540, 160), 20, b, -1)
     cv2.rectangle(img, (300, 240), (340, 299), _hsv_bgr(30), -1)       # 노랑, 맨 아래 행 299
-    cv2.rectangle(img, (60, 40), (63, 43), _hsv_bgr(0), -1)            # 16 px² < min_area 40
-    cv2.rectangle(img, (420, 30), (480, 39), _hsv_bgr(0), -1)          # 십자 가로
-    cv2.rectangle(img, (445, 5), (454, 64), _hsv_bgr(0), -1)           # 십자 세로 → solidity ≈ 0.5
+    cv2.rectangle(img, (60, 40), (63, 43), a, -1)                      # 16 px² < min_area 40
+    cv2.rectangle(img, (420, 30), (480, 39), a, -1)                    # 십자 가로
+    cv2.rectangle(img, (445, 5), (454, 64), a, -1)                     # 십자 세로 → solidity ≈ 0.5
     return img
 
 
-def _ranges():
-    return {c: hsv_ranges.DEFAULT_RANGES[c] for c in adl.COLOR_CLS}
+def _mixed_scene():
+    """흰 원(왼쪽) · 빨강 원(오른쪽) · 노랑 사각 — 장애물 색 설정에 따라 하나만 cls 0 으로 잡혀야 한다."""
+    cv2 = pytest.importorskip('cv2')
+    np = pytest.importorskip('numpy')
+    img = np.zeros((H, W, 3), dtype=np.uint8)
+    cv2.circle(img, (120, 200), 25, (255, 255, 255), -1)
+    cv2.circle(img, (540, 160), 20, _hsv_bgr(0), -1)
+    cv2.rectangle(img, (300, 240), (340, 299), _hsv_bgr(30), -1)
+    return img
 
 
-def test_synthetic_multi_contours_red_two_bands_and_yellow():
-    blobs = adl.detect_blobs(_scene(), _ranges(), 40.0, 0.7, 16)
-    reds = sorted((b for b in blobs if b['cls'] == adl.CLS_RED), key=lambda b: b['u'])
+def _ranges(obst='white'):
+    return {c: hsv_ranges.DEFAULT_RANGES[c] for c in adl.color_cls(obst)}
+
+
+@pytest.mark.parametrize('obst', ['white', 'red'])
+def test_synthetic_multi_contours_obstacle_and_yellow(obst):
+    """white = W1 기본(순백·살짝 붉은 흰) / red = W1 전 동작(두 H 구간 H0·H175)."""
+    blobs = adl.detect_blobs(_scene(obst), _ranges(obst), 40.0, 0.7, 16, adl.color_cls(obst))
+    obs = sorted((b for b in blobs if b['cls'] == adl.CLS_OBSTACLE), key=lambda b: b['u'])
     yellows = [b for b in blobs if b['cls'] == adl.CLS_YELLOW]
-    assert len(reds) == 2, f'빨강 두 구간(H0·H175) 원 2개 — 작은 점·십자는 버림: {[(b["u"], b["area"]) for b in reds]}'
+    assert len(obs) == 2, f'{obst} 원 2개 — 작은 점·십자는 버림: {[(b["u"], b["area"]) for b in obs]}'
+    assert all(b['color'] == obst for b in obs)
     assert len(yellows) == 1
-    assert abs(reds[0]['u'] - 120) < 1.0 and abs(reds[1]['u'] - 540) < 1.0
+    assert abs(obs[0]['u'] - 120) < 1.0 and abs(obs[1]['u'] - 540) < 1.0
     assert abs(yellows[0]['u'] - 320) < 1.0 and yellows[0]['v_bottom'] == 299.0
     assert [b['area'] for b in blobs] == sorted((b['area'] for b in blobs), reverse=True), '면적 큰 순'
 
     dets = adl.blobs_to_detections(blobs, INTR, 0.05, 400.0)
     left = max(dets, key=lambda d: d[1])
     right = min(dets, key=lambda d: d[1])
-    assert left[0] == adl.CLS_RED and left[1] > 0.0, '왼쪽 빨강 = 좌 +'
-    assert right[0] == adl.CLS_RED and right[1] < 0.0
+    assert left[0] == adl.CLS_OBSTACLE and left[1] > 0.0, '왼쪽 장애물 = 좌 +'
+    assert right[0] == adl.CLS_OBSTACLE and right[1] < 0.0
     y = [d for d in dets if d[0] == adl.CLS_YELLOW][0]
     assert abs(y[2] - (299.0 - CY) / FY) < 1e-12, 'v_norm = (맨 아래 행 − cy)/fy'
     assert all(math.isnan(d[3]) for d in dets), 'U3: range_m 은 늘 NaN'
     assert all(0.0 < d[4] <= 1.0 and d[5] == 0.05 for d in dets)
+
+
+def test_default_white_ignores_red_and_red_setting_ignores_white():
+    """W1: 기본(white)이면 빨강 물체는 안 잡힌다. obstacle_color red 면 예전처럼 빨강만 cls 0."""
+    w = adl.detect_blobs(_mixed_scene(), _ranges(), 40.0, 0.7, 16)          # cls_of None → COLOR_CLS(white)
+    assert sorted((b['cls'], b['color'], round(b['u'])) for b in w) == [(0, 'white', 120), (2, 'yellow', 320)]
+    # 빨강 HSV 범위를 넘겨도 cls 표에 없으면 무시(장애물 색이 아닌 색은 cls 0 으로 새지 않는다)
+    w2 = adl.detect_blobs(_mixed_scene(), dict(_ranges(), red=hsv_ranges.DEFAULT_RANGES['red']), 40.0, 0.7, 16)
+    assert [b['color'] for b in w2 if b['cls'] == 0] == ['white']
+    r = adl.detect_blobs(_mixed_scene(), _ranges('red'), 40.0, 0.7, 16, adl.color_cls('red'))
+    assert sorted((b['cls'], b['color'], round(b['u'])) for b in r) == [(0, 'red', 540), (2, 'yellow', 320)]
+
+
+def test_white_obstacle_roundtrip_through_ship_avoid_parser():
+    """흰 합성 물체 → detect → pack → ship_avoid parse_detections: cls 0 으로 도착(VER 1·STRIDE 6 그대로)."""
+    ml = _ship_avoid_logic()
+    blobs = adl.detect_blobs(_mixed_scene(), _ranges(), 40.0, 0.7, 16)
+    data, dropped = adl.pack_detections(adl.blobs_to_detections(blobs, INTR, 0.03, 400.0))
+    assert dropped == 0 and data[:3] == [1.0, 6.0, 2.0]
+    got, n_old, err = ml.parse_detections(_f32(data), 0.5)
+    assert err is None and n_old == 0
+    white = [g for g in got if g[0] == 0]
+    assert len(white) == 1 and white[0][1] > 0.0, '왼쪽 흰 원 = cls 0, 좌 +'
+    assert sorted(g[0] for g in got) == [0, 2]
 
 
 def test_empty_frame_gives_zero_detections():
@@ -321,7 +408,7 @@ def test_yaml_section_equals_declared_literals_and_types():
     for k, v in y.items():
         assert v == dec[k] and type(v) is type(dec[k]), f'{k}: yaml {v!r} ≠ 선언 {dec[k]!r}'  # noqa: E721
     for k in ('active_wp_modes', 'debug_view', 'camera_info_topic', 'min_area_px', 'min_solidity',
-              'conf_full_area_px', 'max_detections'):
+              'conf_full_area_px', 'max_detections', 'obstacle_color'):
         assert k in y, f'vision.yaml {NODE_NAME} 절에 {k} 없음'
 
 
@@ -330,6 +417,16 @@ def test_safety_switch_defaults():
     dec, y = _declares(), _yaml_section(NODE_NAME)
     assert dec['active_wp_modes'] == y['active_wp_modes'] == [5]
     assert dec['debug_view'] is False and y['debug_view'] is False
+
+
+def test_obstacle_color_yaml_equals_code_default():
+    """W1: 코드 리터럴 == vision.yaml 절 == adl.DEFAULT_OBSTACLE_COLOR == 'white', 허용 색."""
+    y = _yaml_section(NODE_NAME)
+    assert _declares()['obstacle_color'] == y['obstacle_color'] == adl.DEFAULT_OBSTACLE_COLOR == 'white'
+    assert y['obstacle_color'] in adl.OBSTACLE_COLORS
+    # 장애물 색의 HSV 는 `/**` 공통 절에 있어야 한다(없으면 hsv_ranges 기본값으로 조용히 돈다)
+    txt = open(VISION_YAML, encoding='utf-8').read()
+    assert re.search(r'^\s{4}hsv\.%s:\s*\[' % y['obstacle_color'], txt, re.M), 'vision.yaml `/**` 에 hsv.white 없음'
 
 
 def test_hsv_single_source_not_overridden_in_section():
@@ -513,7 +610,11 @@ def test_node_declares_before_subscriptions(node_mod):
     assert last_decl < first_io, f'파라미터 선언이 구독·발행자 생성보다 먼저여야 한다: {ORDER}'
     assert set(node.subs) == {'/wp_mode', '/oak/rgb/image_raw', '/oak/rgb/camera_info'}
     assert node.debug_view is False and node.mode_gate.active_modes == {5}
-    assert set(node.color_ranges) == {'red', 'yellow'}
+    assert node.obstacle_color == 'white' and node.cls_of == {'white': 0, 'yellow': 2}
+    assert set(node.color_ranges) == {'white', 'yellow'}
+    decl = [k for kind, k in ORDER if kind == 'declare']
+    assert 'hsv.white' in decl and 'hsv.red' not in decl, '장애물 색의 hsv.<색> 만 읽는다'
+    assert decl.index('obstacle_color') < decl.index('hsv.white'), '색을 정한 뒤 HSV 를 읽는다'
 
 
 def test_node_silent_outside_mode5(node_mod):
@@ -624,3 +725,52 @@ def test_node_bad_params_error_once_and_defaults(node_mod):
     node.subs['/oak/rgb/image_raw'](_img(_scene()))
     assert _out(node)[-1][2] == 3.0, '기본값으로 돌아 검출이 나간다'
     assert len(_sev(node, 'ERROR')) == 2, '부팅 1회뿐(프레임마다 안 냄)'
+
+
+def _mode5_node(mod):
+    node = mod.ImageSubscriberAvoid()
+    node.subs['/wp_mode'](_Msg(data=5))
+    node.subs['/oak/rgb/camera_info'](_info())
+    return node
+
+
+def test_node_default_white_sees_white_not_red(node_mod):
+    ml = _ship_avoid_logic()
+    mod, mono = node_mod
+    node = _mode5_node(mod)
+    node.subs['/oak/rgb/image_raw'](_img(_mixed_scene()))
+    got, _n_old, err = ml.parse_detections(_f32(_out(node)[-1]), 0.5)
+    assert err is None and sorted(g[0] for g in got) == [0, 2]
+    obst = [g for g in got if g[0] == 0][0]
+    assert obst[1] > 0.0, 'cls 0 = 왼쪽 흰 원(오른쪽 빨강 원은 안 잡힘)'
+    assert not _sev(node, 'ERROR')
+    assert _sev(node, 'INFO', '장애물 cls 0 = white')
+
+
+def test_node_obstacle_color_red_restores_old_behaviour(node_mod):
+    ml = _ship_avoid_logic()
+    mod, mono = node_mod
+    OVERRIDES['obstacle_color'] = 'red'
+    node = _mode5_node(mod)
+    assert set(node.color_ranges) == {'red', 'yellow'} and not _sev(node, 'ERROR')
+    node.subs['/oak/rgb/image_raw'](_img(_scene('red')))
+    got, _n_old, err = ml.parse_detections(_f32(_out(node)[-1]), 0.5)
+    assert err is None and sorted(g[0] for g in got) == [0, 0, 2], '빨강 두 원 = cls 0 (W1 전과 같음)'
+    node.subs['/oak/rgb/image_raw'](_img(_mixed_scene()))
+    got, _n_old, err = ml.parse_detections(_f32(_out(node)[-1]), 0.5)
+    assert sorted(g[0] for g in got) == [0, 2] and [g for g in got if g[0] == 0][0][1] < 0.0, \
+        'red 설정이면 흰 원은 무시, 오른쪽 빨강만 cls 0'
+
+
+@pytest.mark.parametrize('bad', ['yellow', 'purple'])
+def test_node_bad_obstacle_color_error_once_and_white(node_mod, bad):
+    mod, mono = node_mod
+    OVERRIDES['obstacle_color'] = bad
+    node = _mode5_node(mod)
+    errs = _sev(node, 'ERROR')
+    assert len(errs) == 1 and 'obstacle_color' in errs[0] and repr(bad) in errs[0]
+    assert node.obstacle_color == 'white' and set(node.color_ranges) == {'white', 'yellow'}
+    node.subs['/oak/rgb/image_raw'](_img(_scene()))
+    node.subs['/oak/rgb/image_raw'](_img(_scene()))
+    assert _out(node)[-1][2] == 3.0, '기본 white 로 돈다'
+    assert len(_sev(node, 'ERROR')) == 1, '부팅 1회뿐'
