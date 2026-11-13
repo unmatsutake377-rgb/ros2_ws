@@ -338,3 +338,18 @@ def test_node_invalid_param_error_and_default(node_mod):
     errs = [m for s, m in node.logger.lines if s == 'ERROR']
     assert any('lidar_stale_sec' in m for m in errs) and any('weight_min' in m for m in errs)
     assert node.p['lidar_stale_sec'] == 0.5 and node.p['weight_min'] == 0.3
+
+
+def test_node_disagree_policy_default_and_invalid(node_mod):
+    """기본 = lidar(코드 리터럴 == yaml == DEFAULTS 는 위 두 테스트가 묶음). 이상값 → ERROR 한 줄 + lidar."""
+    mod, _ = node_mod
+    assert _declares()['disagree_policy'][0] == 'lidar' == _yaml_params()['disagree_policy']
+    node = mod.PerceptionFusion()
+    assert node.p['disagree_policy'] == 'lidar'
+    assert not [m for s, m in node.logger.lines if s == 'ERROR']
+    OVERRIDES.update(disagree_policy='average')
+    node = mod.PerceptionFusion()
+    errs = [m for s, m in node.logger.lines if s == 'ERROR' and 'disagree_policy' in m]
+    assert len(errs) == 1 and node.p['disagree_policy'] == 'lidar'
+    OVERRIDES.update(disagree_policy='min')
+    assert mod.PerceptionFusion().p['disagree_policy'] == 'min'

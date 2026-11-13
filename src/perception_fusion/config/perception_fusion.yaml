@@ -3,7 +3,7 @@
 #
 # 🚨 코드 기본값(perception_fusion.py declare_parameter) == 이 파일 == fusion_logic.DEFAULTS.
 #    test_fusion_params.py 가 셋을 묶는다. 소수점을 지킨다(3.0 ↔ 3 은 부팅 실패).
-# 🚨 대회 사용은 물 위 실측 0회 상태(§10). 미션 노드는 distance_source: fill(LiDAR 먼저) 로 쓴다.
+# 🚨 대회 사용은 물 위 실측 0회 상태(§10). 미션 노드 기본 distance_source: fused(11-14 계약서_흰부표_거리융합_v3 G-9), 어긋나면 LiDAR(disagree_policy).
 #    롤백: launch perception_fusion:=false d455_depth:=false, 또는 미션 yaml distance_source: lidar.
 /perception_fusion:
   ros__parameters:
@@ -26,7 +26,8 @@
     weight_max: 0.7
     agree_abs_m: 0.3                # 일치 = |dL − dD| ≤ max(agree_abs_m, agree_rel·min)  ⚠️ 실측 필요
     agree_rel: 0.1                  # ⚠️ 실측 필요
-    disagree_penalty: 0.1           # 어긋남(min 채택) 때 conf 감점
+    disagree_penalty: 0.1           # 어긋남 때 conf 감점(정책과 무관하게 min(conf) − 이 값)
+    disagree_policy: "lidar"        # 어긋남 때 거리: "lidar" = LiDAR 값(카메라 버림, G-5) / "min" = 가까운 값(11-12 규칙)
     conf_window_frames: 10          # 🚨 정수. 신뢰도 = 소스별 최근 N 프레임
     conf_mad_ref_m: 0.3             # 신뢰도: MAD 가 이 값이면 안정도 −0.5
     conf_jump_m: 0.5                # 신뢰도: 프레임 간 이 이상 변하면 점프

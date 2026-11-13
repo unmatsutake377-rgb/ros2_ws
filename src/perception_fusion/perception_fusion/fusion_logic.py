@@ -5,7 +5,7 @@
 좌표: 상대방위 rel(도, 0 = 정면, 왼쪽 +), 원점 = LiDAR. LiDAR 각 a 는 rel = a − 80 (a = 80 + rel, 부호 안 뒤집음).
 출력 /fused_objects = Float32MultiArray
   [VER=1, STRIDE=8, N, N × (color_id, bearing_deg, range_m, conf, src_id, age_s, track_id, flags)]
-  src_id 0 lidar · 1 depth · 2 fused · 3 row(1단계 안 냄) / flags bit0 어긋남(min 채택) · bit1 LiDAR stale
+  src_id 0 lidar · 1 depth · 2 fused · 3 row(1단계 안 냄) / flags bit0 어긋남(disagree_policy 로 처리) · bit1 LiDAR stale
   color_id 0 모름 · 1 red · 2 green · 3 white · 4 yellow · 5 black · 6 orange · 7 blue
   (🚨 /avoid_detections cls 열거형과 다르다. 사본이 미션 노드 셋에 있다 — 상수 공유 모듈화 금지 §1-8,
    VER·STRIDE 머리 검사로 어긋남을 잡는다.)
@@ -57,6 +57,7 @@ DEFAULTS = {
     'agree_abs_m': 0.3,
     'agree_rel': 0.1,
     'disagree_penalty': 0.1,
+    'disagree_policy': 'lidar',
     'conf_window_frames': 10,
     'conf_mad_ref_m': 0.3,
     'conf_jump_m': 0.5,
@@ -69,6 +70,10 @@ DEFAULTS = {
     'cam_y_from_lidar_m': 0.0,
     'cam_yaw_offset_deg': 0.0,
 }
+
+# disagree_policy: LiDAR·뎁스가 어긋날 때 무엇을 내나 (계약서_흰부표_거리융합_v3_20261114 G-5·P1a)
+#   lidar = LiDAR 값·src 0 (카메라 값 버림, 기본) / min = 둘 중 가까운 값(11-12 원래 규칙)
+DISAGREE_POLICIES = ('lidar', 'min')
 
 Blob = namedtuple('Blob', 'lo hi bearing range_m')
 
@@ -298,8 +303,11 @@ def fuse_pair(d_l, c_l, d_d, c_d, p):
 
     일치(|dL − dD| ≤ max(agree_abs_m, agree_rel·min)) → w = 정규화 conf 를 [weight_min, weight_max] 로 자른
       가중평균, src fused, conf = max.
-    어긋남 → **min**(평균은 물체 없는 거리를 만든다), src = min 을 낸 소스, conf = min − disagree_penalty,
-      flags bit0.
+    어긋남 → 평균 금지(물체 없는 거리를 만든다). conf = min(c_l, c_d) − disagree_penalty, flags bit0 —
+      정책과 무관(어긋남 = 둘 중 하나는 틀렸다는 증거, 어느 쪽인지는 모른다).
+      disagree_policy lidar(기본) → LiDAR 값, src lidar(카메라 값 버림, G-5).
+      disagree_policy min → 가까운 값, src = min 을 낸 소스(11-12 규칙).
+      모르는 정책 값은 lidar 로 본다(check_params 가 미리 ERROR 로 걸러 둔다).
     """
     tol = max(p['agree_abs_m'], p['agree_rel'] * min(d_l, d_d))
     if abs(d_l - d_d) <= tol:
@@ -308,7 +316,7 @@ def fuse_pair(d_l, c_l, d_d, c_d, p):
         w = min(max(w, p['weight_min']), p['weight_max'])
         return w * d_l + (1.0 - w) * d_d, SRC_FUSED, max(c_l, c_d), 0
     conf = max(0.0, min(c_l, c_d) - p['disagree_penalty'])
-    if d_l <= d_d:
+    if p.get('disagree_policy', 'lidar') != 'min' or d_l <= d_d:
         return d_l, SRC_LIDAR, conf, FLAG_DISAGREE
     return d_d, SRC_DEPTH, conf, FLAG_DISAGREE
 
@@ -470,6 +478,13 @@ def check_params(raw):
             out[key] = v
         else:
             issues.append(f'{key}={v!r} 무효(/ 로 시작하는 토픽) → 기본값 {DEFAULTS[key]!r}')
+    v = raw.get('disagree_policy', DEFAULTS['disagree_policy'])
+    pol = v.strip().lower() if isinstance(v, str) else None      # ship_back distance_source 와 같은 관대함
+    if pol in DISAGREE_POLICIES:
+        out['disagree_policy'] = pol
+    else:
+        issues.append(f"disagree_policy={v!r} 무효(lidar|min) → 기본값 {DEFAULTS['disagree_policy']!r}"
+                      '(어긋나면 LiDAR 값)')
     for key, (kind, ok, desc) in _SINGLE.items():
         v = raw.get(key, DEFAULTS[key])
         x = _num(v, kind)

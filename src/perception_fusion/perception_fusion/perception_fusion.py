@@ -2,7 +2,7 @@
 
 계약서_인식융합_20261112 (§10 결정이 본문보다 우선), 근거 계약서_거리융합_20261112 §4·§5.
   · 미션 노드(ship_back·ship_turn APPROACH·ship_gate)는 distance_source 가 fill/fused 일 때만 이 목록을 본다.
-    기본 lidar 면 구독도 안 한다. 대회 yaml = fill(LiDAR 먼저, 못 볼 때만 이 목록).
+    lidar 면 구독도 안 한다. 기본 yaml = fused(11-14 v3 G-9), 어긋나면 LiDAR(disagree_policy lidar).
   · CLAUDE.md §3 "카메라는 방위각만, 거리는 LiDAR" 의 예외(§10 Q1 승인) — distance_source fill/fused 일 때만.
   · 물 위 실측 0회(§10). D455 장착 오프셋·행 띠·거리 범위는 ⚠️ 실측 필요 값(yaml).
 
@@ -62,6 +62,7 @@ class PerceptionFusion(Node):
             'agree_abs_m': self.declare_parameter('agree_abs_m', 0.3).value,            # ⚠️ 실측 필요
             'agree_rel': self.declare_parameter('agree_rel', 0.1).value,                # ⚠️ 실측 필요
             'disagree_penalty': self.declare_parameter('disagree_penalty', 0.1).value,
+            'disagree_policy': self.declare_parameter('disagree_policy', 'lidar').value,  # lidar | min
             'conf_window_frames': self.declare_parameter('conf_window_frames', 10).value,
             'conf_mad_ref_m': self.declare_parameter('conf_mad_ref_m', 0.3).value,
             'conf_jump_m': self.declare_parameter('conf_jump_m', 0.5).value,
@@ -115,7 +116,8 @@ class PerceptionFusion(Node):
             f"/fused_objects {p['publish_hz']} Hz (VER {fl.VER}, STRIDE {fl.STRIDE}). stale LiDAR "
             f"{p['lidar_stale_sec']} s / 뎁스 {p['depth_stale_sec']} s, 뎁스 {p['depth_min_m']}~{p['depth_max_m']} m, "
             f"행 띠 {p['depth_row_lo_frac']}~{p['depth_row_hi_frac']}, 장착 x {p['cam_x_from_lidar_m']} "
-            f"y {p['cam_y_from_lidar_m']} yaw {p['cam_yaw_offset_deg']}° (⚠️ 실측 0회)")
+            f"y {p['cam_y_from_lidar_m']} yaw {p['cam_yaw_offset_deg']}°, 어긋남 = {p['disagree_policy']} "
+            f"(⚠️ 실측 0회)")
 
     # ---------------------- 주기 로그 ----------------------
     def _due(self, key, now):

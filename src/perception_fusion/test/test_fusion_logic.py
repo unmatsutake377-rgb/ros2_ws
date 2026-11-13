@@ -271,12 +271,42 @@ def test_fuse_pair_agree_threshold_relative():
     assert fl.fuse_pair(5.0, 0.8, 5.6, 0.8, P)[3] & fl.FLAG_DISAGREE
 
 
+P_MIN = dict(P, disagree_policy='min')
+P_LIDAR = dict(P, disagree_policy='lidar')
+
+
 @pytest.mark.parametrize('dL,dD,want_src', [(1.5, 4.0, 0), (4.0, 1.5, 1)])
 def test_fuse_pair_disagree_min(dL, dD, want_src):
-    """어긋남 → 평균 금지(2.75 m = 물체 없는 거리), min + bit0, 감점."""
-    r, src, conf, flags = fl.fuse_pair(dL, 0.9, dD, 0.8, P)
+    """disagree_policy min: 어긋남 → 평균 금지(2.75 m = 물체 없는 거리), min + bit0, 감점 (11-12 규칙 그대로)."""
+    r, src, conf, flags = fl.fuse_pair(dL, 0.9, dD, 0.8, P_MIN)
     assert r == 1.5 and src == want_src and flags & fl.FLAG_DISAGREE
     assert conf == pytest.approx(0.8 - P['disagree_penalty'])
+
+
+@pytest.mark.parametrize('dL,dD', [(1.5, 4.0), (4.0, 1.5)])
+def test_fuse_pair_disagree_lidar(dL, dD):
+    """disagree_policy lidar(G-5): 어긋남 → 뎁스가 더 가깝든 멀든 LiDAR 값·src 0, bit0, 감점은 min 정책과 같음."""
+    r, src, conf, flags = fl.fuse_pair(dL, 0.9, dD, 0.8, P_LIDAR)
+    assert r == dL and src == fl.SRC_LIDAR and flags == fl.FLAG_DISAGREE
+    assert conf == pytest.approx(0.8 - P['disagree_penalty'])
+    assert fl.fuse_pair(dL, 0.9, dD, 0.8, P_MIN)[2] == conf, '감점 규칙은 정책과 무관'
+
+
+def test_fuse_pair_default_policy_is_lidar():
+    """기본(DEFAULTS) = lidar. 키가 없는 p(옛 호출자)도 lidar 로 본다."""
+    assert fl.DEFAULTS['disagree_policy'] == 'lidar'
+    assert fl.fuse_pair(4.0, 0.9, 1.5, 0.8, P)[:2] == (4.0, fl.SRC_LIDAR)
+    p_old = {k: v for k, v in P.items() if k != 'disagree_policy'}
+    assert fl.fuse_pair(4.0, 0.9, 1.5, 0.8, p_old)[:2] == (4.0, fl.SRC_LIDAR)
+
+
+@pytest.mark.parametrize('dL,cL,dD,cD', [(3.0, 0.9, 3.2, 0.3), (3.0, 0.1, 3.2, 0.9), (5.0, 0.8, 5.45, 0.8),
+                                         (2.0, 0.0, 2.1, 0.0), (1.0, 0.5, 0.75, 0.6)])
+def test_fuse_pair_agree_unchanged_by_policy(dL, cL, dD, cD):
+    """일치하면 정책과 무관하게 같은 가중 결과(비트 동일)."""
+    got = {pol: fl.fuse_pair(dL, cL, dD, cD, dict(P, disagree_policy=pol)) for pol in fl.DISAGREE_POLICIES}
+    assert got['lidar'] == got['min']
+    assert got['lidar'][1] == fl.SRC_FUSED and got['lidar'][3] == 0
 
 
 def test_associate_overlap_with_margin():
@@ -309,6 +339,21 @@ def test_build_fused_agree():
     assert o['bearing_deg'] == pytest.approx(0.0, abs=0.3)
     assert o['track_id'] == -1 and o['color_id'] == 0
     assert stats['n'] == 1 and stats['agree'] == pytest.approx(1.0)
+
+
+@pytest.mark.parametrize('policy,want_r,want_src', [('lidar', 3.0, fl.SRC_LIDAR), ('min', 1.5, fl.SRC_DEPTH)])
+def test_build_disagree_policy(policy, want_r, want_src):
+    """같은 방위 LiDAR 3.0 m · 뎁스 1.5 m(어긋남) → 정책별 거리·src, 둘 다 bit0·agree 0. 형식 VER·STRIDE 불변."""
+    lt = _lidar_track([3.0] * 10)
+    dt = _depth_track([1.5] * 10, t0=0.3)
+    objs, stats = fl.build_objects(0.95, lt, dt, [], dict(P, disagree_policy=policy))
+    assert len(objs) == 1
+    o = objs[0]
+    assert o['range_m'] == want_r and o['src_id'] == want_src and o['flags'] == fl.FLAG_DISAGREE
+    assert stats['agree'] == 0.0
+    data = fl.encode(objs)
+    assert data[:3] == [float(fl.VER), float(fl.STRIDE), 1.0] and len(data) == 3 + fl.STRIDE
+    assert fl.decode(data)[0]['range_m'] == want_r
 
 
 def test_build_lidar_only_and_depth_only():
@@ -440,6 +485,20 @@ def test_check_params_invalid_falls_back(key, val):
     params, issues = fl.check_params(raw)
     assert params[key] == fl.DEFAULTS[key]
     assert issues and any(key in s for s in issues)
+
+
+@pytest.mark.parametrize('val', ['average', '', 'fused', None, 1, True, ['lidar']])
+def test_check_params_disagree_policy_invalid(val):
+    """이상값 → 이슈(노드가 ERROR) + 기본 lidar."""
+    params, issues = fl.check_params(dict(fl.DEFAULTS, disagree_policy=val))
+    assert params['disagree_policy'] == 'lidar'
+    assert any('disagree_policy' in s for s in issues)
+
+
+@pytest.mark.parametrize('val,want', [('min', 'min'), ('lidar', 'lidar'), (' MIN ', 'min'), ('Lidar', 'lidar')])
+def test_check_params_disagree_policy_valid(val, want):
+    params, issues = fl.check_params(dict(fl.DEFAULTS, disagree_policy=val))
+    assert params['disagree_policy'] == want and issues == []
 
 
 def test_format_status():
