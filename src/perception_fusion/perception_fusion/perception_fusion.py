@@ -15,6 +15,8 @@
   /oak_detections (Float32MultiArray, BEST_EFFORT d1) — D1 다중 물체 검출, 형식은 fusion_logic 머리말.
     VER·STRIDE·길이 불일치 = 메시지 버림 + 주기 ERROR. 발행자 D1 은 아직 없다(구독자가 먼저 — §4).
   /ublox_gps_node/fix (NavSatFix, RELIABLE 10) — 삼각측량 기선. RTK FIXED 판정 = fusion_logic.fix_quality
+    (P1b-2: 검출은 RayQueue 에 넣고, 촬영 뒤 GPS 표본(1 Hz)이 오면 publish_cb 에서 보간해 광선으로 만든다.
+     결과는 '지금' 자세(GPS 외삽 + 현재 yaw)로 다시 잰다. 버림 사유는 warn_period_sec 주기 WARN.)
   /imu/yaw (Float64, RELIABLE 10) — 세계 방위(나침반 도, 시계 +)
   /imu/data (Imu, RELIABLE 10) — 피치·롤(단안). ⚠️ iahrs_driver 는 발행자만 만들고 publish 하지 않는다
     (iahrs_driver.cpp:81 생성, 루프에 publish 없음) → 지금은 장착값만 + WARN 1회.
@@ -107,6 +109,12 @@ class PerceptionFusion(Node):
             'tri_max_dt_s': self.declare_parameter('tri_max_dt_s', 3.0).value,              # ⚠️ 실측 필요
             'tri_assoc_deg': self.declare_parameter('tri_assoc_deg', 5.0).value,            # ⚠️ 실측 필요
             'tri_pose_max_gap_s': self.declare_parameter('tri_pose_max_gap_s', 0.3).value,
+            'gps_period_s': self.declare_parameter('gps_period_s', 1.0).value,          # zed_f9p_rover rate 1.0
+            'tri_interp_sigma_frac': self.declare_parameter('tri_interp_sigma_frac', 0.1).value,  # ⚠️ 실측 필요
+            'tri_pending_max': self.declare_parameter('tri_pending_max', 45).value,
+            'tri_parallax_sigma_k': self.declare_parameter('tri_parallax_sigma_k', 2.0).value,
+            'tri_max_rays': self.declare_parameter('tri_max_rays', 8).value,
+            'cam_max_rel_sigma': self.declare_parameter('cam_max_rel_sigma', 0.3).value,  # ⚠️ 실측 필요
             'tri_yaw_sigma_deg': self.declare_parameter('tri_yaw_sigma_deg', 0.5).value,    # ⚠️ 실측 필요
             'tri_rtk_max_sigma_m': self.declare_parameter('tri_rtk_max_sigma_m', 0.05).value,
             'tri_max_range_m': self.declare_parameter('tri_max_range_m', 15.0).value,       # ⚠️ 실측 필요
@@ -135,13 +143,15 @@ class PerceptionFusion(Node):
         self.inputs_ok = None          # (lidar_ok, depth_ok) — 바뀔 때 INFO
         # P1 카메라 경로
         self.oak = None                # (수신 시각, 검출 목록) — 형식 오류 메시지는 넣지 않는다
-        self.att = None                # (수신 시각, IMU 피치, IMU 롤) — 부호 적용 뒤
         self.imu_warned = False        # /imu/data 없음 WARN 1회(다시 들어오면 풀림)
-        horizon = p['tri_max_dt_s'] + 2.0 * p['tri_pose_max_gap_s'] + 1.0
+        # 촬영 시각(t_cap = 수신 − age_s) 값으로 찾을 버퍼(P1b-2·5). GPS 를 기다리는 만큼 길게 둔다.
+        horizon = p['tri_max_dt_s'] + (fl.GPS_WAIT_FACTOR + fl.GPS_GAP_FACTOR) * p['gps_period_s'] + 1.0
+        self.att = fl.TimeSeries(horizon)   # (IMU 피치, IMU 롤) — 부호 적용 뒤
         self.gps = fl.TimeSeries(horizon)   # (x 동, y 북, σ, fixed) 로컬 m
         self.yaw = fl.TimeSeries(horizon)
         self.geo0 = None               # 첫 유효 fix (lat, lon) = 로컬 원점
-        self.rtk_fixed = False         # 마지막 fix 가 FIXED 인가(/fusion_status)
+        self.gps_nofix = True          # 마지막 /fix 가 NO_FIX 였나(rtk_fixed·삼각측량 출력을 바로 끈다)
+        self.rayq = fl.RayQueue()      # 촬영 뒤 GPS 표본을 기다리는 검출(publish_cb 에서 광선으로)
         self.tri = fl.TriTracker()
         self.log_t = {}                # 주기 로그 키 → 마지막 시각
 
@@ -178,6 +188,10 @@ class PerceptionFusion(Node):
             f"피치 {p['oak_pitch_deg']}° 롤 {p['oak_roll_deg']}° yaw {p['oak_yaw_offset_deg']}°, "
             f"삼각측량 기선 ≥ {p['tri_min_baseline_m']} m · 시차 ≥ {p['tri_min_parallax_deg']}° · "
             f"Δt ≤ {p['tri_max_dt_s']} s · RTK FIXED 만 (⚠️ 장착값 전부 가정값, 배별 통로 없음)")
+        if p['use_mono'] and p['oak_pitch_deg'] == fl.DEFAULTS['oak_pitch_deg']:
+            self.get_logger().warn(
+                f"perception_fusion: use_mono=true 인데 oak_pitch_deg 가 기본값 {p['oak_pitch_deg']}°(미실측) — "
+                '장착 피치 1° 오차가 3 m 에서 약 0.4 m. 실측값을 yaml 에 넣기 전엔 단안 거리를 믿지 말 것')
 
     # ---------------------- 주기 로그 ----------------------
     def _due(self, key, now):
@@ -270,25 +284,19 @@ class PerceptionFusion(Node):
                 self.get_logger().warn(
                     f'perception_fusion: /oak_detections 무효 줄 {bad}개 버림(비유한·색 밖·|방위|≥90·age<0 등)')
         self.oak = (now, dets)
-        if not self.p['use_triangulation']:
-            return
-        pitch, roll, _ = fl.camera_attitude(self.att, now, self.p)
-        rays = []
-        for d in dets:
-            ray, _why = fl.make_ray(d, now - d['age_s'], self.gps, self.yaw, pitch, roll, self.p)
-            if ray is not None:
-                rays.append(ray)
-        self.tri.add(rays, self.p)
+        if self.p['use_triangulation']:
+            self.rayq.push(now, dets, self.p)     # 광선은 촬영 뒤 GPS 표본이 오면 publish_cb 에서 만든다
 
     def gps_cb(self, msg):
         now = time.monotonic()
         lat, lon = float(msg.latitude), float(msg.longitude)
         if int(msg.status.status) <= fl.NAV_STATUS_NO_FIX or not (math.isfinite(lat) and math.isfinite(lon)) \
                 or (abs(lat) < 1e-7 and abs(lon) < 1e-7):
-            return                     # fix 아님 — 버퍼에 안 넣는다(삼각측량 광선이 'gps' 로 빠진다)
+            self.gps_nofix = True      # fix 아님 — 버퍼에 안 넣고 rtk_fixed·삼각측량 출력을 바로 끈다
+            return
+        self.gps_nofix = False
         fixed, sigma = fl.fix_quality(msg.status.status, msg.position_covariance, msg.position_covariance_type,
                                       self.p['tri_rtk_max_sigma_m'])
-        self.rtk_fixed = fixed
         if self.geo0 is None:
             self.geo0 = (lat, lon)
         x, y = fl.ll_to_local(lat, lon, self.geo0[0], self.geo0[1])
@@ -305,7 +313,7 @@ class PerceptionFusion(Node):
         if not all(math.isfinite(v) for v in vals) or sum(v * v for v in vals) < 1e-6:
             return
         pitch, roll = fl.quat_pitch_roll(*vals)
-        self.att = (time.monotonic(), self.p['imu_pitch_sign'] * pitch, self.p['imu_roll_sign'] * roll)
+        self.att.push(time.monotonic(), (self.p['imu_pitch_sign'] * pitch, self.p['imu_roll_sign'] * roll))
 
     # ---------------------- 타이머 ----------------------
     def publish_cb(self):
@@ -333,7 +341,16 @@ class PerceptionFusion(Node):
         if not (p['use_mono'] or p['use_triangulation']):
             return None, False, None
         oak_ok = self.oak is not None and now - self.oak[0] <= p['det_stale_sec']
-        pitch, roll, imu_ok = fl.camera_attitude(self.att, now, p)
+        _, _, imu_ok = fl.camera_attitude(self.att, now, p)
+        pose = None
+        if p['use_triangulation']:
+            for rays in self.rayq.pop_ready(now, self.gps, self.yaw, self.att, p):
+                self.tri.add(rays, p)
+            self._report_ray_drops(now)
+            if not self.gps_nofix:
+                pose = fl.current_pose(self.gps, self.yaw, now, p)
+        g = None if self.gps_nofix else fl.gps_now(self.gps, now, p)
+        rtk_fixed = g is not None and g[3]            # 신선도 포함(끊김 1.5 주기·NO_FIX → False)
         if p['use_mono'] and not imu_ok:
             if not self.imu_warned:
                 self.imu_warned = True
@@ -343,15 +360,25 @@ class PerceptionFusion(Node):
         elif imu_ok:
             self.imu_warned = False
         cam = {'use_mono': p['use_mono'], 'use_tri': p['use_triangulation'], 'oak_ok': oak_ok,
-               'imu_ok': imu_ok, 'rtk_fixed': self.rtk_fixed}
+               'imu_ok': imu_ok, 'rtk_fixed': rtk_fixed}
         if not oak_ok:
             return None, False, cam
         cams = []
         if p['use_mono']:
-            cams += fl.mono_measurements(self.oak[1], self.oak[0], now, pitch, roll, p)
+            cams += fl.mono_measurements(self.oak[1], self.oak[0], now, self.att, p)
         if p['use_triangulation']:
-            cams += self.tri.estimates(now, p)
+            cams += self.tri.estimates(now, pose, p)
         return cams, True, cam
+
+    def _report_ray_drops(self, now):
+        """삼각측량 광선 버림 사유(yaw·gps·rtk·queue) — warn_period_sec 주기로 그동안 센 수를 WARN 하고 비운다."""
+        drops = self.rayq.drops
+        if sum(drops.values()) and self._due('ray_drop', now):
+            d = self.rayq.take_drops()
+            self.get_logger().warn(
+                f"perception_fusion: 삼각측량 광선 버림 yaw {d['yaw']} · gps {d['gps']}(촬영 앞뒤 표본 없음·"
+                f"{fl.GPS_GAP_FACTOR * self.p['gps_period_s']:g} s 넘는 간격) · rtk {d['rtk']}(FIXED 아님) · "
+                f"queue {d['queue']}(대기 {self.p['tri_pending_max']} 넘침)")
 
     def _report_inputs(self, now, stats):
         lok, dok = stats['lidar_ok'], stats['depth_ok']

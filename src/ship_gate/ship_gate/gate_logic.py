@@ -313,8 +313,10 @@ def choose_distance(mode, lidar_d, fused_hit):
     출처 이름: 'lidar' = 이 노드의 /scan, 'fused:<src>' = /fused_objects 물체.
     lidar: LiDAR 그대로 / fill: LiDAR 먼저, None 일 때만 fused / fused: fused 먼저, None 이면 LiDAR.
     🚨 fused 라도 고른 물체가 src depth(D455 단독)이고 노드 LiDAR 값이 있으면 LiDAR(계약서_흰부표_거리융합_v3
-       G-5 'LiDAR 우선' — depth 단독은 LiDAR 가 못 볼 때 채우기 전용). perception_fusion 의 LiDAR 가 stale
-       (flags bit1)이면 그 물체는 전부 src depth 라 같은 규칙으로 덮인다. src lidar·fused 는 그대로 fused 먼저.
+       G-5 'LiDAR 우선' — depth 단독은 LiDAR 가 못 볼 때 채우기 전용). perception_fusion 은 LiDAR 가 거리에
+       기여하지 않은 물체를 src fused 로 내지 않는다(P1b-1: D455 가 끼면 src depth, 카메라끼리면 src 4·5 = 이
+       사본이 모르는 번호 → allowed 밖 → None → LiDAR). 그래서 LiDAR stale(flags bit1)이어도 물체는 depth 또는
+       4·5 뿐이라 같은 규칙으로 덮인다. src lidar·fused(= LiDAR 기여) 는 그대로 fused 먼저.
        출처 이름은 실제로 쓴 값('lidar')을 말한다.
     """
     lid = (lidar_d, 'lidar') if lidar_d is not None else (None, None)

@@ -684,6 +684,33 @@ def test_node_source_change_info():
     assert info[-1] == 'dist src fused:depth→lidar', info
 
 
+def test_match_mono_tri_src_is_none_all_copies():
+    """perception_fusion src 4(mono)·5(tri) 는 세 사본 모두 기본 allowed 밖 → None → 노드 LiDAR (G-7, P1b-6).
+    LiDAR 기여 없는 합의는 src 2 로 오지 않으므로(P1b-1) 카메라 단독 거리는 기본에서 거리로 쓰이지 않는다."""
+    mods = [FL] + [_load(path, f'fused_copy_{pkg}_mono_tri') for pkg, path in COPIES.items()]
+    for m in mods:
+        allowed = m.fused_allowed_src_ids(['lidar', 'fused', 'depth'])[0]
+        for s in (4, 5):
+            objs, err = m.parse_fused_objects(data(obj(0.0, 3.0, RED, 0.95, s, flags=16.0)))
+            assert err is None and len(objs) == 1, (m.__name__, s, err)
+            assert m.match_fused(objs, 0.0, RED, 5.0, 0.5, allowed) is None, (m.__name__, s)
+            assert m.choose_distance('fused', 4.0, None) == (4.0, 'lidar')
+        assert 4 not in allowed and 5 not in allowed
+    pf_path = os.path.join(SRC, 'perception_fusion', 'perception_fusion', 'fusion_logic.py')
+    if os.path.exists(pf_path):
+        try:
+            pf = _load(pf_path, 'pf_logic_mono_tri')
+        except ImportError:
+            return
+        enc = pf.encode([dict(color_id=RED, bearing_deg=0.0, range_m=3.0, conf=0.95, src_id=pf.SRC_MONO, age_s=0.0,
+                              track_id=-1, flags=pf.FLAG_SRC_MONO),
+                         dict(color_id=GREEN, bearing_deg=10.0, range_m=4.0, conf=0.95, src_id=pf.SRC_TRI,
+                              age_s=0.0, track_id=-1, flags=pf.FLAG_SRC_TRI)])
+        objs, err = parse_fused_objects(enc)
+        assert err is None and match_fused(objs, 0.0, RED, 5.0, 0.5, ALLOWED) is None
+        assert match_fused(objs, 10.0, GREEN, 5.0, 0.5, ALLOWED) is None
+
+
 if __name__ == '__main__':
     fails = 0
     for name, fn in list(globals().items()):

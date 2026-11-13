@@ -72,3 +72,10 @@
     lidar_sigma_m: 0.05             # 카메라 ↔ LiDAR 게이팅용 LiDAR σ  ⚠️ 실측 필요
     depth_sigma_k: 0.005            # D455 σ = k·d² (카메라 소스와 가중·게이팅할 때만)  ⚠️ 실측 필요
     fusion_gate_sigma: 3.0          # 게이팅: |a − b| ≤ 이 값·√(σa² + σb²)
+    # ---- P1b (11-14 리뷰 메모) ----
+    gps_period_s: 1.0               # GPS /fix 주기(s). zed_f9p_rover.yaml rate 1.0 Hz — 보간 간격 상한 1.5×, 대기 만료 2×
+    tri_interp_sigma_frac: 0.1      # GPS 보간·외삽 σ 항 = 이 값 × |v| × 가까운 표본까지 시간  ⚠️ 실측 필요
+    tri_pending_max: 45             # 🚨 정수. GPS 표본을 기다리는 /oak_detections 메시지 수 상한(15 Hz × 3 s)
+    tri_parallax_sigma_k: 2.0       # 시차 판정 = |Δα| − 이 값·√2·σα ≥ tri_min_parallax_deg (문턱 근처 선택 편향 방지)
+    tri_max_rays: 8                 # 🚨 정수(≥ 3). 트랙당 광선 상한 — 넘으면 시간·기선 간격이 가장 촘촘한 가운데 광선을 솎음
+    cam_max_rel_sigma: 0.3          # 단안·삼각측량 σ/d 가 이보다 크면 그 측정을 안 씀(정보 없음 = 3σ 게이트가 늘 '합의')  ⚠️ 실측 필요

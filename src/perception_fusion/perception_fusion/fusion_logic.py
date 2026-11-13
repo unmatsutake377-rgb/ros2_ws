@@ -5,7 +5,11 @@
 좌표: 상대방위 rel(도, 0 = 정면, 왼쪽 +), 원점 = LiDAR. LiDAR 각 a 는 rel = a − 80 (a = 80 + rel, 부호 안 뒤집음).
 출력 /fused_objects = Float32MultiArray
   [VER=1, STRIDE=8, N, N × (color_id, bearing_deg, range_m, conf, src_id, age_s, track_id, flags)]
-  src_id 0 lidar · 1 depth · 2 fused(둘 이상 소스 합의) · 3 row(1단계 안 냄) · 4 mono(OAK 단안 단독) · 5 tri(삼각측량 단독)
+  src_id 0 lidar · 1 depth · 2 fused(LiDAR 가 기여한 합의 = LiDAR + D455) · 3 row(1단계 안 냄) ·
+         4 mono(OAK 단안) · 5 tri(삼각측량)
+    🚨 src 2 는 LiDAR 가 거리에 기여했을 때만(P1b-1). LiDAR 없는 합의는 D455 가 끼면 src 1(미션 노드가
+       '채우기 전용'으로 다룬다 — 노드 LiDAR 가 보면 LiDAR), 카메라끼리면 src 4|5(미션 노드 기본 불허 G-7).
+       미션 노드가 자기 LiDAR 대신 카메라 합의를 쓰는 길(G-5 우회)을 막는다.
   flags bit0 어긋남(disagree_policy 로 처리) · bit1 LiDAR stale ·
         bit2 lidar · bit3 depth · bit4 mono · bit5 tri = 거리에 기여한 소스(계약서_흰부표_거리융합_v3 P1).
         🚨 bit2~5 는 카메라 경로가 살아 있을 때(use_mono/use_triangulation 켜짐 + /oak_detections 신선)만 채운다.
@@ -125,6 +129,12 @@ DEFAULTS = {
     'tri_max_dt_s': 3.0,
     'tri_assoc_deg': 5.0,
     'tri_pose_max_gap_s': 0.3,
+    'gps_period_s': 1.0,
+    'tri_interp_sigma_frac': 0.1,
+    'tri_pending_max': 45,
+    'tri_parallax_sigma_k': 2.0,
+    'tri_max_rays': 8,
+    'cam_max_rel_sigma': 0.3,
     'tri_yaw_sigma_deg': 0.5,
     'tri_rtk_max_sigma_m': 0.05,
     'tri_max_range_m': 15.0,
@@ -482,7 +492,9 @@ def build_objects(now, lidar, depth, detections, p, cams=None, cam_live=False):
 #   1) LiDAR 가 있는 물체: LiDAR 우선(G-5). 카메라 값은 연관·색·검증용 — 거리는 그대로 두고
 #      |c − dL| ≤ fusion_gate_sigma·√(σc² + σL²) 이면 기여 비트만, 넘으면 bit0 + 감점 + disagree_policy
 #      (lidar = LiDAR 값 유지, min = 카메라가 더 가까울 때만 그 값·src 4|5).
-#   2) LiDAR 없는 물체(뎁스 단독 + 카메라, 카메라끼리): 쌍별 게이팅 → 가장 큰 합의 집합을 역분산 가중(src 2).
+#   2) LiDAR 없는 물체(뎁스 단독 + 카메라, 카메라끼리): 쌍별 게이팅 → 가장 큰 합의 집합을 역분산 가중.
+#      src(P1b-1): 합의에 D455 가 끼면 1(depth), 카메라끼리면 σ 가 더 작은 쪽 번호(4|5, 동점 4) — 가중값을
+#      사실상 정한 소스를 말한다. src 2 는 LiDAR 기여 때만(머리말). 노드 사본은 4·5 를 모른다 → LiDAR 로.
 #      셋 중 하나만 빠지면 그 둘로 내고 bit0(어긋남 있었음, 감점 없음). 전부 어긋나면 기존 규칙
 #      (min + disagree_penalty + bit0, src = min 을 낸 소스). 혼자면 그 소스(src 1|4|5).
 #   연관 = 방위 구간 겹침 ± fusion_margin_deg, 한 물체에 mono·tri 각 하나씩, 측정 하나는 한 물체에만.
@@ -539,6 +551,13 @@ def lidar_priority(o, cs, now, p):
                 o['age_s'] = float(max(now - c['t'], 0.0))
 
 
+def group_src(ms):
+    """LiDAR 없는 합의 집합의 src (P1b-1): D455 가 끼면 1, 아니면 σ 가 작은 카메라 소스 번호(동점 → 작은 번호)."""
+    if any(m['src'] == SRC_DEPTH for m in ms):
+        return SRC_DEPTH
+    return min(ms, key=lambda m: (m['sigma'], m['src']))['src']
+
+
 def fuse_group(members, p):
     """LiDAR 없는 물체의 측정들 → (거리, src, conf, flags, 기여 비트, 가장 이른 시각) (머리 주석 2).
 
@@ -569,7 +588,7 @@ def fuse_group(members, p):
         for m in ms:
             bits |= m['bit']
         flags = 0 if len(ms) == n else FLAG_DISAGREE
-        return r, SRC_FUSED, max(m['conf'] for m in ms), flags, bits, min(m['t'] for m in ms)
+        return r, group_src(ms), max(m['conf'] for m in ms), flags, bits, min(m['t'] for m in ms)
     m = min(members, key=lambda m: m['range_m'])
     conf = max(0.0, min(x['conf'] for x in members) - p['disagree_penalty'])
     return m['range_m'], m['src'], conf, FLAG_DISAGREE, m['bit'], m['t']
@@ -728,32 +747,42 @@ def quat_pitch_roll(qx, qy, qz, qw):
     return pitch, roll
 
 
-def camera_attitude(imu, now, p):
-    """→ (피치, 롤, imu 썼나). imu = (수신 시각, 피치, 롤) 또는 None. 묵거나 없으면 장착값만(노드가 WARN)."""
-    if imu is not None and now - imu[0] <= p['imu_stale_sec']:
-        return p['oak_pitch_deg'] + imu[1], p['oak_roll_deg'] + imu[2], True
-    return p['oak_pitch_deg'], p['oak_roll_deg'], False
+def camera_attitude(att_buf, t, p):
+    """→ (피치, 롤, imu 썼나) — **촬영 시각 t** 의 값(P1b-5). att_buf = TimeSeries((IMU 피치, IMU 롤)) 또는 None.
+
+    t 앞뒤 imu_stale_sec 안 표본으로 보간(없으면 가까운 표본), 그것도 없으면 장착값만(노드가 WARN 1회).
+    """
+    br = None if att_buf is None else att_buf.bracket(t, p['imu_stale_sec'])
+    if br is None:
+        return p['oak_pitch_deg'], p['oak_roll_deg'], False
+    a, b, w = br
+    return (p['oak_pitch_deg'] + a[0] + w * (b[0] - a[0]), p['oak_roll_deg'] + a[1] + w * (b[1] - a[1]), True)
 
 
 def _cam_xy(det):
     return -math.tan(math.radians(det['bearing_left_deg'])), det['v_norm_bottom']
 
 
-def mono_measurements(dets, recv_t, now, pitch_deg, roll_deg, p):
-    """/oak_detections 검출 → 카메라 측정 목록(src 4). 묵은 검출(now − 촬영 > det_stale_sec)·수평선·
-    σ 무한·mono_max_range_m 초과는 뺀다(모르면 입을 다문다). 방위·거리는 OAK 장착값으로 LiDAR 원점으로 옮긴다."""
+def mono_measurements(dets, recv_t, now, att_buf, p):
+    """/oak_detections 검출 → 카메라 측정 목록(src 4). 자세는 검출마다 촬영 시각(recv − age_s) 값.
+
+    뺀다(모르면 입을 다문다): 묵은 검출(now − 촬영 > det_stale_sec)·수평선·σ 무한·mono_max_range_m 초과·
+    σ/d > cam_max_rel_sigma(정보 없는 측정 — 3σ 게이트가 늘 '합의'가 되는 것을 막는다, P1b-6).
+    방위·거리는 OAK 장착값으로 LiDAR 원점으로 옮긴다.
+    """
     out = []
     h = p['oak_cam_h_m']
     for d in dets:
         t_cap = recv_t - d['age_s']
         if now - t_cap > p['det_stale_sec']:
             continue
+        pitch_deg, roll_deg, _ = camera_attitude(att_buf, t_cap, p)
         x, y = _cam_xy(d)
         res = mono_range(x, y, h, pitch_deg, roll_deg)
         if res is None or res[0] > p['mono_max_range_m']:
             continue
         sig = mono_sigma(x, y, h, pitch_deg, roll_deg, p)
-        if not math.isfinite(sig):
+        if not math.isfinite(sig) or sig > p['cam_max_rel_sigma'] * res[0]:
             continue
         rel, r = cam_to_lidar(res[1], res[0], p['oak_x_from_lidar_m'], p['oak_y_from_lidar_m'],
                               p['oak_yaw_offset_deg'])
@@ -805,18 +834,26 @@ class TimeSeries:
         while self.buf and self.buf[-1][0] - self.buf[0][0] > self.horizon:
             self.buf.popleft()
 
-    def bracket(self, t, max_gap):
-        """→ (a, b, w) 값 = a + w·(b − a) 또는 None. 앞뒤 표본이 있고 둘 다 t 에서 max_gap 안이면 선형 보간,
-        아니면 가장 가까운 표본이 max_gap 안일 때만 그 값(w = 0). 그 밖 = 모름."""
-        if not self.buf:
-            return None
+    def latest_t(self):
+        return self.buf[-1][0] if self.buf else None
+
+    def neighbors(self, t):
+        """→ (t 이하 마지막 표본, t 초과 첫 표본) — 없으면 None."""
         prev = nxt = None
         for s in self.buf:
             if s[0] <= t:
                 prev = s
-            elif nxt is None:
+            else:
                 nxt = s
                 break
+        return prev, nxt
+
+    def bracket(self, t, max_gap):
+        """→ (a, b, w) 값 = a + w·(b − a) 또는 None. 앞뒤 표본이 있고 둘 다 t 에서 max_gap 안이면 선형 보간,
+        아니면 가장 가까운 표본이 max_gap 안일 때만 그 값(w = 0). 그 밖 = 모름. (yaw·IMU 처럼 빠른 표본용)"""
+        if not self.buf:
+            return None
+        prev, nxt = self.neighbors(t)
         if prev is not None and nxt is not None and t - prev[0] <= max_gap and nxt[0] - t <= max_gap:
             return prev[1], nxt[1], (t - prev[0]) / (nxt[0] - prev[0])
         near = min((s for s in (prev, nxt) if s is not None), key=lambda s: abs(s[0] - t))
@@ -834,13 +871,69 @@ def yaw_at(yaw_buf, t, max_gap):
     return float((a + w * float(wrap180(b - a))) % 360.0)
 
 
-def gps_at(gps_buf, t, max_gap):
-    """GPS (x, y, σ, fixed) 보간. fixed = 쓰인 표본이 모두 FIXED. 모르면 None."""
-    br = gps_buf.bracket(t, max_gap)
-    if br is None:
+# GPS 는 1 Hz(zed_f9p_rover.yaml rate 1.0) — 표본 간격 판정·대기 만료를 gps_period_s 의 배수로 둔다.
+GPS_GAP_FACTOR = 1.5     # 보간에 쓸 앞뒤 표본 간격 상한 = 1.5·주기(한 표본 빠짐 = 2·주기 → 안 씀)
+GPS_WAIT_FACTOR = 2.0    # 촬영 뒤 GPS 표본을 기다리는 최대 시간 = 2·주기(넘으면 'gps' 로 버림)
+
+
+def gps_at(gps_buf, t, p):
+    """촬영 시각 t 의 GPS (x, y, σ, fixed) — 앞뒤 표본 사이 **보간만**(외삽 안 함, P1b-2). 모르면 None.
+
+    표본과 같은 시각이면 그 표본. 앞뒤 간격 ≤ GPS_GAP_FACTOR·gps_period_s.
+    σ = √(σ_gps² + (tri_interp_sigma_frac·|v|·δ)²): |v| = 두 표본 사이 속도, δ = 가까운 표본까지 시간.
+      등속 직선 보간이 틀리는 만큼(선회·가감속) — 예: 1.5 m/s·20°/s 선회에서 1 s 간격 현 중앙 편차 약 0.07 m.
+    fixed = 쓴 표본이 모두 FIXED.
+    """
+    prev, nxt = gps_buf.neighbors(t)
+    if prev is not None and abs(prev[0] - t) < 1e-9:
+        x, y, sig, fx = prev[1]
+        return x, y, sig, bool(fx)
+    if prev is None or nxt is None or nxt[0] - prev[0] > GPS_GAP_FACTOR * p['gps_period_s']:
         return None
-    a, b, w = br
-    return (a[0] + w * (b[0] - a[0]), a[1] + w * (b[1] - a[1]), max(a[2], b[2]), bool(a[3] and b[3]))
+    a, b = prev[1], nxt[1]
+    dt = nxt[0] - prev[0]
+    w = (t - prev[0]) / dt
+    v = math.hypot(b[0] - a[0], b[1] - a[1]) / dt
+    delta = min(t - prev[0], nxt[0] - t)
+    sig = math.sqrt(max(a[2], b[2]) ** 2 + (p['tri_interp_sigma_frac'] * v * delta) ** 2)
+    return a[0] + w * (b[0] - a[0]), a[1] + w * (b[1] - a[1]), sig, bool(a[3] and b[3])
+
+
+def gps_now(gps_buf, now, p):
+    """지금 GPS (x, y, σ, fixed) — 마지막 두 표본 속도로 외삽(마지막 표본이 GPS_GAP_FACTOR·주기 안일 때만).
+    σ 에 tri_interp_sigma_frac·|v|·(now − 마지막 표본) 을 더한다. 모르면 None."""
+    if not gps_buf.buf:
+        return None
+    t1, b = gps_buf.buf[-1]
+    dt = now - t1
+    period = p['gps_period_s']
+    if dt < 0.0 or dt > GPS_GAP_FACTOR * period:
+        return None
+    vx = vy = 0.0
+    if len(gps_buf.buf) >= 2:
+        t0, a = gps_buf.buf[-2]
+        if 0.0 < t1 - t0 <= GPS_GAP_FACTOR * period:
+            vx, vy = (b[0] - a[0]) / (t1 - t0), (b[1] - a[1]) / (t1 - t0)
+    sig = math.sqrt(b[2] ** 2 + (p['tri_interp_sigma_frac'] * math.hypot(vx, vy) * dt) ** 2)
+    return b[0] + vx * dt, b[1] + vy * dt, sig, bool(b[3])
+
+
+def _lever(ax, ay, yaw_deg, fwd_m, left_m):
+    """안테나 (ax, ay) + 선체 앞 fwd_m·왼쪽 left_m (yaw 로 회전) → 그 점의 로컬 좌표."""
+    ps = math.radians(yaw_deg)
+    return (ax + math.sin(ps) * fwd_m - math.cos(ps) * left_m,
+            ay + math.cos(ps) * fwd_m + math.sin(ps) * left_m)
+
+
+def current_pose(gps_buf, yaw_buf, now, p):
+    """삼각측량 결과를 '지금' 카메라 기준으로 다시 잴 자세 → (cam_x, cam_y, σ, yaw) 또는 None.
+    GPS 외삽(gps_now)이 FIXED 이고 yaw 가 tri_pose_max_gap_s 안일 때만."""
+    g = gps_now(gps_buf, now, p)
+    yaw = yaw_at(yaw_buf, now, p['tri_pose_max_gap_s'])
+    if g is None or not g[3] or yaw is None:
+        return None
+    cx, cy = _lever(g[0], g[1], yaw, p['gps_to_cam_x_m'], p['gps_to_cam_y_m'])
+    return cx, cy, g[2], yaw
 
 
 # ------------------------------------------------------------ 삼각측량 — 계약 '삼각측량 규격'
@@ -849,31 +942,77 @@ def gps_at(gps_buf, t, max_gap):
 # 선체 방위 b(좌 +) → α = yaw − b. 선체 앞 = (sin ψ, cos ψ), 왼쪽 = (−cos ψ, sin ψ).
 # 카메라 위치 = GPS 안테나 + 앞·gps_to_cam_x + 왼쪽·gps_to_cam_y (레버암을 yaw 로 회전, ⚠️ 실측).
 # 기선 = **안테나** 위치 차(제자리 회전에서 레버암이 만드는 가짜 기선을 막는다 — '제자리 회전 미발행').
+# 시각(P1b-2·5): 광선은 촬영 시각 t_cap 의 yaw·피치·롤·GPS 로 만든다. GPS 는 t_cap 뒤 표본이 올 때까지
+#   RayQueue 에서 기다렸다가(노드 publish_cb) 보간한다 — 1 Hz 에서 '이전 표본 유지'로 위치가 최대 1 s 묵던 문제.
+# 출력: 교점 X(세계)를 **지금** 카메라 위치·yaw(current_pose)로 다시 재서 거리·방위를 낸다(광선이 GPS 를
+#   기다리느라 최대 약 1.5 s 묵으므로 그 사이 회전·이동을 반영). σ_r² = gᵀ Σ_X g + σ_C², g = (X − C)/|X − C|.
 
 Ray = namedtuple('Ray', 't ant_x ant_y cam_x cam_y alpha_deg yaw_deg pos_sigma color_id conf half_width')
 
 
-def make_ray(det, t_cap, gps_buf, yaw_buf, pitch_deg, roll_deg, p):
-    """검출 하나 + 촬영 시각 → (Ray, None) 또는 (None, 사유 'yaw'|'gps'|'rtk')."""
-    gap = p['tri_pose_max_gap_s']
-    yaw = yaw_at(yaw_buf, t_cap, gap)
+def make_ray(det, t_cap, gps_buf, yaw_buf, att_buf, p):
+    """검출 하나 + 촬영 시각 → (Ray, None) 또는 (None, 사유 'yaw'|'gps'|'rtk'). 자세·yaw·GPS 모두 t_cap 값."""
+    yaw = yaw_at(yaw_buf, t_cap, p['tri_pose_max_gap_s'])
     if yaw is None:
         return None, 'yaw'
-    g = gps_at(gps_buf, t_cap, gap)
+    g = gps_at(gps_buf, t_cap, p)
     if g is None:
         return None, 'gps'
     if not g[3]:
         return None, 'rtk'
+    pitch_deg, roll_deg, _ = camera_attitude(att_buf, t_cap, p)
     x, y = _cam_xy(det)
     f, s, _ = level_ray(x, y, pitch_deg, roll_deg)
     hull_b = math.degrees(math.atan2(-s, f)) + p['oak_yaw_offset_deg']
-    ps = math.radians(yaw)
-    fx_, fy_ = math.sin(ps), math.cos(ps)
-    lx, ly = -math.cos(ps), math.sin(ps)
-    cx = g[0] + fx_ * p['gps_to_cam_x_m'] + lx * p['gps_to_cam_y_m']
-    cy = g[1] + fy_ * p['gps_to_cam_x_m'] + ly * p['gps_to_cam_y_m']
+    cx, cy = _lever(g[0], g[1], yaw, p['gps_to_cam_x_m'], p['gps_to_cam_y_m'])
     return Ray(float(t_cap), g[0], g[1], cx, cy, float((yaw - hull_b) % 360.0), yaw, g[2], det['color_id'],
                float(det['conf']), 0.5 * det['ang_width_deg']), None
+
+
+class RayQueue:
+    """촬영 시각 뒤 GPS 표본을 기다리는 검출 대기열(P1b-2). 메시지 단위 FIFO, 상한 tri_pending_max(넘으면 오래된
+    것부터 'queue' 로 버림). drops = 버림 사유 카운터(노드가 주기 WARN 뒤 비운다)."""
+
+    REASONS = ('yaw', 'gps', 'rtk', 'queue')
+
+    def __init__(self):
+        self.q = deque()
+        self.drops = dict.fromkeys(self.REASONS, 0)
+
+    def push(self, recv_t, dets, p):
+        if dets:
+            self.q.append((float(recv_t), list(dets)))
+        while len(self.q) > p['tri_pending_max']:
+            _, old = self.q.popleft()
+            self.drops['queue'] += len(old)
+
+    def pop_ready(self, now, gps_buf, yaw_buf, att_buf, p):
+        """→ 프레임별 광선 목록들(시각순). 준비 = 마지막 GPS 표본 시각 ≥ 그 메시지의 가장 늦은 촬영 시각,
+        만료 = 가장 이른 촬영 시각이 GPS_WAIT_FACTOR·gps_period_s 넘게 지남(그래도 만들어 보고 안 되면 버림)."""
+        latest = gps_buf.latest_t()
+        wait = GPS_WAIT_FACTOR * p['gps_period_s']
+        frames = []
+        while self.q:
+            recv_t, dets = self.q[0]
+            tcs = [recv_t - d['age_s'] for d in dets]
+            ready = latest is not None and latest >= max(tcs)
+            if not ready and now - min(tcs) <= wait:
+                break
+            self.q.popleft()
+            rays = []
+            for d, tc in zip(dets, tcs):
+                ray, why = make_ray(d, tc, gps_buf, yaw_buf, att_buf, p)
+                if ray is None:
+                    self.drops[why] += 1
+                else:
+                    rays.append(ray)
+            frames.append(rays)
+        return frames
+
+    def take_drops(self):
+        out = dict(self.drops)
+        self.drops = dict.fromkeys(self.REASONS, 0)
+        return out
 
 
 def _unit(alpha_deg):
@@ -883,12 +1022,13 @@ def _unit(alpha_deg):
 
 def tri_solve(pts):
     """광선 [(px, py, α도)] → 교점 (x, y) 또는 None. 2개 = 2×2 선형계 P1 + t1·u1 = P2 + t2·u2,
-    3개 이상 = 수직거리 제곱합 최소(Σ(I − uuᵀ)X = Σ(I − uuᵀ)P). 평행·뒤쪽(어느 광선이든 t ≤ 0) → None."""
+    3개 이상 = 수직거리 제곱합 최소(Σ(I − uuᵀ)X = Σ(I − uuᵀ)P, 2×2 를 직접 푼다). 평행·뒤쪽(t ≤ 0) → None."""
     if len(pts) < 2:
         return None
+    us = [_unit(a) for _, _, a in pts]
     if len(pts) == 2:
-        (p1x, p1y, a1), (p2x, p2y, a2) = pts
-        u1, u2 = _unit(a1), _unit(a2)
+        (p1x, p1y, _), (p2x, p2y, _) = pts
+        u1, u2 = us
         det = -u1[0] * u2[1] + u2[0] * u1[1]
         if abs(det) < 1e-9:
             return None
@@ -896,59 +1036,57 @@ def tri_solve(pts):
         t1 = (bx * -u2[1] + u2[0] * by) / det
         X = (p1x + t1 * u1[0], p1y + t1 * u1[1])
     else:
-        A = np.zeros((2, 2))
-        b = np.zeros(2)
-        for px, py, a in pts:
-            u = np.array(_unit(a))
-            M = np.eye(2) - np.outer(u, u)
-            A += M
-            b += M @ np.array([px, py])
-        if abs(np.linalg.det(A)) < 1e-9:
+        a11 = a12 = a22 = b1 = b2 = 0.0
+        for (px, py, _), (ux, uy) in zip(pts, us):
+            m11, m12, m22 = 1.0 - ux * ux, -ux * uy, 1.0 - uy * uy
+            a11 += m11
+            a12 += m12
+            a22 += m22
+            b1 += m11 * px + m12 * py
+            b2 += m12 * px + m22 * py
+        det = a11 * a22 - a12 * a12
+        if abs(det) < 1e-9:
             return None
-        X = tuple(float(v) for v in np.linalg.solve(A, b))
-    for px, py, a in pts:
-        u = _unit(a)
-        if (X[0] - px) * u[0] + (X[1] - py) * u[1] <= 0.0:
+        X = ((a22 * b1 - a12 * b2) / det, (a11 * b2 - a12 * b1) / det)
+    for (px, py, _), (ux, uy) in zip(pts, us):
+        if (X[0] - px) * ux + (X[1] - py) * uy <= 0.0:
             return None
     return X
 
 
-def _tri_range(pts, ref):
-    X = tri_solve(pts)
-    if X is None:
-        return None
-    return X, math.hypot(X[0] - pts[ref][0], X[1] - pts[ref][1])
+def tri_alpha_sigma_deg(p):
+    """광선 세계 방위 σα(도) = √(atan(픽셀 σ/fy)² + yaw σ²)."""
+    return math.sqrt(math.degrees(math.atan(p['mono_pixel_sigma'] / p['oak_fy_px'])) ** 2
+                     + p['tri_yaw_sigma_deg'] ** 2)
 
 
-def tri_estimate(rays, p):
-    """한 트랙의 광선 버퍼(시각순) → 측정 dict(src 5) 또는 None.
+def tri_fit(rays, p):
+    """한 트랙의 광선들 → 교점 dict(x, y, cov(xx, xy, yy), newest Ray, n) 또는 None.
 
     기준 = 가장 새 광선 N. 짝 = N 과 시간차 ≤ tri_max_dt_s, 안테나 기선 ≥ tri_min_baseline_m,
-    시차 |α_N − α_i| ≥ tri_min_parallax_deg 인 광선들. 짝 없으면 None(정면 접근·정지·제자리 회전).
-    짝 하나 = 2광선 교점, 둘 이상 = 최소제곱. 앞쪽(t > 0)·tri_max_range_m 안만.
-    σ = 각 광선 α(σα = √((px σ/fy)² + yaw σ²))·위치(GPS σ, 동·북 각각)를 중심 차분 야코비안으로 전파.
-    거리·방위는 N 의 카메라 기준(선체 방위 = yaw_N − 교점 방위) → OAK 장착값으로 LiDAR 원점.
+    **잡음 여유를 뺀 시차** |α_N − α_i| − tri_parallax_sigma_k·√2·σα ≥ tri_min_parallax_deg 인 광선들(P1b-3:
+    문턱 근처에서 잡음이 시차를 부풀린 쌍만 골라 거리를 짧게 내던 선택 편향을 막는다).
+    짝 없으면 None(정면 접근·정지·제자리 회전). 짝 하나 = 2광선 교점, 둘 이상 = 최소제곱. 앞쪽(t > 0)만.
+    Σ_X = 각 광선 α(σα)·위치(GPS σ, 동·북)에 대한 중심 차분 야코비안 J 로 J·diag(σ²)·Jᵀ.
     """
     if len(rays) < 2:
         return None
     rays = sorted(rays, key=lambda r: r.t)
     n_ray = rays[-1]
+    s_a = tri_alpha_sigma_deg(p)
+    margin = p['tri_parallax_sigma_k'] * math.sqrt(2.0) * s_a
     pair = [r for r in rays[:-1]
             if n_ray.t - r.t <= p['tri_max_dt_s']
             and math.hypot(n_ray.ant_x - r.ant_x, n_ray.ant_y - r.ant_y) >= p['tri_min_baseline_m']
-            and abs(float(wrap180(n_ray.alpha_deg - r.alpha_deg))) >= p['tri_min_parallax_deg']]
+            and abs(float(wrap180(n_ray.alpha_deg - r.alpha_deg))) - margin >= p['tri_min_parallax_deg']]
     if not pair:
         return None
     used = pair + [n_ray]
     pts = [(r.cam_x, r.cam_y, r.alpha_deg) for r in used]
-    ref = len(pts) - 1
-    res = _tri_range(pts, ref)
-    if res is None or res[1] > p['tri_max_range_m']:
+    X = tri_solve(pts)
+    if X is None:
         return None
-    X, d = res
-    s_a = math.sqrt(math.degrees(math.atan(p['mono_pixel_sigma'] / p['oak_fy_px'])) ** 2
-                    + p['tri_yaw_sigma_deg'] ** 2)
-    var = 0.0
+    cxx = cxy = cyy = 0.0
     for i, r in enumerate(used):
         for j, step, sig in ((2, 1e-3, s_a), (0, 1e-4, r.pos_sigma), (1, 1e-4, r.pos_sigma)):
             if sig <= 0.0:
@@ -957,24 +1095,62 @@ def tri_estimate(rays, p):
             lo = [list(q) for q in pts]
             hi[i][j] += step
             lo[i][j] -= step
-            rh, rl = _tri_range([tuple(q) for q in hi], ref), _tri_range([tuple(q) for q in lo], ref)
-            if rh is None or rl is None:
+            xh, xl = tri_solve([tuple(q) for q in hi]), tri_solve([tuple(q) for q in lo])
+            if xh is None or xl is None:
                 return None
-            var += ((rh[1] - rl[1]) / (2.0 * step) * sig) ** 2
-    beta = math.degrees(math.atan2(X[0] - n_ray.cam_x, X[1] - n_ray.cam_y))
-    hull_b = float(wrap180(n_ray.yaw_deg - beta))
+            jx = (xh[0] - xl[0]) / (2.0 * step) * sig
+            jy = (xh[1] - xl[1]) / (2.0 * step) * sig
+            cxx += jx * jx
+            cxy += jx * jy
+            cyy += jy * jy
+    return {'x': X[0], 'y': X[1], 'cov': (cxx, cxy, cyy), 'newest': n_ray, 'n': len(used)}
+
+
+def tri_measure(fit, cam_x, cam_y, cam_sigma, yaw_deg, p):
+    """교점 fit 을 카메라 (cam_x, cam_y, σ, yaw) 기준 측정 dict(src 5) 로. 거리 > tri_max_range_m·
+    σ/d > cam_max_rel_sigma 면 None. 방위 = yaw − 교점 방위(좌 +) → OAK 장착값으로 LiDAR 원점."""
+    dx, dy = fit['x'] - cam_x, fit['y'] - cam_y
+    d = math.hypot(dx, dy)
+    if d <= 0.0 or d > p['tri_max_range_m']:
+        return None
+    gx, gy = dx / d, dy / d
+    cxx, cxy, cyy = fit['cov']
+    sig = math.sqrt(max(gx * gx * cxx + 2.0 * gx * gy * cxy + gy * gy * cyy, 0.0) + cam_sigma ** 2)
+    if sig > p['cam_max_rel_sigma'] * d:
+        return None
+    hull_b = float(wrap180(yaw_deg - math.degrees(math.atan2(dx, dy))))
     rel, rr = cam_to_lidar(hull_b, d, p['oak_x_from_lidar_m'], p['oak_y_from_lidar_m'], 0.0)
     rel, rr = float(rel), float(rr)
-    return {'src': SRC_TRI, 'bit': FLAG_SRC_TRI, 'range_m': rr, 'sigma': math.sqrt(var), 'bearing_deg': rel,
+    n_ray = fit['newest']
+    return {'src': SRC_TRI, 'bit': FLAG_SRC_TRI, 'range_m': rr, 'sigma': sig, 'bearing_deg': rel,
             'lo': rel - n_ray.half_width, 'hi': rel + n_ray.half_width, 'conf': n_ray.conf,
-            'color_id': n_ray.color_id, 't': n_ray.t, 'x': X[0], 'y': X[1], 'n_rays': len(used)}
+            'color_id': n_ray.color_id, 't': n_ray.t, 'x': fit['x'], 'y': fit['y'], 'n_rays': fit['n']}
+
+
+def tri_estimate(rays, p):
+    """tri_fit → 가장 새 광선의 카메라 기준 측정(그 위치 σ 는 Σ_X 에 이미 있음). 검산·테스트용."""
+    fit = tri_fit(rays, p)
+    if fit is None:
+        return None
+    n_ray = fit['newest']
+    return tri_measure(fit, n_ray.cam_x, n_ray.cam_y, 0.0, n_ray.yaw_deg, p)
+
+
+def tri_stale_sec(p):
+    """삼각측량 결과를 낼 수 있는 마지막 광선 나이 상한 = det_stale_sec + GPS_GAP_FACTOR·gps_period_s
+    (광선이 GPS 표본을 기다리느라 늦게 만들어지는 만큼 늘린다)."""
+    return p['det_stale_sec'] + GPS_GAP_FACTOR * p['gps_period_s']
 
 
 class TriTracker:
-    """색 + 세계 방위로 연관한 트랙별 광선 버퍼. 시각은 전부 인자(순수)."""
+    """색 + 세계 방위로 연관한 트랙별 광선 버퍼. 시각은 전부 인자(순수).
+
+    P1b-4: 트랙당 광선 ≤ tri_max_rays(넘으면 가운데 광선 중 이웃 간 시간·기선 간격이 가장 작은 것을 솎는다 —
+    가장 오래된 것(시차 최대)과 가장 새 것은 남긴다). 교점은 새 광선이 붙은 트랙만 다시 푼다(dirty).
+    """
 
     def __init__(self):
-        self.tracks = []          # dict(color, alpha, t, rays deque)
+        self.tracks = []          # dict(color, alpha, t, rays deque, dirty, fit)
 
     def _prune(self, now, max_dt):
         self.tracks = [tr for tr in self.tracks if now - tr['t'] <= max_dt]
@@ -999,30 +1175,51 @@ class TriTracker:
                 continue
             used_i.add(i)
             used_k.add(k)
-            self._push(self.tracks[i], rays[k], max_dt)
+            self._push(self.tracks[i], rays[k], p)
         for k, r in enumerate(rays):
             if k not in used_k:
-                tr = {'color': r.color_id, 'alpha': r.alpha_deg, 't': r.t, 'rays': deque()}
-                self._push(tr, r, max_dt)
+                tr = {'color': r.color_id, 'alpha': r.alpha_deg, 't': r.t, 'rays': deque(),
+                      'dirty': True, 'fit': None}
+                self._push(tr, r, p)
                 self.tracks.append(tr)
 
     @staticmethod
-    def _push(tr, r, max_dt):
-        tr['rays'].append(r)
-        tr['alpha'], tr['t'] = r.alpha_deg, r.t
-        while tr['rays'] and r.t - tr['rays'][0].t > max_dt:
-            tr['rays'].popleft()
+    def _push(tr, r, p):
+        max_dt = p['tri_max_dt_s']
+        rays = tr['rays']
+        rays.append(r)
+        tr['alpha'], tr['t'], tr['dirty'] = r.alpha_deg, r.t, True
+        while rays and r.t - rays[0].t > max_dt:
+            rays.popleft()
+        if len(rays) > p['tri_max_rays']:
+            lst = list(rays)
+            b_min = p['tri_min_baseline_m']
+            while len(lst) > p['tri_max_rays']:
+                i = min(range(1, len(lst) - 1),
+                        key=lambda i: ((lst[i + 1].t - lst[i - 1].t) / max_dt
+                                       + math.hypot(lst[i + 1].ant_x - lst[i - 1].ant_x,
+                                                    lst[i + 1].ant_y - lst[i - 1].ant_y) / b_min, i))
+                del lst[i]
+            tr['rays'] = deque(lst)
 
-    def estimates(self, now, p):
-        """→ 측정 목록(src 5). 마지막 광선이 det_stale_sec 넘게 묵은 트랙은 내지 않는다."""
-        self._prune(now, p['tri_max_dt_s'])
+    def estimates(self, now, pose, p):
+        """→ 측정 목록(src 5). pose = current_pose(...) — None 이면(GPS 묵음·비FIXED·yaw 없음) 아무것도 안 낸다.
+        마지막 광선이 tri_stale_sec 넘게 묵은 트랙도 내지 않는다."""
+        self._prune(now, p['tri_max_dt_s'] + tri_stale_sec(p))
+        if pose is None:
+            return []
         out = []
         for tr in self.tracks:
-            if now - tr['t'] > p['det_stale_sec']:
+            if now - tr['t'] > tri_stale_sec(p):
                 continue
-            est = tri_estimate(list(tr['rays']), p)
-            if est is not None:
-                out.append(est)
+            if tr['dirty']:
+                tr['fit'] = tri_fit(list(tr['rays']), p)
+                tr['dirty'] = False
+            if tr['fit'] is None:
+                continue
+            m = tri_measure(tr['fit'], pose[0], pose[1], pose[2], pose[3], p)
+            if m is not None:
+                out.append(m)
         return out
 
 
@@ -1109,6 +1306,12 @@ _SINGLE = {
     'tri_max_dt_s': (float, lambda x: x > 0.0, '> 0'),
     'tri_assoc_deg': (float, lambda x: x > 0.0, '> 0'),
     'tri_pose_max_gap_s': (float, lambda x: x > 0.0, '> 0'),
+    'gps_period_s': (float, lambda x: x > 0.0, '> 0'),
+    'tri_interp_sigma_frac': (float, lambda x: x >= 0.0, '≥ 0'),
+    'tri_pending_max': (int, lambda x: x >= 1, '정수 ≥ 1'),
+    'tri_parallax_sigma_k': (float, lambda x: x >= 0.0, '≥ 0'),
+    'tri_max_rays': (int, lambda x: x >= 3, '정수 ≥ 3'),
+    'cam_max_rel_sigma': (float, lambda x: x > 0.0, '> 0'),
     'tri_yaw_sigma_deg': (float, lambda x: x >= 0.0, '≥ 0'),
     'tri_rtk_max_sigma_m': (float, lambda x: x > 0.0, '> 0'),
     'tri_max_range_m': (float, lambda x: x > 0.0, '> 0'),

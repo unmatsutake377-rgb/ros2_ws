@@ -450,7 +450,7 @@ def test_node_imu_warn_once_and_imu_used(node_mod):
     assert len(warns) == 1, '1회'
     s5 = math.sin(math.radians(2.5))
     node.subs['/imu/data'][0](_Msg(orientation=_Msg(x=0.0, y=s5, z=0.0, w=math.cos(math.radians(2.5)))))
-    assert node.att[1] == pytest.approx(5.0) and node.att[2] == pytest.approx(0.0)
+    assert node.att.buf[-1][1] == pytest.approx((5.0, 0.0))
     assert fl.camera_attitude(node.att, clock.t, node.p)[2] is True
 
 
@@ -505,3 +505,73 @@ def test_node_triangulation_end_to_end(node_mod, status, want_tri):
     assert o['range_m'] == pytest.approx(math.hypot(6.0 - 3.0, 4.0), abs=1e-3)
     assert o['bearing_deg'] == pytest.approx(90.0 - math.degrees(math.atan2(3.0, 4.0)), abs=0.05)
     assert int(o['flags']) == fl.FLAG_SRC_TRI and o['color_id'] == 3.0
+
+
+# ------------------------------------------------------------ P1b-6 진단 (스텁 노드)
+
+@pytest.mark.parametrize('pitch,warn', [(None, True), (3.0, False)])
+def test_node_mono_default_pitch_start_warn(node_mod, pitch, warn):
+    mod, _ = node_mod
+    OVERRIDES.update(use_mono=True)
+    if pitch is not None:
+        OVERRIDES.update(oak_pitch_deg=pitch)
+    node = mod.PerceptionFusion()
+    got = [m for s, m in node.logger.lines if s == 'WARN' and 'oak_pitch_deg' in m]
+    assert bool(got) is warn
+    OVERRIDES.clear()
+    node = mod.PerceptionFusion()
+    assert not [m for s, m in node.logger.lines if 'oak_pitch_deg' in m], 'use_mono 꺼짐이면 경고 없음'
+
+
+def _status_tokens(node):
+    _timer(node, 1.0)()
+    return node.pubs['/fusion_status'].msgs[-1].data
+
+
+def test_node_rtk_fixed_freshness(node_mod):
+    """rtk_fixed 는 신선한 FIXED 일 때만: NO_FIX 가 오면 바로, 1.5·gps_period_s 넘게 끊기면 rtk_no."""
+    mod, clock = node_mod
+    OVERRIDES.update(use_triangulation=True)
+    node = mod.PerceptionFusion()
+    tick = _timer(node, 10.0)
+    gps_cb = node.subs['/ublox_gps_node/fix'][0]
+    clock.t = 100.0
+    gps_cb(_fix(35.2, 128.6))
+    tick()
+    assert ' rtk_fixed' in _status_tokens(node)
+    clock.t = 100.5
+    gps_cb(_fix(35.2, 128.6, status=-1))
+    tick()
+    assert ' rtk_no' in _status_tokens(node), 'NO_FIX → 바로'
+    clock.t = 101.0
+    gps_cb(_fix(35.2, 128.6))
+    tick()
+    assert ' rtk_fixed' in _status_tokens(node)
+    clock.t = 102.6
+    tick()
+    assert ' rtk_no' in _status_tokens(node), '1.6 s 끊김'
+
+
+def test_node_ray_drop_warn_periodic(node_mod):
+    """GPS 없이 /oak_detections 만 → 대기 만료 광선이 'gps' 로 버려지고 warn_period_sec 주기 WARN 한 줄."""
+    mod, clock = node_mod
+    OVERRIDES.update(use_triangulation=True)
+    node = mod.PerceptionFusion()
+    tick = _timer(node, 10.0)
+    oak_cb = node.subs['/oak_detections'][0]
+    for k in range(40):
+        clock.t = 100.0 + 0.1 * k
+        node.subs['/imu/yaw'][0](_Msg(data=90.0))
+        oak_cb(_oak_msg([(3, 10.0, 0.1, 2.0, 0.9, 0.0)]))
+        tick()
+    warns = [m for s, m in node.logger.lines if s == 'WARN' and '광선 버림' in m]
+    assert len(warns) == 1 and 'gps ' in warns[0], warns
+    n0 = int(warns[0].split('gps ')[1].split('(')[0])
+    assert n0 >= 1
+    clock.t = 106.0
+    tick()
+    assert len([m for s, m in node.logger.lines if s == 'WARN' and '광선 버림' in m]) == 1, '5 s 안 = 더 안 냄'
+    clock.t = 108.0
+    tick()
+    warns = [m for s, m in node.logger.lines if s == 'WARN' and '광선 버림' in m]
+    assert len(warns) == 2 and int(warns[1].split('gps ')[1].split('(')[0]) >= 20, '5 s 뒤 그동안 센 수'

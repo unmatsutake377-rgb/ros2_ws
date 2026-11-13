@@ -288,17 +288,39 @@ def test_mono_measurements_offsets_and_filters():
     x, y = _project(3.0, 20.0, 5.0, 0.0)
     det = _det(-math.degrees(math.atan(x)), y)
     p = dict(P, oak_pitch_deg=5.0, oak_x_from_lidar_m=0.3, oak_y_from_lidar_m=-0.1, oak_yaw_offset_deg=-4.0)
-    (m,) = fl.mono_measurements([det], 10.0, 10.1, 5.0, 0.0, p)
+    (m,) = fl.mono_measurements([det], 10.0, 10.1, None, p)
     th = math.radians(20.0 - 4.0)
     px, py = 0.3 + 3.0 * math.cos(th), -0.1 + 3.0 * math.sin(th)
     assert m['range_m'] == pytest.approx(math.hypot(px, py), abs=1e-9)
     assert m['bearing_deg'] == pytest.approx(math.degrees(math.atan2(py, px)), abs=1e-9)
     assert (m['lo'], m['hi']) == pytest.approx((m['bearing_deg'] - 1.0, m['bearing_deg'] + 1.0))
     assert m['src'] == fl.SRC_MONO and m['bit'] == fl.FLAG_SRC_MONO and m['color_id'] == 3 and m['t'] == 10.0
-    assert fl.mono_measurements([dict(det, age_s=0.5)], 10.0, 10.25, 5.0, 0.0, p) == [], '촬영 0.75 s 전 > 0.7'
-    assert fl.mono_measurements([_det(0.0, -0.05)], 10.0, 10.0, 0.0, 0.0, p) == [], '수평선 위'
+    assert fl.mono_measurements([dict(det, age_s=0.5)], 10.0, 10.25, None, p) == [], '촬영 0.75 s 전 > 0.7'
+    assert fl.mono_measurements([_det(0.0, -0.05)], 10.0, 10.0, None, dict(P)) == [], '수평선 위'
     far = _project(9.0, 0.0, 0.0, 0.0)
-    assert fl.mono_measurements([_det(0.0, far[1])], 10.0, 10.0, 0.0, 0.0, P) == [], 'mono_max_range_m 8'
+    assert fl.mono_measurements([_det(0.0, far[1])], 10.0, 10.0, None, dict(P, cam_max_rel_sigma=9.0)) == [], \
+        'mono_max_range_m 8'
+
+
+def test_mono_measurements_attitude_at_capture_time():
+    """P1b-5: 자세는 수신 시각이 아니라 촬영 시각(recv − age_s)의 IMU 값. 피치가 0.4 s 사이 0° → 4° 로 바뀜."""
+    att = fl.TimeSeries(5.0)
+    att.push(9.6, (0.0, 0.0))
+    att.push(10.0, (4.0, 0.0))
+    x, y = _project(3.0, 0.0, 2.0, 0.0)                   # 촬영(9.8 s) 때 피치 2°(보간)
+    (m,) = fl.mono_measurements([_det(0.0, y, age=0.2)], 10.0, 10.0, att, P)
+    assert m['range_m'] == pytest.approx(3.0, abs=1e-9)
+
+
+def test_mono_rel_sigma_cap():
+    """P1b-6: σ/d > cam_max_rel_sigma(0.3) 인 단안 측정은 안 쓴다 — 기본값에서 약 5 m 넘으면 빠진다."""
+    rel = {}
+    for D in (3.0, 4.0, 5.0, 6.0):
+        y = H / D
+        rel[D] = fl.mono_sigma(0.0, y, H, 0.0, 0.0, P) / D
+        got = fl.mono_measurements([_det(0.0, y)], 10.0, 10.0, None, P)
+        assert (len(got) == 1) == (rel[D] <= P['cam_max_rel_sigma']), (D, rel[D])
+    assert rel[3.0] < 0.3 < rel[6.0]
 
 
 def test_quat_pitch_roll_rep103():
@@ -312,9 +334,14 @@ def test_quat_pitch_roll_rep103():
 
 def test_camera_attitude_mount_plus_imu_or_mount_only():
     p = dict(P, oak_pitch_deg=4.0, oak_roll_deg=-1.0)
-    assert fl.camera_attitude((9.8, 1.5, 2.0), 10.0, p) == (5.5, 1.0, True)
-    assert fl.camera_attitude((9.0, 1.5, 2.0), 10.0, p) == (4.0, -1.0, False), '묵음 → 장착값만'
+    att = fl.TimeSeries(5.0)
+    att.push(9.8, (1.5, 2.0))
+    assert fl.camera_attitude(att, 10.0, p) == (5.5, 1.0, True)
+    assert fl.camera_attitude(att, 10.4, p) == (4.0, -1.0, False), '묵음(0.6 s > imu_stale_sec) → 장착값만'
     assert fl.camera_attitude(None, 10.0, p) == (4.0, -1.0, False)
+    assert fl.camera_attitude(fl.TimeSeries(5.0), 10.0, p) == (4.0, -1.0, False)
+    att.push(10.2, (3.5, 0.0))
+    assert fl.camera_attitude(att, 10.0, p) == pytest.approx((6.5, 0.0, True)), '촬영 시각 보간'
 
 
 # ------------------------------------------------------------ GPS·버퍼
@@ -388,10 +415,11 @@ def _drive(buoy, path, yaws, p, truth_p=None, fixed=True, dt=0.2, n=16, sig=0.01
         cx, cy = _cam_pos(ax, ay, ps, truth_p)
         beta = math.degrees(math.atan2(buoy[0] - cx, buoy[1] - cy))
         b = (ps - beta + 180.0) % 360.0 - 180.0
-        ray, why = fl.make_ray(_det(b, 0.1), t, gps, yaw, 0.0, 0.0, p)
+        ray, why = fl.make_ray(_det(b, 0.1), t, gps, yaw, None, p)
         tr.add([ray] if ray is not None else [], p)
     true_r = math.hypot(buoy[0] - cx, buoy[1] - cy)
-    return tr.estimates((n - 1) * dt, p), true_r, why
+    now = (n - 1) * dt
+    return tr.estimates(now, fl.current_pose(gps, yaw, now, p), p), true_r, why
 
 
 def test_tri_pass_by_matches_truth():
@@ -438,11 +466,13 @@ def test_tri_non_fixed_not_used():
 
 def test_make_ray_missing_pose():
     gps, yaw = fl.TimeSeries(10.0), fl.TimeSeries(10.0)
-    assert fl.make_ray(_det(0.0, 0.1), 1.0, gps, yaw, 0.0, 0.0, P) == (None, 'yaw')
+    assert fl.make_ray(_det(0.0, 0.1), 1.0, gps, yaw, None, P) == (None, 'yaw')
     yaw.push(1.0, 90.0)
-    assert fl.make_ray(_det(0.0, 0.1), 1.0, gps, yaw, 0.0, 0.0, P) == (None, 'gps')
+    assert fl.make_ray(_det(0.0, 0.1), 1.0, gps, yaw, None, P) == (None, 'gps')
     gps.push(0.5, (0.0, 0.0, 0.015, True))
-    assert fl.make_ray(_det(0.0, 0.1), 1.0, gps, yaw, 0.0, 0.0, P) == (None, 'gps'), '0.5 s > 0.3 s 간격'
+    assert fl.make_ray(_det(0.0, 0.1), 1.0, gps, yaw, None, P) == (None, 'gps'), '뒤 표본 없음 → 외삽 안 함'
+    gps.push(2.1, (1.6, 0.0, 0.015, True))
+    assert fl.make_ray(_det(0.0, 0.1), 1.0, gps, yaw, None, P) == (None, 'gps'), '앞뒤 1.6 s > 1.5·주기'
 
 
 def _ray(t, ax, ay, alpha, yaw=0.0, sig=0.015):
@@ -461,13 +491,24 @@ def test_tri_baseline_boundary():
     assert (e['x'], e['y']) == pytest.approx((0.405, 3.0), abs=1e-9)
 
 
-def test_tri_parallax_boundary():
-    """b = 1, 시차 γ = 2·atan(0.5/Y): 4.9° 는 안 내고 5.1° 는 낸다."""
-    def y_for(g):
-        return 0.5 / math.tan(math.radians(g / 2))
-    assert fl.tri_estimate(_two(1.0, y_for(4.9)), P) is None
-    e = fl.tri_estimate(_two(1.0, y_for(5.1)), P)
-    assert e is not None and e['y'] == pytest.approx(y_for(5.1), abs=1e-6)
+def _y_for(g):
+    return 0.5 / math.tan(math.radians(g / 2))
+
+
+def test_tri_parallax_boundary_raw():
+    """여유 k = 0: b = 1, 시차 γ = 2·atan(0.5/Y) 4.9° 는 안 내고 5.1° 는 낸다."""
+    p = dict(P, tri_parallax_sigma_k=0.0)
+    assert fl.tri_estimate(_two(1.0, _y_for(4.9)), p) is None
+    e = fl.tri_estimate(_two(1.0, _y_for(5.1)), p)
+    assert e is not None and e['y'] == pytest.approx(_y_for(5.1), abs=1e-6)
+
+
+def test_tri_parallax_boundary_with_noise_margin():
+    """P1b-3 기본: 문턱 = 5° + 2·√2·σα(√(atan(2/513)² + 0.5²) = 0.548° → 6.55°)."""
+    thr = P['tri_min_parallax_deg'] + P['tri_parallax_sigma_k'] * math.sqrt(2.0) * fl.tri_alpha_sigma_deg(P)
+    assert thr == pytest.approx(6.55, abs=0.01)
+    assert fl.tri_estimate(_two(1.0, _y_for(thr - 0.05)), P) is None
+    assert fl.tri_estimate(_two(1.0, _y_for(thr + 0.05)), P) is not None
 
 
 def test_tri_dt_boundary():
@@ -512,7 +553,7 @@ def test_tri_tracker_association_by_color_and_bearing():
     assert len(tr.tracks) == 2 and len(tr.tracks[0]['rays']) == 2
     tr.add([_ray(0.4, 0.4, 0.0, 45.0)], P)
     assert len(tr.tracks) == 3, 'α 차 12° > tri_assoc_deg 5° → 새 트랙'
-    assert tr.estimates(10.0, P) == [] and tr.tracks == [], '오래된 트랙 정리'
+    assert tr.estimates(10.0, (0.0, 0.0, 0.015, 0.0), P) == [] and tr.tracks == [], '오래된 트랙 정리'
 
 
 # ------------------------------------------------------------ 융합 규칙
@@ -572,12 +613,13 @@ def test_no_lidar_depth_mono_inverse_variance():
     sd = P['depth_sigma_k'] * 9.0
     w1, w2 = 1 / sd ** 2, 1 / 0.3 ** 2
     assert o['range_m'] == pytest.approx((w1 * 3.0 + w2 * 3.2) / (w1 + w2))
-    assert o['src_id'] == fl.SRC_FUSED
+    assert o['src_id'] == fl.SRC_DEPTH, 'P1b-1: LiDAR 미기여 + D455 포함 합의 = src 1(채우기 전용)'
     assert o['flags'] == fl.FLAG_LIDAR_STALE | fl.FLAG_SRC_DEPTH | fl.FLAG_SRC_MONO
 
 
 def test_no_lidar_camera_only_sources():
-    """LiDAR·뎁스 물체 없음(살아는 있음): mono 혼자 → src 4, tri 혼자 → src 5, mono+tri 합의 → src 2 가중."""
+    """LiDAR·뎁스 물체 없음(살아는 있음): mono 혼자 → src 4, tri 혼자 → src 5,
+    mono+tri 합의 → 가중값, src = σ 가 작은 쪽(P1b-1, 여기선 tri 0.2 < mono 0.4 → 5). src 2 는 안 나온다."""
     lt = _lidar({0.0: [None] * 10})
     objs, _ = _build(lt, fl.SourceTrack(10), [_cam(fl.SRC_MONO, 4.0, 0.4, bearing=20.0),
                                               _cam(fl.SRC_TRI, 6.0, 0.3, bearing=-30.0)])
@@ -587,8 +629,25 @@ def test_no_lidar_camera_only_sources():
     objs, _ = _build(lt, fl.SourceTrack(10), [_cam(fl.SRC_MONO, 4.0, 0.4), _cam(fl.SRC_TRI, 4.3, 0.2)])
     (o,) = objs
     w1, w2 = 1 / 0.16, 1 / 0.04
-    assert o['src_id'] == fl.SRC_FUSED and o['range_m'] == pytest.approx((w1 * 4.0 + w2 * 4.3) / (w1 + w2))
+    assert o['src_id'] == fl.SRC_TRI and o['range_m'] == pytest.approx((w1 * 4.0 + w2 * 4.3) / (w1 + w2))
     assert o['flags'] == fl.FLAG_SRC_MONO | fl.FLAG_SRC_TRI
+    objs, _ = _build(lt, fl.SourceTrack(10), [_cam(fl.SRC_MONO, 4.0, 0.2), _cam(fl.SRC_TRI, 4.3, 0.4)])
+    assert objs[0]['src_id'] == fl.SRC_MONO
+    objs, _ = _build(lt, fl.SourceTrack(10), [_cam(fl.SRC_MONO, 4.0, 0.3), _cam(fl.SRC_TRI, 4.3, 0.3)])
+    assert objs[0]['src_id'] == fl.SRC_MONO, '동점 → 작은 번호'
+
+
+def test_src2_only_with_lidar_contribution():
+    """P1b-1: 어떤 카메라 조합이든 LiDAR 가 기여하지 않으면 src 2 가 아니다(미션 노드 G-5 우회 차단)."""
+    lt0 = _lidar({0.0: [None] * 10})
+    dt = _depth({0.0: [3.0] * 10}, t0=0.3)
+    for lt, d in ((lt0, fl.SourceTrack(10)), (fl.SourceTrack(10), dt), (lt0, dt)):
+        for cams in ([_cam(fl.SRC_MONO, 3.1, 0.3)], [_cam(fl.SRC_TRI, 3.05, 0.1)],
+                     [_cam(fl.SRC_MONO, 3.1, 0.3), _cam(fl.SRC_TRI, 3.05, 0.1)]):
+            objs, _ = _build(lt, d, cams)
+            assert objs and all(o['src_id'] != fl.SRC_FUSED for o in objs), (cams, objs)
+    objs, _ = _build(_lidar({0.0: [3.0] * 10}), _depth({0.0: [3.05] * 10}, t0=0.3), [_cam(fl.SRC_MONO, 3.1, 0.3)])
+    assert objs[0]['src_id'] == fl.SRC_FUSED, 'LiDAR + D455 합의는 그대로 src 2'
 
 
 def test_no_lidar_all_disagree_min_rule():
@@ -602,14 +661,14 @@ def test_no_lidar_all_disagree_min_rule():
 
 
 def test_no_lidar_partial_agreement_drops_outlier():
-    """뎁스·단안 합의, 삼각측량 혼자 어긋남 → 둘만 가중(src 2), bit0(어긋남 있었음), 감점 없음."""
+    """뎁스·단안 합의, 삼각측량 혼자 어긋남 → 둘만 가중(D455 포함 → src 1), bit0(어긋남 있었음), 감점 없음."""
     dt = _depth({0.0: [3.0] * 10}, t0=0.3)
     objs, _ = _build(fl.SourceTrack(10), dt, [_cam(fl.SRC_MONO, 3.1, 0.3), _cam(fl.SRC_TRI, 6.0, 0.2)])
     (o,) = objs
     sd = P['depth_sigma_k'] * 9.0
     w1, w2 = 1 / sd ** 2, 1 / 0.09
     assert o['range_m'] == pytest.approx((w1 * 3.0 + w2 * 3.1) / (w1 + w2))
-    assert o['src_id'] == fl.SRC_FUSED and o['flags'] & fl.FLAG_DISAGREE
+    assert o['src_id'] == fl.SRC_DEPTH and o['flags'] & fl.FLAG_DISAGREE
     assert not o['flags'] & fl.FLAG_SRC_TRI and o['conf'] == pytest.approx(1.0)
 
 
@@ -684,3 +743,222 @@ def test_format_status_camera_tokens():
     cam = dict(cam, use_tri=True, oak_ok=False, rtk_fixed=False)
     s = fl.format_status(dict(base, n=None, cam=cam), 3)
     assert s.endswith('oak_stale mono=- tri=- imu_mount rtk_no (발행 중단)')
+
+
+# ------------------------------------------------------------ P1b-2 GPS 시간 정렬 (1 Hz GPS · 15 Hz 카메라)
+
+def test_gps_at_interpolates_with_speed_sigma():
+    gps = fl.TimeSeries(10.0)
+    gps.push(0.0, (0.0, 0.0, 0.015, True))
+    gps.push(1.0, (1.5, 0.0, 0.020, True))
+    x, y, sig, fixed = fl.gps_at(gps, 0.3, P)
+    assert (x, y, fixed) == pytest.approx((0.45, 0.0, True))
+    assert sig == pytest.approx(math.hypot(0.020, P['tri_interp_sigma_frac'] * 1.5 * 0.3))
+    assert fl.gps_at(gps, 1.0, P)[:3] == (1.5, 0.0, 0.020), '표본 시각 = 그 표본(σ 항 0)'
+    assert fl.gps_at(gps, 1.2, P) is None, '뒤 표본 없음 → 외삽 안 함(기다린다)'
+    gps.push(2.6, (3.0, 0.0, 0.015, False))
+    assert fl.gps_at(gps, 1.5, P) is None, '앞뒤 1.6 s > 1.5·gps_period_s'
+    assert fl.gps_at(gps, 1.5, dict(P, gps_period_s=2.0))[3] is False, '쓴 표본 하나라도 비FIXED → fixed False'
+
+
+def test_gps_now_extrapolates_and_goes_stale():
+    gps = fl.TimeSeries(10.0)
+    gps.push(0.0, (0.0, 0.0, 0.015, True))
+    gps.push(1.0, (1.0, 2.0, 0.015, True))
+    x, y, sig, fixed = fl.gps_now(gps, 1.4, P)
+    assert (x, y, fixed) == pytest.approx((1.4, 2.8, True))
+    assert sig == pytest.approx(math.hypot(0.015, 0.1 * math.sqrt(5.0) * 0.4))
+    assert fl.gps_now(gps, 2.51, P) is None, '마지막 표본 1.51 s 전 > 1.5·주기 → 끊김'
+    assert fl.gps_now(fl.TimeSeries(10.0), 0.0, P) is None
+
+
+def _async_run(buoy, path, yaws, p, gps_hz=1.0, cam_hz=15.0, tick_hz=10.0, age=0.05, T=6.0, fixed=True):
+    """GPS gps_hz · 카메라 cam_hz(촬영 뒤 age 초에 도착) · publish tick_hz 를 비동기로 돌린다.
+    → (마지막 추정 목록, 참 거리(지금 카메라 기준), RayQueue drops 누계, 추정 오차·σ 기록)."""
+    gps, yaw = fl.TimeSeries(20.0), fl.TimeSeries(20.0)
+    q, tr = fl.RayQueue(), fl.TriTracker()
+    events = []
+    events += [(k / gps_hz, 0) for k in range(int(T * gps_hz) + 1)]
+    events += [(k / cam_hz + age, 1) for k in range(int(T * cam_hz))]
+    events += [(k / tick_hz + 0.013, 2) for k in range(int(T * tick_hz))]
+    events += [(k / 50.0, 3) for k in range(int(T * 50) + 1)]
+    drops = dict.fromkeys(fl.RayQueue.REASONS, 0)
+    log, est = [], []
+    for t, kind in sorted(events):
+        if kind == 0:
+            ax, ay = path(t)
+            gps.push(t, (ax, ay, 0.015, fixed))
+        elif kind == 3:
+            yaw.push(t, yaws(t) % 360.0)
+        elif kind == 1:
+            tc = t - age
+            ax, ay = path(tc)
+            ps = yaws(tc) % 360.0
+            cx, cy = fl._lever(ax, ay, ps, p['gps_to_cam_x_m'], p['gps_to_cam_y_m'])
+            b = (ps - math.degrees(math.atan2(buoy[0] - cx, buoy[1] - cy)) + 180.0) % 360.0 - 180.0
+            q.push(t, [_det(b, 0.1, age=age)], p)
+        else:
+            for rays in q.pop_ready(t, gps, yaw, None, p):
+                tr.add(rays, p)
+            for k, v in q.take_drops().items():
+                drops[k] += v
+            pose = fl.current_pose(gps, yaw, t, p)
+            est = tr.estimates(t, pose, p)
+            ax, ay = path(t)
+            cx, cy = fl._lever(ax, ay, yaws(t) % 360.0, p['gps_to_cam_x_m'], p['gps_to_cam_y_m'])
+            for e in est:
+                log.append((e['range_m'] - math.hypot(buoy[0] - cx, buoy[1] - cy), e['sigma'], t))
+    return est, drops, log
+
+
+def test_async_1hz_gps_15hz_camera_straight_exact():
+    """동쪽 1 m/s 직진: 촬영 뒤 GPS 표본을 기다려 보간 → 광선 버림 0, 추정 = 참값(등속이라 보간·외삽 정확)."""
+    est, drops, log = _async_run((6.0, 4.0), lambda t: (t, 0.0), lambda t: 90.0, LEVER)
+    assert drops == dict.fromkeys(fl.RayQueue.REASONS, 0) or drops['gps'] <= 2, drops
+    assert log, '추정이 나와야 한다'
+    assert max(abs(err) for err, _, _ in log) < 1e-6
+
+
+def test_async_turning_error_within_sigma():
+    """1 Hz GPS 로 돌면서 지나감(1 m/s, 8°/s): 보간 오차를 σ 가 덮는다(|오차| ≤ 3σ)."""
+    def path(t):
+        r = 1.0 / math.radians(8.0)                      # 반지름 = v/ω
+        th = math.radians(8.0) * t
+        return r * math.sin(th), r * (1.0 - math.cos(th))
+    est, drops, log = _async_run((7.0, 6.0), path, lambda t: 90.0 - 8.0 * t, LEVER, T=4.0)
+    assert log and drops['gps'] <= 2
+    assert all(abs(err) <= 3.0 * sig for err, sig, _ in log), max(abs(e) / s for e, s, _ in log)
+
+
+def test_async_old_hold_behaviour_would_drop_most():
+    """비교: 예전처럼 수신 즉시 광선을 만들면(뒤 표본 없음) 1 Hz GPS 에선 대부분 'gps' 로 버려진다."""
+    gps, yaw = fl.TimeSeries(20.0), fl.TimeSeries(20.0)
+    gps.push(0.0, (0.0, 0.0, 0.015, True))
+    for k in range(21):
+        yaw.push(k * 0.05, 90.0)
+    got = [fl.make_ray(_det(10.0, 0.1), k / 15.0, gps, yaw, None, P)[1] for k in range(1, 15)]
+    assert got.count('gps') == 14
+
+
+def test_rayqueue_cap_and_expiry_counted():
+    gps, yaw = fl.TimeSeries(20.0), fl.TimeSeries(20.0)
+    q = fl.RayQueue()
+    p = dict(P, tri_pending_max=3)
+    for k in range(5):
+        q.push(k * 0.1, [_det(0.0, 0.1)], p)
+    assert len(q.q) == 3 and q.drops['queue'] == 2
+    assert q.pop_ready(0.5, gps, yaw, None, p) == [], 'GPS 없음 + 만료 전 → 기다림'
+    frames = q.pop_ready(0.4 + 2.0 * p['gps_period_s'] + 0.01, gps, yaw, None, p)
+    assert len(frames) == 3 and all(f == [] for f in frames) and not q.q
+    d = q.take_drops()
+    assert d['queue'] == 2 and d['yaw'] == 3 and q.drops == dict.fromkeys(fl.RayQueue.REASONS, 0)
+    q.push(0.0, [], p)
+    assert not q.q, '빈 메시지는 넣지 않는다'
+
+
+def test_current_pose_requires_fixed_and_fresh():
+    gps, yaw = fl.TimeSeries(20.0), fl.TimeSeries(20.0)
+    gps.push(0.0, (0.0, 0.0, 0.015, True))
+    yaw.push(0.9, 90.0)
+    pose = fl.current_pose(gps, yaw, 1.0, LEVER)
+    assert pose[:2] == pytest.approx((0.5, 0.2)) and pose[3] == 90.0
+    assert fl.current_pose(gps, yaw, 1.6, LEVER) is None, 'GPS 1.6 s 묵음'
+    gps.push(1.0, (0.0, 0.0, 0.015, False))
+    assert fl.current_pose(gps, yaw, 1.0, LEVER) is None, '비FIXED'
+
+
+# ------------------------------------------------------------ P1b-3 시차 문턱 선택 편향 (몬테카를로)
+
+def _mc_pass_by(p, v, trials, seed=7, d0=9.4, brg0=45.0, fps=15):
+    """북쪽으로 v m/s, 부표 9.4 m·왼쪽 45°. 방위에 σα 가우스 잡음. → (추정 낸 시행 수, 오차 목록, |오차|/σ 목록)."""
+    rng = np.random.default_rng(seed)
+    s_a = fl.tri_alpha_sigma_deg(p)
+    bx, by = -d0 * math.sin(math.radians(brg0)), d0 * math.cos(math.radians(brg0))
+    n_with, errs, zs = 0, [], []
+    for _ in range(trials):
+        tr = fl.TriTracker()
+        got = False
+        for k in range(3 * fps + 1):
+            t = k / fps
+            ay = v * t
+            a = math.degrees(math.atan2(bx, by - ay)) + rng.normal(0.0, s_a)
+            tr.add([fl.Ray(t, 0.0, ay, 0.0, ay, a % 360.0, 0.0, 0.015, 3, 0.8, 1.0)], p)
+            for e in tr.estimates(t, (0.0, ay, 0.015, 0.0), p):
+                err = e['range_m'] - math.hypot(bx, by - ay)
+                errs.append(err)
+                zs.append(abs(err) / e['sigma'])
+                got = True
+        n_with += got
+    return n_with, errs, zs
+
+
+def test_mc_true_parallax_4p4_no_biased_estimate():
+    """참 시차 4.45°(3 s 동안, < 문턱 5°): 여유 k = 2 면 추정이 거의 안 나온다(≤ 2%).
+    여유 없이(k = 0, P1)는 절반 가까운 시행이 2 m 넘게 짧은 거리를 냈고 1σ 안은 몇 %뿐이었다 — 회귀 감지용."""
+    v = 0.32
+    a0 = math.degrees(math.atan2(-9.4 * math.sin(math.radians(45.0)), 9.4 * math.cos(math.radians(45.0))))
+    a1 = math.degrees(math.atan2(-9.4 * math.sin(math.radians(45.0)), 9.4 * math.cos(math.radians(45.0)) - 3 * v))
+    assert abs(a1 - a0) == pytest.approx(4.45, abs=0.05)
+    n_new, errs_new, zs_new = _mc_pass_by(P, v, 150)
+    assert n_new <= 3, n_new
+    n_old, errs_old, zs_old = _mc_pass_by(dict(P, tri_parallax_sigma_k=0.0), v, 150)
+    assert n_old >= 50 and np.mean(errs_old) < -1.5 and np.mean(np.array(zs_old) <= 1.0) < 0.15
+
+
+def test_mc_clear_parallax_estimates_covered():
+    """충분한 시차(1 m/s, 3 s 시차 16°): 매 시행 추정이 나오고 97% 이상이 3σ 안."""
+    n, errs, zs = _mc_pass_by(P, 1.0, 40)
+    assert n == 40 and np.mean(np.array(zs) <= 3.0) >= 0.97 and abs(np.mean(errs)) < 0.3
+
+
+# ------------------------------------------------------------ P1b-4 광선 상한·캐시·실행 시간
+
+def _four_tracks(p):
+    tr = fl.TriTracker()
+    t = ay = 0.0
+    for k in range(46):
+        t = k / 15.0
+        ay = 1.0 * t
+        rays = [fl.Ray(t, 0.0, ay, 0.0, ay, math.degrees(math.atan2(bx, by - ay)) % 360.0, 0.0, 0.015, c, 0.8, 1.0)
+                for c, (bx, by) in enumerate(((-5.0, 4.0), (5.0, 6.0), (-3.0, 8.0), (6.0, 3.0)), start=1)]
+        tr.add(rays, p)
+    return tr, t, ay
+
+
+def test_tri_max_rays_thinning_keeps_ends_and_spread():
+    tr, t, _ = _four_tracks(P)
+    for x in tr.tracks:
+        ts = [r.t for r in x['rays']]
+        assert len(ts) == P['tri_max_rays']
+        assert ts[-1] == pytest.approx(t) and ts[0] == pytest.approx(0.0), '가장 새 것·가장 오래된 것 유지'
+        gaps = np.diff(ts)
+        assert gaps.max() < 3.0 * gaps.min() + 0.2, f'고르게 솎음 {gaps}'
+
+
+def test_tri_refit_only_on_new_rays(monkeypatch):
+    tr, t, ay = _four_tracks(P)
+    calls = []
+    real = fl.tri_fit
+    monkeypatch.setattr(fl, 'tri_fit', lambda rays, p: calls.append(1) or real(rays, p))
+    pose = (0.0, ay, 0.015, 0.0)
+    assert len(tr.estimates(t, pose, P)) == 4 and len(calls) == 4
+    assert len(tr.estimates(t + 0.05, pose, P)) == 4 and len(calls) == 4, '새 광선 없음 → 재계산 안 함'
+    tr.add([fl.Ray(t + 0.06, 0.0, ay + 0.06, 0.0, ay + 0.06, math.degrees(math.atan2(-5.0, 4.0 - ay - 0.06)) % 360,
+                   0.0, 0.015, 1, 0.8, 1.0)], P)
+    tr.estimates(t + 0.07, pose, P)
+    assert len(calls) == 5, '광선이 붙은 트랙 하나만'
+
+
+def test_tri_runtime_four_tracks_eight_rays():
+    """목표 < 10 ms (Mac mini 실측 약 0.5 ms 전부 재계산 / 0.02 ms 캐시)."""
+    import time
+    tr, t, ay = _four_tracks(P)
+    runs = []
+    for _ in range(7):
+        for x in tr.tracks:
+            x['dirty'] = True
+        t0 = time.perf_counter()
+        est = tr.estimates(t, (0.0, ay, 0.015, 0.0), P)
+        runs.append(time.perf_counter() - t0)
+    assert len(est) == 4
+    assert sorted(runs)[3] < 0.010, f'중앙값 {sorted(runs)[3] * 1e3:.2f} ms'
