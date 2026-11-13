@@ -71,6 +71,16 @@ geofence_avoid_polygon (규정 종합임무 (4) — 장애물 구간 가상경�
     않는다 — 도킹 접근점·연습 접근점도 mode 5. 켜진 동안 배가 구역 안이면 경기장 벽과 방향마다
     가까운 쪽으로 합쳐 낸다. 구역 밖에서 다가올 때는 벽을 안 세우고(입구), 들었다 나가면 ERROR + 벽 없음(복귀로).
   · 시작 로그: 켜는 WP 와 경계까지 거리. 3 m 미만이면 WARN(도착 전에 벽에 막힐 수 있다).
+
+/avoid_zone (std_msgs/Bool, RELIABLE depth 10 — 계약서_도리도리회피_v2_20261114 U2, 명세 8):
+  · ship_avoid(fused) 의 도리도리 구역 신호. true = 지금 다리의 출발 WP·도착 WP 가 **둘 다** 위 '켜는 WP'
+    (geofence_rays.avoid_leg_on). 기본 코스에선 WP6→WP7 다리 하나 — WP5→WP6 접근 다리는 false.
+    🚨 (C) 장애물 구간 벽(_avoid_fence_on, 도착 WP 만 봄)과 정의가 다르다. 벽 정의는 바꾸지 않는다.
+  · 폴리곤이 비면 늘 false. 전용 enable 스위치는 없다(사용자 결정 11-14) — 폴리곤을 채우면 바로 켜진다.
+    끄려면 ship_avoid avoid_mode lidar(앱) + launch 재시작.
+  · timer_cb 에서 /wp_mode 바로 뒤에 같은 주기로 낸다(GPS 없음·AUTO 대기에도 — 위치와 무관한 값).
+    코스 끝(/wp_mode 를 안 내는 경로)에서는 false 를 계속 낸다(명시적 '구역 밖').
+  · 시작 로그 한 줄: true 인 다리(wp_idx 출발→도착) 목록, 없으면 '없음'.
 """
 
 import math
@@ -83,7 +93,7 @@ import rclpy
 from rclpy.node import Node
 from rclpy.qos import ReliabilityPolicy, QoSProfile
 from rcl_interfaces.msg import ParameterDescriptor
-from std_msgs.msg import Float32, Float32MultiArray, Int32, Float64
+from std_msgs.msg import Bool, Float32, Float32MultiArray, Int32, Float64
 from sensor_msgs.msg import NavSatFix
 from geopy import distance
 from ament_index_python.packages import get_package_share_directory
@@ -97,7 +107,7 @@ from north_goal_angle import los_logic          # LOS 유도 (순수, 테스트�
 # geofence 광선은 순수 모듈로 분리 (계약서_geofence부호_20261104). 기존 이름은 호환용 재수출.
 from north_goal_angle.geofence_rays import (  # noqa: F401
     cast_rays, _ray_polygon_dist, _point_in_polygon, sanitize_geofence_polygon,
-    avoid_fence_wps, edge_dist_m, merge_min)
+    avoid_fence_wps, avoid_leg_indices, avoid_leg_on, edge_dist_m, merge_min)
 from north_goal_angle.gps_filter import GPSFilter  # 공분산·점프·스무딩 (순수, 테스트됨)
 from north_goal_angle.wp_timeout import (            # WP 타임아웃 표 (순수, 테스트됨)
     DEFAULT_WP_TIMEOUT_MODES, DEFAULT_WP_TIMEOUT_SEC, WpTimeoutError,
@@ -232,6 +242,7 @@ class NorthGoalAngle(Node):
         self.avoid_wps = avoid_fence_wps(self.waypoints, self.avoid_polygon)
         self.avoid_entered = False       # 지금 켜는 WP 구간에서 구역 안에 든 적 있나(밖=실격 위험 판정용)
         self._log_avoid_fence_setup()
+        self._log_avoid_zone_setup()
         # 경계를 '가짜 LiDAR'로 쏜다 — 스캔과 같은 각도 격자(상대방위, **좌 양수**:
         #   −80 = 우현 끝, +80 = 좌현 끝. LiDAR a−80·/candidate_angle 과 같은 부호. geofence_rays.py).
         # ★ 왜 광선인가: 벽은 '점'이 아니라 '선'이다. 최근접점 한 방향으로 ±각도 원뿔을 막는 건
@@ -309,6 +320,9 @@ class NorthGoalAngle(Node):
         self.pub_bearing = self.create_publisher(Float32, '/north_goal_angle_tp', qos)
         self.pub_remain = self.create_publisher(Float32, '/wp_remaining_time', qos)
         self.pub_geofence = self.create_publisher(Float32MultiArray, '/geofence_state', qos)
+        # /avoid_zone: 구독자 ship_avoid 가 RELIABLE depth 10 이라 같은 프로필로 낸다(계약서 v2 U2 토픽 계약).
+        zone_qos = QoSProfile(depth=10, reliability=ReliabilityPolicy.RELIABLE)
+        self.pub_avoid_zone = self.create_publisher(Bool, '/avoid_zone', zone_qos)
 
         # ---- 구독 ----
         self.create_subscription(NavSatFix, '/ublox_gps_node/fix', self.gps_cb, qos)
@@ -440,6 +454,18 @@ class NorthGoalAngle(Node):
             self.get_logger().warn(
                 f"⚠️ 장애물 구간 경계에 가까운 회피 WP: {', '.join(near)} (< {AVOID_EDGE_WARN_M:g} m). "
                 f"경계 벽에 막혀 도착 못 할 수 있다 — WP 를 구역 안쪽으로 다시 찍거나 폴리곤을 넓혀라.")
+
+    def _log_avoid_zone_setup(self):
+        """/avoid_zone 정의 시작 로그 한 줄 — true 인 다리(wp_idx 출발→도착). 없으면 '없음'(늘 false)."""
+        legs = avoid_leg_indices(self.avoid_wps)
+        if legs:
+            where = ', '.join(f"idx {i - 1}→{i}" for i in legs) + " (waypoints.yaml 0부터 센 순번 — 구역 이름의 WP 번호와 다름)"
+        elif len(self.avoid_polygon) < 6:
+            where = "없음(geofence_avoid_polygon 비었거나 오류로 거부 → 늘 false)"
+        else:
+            where = "없음(폴리곤 안 mode 5 WP 가 연달아 둘 이상 없다 → 늘 false)"
+        self.get_logger().info(
+            f"🚧 /avoid_zone(ship_avoid 도리도리 구역) true 다리(wp_idx 출발→도착 둘 다 장애물 구간 WP): {where}")
 
     def _log_tournament_template_waypoints(self, template):
         self.get_logger().warn(
@@ -740,6 +766,8 @@ class NorthGoalAngle(Node):
                 self.course_done_logged = True
             if after is not None:
                 self.pub_candidate.publish(Float32(data=after))
+            # /avoid_zone 은 코스 끝에도 false 를 계속 낸다 — '구역 밖'이 확실하다(avoid_leg_on 도 False).
+            self.pub_avoid_zone.publish(Bool(data=False))
             return
 
         wp_lat, wp_lon, wp_mode, dwell = self.waypoints[self.wp_idx]
@@ -786,6 +814,8 @@ class NorthGoalAngle(Node):
                     throttle_duration_sec=5.0)
 
         self.pub_mode.publish(Int32(data=wp_mode))
+        # /avoid_zone — /wp_mode 와 같은 조건·주기(명세 8: 출발·도착 WP 둘 다 장애물 구간 WP 인 다리만 true).
+        self.pub_avoid_zone.publish(Bool(data=avoid_leg_on(self.avoid_wps, self.wp_idx)))
 
         # [3] 폴백은 '담당 노드가 없는 모드'(FALLBACK_MODES = 8)에만. mode 5 는 ship_avoid 가 낸다.
         #     작년엔 mode 7(도킹)에도 냈다 → ship_dock 을 7 로 고치면 발행자가 둘이 되어

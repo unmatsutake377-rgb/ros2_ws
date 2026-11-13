@@ -14,8 +14,8 @@ avoid_mode (yaml 스위치, 기본 'fused')
                     못 받았거나 묵었거나 false 면 20000(ZONE_OFF).
                  ② /avoid_detections 가 살아 있을 때만. 한 번도 못 받았거나 detections_quiet_warn_sec 넘게
                     조용하면 20000 으로 넘기고 도리도리를 멈춘다(코어 일시 중지 — 지도는 zone 구간 동안 유지).
-                 🚨 기본이 fused 여도 /avoid_zone 발행자(north, U2)가 없으면 늘 ZONE_OFF = 20000 이다
-                    (WARN 1회, ERROR 없음) — 그래서 오늘 배 동작은 lidar 와 같다.
+                 🚨 기본이 fused 여도 north 폴리곤이 비면 /avoid_zone 이 늘 false → ZONE_OFF = 20000
+                    (ERROR 없음) — 배 동작은 lidar 와 같다.
 
 틱 상태 (plan_tick 반환, 판정 순서 그대로)
   IDLE      담당 모드 아님 / /wp_mode 를 아직 못 받음 / 묵었는데 마지막 값이 담당 모드 아님 → 발행 안 함

@@ -66,7 +66,7 @@ groups:
     items:
       - {pkg: ship_avoid, key: avoid_mode, label: 장애물 회피 방식(mode 5), choices: [lidar, fused],
          hint: "fused = 도리도리(카메라 낮은 장애물 지도, 명세 1~8) — /avoid_zone true 이고 검출이 살아 있을 때만, 아니면 20000 / lidar = mode 5 에서 매 틱 20000(ship_direction LiDAR 회피, 예전 north 폴백과 같음). 옛 이름 doridori 는 fused 로 받음(WARN)",
-         advice: "기본 fused(11-14 결정). /avoid_zone 발행(north U2)·검출기(U3) 전에는 fused 여도 늘 20000 = lidar 와 같은 동작(mode 5 진입 때 '/avoid_zone 을 한 번도 못 받음' WARN 1회). 이상값은 ERROR + lidar. 🚨 바꾸면 launch 재시작(param set 효과 없음)",
+         advice: "기본 fused(11-14 결정). north 폴리곤이 비면 /avoid_zone 늘 false → fused 여도 20000 = lidar 와 같은 동작. 폴리곤을 채우면 WP6→WP7 다리에서 도리도리(검출기 U3 전엔 그 다리에서 20000 + ERROR '검출 침묵'). '/avoid_zone 을 한 번도 못 받음' WARN 이 나오면 north 버전·QoS 확인. 이상값은 ERROR + lidar. 🚨 바꾸면 launch 재시작(param set 효과 없음)",
          change: rarely, when: "현장 조정표 avoid_mode 행(되돌리기 lidar + launch 재시작). 조정표는 11-13 기준(lidar 기본)이라 fused 기본으로 바꾸는 기준은 없음",
          check: "현장 조정표 avoid_mode 행 — 시작 로그 avoid_mode 값 · north 시작 로그 '폴백은 mode (8,)' · mode 5 구간 blackbox candidate_angle 20000 하나",
          revert: "lidar"}

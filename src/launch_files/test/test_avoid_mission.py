@@ -14,6 +14,8 @@ mode 5 담당을 north_goal_angle 폴백에서 ship_avoid 로 옮긴 원자 묶�
        mode 5 가 north 와 ship_avoid 둘이면 에러 없이 값이 섞인다. 0이면 침묵.
   ④ north FALLBACK_MODES == (8,), COURSE_END_STOP_MODES == (5, 8) — 코스 끝 정지 집합은 따로(위험 6)
   ⑤ ssf_tools(healthcheck) 의 mode 5 담당 = ship_avoid — launch 와 같은 커밋이어야 거짓 경보가 없다
+  ⑥ /avoid_zone(Bool) 발행자는 north_goal_angle 하나, 구독자는 ship_avoid — 둘 다 RELIABLE
+     (계약서_도리도리회피_v2_20261114 U2. 발행자가 둘이면 구역 신호가 섞이고, BEST_EFFORT 발행은 RELIABLE 구독과 안 맞는다)
 """
 
 import ast
@@ -267,3 +269,44 @@ def test_healthcheck_mode5_owner_matches_launch():
                      (x.strip().strip('"\'') for x in nodes.group(1).split(','))))
     assert table[5] == 'ship_avoid', f'healthcheck mode 5 담당 {table[5]!r} — launch 의 ship_avoid 와 다르다'
     assert table[8] == 'none'
+
+
+# ------------------------------------------------------------ ⑥ /avoid_zone 발행자·구독자
+
+OUR_PKGS = ('color_shape_detector', 'launch_files', 'motor_control', 'north_goal_angle', 'perception_fusion',
+            'ship_avoid', 'ship_back', 'ship_direction', 'ship_dock', 'ship_gate', 'ship_goal_angle', 'ship_turn',
+            'ssf_bridge', 'ssf_heading', 'ssf_tools')           # tools/run_tests.sh PKGS — 외부 패키지는 안 본다
+
+
+def _topic_sites(kind, topic):
+    """우리 패키지 노드 소스에서 create_{kind}(타입, '토픽', ..., qos) → [(패키지, 타입, qos 프로필 인자 문자열)]."""
+    pat = re.compile(r"create_%s\(\s*(\w+),\s*'%s'\s*,(?:[^,()]+,)?\s*(\w+)\s*\)" % (kind, re.escape(topic)))
+    out = []
+    for pkg in OUR_PKGS:
+        mod_dir = os.path.join(SRC, pkg, pkg)
+        if not os.path.isdir(mod_dir):
+            continue
+        for fn in sorted(os.listdir(mod_dir)):
+            if not fn.endswith('.py'):
+                continue
+            text = open(os.path.join(mod_dir, fn), encoding='utf-8').read()
+            for m in pat.finditer(text):
+                prof = re.search(r'^\s*%s = QoSProfile\(([^)]*)\)' % re.escape(m.group(2)), text, re.M)
+                out.append((pkg, m.group(1), prof.group(1) if prof else None))
+    return out
+
+
+def test_avoid_zone_single_publisher_north():
+    pubs = _topic_sites('publisher', '/avoid_zone')
+    assert [p[0] for p in pubs] == ['north_goal_angle'], f'/avoid_zone 발행자 {pubs} — north 하나여야 한다'
+    _, typ, prof = pubs[0]
+    assert typ == 'Bool'
+    assert prof is not None and 'ReliabilityPolicy.RELIABLE' in prof and 'depth=10' in prof, prof
+
+
+def test_avoid_zone_subscriber_ship_avoid_reliable():
+    subs = _topic_sites('subscription', '/avoid_zone')
+    assert [s[0] for s in subs] == ['ship_avoid'], f'/avoid_zone 구독자 {subs}'
+    _, typ, prof = subs[0]
+    assert typ == 'Bool'
+    assert prof is not None and 'ReliabilityPolicy.RELIABLE' in prof, prof

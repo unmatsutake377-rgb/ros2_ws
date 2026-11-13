@@ -10,8 +10,8 @@ avoid_mode (yaml, 기본 'fused' — 사용자 결정 11-14): lidar = 담당 모
   지도 수명 = zone 구간: zone true 동안 검출 침묵으로 잠깐 멈춰도 지도·코스 축 유지,
   zone false·stale 이나 담당 모드 이탈이면 지도를 버린다.
   판정·검출 형식 파싱은 avoid_mode_logic (순수 함수 plan_tick·parse_detections).
-  🚨 기본 fused 여도 /avoid_zone 발행자(U2)·검출기(U3)가 없는 지금은 mode 5 에서 늘 20000(ZONE_OFF, WARN 1회) —
-     배 동작은 lidar 와 같다.
+  🚨 기본 fused. north 는 /avoid_zone 을 늘 낸다(U2) — 폴리곤이 비면 늘 false → mode 5 에서 20000(ZONE_OFF).
+     폴리곤을 채우면 WP6→WP7 다리에서 true, 검출기(U3) 전이면 그 다리에서 DET_DEAD(20000 + ERROR).
 🚨 대회 launch 에 들어 있다(launch_files _ship_avoid, 계약서 C2 원자 묶음 — 한 커밋):
    north_goal_angle FALLBACK_MODES (8,)(mode 5 폴백 뺌) + ssf_tools wp_nodes 5→ship_avoid + launch Node.
    하나만 되돌리면 mode 5 /candidate_angle 발행자가 2개이거나 healthcheck 거짓 경보(test_avoid_mission 이 검사).
@@ -25,7 +25,7 @@ avoid_mode (yaml, 기본 'fused' — 사용자 결정 11-14): lidar = 담당 모
   /ublox_gps_node/fix (NavSatFix)  위치 → 첫 fix 기준 로컬 m
   /scan (LaserScan)                노란부표 추출(lidar_buoys) — BEST_EFFORT depth 1
   /avoid_zone (Bool)               장애물 구간 다리(명세 8, north 발행 — U2). avoid_zone_stale_sec 넘게 묵으면 false 로 본다.
-       ⚠️ 발행자 아직 없음(U2 전) — fused 여도 늘 20000(한 번도 못 받았으면 WARN 1회).
+       north 가 0.5 s 마다 낸다 — /wp_mode 는 오는데 이게 한 번도 안 오면 north 버전·QoS 문제(WARN 1회).
   /avoid_detections (Float32MultiArray)  [VER=1, STRIDE=6, N, N × (cls, bearing_left_deg, v_norm, range_m, conf, age_s)]
        cls 0 = 빨강(낮은 장애물), 2 = 노랑. bearing 좌 +. v_norm = (v_bottom − cy)/fy. range_m 모르면 NaN.
        age_s = 촬영부터 발행까지 초 — det_max_age_s 넘는 검출은 버린다(지금은 그 밖에 안 씀).
@@ -248,7 +248,7 @@ class ShipAvoid(Node):
     def _warn_zone_never(self):
         self.get_logger().warn(
             "ship_avoid: fused 인데 /avoid_zone 을 한 번도 못 받음 → 20000(도리도리 안 함). "
-            "north /avoid_zone 발행(계약서 v2 U2) 전에는 정상 — 이 경고는 1회만")
+            "north 가 떠 있는데 이 경고가 나오면 north 버전(pull·빌드)·QoS 확인 — 이 경고는 1회만")
 
     def _err_zone_stale(self, age):
         self.get_logger().error(

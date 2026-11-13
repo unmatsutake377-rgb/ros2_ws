@@ -222,6 +222,22 @@ def avoid_fence_wps(waypoints, avoid_poly, mode=AVOID_FENCE_MODE):
     return [int(w[2]) == mode and latlon_in_polygon(w[0], w[1], avoid_poly) for w in waypoints]
 
 
+def avoid_leg_on(avoid_wps, wp_idx):
+    """/avoid_zone 값 — 지금 다리(wp_idx−1 → wp_idx)가 장애물 구간 다리인가 (계약서_도리도리회피_v2 U2, 명세 8).
+
+    출발 WP 와 도착 WP 가 **둘 다** avoid_fence_wps 에서 True(mode 5 + 폴리곤 안)인 다리만 True.
+    기본 코스에선 WP6→WP7 다리 하나 — WP5→WP6 접근 다리는 출발 WP(WP5)가 켜는 WP 가 아니라 False.
+    🚨 (C) 장애물 구간 벽(_avoid_fence_on = avoid_wps[wp_idx] 하나만 봄)과 정의가 다르다. 벽은 그대로 둔다.
+    wp_idx 0(출발 WP 없음)·코스 끝(wp_idx ≥ len)·폴리곤 빔(avoid_wps 전부 False) → False.
+    """
+    return 1 <= wp_idx < len(avoid_wps) and bool(avoid_wps[wp_idx]) and bool(avoid_wps[wp_idx - 1])
+
+
+def avoid_leg_indices(avoid_wps):
+    """avoid_leg_on 이 True 인 wp_idx 목록(시작 로그용). 다리 = (i−1 → i)."""
+    return [i for i in range(len(avoid_wps)) if avoid_leg_on(avoid_wps, i)]
+
+
 def merge_min(a, b):
     """두 광선 목록을 방향마다 가까운 쪽으로. 길이가 다르면 짧은 쪽까지."""
     return [min(x, y) for x, y in zip(a, b)]

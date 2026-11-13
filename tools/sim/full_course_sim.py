@@ -55,11 +55,16 @@
                           → /wp_remaining_time → ship_dock (C4 WP8→WP9 전환 감지, /wp_mode 뒤)
                           → /candidate_angle(20000, mode 8 — FALLBACK_MODES (8,)) → ship_direction
                           → /wp_mode → ship_avoid (mode 5 담당, 계약서_도리도리회피_launch_20261113 C2)
+                          → /avoid_zone → ship_avoid.zone_cb (계약서_도리도리회피_v2_20261114 U2, /wp_mode 뒤.
+                            코스 끝에도 false 를 낸다 — 폴리곤 비면 늘 false)
   검출기 gate → /red_angle·/green_angle → ship_gate;  turn → /image_angle·/image_color → ship_back·ship_turn;
   검출기 dock → /image_angle → ship_back·ship_turn·ship_dock
   ship_goal_angle → /yaw_error → ship_direction
   ship_gate·ship_back·ship_turn·ship_dock·ship_avoid → /candidate_angle → ship_direction (발행자를 틱마다 기록)
-    ship_avoid 는 yaml 기본 avoid_mode fused 로 돌린다(/avoid_zone·검출 미배선 → mode 5 매 틱 20000 — 예전 north 폴백과 같은 값).
+    ship_avoid 는 yaml 기본 avoid_mode fused 로 돌린다. /avoid_zone 은 north 에서 배선(U2), 검출(/avoid_detections)은 미배선
+    → 폴리곤 빔: zone false(ZONE_OFF) 20000, --avoid-zone 으로 채우면 WP6→WP7 다리에서 zone true + 검출 없음 → DET_DEAD
+    (침묵 시계는 mode 5 진입부터라 접근 다리에서 이미 5 s 넘음 → ERROR 1종) 20000 — 어느 쪽이든 예전 north 폴백과 같은 값.
+    zone true 시간·ship_avoid 상태는 요약 줄에만(폴리곤 빔이면 그 줄 없음).
     lidar 모드는 /wp_mode 만 본다 → /scan·/imu·GPS·/avoid_detections 는 연결하지 않는다(도리도리는 doridori_sim).
   /candidate_angle(모든 발행자, north 자기 발행 포함) → north_goal_angle.candidate_cb
                           (C2 dwell 대기: mode 2·3 은 담당 노드가 손 뗀 동안만 dwell)
@@ -723,6 +728,13 @@ def run(seed, variant="A", wp_file=None, world_wp_file=WP_DEFAULT, gps_sigma=0.0
                 if avoid_pts is not None else [])     # 노드 avoid_fence_wps 와 같은 규칙(재기만 할 때도 같은 구간)
     av_in = False; av_out_max = 0.0; av_out_s = 0.0; av_on_s = 0.0   # 장애물 구간 경계(켜는 WP 동안)
     pub_mode = -1                  # 노드들이 실제로 받은 마지막 /wp_mode (north 는 전진 '전'에 현재 모드를 발행한다)
+    # /avoid_zone(U2) — 요약용(CSV 열 불변): 마지막 수신값, 그 발행 틱의 wp_idx, true 시간, ship_avoid 상태 틱 수
+    zone_now = False
+    zone_idx = None
+    zone_true_s = 0.0
+    zone_wps = set()
+    sa_states = {}
+    sa_state_n = sa.pubs["/avoid_state"].count
     # ---- 페일세이프 기록 (틱 배열) ----
     TK = dict(t=[], lvl=[], des=[], v=[], mode=[], wp=[], wd=[], ctot=[], gps=[], sga_imu=[], sga_goal=[], n_imu=[])
     log_idx = {"nga": 0, "sga": 0, "mc": 0}
@@ -762,7 +774,7 @@ def run(seed, variant="A", wp_file=None, world_wp_file=WP_DEFAULT, gps_sigma=0.0
             if k % 5 == 0 and silent != "north_goal_angle":
                 c0 = {p: nga.pubs[p].count for p in ("/wp_mode", "/north_goal_angle_tp",
                                                      "/geofence_state", "/candidate_angle",
-                                                     "/goal_distance", "/wp_remaining_time")}
+                                                     "/goal_distance", "/wp_remaining_time", "/avoid_zone")}
                 nga.timer_cb()
                 if nga.pubs["/goal_distance"].count > c0["/goal_distance"]:
                     sk.goal_distance_cb(nga.pubs["/goal_distance"].last)   # 거리 → /wp_mode 순서
@@ -781,6 +793,11 @@ def run(seed, variant="A", wp_file=None, world_wp_file=WP_DEFAULT, gps_sigma=0.0
                             d.on_mode_change()
                     det_turn.wp_mode = m.data
                     pub_mode = m.data
+                if nga.pubs["/avoid_zone"].count > c0["/avoid_zone"]:      # /wp_mode 뒤(노드 발행 순서), 코스 끝에도 옴
+                    zone_msg = nga.pubs["/avoid_zone"].last
+                    sa.zone_cb(zone_msg)
+                    zone_now = bool(zone_msg.data)
+                    zone_idx = wp_idx                                    # 발행한 틱의 wp_idx(전진 반영 전)
                 if nga.pubs["/wp_remaining_time"].count > c0["/wp_remaining_time"]:
                     sk.wp_remaining_cb(nga.pubs["/wp_remaining_time"].last)   # /wp_mode 뒤
                 if nga.pubs["/north_goal_angle_tp"].count > c0["/north_goal_angle_tp"]:
@@ -848,6 +865,13 @@ def run(seed, variant="A", wp_file=None, world_wp_file=WP_DEFAULT, gps_sigma=0.0
                     tick_cand.append((name, p.last))
             for name, n in cand_pubs:
                 cnt[name] = n.pubs["/candidate_angle"].count
+            if zone_now:
+                zone_true_s += DT
+                zone_wps.add(zone_idx)
+            if sa.pubs["/avoid_state"].count > sa_state_n:
+                lb = sa.pubs["/avoid_state"].last.data
+                sa_states[lb] = sa_states.get(lb, 0) + 1
+                sa_state_n = sa.pubs["/avoid_state"].count
             mp = mode_pubs.setdefault(cur_mode, {})
             names = sorted(set(nm for nm, _ in tick_cand))
             for nm in names:
@@ -1076,6 +1100,9 @@ def run(seed, variant="A", wp_file=None, world_wp_file=WP_DEFAULT, gps_sigma=0.0
     out["contacts"] = contacts; out["contacts_total"] = sum(contacts.values())
     out["contacts_avoid"] = contacts["obst_5"] + contacts["obst_8"]
     out["avoid_zone"] = avoid_zone; out["avoid_measure_only"] = avoid_measure_only
+    out["zone_true_s"] = round(zone_true_s, 1)
+    out["zone_wps"] = sorted(zone_wps)
+    out["sa_states"] = sa_states
     if avoid_pts is not None:
         out["avoid_on_s"] = round(av_on_s, 1); out["avoid_out_s"] = round(av_out_s, 1); out["avoid_out_max"] = round(av_out_max, 2)
     out["contacts_rect"] = contacts_rect; out["contacts_rect_avoid"] = contacts_rect["obst_5"] + contacts_rect["obst_8"]
@@ -1408,6 +1435,15 @@ def summarize(R, label):
         om = sorted(r["avoid_out_max"] for r in R)
         lines.append(f"  장애물 구간 경계(±{R[0]['avoid_zone']:g} m, 끝 {AVOID_ZONE_END_M:g} m{', 노드엔 안 넘김 — 기준선' if R[0]['avoid_measure_only'] else ''}) 이탈 런 {sum(1 for r in R if r['avoid_out_s'] > 0)}/{n} "
                      f"(최대 {om[-1]:.2f} m, 이탈 시간 합 {sum(r['avoid_out_s'] for r in R):.1f} s) | 켜진 시간 중앙값 {med(sorted(r['avoid_on_s'] for r in R)):.0f} s")
+    if any(r.get("zone_true_s") for r in R):       # 폴리곤 빔(기본)이면 이 줄 없음 — 옛 출력과 같다
+        zst = {}
+        for r in R:
+            for kk, vv in r.get("sa_states", {}).items():
+                zst[kk] = zst.get(kk, 0) + vv
+        zw = sorted(set(i for r in R for i in r.get('zone_wps', [])))
+        lines.append(f"  /avoid_zone true 런 {sum(1 for r in R if r.get('zone_true_s'))}/{n}, 시간 중앙값 "
+                     f"{med(sorted(r.get('zone_true_s', 0.0) for r in R)):.1f} s, wp_idx {zw} | "
+                     f"ship_avoid 상태 틱 합: " + ", ".join(f"{kk} {vv}" for kk, vv in sorted(zst.items())))
     if all("contacts_rect" in r for r in R):
         lines.append(f"  직사각형 선체 접촉(보조, 선미 포함) 회피 장애물 {sum(r['contacts_rect_avoid'] for r in R)}, "
                      f"게이트 {sum(r['contacts_rect']['gate'] for r in R)}, 위치유지 {sum(r['contacts_rect']['hold'] for r in R)}, "
