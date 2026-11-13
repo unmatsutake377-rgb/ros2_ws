@@ -93,6 +93,17 @@ ros2 launch launch_files launch_files.launch.py boat:=B course:=tournament waypo
 - 🚨 토너먼트에서 `waypoints_file` 을 비우면 `config/waypoints_tournament.yaml` **템플릿**(자리표시 좌표)으로 뜬다 → 반드시 레인 녹화본을 준다(녹화는 `웨이포인트_녹화절차.md`).
 - `dwa_hull` 은 launch 가 `boat` 인자에서 정한다(손편집 불필요).
 
+**토너먼트 실행 스크립트 (11-14, 권장)** — 위 토너먼트 명령을 확인과 함께 띄운다. A·B 같은 스크립트, 배·레인만 다르게:
+
+```bash
+cd ~/ros2_ws && tools/ssf_tournament.sh A 1      # 1번배 레인 1 (2번배: tools/ssf_tournament.sh B 1)
+```
+
+- 녹화본 = `~/ssf_logs/waypoints_tournament_<배>_<레인>.yaml`(녹화: `tools/ssf_wp_record.sh <배> tournament <레인>`). 없으면 녹화 명령을 알려 주고 안 띄운다.
+- 띄우기 전 확인: 배 = `~/.ssf_boat`, 대회 launch 중복 없음, 웨이포인트 2개 이상·전부 mode 8, `geofence_polygon` 채움(비면 경고 + `y` 입력해야 띄움).
+- `d455_depth:=false perception_fusion:=false` 를 붙인다(토너먼트는 전부 mode 8 이라 안 씀 → USB 허브 부담만 줄임). 다시 켜려면 뒤에 `d455_depth:=true perception_fusion:=true`. 다른 인자도 뒤에 붙이면 그대로 전달(예: `record:=false`).
+- 판 끝 = Ctrl+C 한 번 → 다음 판은 스크립트 다시 실행. 아래 T2~T6 로그 확인은 그대로 한다.
+
 **토너먼트 출발 전 체크**
 
 | # | 확인 | 어디서 |
