@@ -11,6 +11,9 @@
       예외(계약서_인식융합_20261112 §10 Q1 승인): distance_source 가 fill/fused 면 **APPROACH 의 카메라 방위
       분기 한 곳만** /fused_objects(LiDAR·D455 뎁스 융합 물체) 거리를 쓴다(같은 색만 매칭). ORBIT 의 LiDAR
       추적(lidar_track)·ORBIT 거리는 그대로 — 카메라 시야 밖이라 바꾸면 추적을 잃는다(계약 위험 4).
+      기본 = fused(계약서_흰부표_거리융합_v3 G-9): /fused_objects 먼저, 맞는 물체 없으면 LiDAR. perception_fusion 이
+      꺼졌거나 묵으면 LiDAR 거리만 + 5 s 주기 WARN(= lidar 와 같은 출력). 잘못된 값 → ERROR 후 lidar.
+      LiDAR 우선(G-5): 고른 물체가 depth(D455 단독)이고 LiDAR 값이 있으면 LiDAR — depth 는 채우기 전용.
   [4] 🚨 [2026-11-04] ORBIT 진입 직후 노드가 죽었다(계약서_ship_turn선회_20261104). 세 가지가 겹쳤다:
       (C) orbit_logic 이 "+ = 우현" 으로 쓰여 좌 양수 입·출력과 반대 → CW 요청에 CCW. 좌 양수로 정정.
       (A) orbit 자세(부표 ±90°)는 카메라 HFOV(±40°) 밖이라 /image_angle 이 10000 → rel None →
@@ -147,10 +150,11 @@ class ShipTurn(Node):
         self.lidar_track_window_deg = float(self.declare_parameter('lidar_track_window_deg', 25.0).value)
         self.lidar_track_max_m = float(self.declare_parameter('lidar_track_max_m', 5.0).value)  # = orbit_radius 3 + 2
 
-        # 거리 출처(계약서_인식융합_20261112 §10) — APPROACH 카메라 분기만. 코드 기본값 = yaml = 'fill'(대회값).
+        # 거리 출처(계약서_인식융합_20261112 §10) — APPROACH 카메라 분기만. 코드 기본값 = yaml = 'fused'
+        #   (계약서_흰부표_거리융합_v3 G-9, 11-14 — 옛 대회값 fill).
         #   잘못된 값 → ERROR 후 lidar. lidar 면 /fused_objects 구독을 만들지 않는다. 구독보다 먼저 선언.
         self.distance_source, src_err = check_distance_source(
-            self.declare_parameter('distance_source', 'fill').value)
+            self.declare_parameter('distance_source', 'fused').value)
         self.fused_topic = str(self.declare_parameter('fused_topic', '/fused_objects').value)
         self.fused_stale_sec = float(self.declare_parameter('fused_stale_sec', 0.5).value)   # ⚠️ 실측
         self.fused_match_deg = float(self.declare_parameter('fused_match_deg', 5.0).value)   # ⚠️ 실측
