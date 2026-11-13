@@ -246,10 +246,14 @@ def test_course_yaml_keys_declared_and_types_match():
 
 
 def test_course_geofence_polygon_empty_like_common():
-    """지금은 둘 다 [] (현장 값) — main 은 공통과 같아 main 동작 불변."""
+    """공통·main 은 [] — main 동작 불변. tournament 는 [] 또는 노드가 받아들이는 현장 폴리곤(11-14 4점 공유)."""
+    from north_goal_angle.geofence_rays import sanitize_geofence_polygon
     assert _params('north_goal_angle.yaml')['geofence_polygon'] == []
     assert _params('north_goal_angle_main.yaml')['geofence_polygon'] == []
-    assert _params('north_goal_angle_tournament.yaml')['geofence_polygon'] == []
+    poly = _params('north_goal_angle_tournament.yaml')['geofence_polygon']
+    out, ok, why = sanitize_geofence_polygon(poly)
+    assert ok, f'tournament geofence_polygon 을 노드가 거부: {why}'
+    assert out == poly and (poly == [] or len(poly) >= 6)
     src = open(os.path.join(_CFG, 'north_goal_angle_tournament.yaml'), encoding='utf-8').read()
     assert '현장 2경기장 좌표, 결승선 너머까지 포함(하드 정지 2 m)' in src
 

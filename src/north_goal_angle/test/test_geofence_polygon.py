@@ -97,13 +97,24 @@ def test_off_empty_array():
     _off(array.array('d'))
 
 
+def _cfg_polygon(name):
+    with open(os.path.join(_CFG, name), encoding='utf-8') as f:
+        return yaml.safe_load(f)['/north_goal_angle']['ros__parameters']['geofence_polygon']
+
+
 def test_config_yaml_values_are_off():
-    """지금 yaml 세 개는 [] — 검증을 넣어도 꺼짐(ERROR 없음) 그대로."""
-    for name in ('north_goal_angle.yaml', 'north_goal_angle_main.yaml',
-                 'north_goal_angle_tournament.yaml'):
-        with open(os.path.join(_CFG, name), encoding='utf-8') as f:
-            v = yaml.safe_load(f)['/north_goal_angle']['ros__parameters']['geofence_polygon']
+    """공통·main yaml 은 [] — 검증을 넣어도 꺼짐(ERROR 없음) 그대로."""
+    for name in ('north_goal_angle.yaml', 'north_goal_angle_main.yaml'):
+        _off(_cfg_polygon(name))
+
+
+def test_config_tournament_polygon_off_or_accepted():
+    """tournament yaml 은 [](꺼짐) 또는 노드가 그대로 받아들이는 현장 폴리곤(11-14 4점 공유)."""
+    v = _cfg_polygon('north_goal_angle_tournament.yaml')
+    if not v:
         _off(v)
+    else:
+        _accepted(v, v)
 
 
 # ---------------- ② 정상

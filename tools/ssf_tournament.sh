@@ -13,7 +13,8 @@
 #
 # 띄우기 전 확인(하나라도 틀리면 launch 안 함):
 #   ① 배 = ~/.ssf_boat (있으면)   ② 대회 launch 가 이미 떠 있지 않음(노드 2벌 방지)
-#   ③ 레인 녹화본 있음 — 없으면 녹화 명령 안내 (tools/ssf_wp_record.sh <배> tournament <레인>)
+#   ③ 레인 녹화본 — ~/ssf_logs/waypoints_tournament_<배>_<레인>.yaml 우선, 없으면 공유
+#      tools/tournament_lanes/waypoints_tournament_<레인>.yaml, 둘 다 없으면 녹화 명령 안내
 #   ④ 녹화본 웨이포인트 2개 이상·전부 mode 8 (north 도 같은 검사로 출발 거부)
 #   ⑤ 경기장 경계(north_goal_angle_tournament.yaml geofence_polygon) — 비면 경고 후 y 를 쳐야 띄운다
 #
@@ -51,10 +52,18 @@ if pgrep -f "ros2 launch launch_files $LAUNCH_PY" >/dev/null 2>&1; then
   die "대회 launch 가 이미 떠 있다 — 그 창에서 Ctrl+C 한 번으로 끈 뒤 다시 실행"
 fi
 
-# ③ 레인 녹화본
-wp="$HOME/ssf_logs/waypoints_tournament_${boat}_${lane}.yaml"
-if [ ! -f "$wp" ]; then
-  echo "❌ 레인 녹화본 없음: $wp" >&2
+# ③ 레인 녹화본 — 배 자기 녹화본 우선, 없으면 저장소 공유 레인(tools/tournament_lanes, 두 배 공용)
+own="$HOME/ssf_logs/waypoints_tournament_${boat}_${lane}.yaml"
+shared="$repo/tools/tournament_lanes/waypoints_tournament_${lane}.yaml"
+if [ -f "$own" ]; then
+  wp="$own"
+  [ -f "$shared" ] && ! cmp -s "$own" "$shared" && \
+    echo "⚠️  자기 녹화본을 쓴다(공유 레인 $shared 와 내용 다름) — 공유본을 쓰려면 자기 녹화본 이름을 바꿔 치울 것"
+elif [ -f "$shared" ]; then
+  wp="$shared"
+  echo "ℹ️  자기 녹화본($own) 없음 → 공유 레인 사용: $shared"
+else
+  echo "❌ 레인 녹화본 없음: $own (공유 레인 $shared 도 없음)" >&2
   echo "   먼저 녹화: tools/ssf_wp_record.sh $boat tournament $lane   (절차: 웨이포인트_녹화절차.md §3a)" >&2
   exit 1
 fi
