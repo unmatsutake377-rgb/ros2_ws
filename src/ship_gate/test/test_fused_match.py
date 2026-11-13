@@ -9,6 +9,7 @@
   age_s, track_id, flags)]. 매칭 = 부표 방위 ±fused_match_deg 안, 같은 색(빨강 /red_angle·초록 /green_angle)
   → 방위 최근접(동점 거리 짧은 것) → conf ≥ fused_min_conf · src ∈ fused_allowed_sources.
   fill = LiDAR 먼저, None 일 때만 fused / fused = fused 먼저, 없으면 LiDAR / lidar = 지금 그대로(구독도 없음).
+  기본 = fused(계약서_흰부표_거리융합_v3 G-9, 11-14). perception_fusion 없음·묵음이면 lidar 와 같은 출력.
   적용은 통과 카운트 재-arming 의 pair_dist 한 곳(조향·arming 은 거리를 안 쓴다).
 순수 함수 부분은 ship_back/test/test_fused_match.py 와 같은 내용(사본 — 공유 모듈 금지 §1-8).
 노드 쪽은 ship_back 테스트와 같은 방식의 rclpy 스텁으로 실제 ShipGate 를 돈다.
@@ -204,11 +205,23 @@ def test_choose_distance_matrix():
         ('lidar', 3.0, None): (3.0, 'lidar'), ('lidar', None, None): (None, None),
         ('fill', 3.0, hit): (3.0, 'lidar'), ('fill', None, hit): (2.0, 'fused:depth'),
         ('fill', 3.0, None): (3.0, 'lidar'), ('fill', None, None): (None, None),
-        ('fused', 3.0, hit): (2.0, 'fused:depth'), ('fused', None, hit): (2.0, 'fused:depth'),
+        ('fused', 3.0, hit): (3.0, 'lidar'), ('fused', None, hit): (2.0, 'fused:depth'),   # depth = 채움 전용(G-5)
         ('fused', 3.0, None): (3.0, 'lidar'), ('fused', None, None): (None, None),
     }
     for (mode, ld, h), want in cases.items():
         assert choose_distance(mode, ld, h) == want, (mode, ld, h, choose_distance(mode, ld, h))
+
+
+def test_choose_distance_fused_lidar_priority_over_depth_only():
+    """fused: 고른 물체가 depth(D455 단독)이고 노드 LiDAR 값이 있으면 LiDAR(계약서_흰부표_거리융합_v3 G-5).
+    depth 는 LiDAR 가 못 볼 때 채우기 전용. src lidar·fused(합의) 는 지금처럼 fused 먼저. 출처 이름 = 실제로 쓴 값."""
+    assert choose_distance('fused', 3.0, (2.0, S_DEPTH)) == (3.0, 'lidar')
+    assert choose_distance('fused', None, (2.0, S_DEPTH)) == (2.0, 'fused:depth')
+    assert choose_distance('fused', 3.0, (2.5, S_FUSED)) == (2.5, 'fused:fused')
+    assert choose_distance('fused', 3.0, (2.5, S_LIDAR)) == (2.5, 'fused:lidar')
+    assert choose_distance('fused', 3.0, None) == (3.0, 'lidar')
+    assert choose_distance('fill', 3.0, (2.0, S_DEPTH)) == (3.0, 'lidar')
+    assert choose_distance('fill', None, (2.0, S_DEPTH)) == (2.0, 'fused:depth')
 
 
 # ─────────────── 상수 사본 일치 (공유 모듈 금지 §1-8 → 세 미션 패키지 사본) ───────────────
@@ -252,6 +265,11 @@ def test_constant_copies_equal():
             assert match_fused(a, *args, ALLOWED) == other.match_fused(b, *args, ALLOWED), (pkg, args)
         for v in ('fill', 'x'):
             assert check_distance_source(v)[0] == other.check_distance_source(v)[0]
+        # choose_distance 사본도 같은 결과(LiDAR 우선 G-5 포함). src 4·5 = P1 단안·삼각측량(노드는 이름 모름)
+        for mode in ('lidar', 'fill', 'fused', 'x'):
+            for ld in (None, 3.0):
+                for h in (None, (2.0, S_LIDAR), (2.0, S_DEPTH), (2.0, S_FUSED), (2.0, S_ROW), (2.0, 4), (2.0, 5)):
+                    assert choose_distance(mode, ld, h) == other.choose_distance(mode, ld, h), (pkg, mode, ld, h)
 
 
 PF_LOGIC = os.path.join(SRC, 'perception_fusion', 'perception_fusion', 'fusion_logic.py')
@@ -447,13 +465,13 @@ def _fused_subs(n):
     return [s for s in n.subs if s[1] == '/fused_objects']
 
 
-def test_node_default_is_fill_and_subscribes():
+def test_node_default_is_fused_and_subscribes():
     n = _make()
-    assert n.distance_source == 'fill'
+    assert n.distance_source == 'fused'
     subs = _fused_subs(n)
     assert len(subs) == 1 and subs[0][0] is _F32MA, n.subs
     assert subs[0][3].kw == dict(reliability='BEST_EFFORT', history='KEEP_LAST', depth=1), subs[0][3].kw
-    assert any('distance_source=fill' in m for _, m, _ in _lines(n, 'INFO')), n.get_logger().lines
+    assert any('distance_source=fused' in m for _, m, _ in _lines(n, 'INFO')), n.get_logger().lines
 
 
 def test_node_lidar_no_subscription():
@@ -491,7 +509,7 @@ def test_node_fused_defaults_equal_yaml():
     with open(os.path.join(PKG, 'config', 'ship_gate.yaml'), encoding='utf-8') as f:
         y = yaml.safe_load(f)['/ship_gate']['ros__parameters']
     assert set(DECLARED) == set(y), set(DECLARED) ^ set(y)
-    want = {'distance_source': 'fill', 'fused_topic': '/fused_objects', 'fused_stale_sec': 0.5,
+    want = {'distance_source': 'fused', 'fused_topic': '/fused_objects', 'fused_stale_sec': 0.5,
             'fused_match_deg': 5.0, 'fused_min_conf': 0.5, 'fused_allowed_sources': ['lidar', 'fused', 'depth']}
     for k, v in want.items():
         assert DECLARED[k] == v and y[k] == v, (k, DECLARED[k], y.get(k))
@@ -502,8 +520,8 @@ RED_REL, GREEN_REL = 10.0, -10.0      # 유효 쌍(간격 20°), 둘 다 전방(
 
 
 def _gate(mode, red_lidar, green_lidar):
-    """게이트 모드 0, 빨강 +10·초록 −10 신선. LiDAR 는 각 방위에 거리(None = 못 봄)."""
-    n = _make(distance_source=mode)
+    """게이트 모드 0, 빨강 +10·초록 −10 신선. LiDAR 는 각 방위에 거리(None = 못 봄). mode None = 코드 기본값."""
+    n = _make() if mode is None else _make(distance_source=mode)
     n.wp_mode_cb(_Msg(0))
     n.red_angle_cb(_Msg(RED_REL))
     n.green_angle_cb(_Msg(GREEN_REL))
@@ -536,8 +554,9 @@ def test_node_pair_dist_matrix():
         ('lidar', 6.0, None): (6.0, 6.0, 6.0),
         ('fill', 6.0, 7.0): (6.0, 6.0, 6.0), ('fill', None, None): (4.0, None, None),
         ('fill', 6.0, None): (5.0, 6.0, 6.0),
-        ('fused', 6.0, 7.0): (4.0, 6.0, 6.0), ('fused', None, None): (4.0, None, None),
-        ('fused', 6.0, None): (4.0, 6.0, 6.0),
+        # GOOD 의 빨강 = depth 4.0 → 빨강 LiDAR 가 있으면 LiDAR(G-5), 초록 = src fused 5.0 → fused 먼저
+        ('fused', 6.0, 7.0): (5.0, 6.0, 6.0), ('fused', None, None): (4.0, None, None),
+        ('fused', 6.0, None): (5.0, 6.0, 6.0),
     }
     for (mode, rl, gl), (w_hit, w_none, w_stale) in want.items():
         for objs, age, w, tag in ((GOOD, 0.0, w_hit, 'hit'), (SWAPPED, 0.0, w_none, 'swapped'),
@@ -546,6 +565,41 @@ def test_node_pair_dist_matrix():
             _feed(n, *objs, age=age)
             got = _pair_dist(n)
             assert got == w, (mode, rl, gl, tag, got, w)
+
+
+def test_node_default_without_fusion_equals_lidar():
+    """기본(fused) + perception_fusion 없음(미수신)·묵음(stale) → pair_dist·/candidate_angle 이 lidar 와 같다
+    (계약 v3 N). 차이는 5 s 주기 WARN 뿐."""
+    for rl, gl in ((6.0, 7.0), (6.0, None), (None, None)):
+        for feed in ('absent', 'stale'):
+            got = {}
+            for mode in (None, 'lidar'):
+                n = _gate(mode, rl, gl)
+                if mode is None and feed == 'stale':
+                    _feed(n, *GOOD, age=0.6)
+                pd = _pair_dist(n)
+                got[mode] = (pd, list(n.pubs[0].values), n.counter.calls)
+                if mode is None:
+                    assert n.distance_source == 'fused'
+                    w = [x for x in _lines(n, 'WARN') if '/fused_objects' in x[1]]
+                    assert w and all(x[2].get('throttle_duration_sec') == 5.0 for x in w), w
+            assert got[None] == got['lidar'], (rl, gl, feed, got)
+
+
+def test_node_fused_lidar_priority_over_depth_only():
+    """빨강 LiDAR 3.0, /fused_objects 에 빨강 depth 2.0(같은 방위)·빨강 lidar 물체(+3°) → pair_dist 3.0.
+    LiDAR None 이면 depth 2.0 으로 채움. PF LiDAR stale(flags bit1) depth 물체도 같은 규칙(G-5)."""
+    for other in (3.0, 3.5):
+        n = _gate(None, 3.0, None)
+        _feed(n, obj(RED_REL, 2.0, RED, src=S_DEPTH), obj(RED_REL + 3.0, other, RED, src=S_LIDAR))
+        assert _pair_dist(n) == 3.0, other
+    n = _gate(None, None, None)
+    _feed(n, obj(RED_REL, 2.0, RED, src=S_DEPTH), obj(RED_REL + 3.0, 3.0, RED, src=S_LIDAR))
+    assert _pair_dist(n) == 2.0
+    for rl, want in ((3.0, 3.0), (None, 2.0)):
+        n = _gate(None, rl, None)
+        _feed(n, obj(RED_REL, 2.0, RED, src=S_DEPTH, flags=2.0))
+        assert _pair_dist(n) == want, (rl, want)
 
 
 def test_node_lidar_mode_ignores_fused_even_if_fed():

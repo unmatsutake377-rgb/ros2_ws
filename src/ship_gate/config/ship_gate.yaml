@@ -51,9 +51,12 @@
     # lidar = /scan 만(옛 동작, /fused_objects 구독도 안 만듦) / fill = LiDAR 먼저, LiDAR 가 못 볼 때(None)만
     #   /fused_objects(perception_fusion) 거리 / fused = /fused_objects 먼저, 맞는 물체 없으면 LiDAR.
     #   잘못된 값 → ERROR 후 lidar. 볼 차례에 /fused_objects 가 없거나 묵으면(fused_stale_sec) LiDAR 거리만 + 5 s 주기 WARN.
-    #   대회(11-13) = fill(실측 0회 — 평소 동작 불변 쪽). 롤백 = lidar 한 줄. 코드 기본값과 같이 고칠 것.
+    #   기본 = fused(계약서_흰부표_거리융합_v3 G-9, 11-14). 지금 perception_fusion 은 LiDAR+D455 융합뿐(단안·삼각측량 없음,
+    #   물 위 실측 0회). perception_fusion 이 꺼졌거나 묵으면 lidar 와 같은 거리. 롤백 = lidar 한 줄(옛 대회값 fill).
+    #   코드 기본값과 같이 고칠 것. LiDAR 우선(G-5): fused 라도 depth(D455 단독) 물체는 이 노드 LiDAR 가 못 볼 때만
+    #   채운다(LiDAR 값이 있으면 LiDAR). src 4·5(단안·삼각측량 단독)는 fused_allowed_sources 에 넣지 않는다(G-7).
     # 🚨 ship_gate 는 통과 카운트 재-arming 거리(pair_dist)에만 쓴다 — 조향·arming 은 거리를 안 쓴다(Q6).
-    distance_source: "fill"
+    distance_source: "fused"
     fused_topic: "/fused_objects"
     fused_stale_sec: 0.5     # ⚠️ 실측 필요 — 마지막 정상 수신 뒤 이보다 묵으면 안 쓴다
     fused_match_deg: 5.0     # ⚠️ 실측 필요 — 카메라 방위 ±이 각도 안의 물체만(그중 방위 최근접 하나)

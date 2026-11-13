@@ -24,6 +24,9 @@
         (LiDAR 가 부표를 못 봐 거리 미상이면 막지 않는다 — 카운트를 죽이면 안 되니까).
       예외(계약서_인식융합_20261112 §10 Q1·Q6 승인): distance_source 가 fill/fused 면 이 재-arming 거리(pair_dist)
       에 /fused_objects(LiDAR·D455 뎁스 융합 물체, 같은 색만 매칭) 거리를 쓴다. 조향·arming 은 그대로.
+      기본 = fused(계약서_흰부표_거리융합_v3 G-9): /fused_objects 먼저, 맞는 물체 없으면 LiDAR. perception_fusion 이
+      꺼졌거나 묵으면 LiDAR 거리만 + 5 s 주기 WARN(= lidar 와 같은 출력). 잘못된 값 → ERROR 후 lidar.
+      LiDAR 우선(G-5): 고른 물체가 depth(D455 단독)이고 LiDAR 값이 있으면 LiDAR — depth 는 채우기 전용.
   [6] red_on_port 파라미터 (빨강이 좌현인가, 대회 규정 기본 true). 부호 규약은 vision_geom 좌 양수로
       확정(11-04 계약서_ship_gate부호_카운트) — 벤치 검증 항목 아님.
 
@@ -116,10 +119,11 @@ class ShipGate(Node):
         self.angle_stale_sec = float(self.declare_parameter("angle_stale_sec", 0.7).value)
         self.scan_stale_sec = float(self.declare_parameter("scan_stale_sec", 1.0).value)
 
-        # 거리 출처(계약서_인식융합_20261112 §10) — 재-arming pair_dist 만. 코드 기본값 = yaml = 'fill'(대회값).
+        # 거리 출처(계약서_인식융합_20261112 §10) — 재-arming pair_dist 만. 코드 기본값 = yaml = 'fused'
+        #   (계약서_흰부표_거리융합_v3 G-9, 11-14 — 옛 대회값 fill).
         #   잘못된 값 → ERROR 후 lidar. lidar 면 /fused_objects 구독을 만들지 않는다. 구독보다 먼저 선언.
         self.distance_source, src_err = check_distance_source(
-            self.declare_parameter("distance_source", "fill").value)
+            self.declare_parameter("distance_source", "fused").value)
         self.fused_topic = str(self.declare_parameter("fused_topic", "/fused_objects").value)
         self.fused_stale_sec = float(self.declare_parameter("fused_stale_sec", 0.5).value)   # ⚠️ 실측
         self.fused_match_deg = float(self.declare_parameter("fused_match_deg", 5.0).value)   # ⚠️ 실측
