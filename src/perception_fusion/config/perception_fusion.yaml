@@ -1,4 +1,4 @@
-# perception_fusion — LiDAR 군집 + D455 뎁스 덩어리 + OAK 검출 방위(색) → /fused_objects
+# perception_fusion — LiDAR 군집 + D455 뎁스 덩어리 + OAK 검출 방위(색) (+ P1 단안·삼각측량, 기본 꺼짐) → /fused_objects
 # (계약서_인식융합_20261112 §4·§5·§6·§10, 근거 계약서_거리융합_20261112 §4·§5)
 #
 # 🚨 코드 기본값(perception_fusion.py declare_parameter) == 이 파일 == fusion_logic.DEFAULTS.
@@ -39,3 +39,36 @@
     cam_x_from_lidar_m: 0.0         # D455 위치(LiDAR 기준, 앞 +)  ⚠️ 실측 필요
     cam_y_from_lidar_m: 0.0         # D455 위치(LiDAR 기준, 왼쪽 +)  ⚠️ 실측 필요
     cam_yaw_offset_deg: 0.0         # D455 장착 요(왼쪽 +)  ⚠️ 실측 필요
+    # ---- P1 단안·삼각측량 (계약서_흰부표_거리융합_v3 B-2 + '수식 정밀화', 11-14) ----
+    # 🚨 입력 /oak_detections 발행자(D1 image_subscriber_objects)는 아직 없다. 둘 다 false 면 출력은 P1 이전과 비트 동일.
+    #    켜기 = P2(rosbag·그림자 비교 뒤). 롤백 = false 한 줄 + launch 재시작.
+    # 🚨 아래 장착값은 전부 가정값(⚠️ 실측 필요). 배별 값 통로(G-4 perception_fusion_A/B.yaml)는 아직 없다 → 공용 값.
+    use_mono: false                 # OAK 단안 수면 교점 거리
+    use_triangulation: false        # OAK 방위 + RTK GPS 기선 삼각측량 거리
+    oak_cam_h_m: 0.6                # OAK 렌즈 수면 위 높이(m)  ⚠️ 실측 필요 (ship_avoid cam_h 와 같은 가정값)
+    oak_cam_h_sigma_m: 0.05         # 높이 σ(흘수·적재 변화)  ⚠️ 실측 필요
+    oak_pitch_deg: 0.0              # OAK 장착 피치(아래 +)  ⚠️ 실측 필요 — 1° 오차가 3 m 에서 약 0.4 m
+    oak_roll_deg: 0.0               # OAK 장착 롤(우현 아래 +)  ⚠️ 실측 필요
+    oak_x_from_lidar_m: 0.0         # OAK 위치(LiDAR 기준, 앞 +)  ⚠️ 실측 필요
+    oak_y_from_lidar_m: 0.0         # OAK 위치(LiDAR 기준, 왼쪽 +)  ⚠️ 실측 필요
+    oak_yaw_offset_deg: 0.0         # OAK 장착 요(왼쪽 +). 1번배 약 −4°(U3 리뷰) — 배별, 공용 0.0  ⚠️ 실측 필요
+    oak_fy_px: 513.0                # OAK fy(px) — 픽셀 σ 를 정규 좌표로. 640x360 HFOV 63.9° 계산값  ⚠️ camera_info K[4] 확인
+    mono_pitch_sigma_deg: 2.0       # 단안 피치·롤 σ(도, 공통). ship_avoid pitch_sigma_move 와 같은 보수값  ⚠️ 실측 필요
+    mono_pixel_sigma: 2.0           # 바닥 행·가운데 열 검출 σ(px)  ⚠️ 실측 필요
+    mono_max_range_m: 8.0           # 단안 거리 상한(넘으면 안 냄)  ⚠️ 실측 필요
+    imu_stale_sec: 0.5              # /imu/data 이보다 묵으면 장착값만(WARN 1회)
+    imu_pitch_sign: 1.0             # /imu/data 피치 부호(선수 숙임 = + 가 되게, 1.0|−1.0)  ⚠️ 실측 필요(iahrs 미발행)
+    imu_roll_sign: 1.0              # /imu/data 롤 부호(우현 아래 = +)  ⚠️ 실측 필요
+    gps_to_cam_x_m: 0.0             # GPS 안테나 → OAK 레버암(앞 +)  ⚠️ 실측 필요
+    gps_to_cam_y_m: 0.0             # GPS 안테나 → OAK 레버암(왼쪽 +)  ⚠️ 실측 필요
+    tri_min_baseline_m: 0.8         # 삼각측량 안테나 기선 하한
+    tri_min_parallax_deg: 5.0       # 삼각측량 시차 하한(정면 접근 = 0 → 안 냄)
+    tri_max_dt_s: 3.0               # 두 관측 시간차 상한(yaw 상대 드리프트 상쇄)  ⚠️ 실측 필요
+    tri_assoc_deg: 5.0              # 같은 물체 트랙: 세계 방위 차 상한  ⚠️ 실측 필요
+    tri_pose_max_gap_s: 0.3         # 촬영 시각 ↔ GPS·yaw 표본 간격 상한(넘으면 그 광선 버림)
+    tri_yaw_sigma_deg: 0.5          # 짧은 시간 yaw 상대 σ  ⚠️ 실측 필요
+    tri_rtk_max_sigma_m: 0.05       # RTK FIXED 판정 σ 상한(mission_view 08-07 실측 FIXED ±0.015 / float ±0.10)
+    tri_max_range_m: 15.0           # 삼각측량 거리 상한  ⚠️ 실측 필요
+    lidar_sigma_m: 0.05             # 카메라 ↔ LiDAR 게이팅용 LiDAR σ  ⚠️ 실측 필요
+    depth_sigma_k: 0.005            # D455 σ = k·d² (카메라 소스와 가중·게이팅할 때만)  ⚠️ 실측 필요
+    fusion_gate_sigma: 3.0          # 게이팅: |a − b| ≤ 이 값·√(σa² + σb²)

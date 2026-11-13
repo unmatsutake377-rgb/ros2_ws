@@ -67,6 +67,8 @@ def _yaml_params():
                 v = m.group(2).strip()
                 if v[0] in '"\'':
                     val = v[1:-1]
+                elif v in ('true', 'false'):
+                    val = v == 'true'
                 elif re.match(r'^[-+]?\d+$', v):
                     val = int(v)
                 else:
@@ -227,10 +229,10 @@ def node_mod(monkeypatch):
                      HistoryPolicy=types.SimpleNamespace(KEEP_LAST='KL'))
     stub('std_msgs')
     stub('std_msgs.msg', Float32=_msg_type('Float32'), Float32MultiArray=_msg_type('Float32MultiArray'),
-         Int32=_msg_type('Int32'), String=_msg_type('String'))
+         Float64=_msg_type('Float64'), Int32=_msg_type('Int32'), String=_msg_type('String'))
     stub('sensor_msgs')
     stub('sensor_msgs.msg', LaserScan=_msg_type('LaserScan'), Image=_msg_type('Image'),
-         CameraInfo=_msg_type('CameraInfo'))
+         CameraInfo=_msg_type('CameraInfo'), Imu=_msg_type('Imu'), NavSatFix=_msg_type('NavSatFix'))
     monkeypatch.delitem(sys.modules, 'perception_fusion.perception_fusion', raising=False)
     mod = importlib.import_module('perception_fusion.perception_fusion')
     clock = _Clock()
@@ -353,3 +355,153 @@ def test_node_disagree_policy_default_and_invalid(node_mod):
     assert len(errs) == 1 and node.p['disagree_policy'] == 'lidar'
     OVERRIDES.update(disagree_policy='min')
     assert mod.PerceptionFusion().p['disagree_policy'] == 'min'
+
+
+# ------------------------------------------------------------ P1 카메라 경로 (스텁 노드)
+
+def _oak_msg(rows):
+    data = [1.0, 6.0, float(len(rows))]
+    for r in rows:
+        data += [float(v) for v in r]
+    return _Msg(data=data)
+
+
+def _feed_scan(node, clock, t0, rel_r):
+    scan_cb = node.subs['/scan'][0]
+    for k in range(10):
+        clock.t = t0 + 0.05 * k
+        scan_cb(_scan_msg(rel_r))
+
+
+def _mono_row(D, beta_deg, h=0.6, color=3):
+    """피치·롤 0, 수면 점 (D, β) → /oak_detections 한 줄 (bearing_left, v_norm_bottom)."""
+    x = -math.sin(math.radians(beta_deg)) * D
+    z = math.cos(math.radians(beta_deg)) * D
+    return (color, -math.degrees(math.atan2(x, z)), h / z, 2.0, 0.9, 0.0)
+
+
+def test_node_p1_subscriptions_qos(node_mod):
+    mod, _ = node_mod
+    node = mod.PerceptionFusion()
+    assert node.subs['/oak_detections'][1]['reliability'] == 'BE' and node.subs['/oak_detections'][1]['depth'] == 1
+    for topic in ('/ublox_gps_node/fix', '/imu/yaw', '/imu/data'):
+        assert node.subs[topic][1]['reliability'] == 'R' and node.subs[topic][1]['depth'] == 10, topic
+    assert node.p['use_mono'] is False and node.p['use_triangulation'] is False
+
+
+def _run_scene(mod, clock, overrides, feed_oak):
+    """같은 LiDAR 장면 + (선택) /oak_detections → 발행 data 목록."""
+    OVERRIDES.clear()
+    OVERRIDES.update(overrides)
+    clock.t = 100.0
+    node = mod.PerceptionFusion()
+    tick = _timer(node, 10.0)
+    _feed_scan(node, clock, 100.0, {**{-1.0 + 0.25 * i: 3.0 for i in range(9)},
+                                    **{19.0 + 0.25 * i: 5.0 for i in range(9)}})
+    node.subs['/red_angle'][0](_Msg(data=0.5))
+    if feed_oak:
+        node.subs['/oak_detections'][0](_oak_msg([_mono_row(3.0, 0.0), _mono_row(4.0, -30.0)]))
+    tick()
+    clock.t += 0.1
+    tick()
+    return [list(m.data) for m in node.pubs['/fused_objects'].msgs], node
+
+
+@pytest.mark.parametrize('overrides,feed', [
+    ({'use_mono': True, 'use_triangulation': True}, False),       # 켜짐 + /oak_detections 없음
+    ({}, True),                                                    # 꺼짐 + /oak_detections 들어옴
+    ({'use_mono': False, 'use_triangulation': False}, True),
+])
+def test_node_bit_identical_without_camera_path(node_mod, overrides, feed):
+    mod, clock = node_mod
+    want, _ = _run_scene(mod, clock, {}, False)
+    got, _ = _run_scene(mod, clock, overrides, feed)
+    assert want and got == want
+
+
+def test_node_mono_on_adds_object_and_bits(node_mod):
+    mod, clock = node_mod
+    base, _ = _run_scene(mod, clock, {}, False)
+    got, node = _run_scene(mod, clock, {'use_mono': True}, True)
+    objs = fl.decode(got[-1])
+    old = fl.decode(base[-1])
+    assert len(objs) == len(old) + 1, '−30° 4 m 단안 물체 하나 더(LiDAR 없음 → src 4)'
+    near = min(objs, key=lambda o: o['range_m'])
+    assert near['range_m'] == 3.0 and near['src_id'] == fl.SRC_LIDAR, 'LiDAR 우선 — 거리는 LiDAR'
+    assert int(near['flags']) == fl.FLAG_SRC_LIDAR | fl.FLAG_SRC_MONO and near['color_id'] == 3.0
+    mono = [o for o in objs if o['src_id'] == fl.SRC_MONO]
+    assert len(mono) == 1 and mono[0]['range_m'] == pytest.approx(4.0, abs=1e-4)
+    assert mono[0]['bearing_deg'] == pytest.approx(-30.0, abs=1e-4)
+    assert any(s == 'WARN' and '/imu/data' in m for s, m in node.logger.lines), 'IMU 없음 WARN'
+    _timer(node, 1.0)()
+    st = node.pubs['/fusion_status'].msgs[-1].data
+    assert 'oak_ok mono=2/2 tri=off imu_mount rtk_no' in st, st
+
+
+def test_node_imu_warn_once_and_imu_used(node_mod):
+    mod, clock = node_mod
+    OVERRIDES.update(use_mono=True)
+    node = mod.PerceptionFusion()
+    tick = _timer(node, 10.0)
+    for k in range(5):
+        clock.t = 100.0 + 0.1 * k
+        tick()
+    warns = [m for s, m in node.logger.lines if s == 'WARN' and '/imu/data' in m]
+    assert len(warns) == 1, '1회'
+    s5 = math.sin(math.radians(2.5))
+    node.subs['/imu/data'][0](_Msg(orientation=_Msg(x=0.0, y=s5, z=0.0, w=math.cos(math.radians(2.5)))))
+    assert node.att[1] == pytest.approx(5.0) and node.att[2] == pytest.approx(0.0)
+    assert fl.camera_attitude(node.att, clock.t, node.p)[2] is True
+
+
+def test_node_oak_bad_format_error_periodic(node_mod):
+    mod, clock = node_mod
+    node = mod.PerceptionFusion()
+    cb = node.subs['/oak_detections'][0]
+    cb(_Msg(data=[2.0, 6.0, 0.0]))
+    cb(_Msg(data=[1.0, 5.0, 0.0]))
+    errs = [m for s, m in node.logger.lines if s == 'ERROR' and '/oak_detections' in m]
+    assert len(errs) == 1 and 'VER' in errs[0] and node.oak is None
+    clock.t += 6.0
+    cb(_Msg(data=[1.0, 6.0, 2.0, 0.0]))
+    assert len([m for s, m in node.logger.lines if s == 'ERROR' and '/oak_detections' in m]) == 2
+    cb(_oak_msg([(3, 0.0, 0.1, 2.0, 0.9, -1.0)]))
+    assert node.oak is not None and node.oak[1] == [] and any(s == 'WARN' and '무효 줄' in m
+                                                              for s, m in node.logger.lines)
+
+
+def _fix(lat, lon, status=2, sigma=0.015):
+    return _Msg(latitude=lat, longitude=lon, status=_Msg(status=status),
+                position_covariance=[sigma ** 2, 0.0, 0.0, 0.0, sigma ** 2, 0.0, 0.0, 0.0, 0.04],
+                position_covariance_type=2)
+
+
+@pytest.mark.parametrize('status,want_tri', [(2, True), (0, False)])
+def test_node_triangulation_end_to_end(node_mod, status, want_tri):
+    """동쪽 1 m/s 로 지나가며 부표 (6, 4) m 를 봄 → src 5 물체가 참 거리. GPS 비FIXED(status 0) 면 안 나옴."""
+    mod, clock = node_mod
+    OVERRIDES.update(use_triangulation=True)
+    node = mod.PerceptionFusion()
+    tick = _timer(node, 10.0)
+    gps_cb, yaw_cb, oak_cb = (node.subs[t][0] for t in ('/ublox_gps_node/fix', '/imu/yaw', '/oak_detections'))
+    scan_cb = node.subs['/scan'][0]
+    lat0, lon0 = 35.2, 128.6
+    k_m = math.pi / 180.0 * fl.EARTH_R_M
+    for k in range(16):
+        clock.t = 100.0 + 0.2 * k
+        x = 0.2 * k
+        gps_cb(_fix(lat0, lon0 + x / (k_m * math.cos(math.radians(lat0))), status=status))
+        yaw_cb(_Msg(data=90.0))
+        scan_cb(_scan_msg({}))
+        beta = math.degrees(math.atan2(6.0 - x, 4.0))
+        oak_cb(_oak_msg([(3, 90.0 - beta, 0.1, 2.0, 0.9, 0.0)]))
+    tick()
+    objs = fl.decode(node.pubs['/fused_objects'].msgs[-1].data)
+    tri = [o for o in objs if o['src_id'] == fl.SRC_TRI]
+    if not want_tri:
+        assert tri == []
+        return
+    (o,) = tri
+    assert o['range_m'] == pytest.approx(math.hypot(6.0 - 3.0, 4.0), abs=1e-3)
+    assert o['bearing_deg'] == pytest.approx(90.0 - math.degrees(math.atan2(3.0, 4.0)), abs=0.05)
+    assert int(o['flags']) == fl.FLAG_SRC_TRI and o['color_id'] == 3.0

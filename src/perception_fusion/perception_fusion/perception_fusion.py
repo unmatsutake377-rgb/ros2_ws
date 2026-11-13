@@ -11,22 +11,31 @@
   depth_topic (Image 16UC1 mm, 0 = 모름, BEST_EFFORT d1) + depth_info_topic (CameraInfo: fx = k[0], cx = k[2])
   /red_angle·/green_angle·/image_angle (Float32 상대각 좌 +, 10000 = 안 보임) + /image_color (String) — 색 붙이기만
   /wp_mode (Int32) — 관측만(/fusion_status 에 찍음)
+  P1(계약서_흰부표_거리융합_v3 B-2, use_mono·use_triangulation 기본 false — 꺼지면 아래 넷은 받기만 하고 안 쓴다):
+  /oak_detections (Float32MultiArray, BEST_EFFORT d1) — D1 다중 물체 검출, 형식은 fusion_logic 머리말.
+    VER·STRIDE·길이 불일치 = 메시지 버림 + 주기 ERROR. 발행자 D1 은 아직 없다(구독자가 먼저 — §4).
+  /ublox_gps_node/fix (NavSatFix, RELIABLE 10) — 삼각측량 기선. RTK FIXED 판정 = fusion_logic.fix_quality
+  /imu/yaw (Float64, RELIABLE 10) — 세계 방위(나침반 도, 시계 +)
+  /imu/data (Imu, RELIABLE 10) — 피치·롤(단안). ⚠️ iahrs_driver 는 발행자만 만들고 publish 하지 않는다
+    (iahrs_driver.cpp:81 생성, 루프에 publish 없음) → 지금은 장착값만 + WARN 1회.
 출력
   /fused_objects (Float32MultiArray, RELIABLE 10, publish_hz 고정주기 타이머) — 형식은 fusion_logic 머리말
     LiDAR stale → 뎁스만(flags bit1), 둘 다 stale → 발행 중단(침묵), 빈 목록 = 살아 있고 물체 없음
   /fusion_status (String, RELIABLE 10, status_hz) — 예 'L0.82 D0.61 agree0.93 lidar_ok depth_ok n=3 m=2'
+    (use_mono/use_triangulation 켜짐이면 뒤에 'oak_ok mono=1/2 tri=0/0 imu_mount rtk_fixed' — fusion_logic.format_status)
 침묵·오류: 입력 stale = warn_period_sec 주기 WARN, 파라미터 무효 = ERROR + 기본값, 뎁스 형식 오류 = 주기 ERROR.
   /health_ok 는 건드리지 않는다(§10 Q8: 침묵은 로그만). 로거는 심각도마다 호출 줄을 나눈다(§1-7).
 """
 
+import math
 import time
 
 from perception_fusion import fusion_logic as fl
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import HistoryPolicy, QoSProfile, ReliabilityPolicy
-from sensor_msgs.msg import CameraInfo, Image, LaserScan
-from std_msgs.msg import Float32, Float32MultiArray, Int32, String
+from sensor_msgs.msg import CameraInfo, Image, Imu, LaserScan, NavSatFix
+from std_msgs.msg import Float32, Float32MultiArray, Float64, Int32, String
 
 # 센서(/scan·뎁스·camera_info) = BEST_EFFORT + KEEP_LAST + depth 1 (CLAUDE.md §3 QoS — 도착 = 신선).
 SENSOR_QOS = QoSProfile(reliability=ReliabilityPolicy.BEST_EFFORT, history=HistoryPolicy.KEEP_LAST, depth=1)
@@ -74,6 +83,36 @@ class PerceptionFusion(Node):
             'cam_x_from_lidar_m': self.declare_parameter('cam_x_from_lidar_m', 0.0).value,  # ⚠️ 실측 필요
             'cam_y_from_lidar_m': self.declare_parameter('cam_y_from_lidar_m', 0.0).value,  # ⚠️ 실측 필요
             'cam_yaw_offset_deg': self.declare_parameter('cam_yaw_offset_deg', 0.0).value,  # ⚠️ 실측 필요
+            # ---- P1 단안·삼각측량 (기본 꺼짐, 장착값 전부 ⚠️ 가정값 — yaml 주석) ----
+            'use_mono': self.declare_parameter('use_mono', False).value,
+            'use_triangulation': self.declare_parameter('use_triangulation', False).value,
+            'oak_cam_h_m': self.declare_parameter('oak_cam_h_m', 0.6).value,                # ⚠️ 실측 필요
+            'oak_cam_h_sigma_m': self.declare_parameter('oak_cam_h_sigma_m', 0.05).value,   # ⚠️ 실측 필요
+            'oak_pitch_deg': self.declare_parameter('oak_pitch_deg', 0.0).value,            # ⚠️ 실측 필요
+            'oak_roll_deg': self.declare_parameter('oak_roll_deg', 0.0).value,              # ⚠️ 실측 필요
+            'oak_x_from_lidar_m': self.declare_parameter('oak_x_from_lidar_m', 0.0).value,  # ⚠️ 실측 필요
+            'oak_y_from_lidar_m': self.declare_parameter('oak_y_from_lidar_m', 0.0).value,  # ⚠️ 실측 필요
+            'oak_yaw_offset_deg': self.declare_parameter('oak_yaw_offset_deg', 0.0).value,  # ⚠️ 실측 필요(배별)
+            'oak_fy_px': self.declare_parameter('oak_fy_px', 513.0).value,                  # ⚠️ camera_info 확인
+            'mono_pitch_sigma_deg': self.declare_parameter('mono_pitch_sigma_deg', 2.0).value,  # ⚠️ 실측 필요
+            'mono_pixel_sigma': self.declare_parameter('mono_pixel_sigma', 2.0).value,      # ⚠️ 실측 필요
+            'mono_max_range_m': self.declare_parameter('mono_max_range_m', 8.0).value,      # ⚠️ 실측 필요
+            'imu_stale_sec': self.declare_parameter('imu_stale_sec', 0.5).value,
+            'imu_pitch_sign': self.declare_parameter('imu_pitch_sign', 1.0).value,          # ⚠️ 실측 필요
+            'imu_roll_sign': self.declare_parameter('imu_roll_sign', 1.0).value,            # ⚠️ 실측 필요
+            'gps_to_cam_x_m': self.declare_parameter('gps_to_cam_x_m', 0.0).value,          # ⚠️ 실측 필요
+            'gps_to_cam_y_m': self.declare_parameter('gps_to_cam_y_m', 0.0).value,          # ⚠️ 실측 필요
+            'tri_min_baseline_m': self.declare_parameter('tri_min_baseline_m', 0.8).value,
+            'tri_min_parallax_deg': self.declare_parameter('tri_min_parallax_deg', 5.0).value,
+            'tri_max_dt_s': self.declare_parameter('tri_max_dt_s', 3.0).value,              # ⚠️ 실측 필요
+            'tri_assoc_deg': self.declare_parameter('tri_assoc_deg', 5.0).value,            # ⚠️ 실측 필요
+            'tri_pose_max_gap_s': self.declare_parameter('tri_pose_max_gap_s', 0.3).value,
+            'tri_yaw_sigma_deg': self.declare_parameter('tri_yaw_sigma_deg', 0.5).value,    # ⚠️ 실측 필요
+            'tri_rtk_max_sigma_m': self.declare_parameter('tri_rtk_max_sigma_m', 0.05).value,
+            'tri_max_range_m': self.declare_parameter('tri_max_range_m', 15.0).value,       # ⚠️ 실측 필요
+            'lidar_sigma_m': self.declare_parameter('lidar_sigma_m', 0.05).value,           # ⚠️ 실측 필요
+            'depth_sigma_k': self.declare_parameter('depth_sigma_k', 0.005).value,          # ⚠️ 실측 필요
+            'fusion_gate_sigma': self.declare_parameter('fusion_gate_sigma', 3.0).value,
         }
         self.p, issues = fl.check_params(raw)
         for text in issues:
@@ -94,6 +133,16 @@ class PerceptionFusion(Node):
         self.stats = {'lidar_ok': False, 'depth_ok': False, 'n': None,
                       'conf_l': None, 'conf_d': None, 'agree': None}
         self.inputs_ok = None          # (lidar_ok, depth_ok) — 바뀔 때 INFO
+        # P1 카메라 경로
+        self.oak = None                # (수신 시각, 검출 목록) — 형식 오류 메시지는 넣지 않는다
+        self.att = None                # (수신 시각, IMU 피치, IMU 롤) — 부호 적용 뒤
+        self.imu_warned = False        # /imu/data 없음 WARN 1회(다시 들어오면 풀림)
+        horizon = p['tri_max_dt_s'] + 2.0 * p['tri_pose_max_gap_s'] + 1.0
+        self.gps = fl.TimeSeries(horizon)   # (x 동, y 북, σ, fixed) 로컬 m
+        self.yaw = fl.TimeSeries(horizon)
+        self.geo0 = None               # 첫 유효 fix (lat, lon) = 로컬 원점
+        self.rtk_fixed = False         # 마지막 fix 가 FIXED 인가(/fusion_status)
+        self.tri = fl.TriTracker()
         self.log_t = {}                # 주기 로그 키 → 마지막 시각
 
         # ---- 발행/구독/타이머 (파라미터 선언 뒤) ----
@@ -107,6 +156,11 @@ class PerceptionFusion(Node):
         self.create_subscription(Float32, '/image_angle', self.image_cb, RELIABLE_QOS)
         self.create_subscription(String, '/image_color', self.color_cb, RELIABLE_QOS)
         self.create_subscription(Int32, '/wp_mode', self.wp_cb, RELIABLE_QOS)
+        # P1: 다중 물체 검출 = 센서처럼 BEST_EFFORT d1(도착 = 신선), GPS·yaw·IMU = RELIABLE 10 (계약 토픽 표)
+        self.create_subscription(Float32MultiArray, '/oak_detections', self.oak_cb, SENSOR_QOS)
+        self.create_subscription(NavSatFix, '/ublox_gps_node/fix', self.gps_cb, RELIABLE_QOS)
+        self.create_subscription(Float64, '/imu/yaw', self.yaw_cb, RELIABLE_QOS)
+        self.create_subscription(Imu, '/imu/data', self.imu_cb, RELIABLE_QOS)
         # 제어 소비자가 있는 출력이라 고정주기 타이머에서만 낸다(데이터 콜백에서 내지 않는다).
         self.create_timer(1.0 / p['publish_hz'], self.publish_cb)
         self.create_timer(1.0 / p['status_hz'], self.status_cb)
@@ -118,6 +172,12 @@ class PerceptionFusion(Node):
             f"행 띠 {p['depth_row_lo_frac']}~{p['depth_row_hi_frac']}, 장착 x {p['cam_x_from_lidar_m']} "
             f"y {p['cam_y_from_lidar_m']} yaw {p['cam_yaw_offset_deg']}°, 어긋남 = {p['disagree_policy']} "
             f"(⚠️ 실측 0회)")
+        self.get_logger().info(
+            f"perception_fusion 카메라 거리: use_mono={p['use_mono']} use_triangulation={p['use_triangulation']} "
+            f"(/oak_detections VER {fl.OAK_VER} STRIDE {fl.OAK_STRIDE}). OAK h {p['oak_cam_h_m']} m "
+            f"피치 {p['oak_pitch_deg']}° 롤 {p['oak_roll_deg']}° yaw {p['oak_yaw_offset_deg']}°, "
+            f"삼각측량 기선 ≥ {p['tri_min_baseline_m']} m · 시차 ≥ {p['tri_min_parallax_deg']}° · "
+            f"Δt ≤ {p['tri_max_dt_s']} s · RTK FIXED 만 (⚠️ 장착값 전부 가정값, 배별 통로 없음)")
 
     # ---------------------- 주기 로그 ----------------------
     def _due(self, key, now):
@@ -197,11 +257,64 @@ class PerceptionFusion(Node):
     def wp_cb(self, msg):
         self.wp_mode = int(msg.data)
 
+    # ---------------------- P1 카메라 경로 입력 (처리만, 발행 안 함) ----------------------
+    def oak_cb(self, msg):
+        now = time.monotonic()
+        dets, bad, err = fl.parse_oak_detections(msg.data)
+        if dets is None:
+            if self._due('oak_format', now):
+                self.get_logger().error(f'perception_fusion: /oak_detections 형식 오류({err}) → 메시지 버림')
+            return
+        if bad:
+            if self._due('oak_rows', now):
+                self.get_logger().warn(
+                    f'perception_fusion: /oak_detections 무효 줄 {bad}개 버림(비유한·색 밖·|방위|≥90·age<0 등)')
+        self.oak = (now, dets)
+        if not self.p['use_triangulation']:
+            return
+        pitch, roll, _ = fl.camera_attitude(self.att, now, self.p)
+        rays = []
+        for d in dets:
+            ray, _why = fl.make_ray(d, now - d['age_s'], self.gps, self.yaw, pitch, roll, self.p)
+            if ray is not None:
+                rays.append(ray)
+        self.tri.add(rays, self.p)
+
+    def gps_cb(self, msg):
+        now = time.monotonic()
+        lat, lon = float(msg.latitude), float(msg.longitude)
+        if int(msg.status.status) <= fl.NAV_STATUS_NO_FIX or not (math.isfinite(lat) and math.isfinite(lon)) \
+                or (abs(lat) < 1e-7 and abs(lon) < 1e-7):
+            return                     # fix 아님 — 버퍼에 안 넣는다(삼각측량 광선이 'gps' 로 빠진다)
+        fixed, sigma = fl.fix_quality(msg.status.status, msg.position_covariance, msg.position_covariance_type,
+                                      self.p['tri_rtk_max_sigma_m'])
+        self.rtk_fixed = fixed
+        if self.geo0 is None:
+            self.geo0 = (lat, lon)
+        x, y = fl.ll_to_local(lat, lon, self.geo0[0], self.geo0[1])
+        self.gps.push(now, (x, y, sigma if sigma is not None else float('inf'), fixed))
+
+    def yaw_cb(self, msg):
+        v = float(msg.data)
+        if math.isfinite(v):
+            self.yaw.push(time.monotonic(), v % 360.0)
+
+    def imu_cb(self, msg):
+        q = msg.orientation
+        vals = (float(q.x), float(q.y), float(q.z), float(q.w))
+        if not all(math.isfinite(v) for v in vals) or sum(v * v for v in vals) < 1e-6:
+            return
+        pitch, roll = fl.quat_pitch_roll(*vals)
+        self.att = (time.monotonic(), self.p['imu_pitch_sign'] * pitch, self.p['imu_roll_sign'] * roll)
+
     # ---------------------- 타이머 ----------------------
     def publish_cb(self):
         now = time.monotonic()
         dets = fl.detections_from(now, self.red, self.green, self.image, self.image_color, self.p['det_stale_sec'])
-        objs, stats = fl.build_objects(now, self.lidar, self.depth, dets, self.p)
+        cams, cam_live, cam = self._camera_measurements(now)
+        objs, stats = fl.build_objects(now, self.lidar, self.depth, dets, self.p, cams=cams, cam_live=cam_live)
+        if cam is not None:
+            stats['cam'] = cam
         self.stats = stats
         self._report_inputs(now, stats)
         if objs is None:
@@ -209,6 +322,36 @@ class PerceptionFusion(Node):
         msg = Float32MultiArray()
         msg.data = fl.encode(objs)
         self.pub_objects.publish(msg)
+
+    def _camera_measurements(self, now):
+        """→ (카메라 측정 목록 또는 None, cam_live, /fusion_status 용 dict 또는 None).
+
+        둘 다 꺼짐 → (None, False, None): P1 이전 경로 그대로. /oak_detections 가 det_stale_sec 넘게 없으면
+        (None, False, 상태) — 기여 비트도 안 채워 출력이 비트 동일하다.
+        """
+        p = self.p
+        if not (p['use_mono'] or p['use_triangulation']):
+            return None, False, None
+        oak_ok = self.oak is not None and now - self.oak[0] <= p['det_stale_sec']
+        pitch, roll, imu_ok = fl.camera_attitude(self.att, now, p)
+        if p['use_mono'] and not imu_ok:
+            if not self.imu_warned:
+                self.imu_warned = True
+                self.get_logger().warn(
+                    f"perception_fusion: /imu/data 없음·묵음({p['imu_stale_sec']} s) → 단안은 장착 피치 "
+                    f"{p['oak_pitch_deg']}° · 롤 {p['oak_roll_deg']}° 만 (파도 피치 미보정 — σ 는 그대로)")
+        elif imu_ok:
+            self.imu_warned = False
+        cam = {'use_mono': p['use_mono'], 'use_tri': p['use_triangulation'], 'oak_ok': oak_ok,
+               'imu_ok': imu_ok, 'rtk_fixed': self.rtk_fixed}
+        if not oak_ok:
+            return None, False, cam
+        cams = []
+        if p['use_mono']:
+            cams += fl.mono_measurements(self.oak[1], self.oak[0], now, pitch, roll, p)
+        if p['use_triangulation']:
+            cams += self.tri.estimates(now, p)
+        return cams, True, cam
 
     def _report_inputs(self, now, stats):
         lok, dok = stats['lidar_ok'], stats['depth_ok']
