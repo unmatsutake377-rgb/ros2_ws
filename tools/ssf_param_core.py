@@ -842,6 +842,8 @@ class Repo:
             warn.append(f"폴리곤 {n}점 — 시작 로그 '{GEOFENCE_KEYS[gid[2]].format(n=n)}' 확인")
             if gid[2] == "geofence_avoid_polygon":
                 warn.append("회피 WP(mode 5)가 이 폴리곤 안, 경계에서 3 m 이상 안쪽인지 시작 로그로 확인")
+                warn.append("🚨 이 폴리곤을 채우면 WP6→WP7 에서 도리도리(ship_avoid avoid_mode fused)가 켜진다 — "
+                            "흰 부표용 미션 5 노드 수정(계약서_흰부표_거리융합_v3 W2) 전이면 ship_avoid avoid_mode 를 lidar 로")
         if gid[2].startswith("hsv.") and isinstance(new, list):
             reason = _hsv_check(self.repo, new, gid[2][4:])
             if reason:

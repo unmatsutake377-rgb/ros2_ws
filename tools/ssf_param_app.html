@@ -372,7 +372,7 @@ function geofenceControl(p, cur, onval) {
       h("span", {class:"hint", text:pts === null ? "형식 오류" : `${pts.length / 2}점` +
         (fixed ? "" : " · RTK FIXED 아님 — 찍기 거부")})),
     h("div", {class:"hint", text: p.key === "geofence_avoid_polygon"
-      ? "공지된 장애물 구간 꼭짓점 그대로 · 경계를 따라 한 방향 순서로 · 종합임무 전용 · 회피 WP 는 경계에서 3 m 이상 안쪽"
+      ? "공지된 장애물 구간 꼭짓점 그대로 · 경계를 따라 한 방향 순서로 · 종합임무 전용 · 회피 WP 는 경계에서 3 m 이상 안쪽 · 🚨 채우면 도리도리(fused)가 켜짐 — 미션 5 W2 전이면 ship_avoid avoid_mode lidar"
       : "실제 경계 그대로(안쪽으로 줄이지 않음) · 경계를 따라 한 방향 순서로 · 토너먼트는 결승선 너머 정지 지점까지 포함"}),
     msg ? h("div", {class:msg.ok ? "hint" : "err", text:(msg.ok ? "✅ " : "❌ ") + msg.text}) : null);
 }
