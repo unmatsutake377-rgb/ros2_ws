@@ -1,14 +1,20 @@
-"""도리도리회피 — ship_avoid 순수 로직 (ROS 비의존). 낮은 장애물 회피 + 도리도리.
+"""도리도리회피 — ship_avoid 순수 로직 (ROS 비의존). 장애물(설정 색, 기본 흰) 회피 + 도리도리.
 
 계약서: docs/문제와작업/계약서_도리도리회피_20261112.md (초안, 미승인)
+        docs/문제와작업/계약서_흰부표_거리융합_v3_20261114.md W2 (흰 장애물 = LiDAR 군집에 카메라 색 표, 단안 규격)
 
 좌표 규약
   · 세계: x = 동(m), y = 북(m), yaw = 나침반(deg, 시계방향 +, 0 = 북) — /imu/yaw 와 같다.
   · 상대방위: **좌 양수**(deg) — LiDAR a−80·/candidate_angle·/geofence_state 와 같다.
   · 코스 좌표: 미션 시작 순간 헤딩 ψ0 를 코스 축으로 잠금. s = 축 방향 전진(m), l = 축 오른쪽(+, m).
 
+장애물(cls 0)
+  · 기본(obstacle_requires_lidar true): 키 큰 흰 부표 = LiDAR 군집에 카메라 방위로 색 표를 붙인 트랙만 지도에.
+    위치 = LiDAR, 반경 = obstacle_r. 그 자리 LiDAR 부표는 벽·부표 목록에서 뺀다.
+  · false: LiDAR 연관 없는 검출도 카메라 거리로 넣는다(예전 빨간 낮은 장애물 경로, 반경 low_r).
+
 칸(cell) 정의
-  · LiDAR 로 안 보이는 **빨간 낮은 장애물 하나를 지나갈 때마다 한 칸.** 칸이 바뀌면 도리도리.
+  · **확정 장애물 하나를 지나갈 때마다 한 칸.** 칸이 바뀌면 도리도리.
   · 시작할 때 1회. 확정 장애물이 앞에 하나도 없으면 explore_m 마다 1회(정보가 없을 때 찾으러).
 
 eunwootest 에서 가져온 아이디어
@@ -33,17 +39,81 @@ def compass_bearing(x, y, tx, ty):
     return math.degrees(math.atan2(tx - x, ty - y)) % 360.0
 
 
-def ground_plane_range(cam_h, pitch_down_deg, v_norm):
-    """수면 기준 거리. v_norm = (v_bottom − cy) / fy (아래 +). 수평선 위·근처면 None."""
-    dep = pitch_down_deg + math.degrees(math.atan(v_norm))
-    if dep <= 0.5:
+HORIZON_MIN_DEG = 0.5      # 수면 교점 광선이 수평선 아래로 이 각보다 덜 내려가면 None(수평선 위·근처 = 모름)
+
+
+def _level_ray(pitch_down_deg, roll_deg, bearing_deg, v_norm):
+    """검출기 (bearing, v_norm) → 수평 좌표 광선 (오른쪽, 아래, 앞).
+
+    카메라 광선 c = (x, y, 1)(x 오른쪽, y 아래, z 앞). 검출기 정의가 bearing = −atan((u − cx)/fx)(좌 +),
+    v_norm = (v_bottom − cy)/fy 라 x = (u − cx)/fx = −tan(bearing), y = v_norm.
+    선체 자세 ZYX(롤 먼저, 그다음 피치): 롤 ρ(우현 아래 +)는 앞축, 피치 θ(선수 아래 +)는 오른쪽 축 회전.
+    왜곡 보정은 여기서 하지 않는다 — core 입력이 이미 fx·fy·cx·cy 로 나눈 정규 좌표라 픽셀·D 가 없다
+    (보정이 필요하면 검출기 쪽에서. OAK 640×360 ISP 축소 영상, D 미확인 ⚠️)."""
+    x = -math.tan(math.radians(bearing_deg))
+    y = v_norm
+    r, p = math.radians(roll_deg), math.radians(pitch_down_deg)
+    x1 = x * math.cos(r) - y * math.sin(r)
+    y1 = x * math.sin(r) + y * math.cos(r)
+    down = y1 * math.cos(p) + math.sin(p)
+    fwd = -y1 * math.sin(p) + math.cos(p)
+    return x1, down, fwd
+
+
+def ground_plane_point(cam_h, pitch_down_deg, roll_deg, bearing_deg, v_norm):
+    """수면 교점 → (수평 거리 m, 수평 방위 deg 좌 +). 수평선 위·근처면 None.
+
+    계약서_흰부표_거리융합_v3_20261114 '단안 규격' 2~3: 광선을 피치·롤로 수평 좌표에 돌린 뒤
+    아래 성분 w_down ≤ sin(0.5°)·|c| 면 None, t = h / w_down, 수평 성분 (앞 f, 옆 s) →
+    거리 = t·√(f² + s²), 방위 = atan2(−s, f)(좌 +, 피치·롤이 반영된 방위로 다시 낸다)."""
+    if not all(math.isfinite(v) for v in (cam_h, pitch_down_deg, roll_deg, bearing_deg, v_norm)):
         return None
-    return cam_h / math.tan(math.radians(dep))
+    side, down, fwd = _level_ray(pitch_down_deg, roll_deg, bearing_deg, v_norm)
+    norm = math.sqrt(side * side + down * down + fwd * fwd)
+    if down <= math.sin(math.radians(HORIZON_MIN_DEG)) * norm:
+        return None
+    t = cam_h / down
+    f, s = t * fwd, t * side
+    return math.hypot(f, s), math.degrees(math.atan2(-s, f))
 
 
-def ground_plane_sigma(cam_h, d, pitch_sigma_deg):
-    phi = math.atan2(cam_h, d)
-    return cam_h / math.sin(phi) ** 2 * math.radians(pitch_sigma_deg)
+def ground_plane_range(cam_h, pitch_down_deg, v_norm, roll_deg=0.0, bearing_deg=0.0):
+    """수면 기준 거리만(ground_plane_point 의 거리). v_norm = (v_bottom − cy) / fy (아래 +). 수평선 위·근처면 None.
+    롤 0·방위 0 이면 예전 식 h / tan(θ + atan(v)) 와 같다."""
+    res = ground_plane_point(cam_h, pitch_down_deg, roll_deg, bearing_deg, v_norm)
+    return None if res is None else res[0]
+
+
+def ground_plane_sigma(cam_h, pitch_down_deg, roll_deg, bearing_deg, v_norm,
+                       ang_sigma_deg, pixel_sigma, h_sigma):
+    """단안 거리 σ — 1차 전파(수치 미분). 피치·롤 각 σ(ang_sigma_deg, 같은 IMU·파도라 같은 값),
+    픽셀 σ(pixel_sigma, 정규 좌표 = px / fy — u·v 각각), 높이 σ(σd/d = σh/h, d ∝ h).
+    못 구하면(수평선 근처) inf."""
+    d0 = ground_plane_range(cam_h, pitch_down_deg, v_norm, roll_deg, bearing_deg)
+    if d0 is None:
+        return math.inf
+
+    def deriv(f, x0, step):
+        hi, lo = f(x0 + step), f(x0 - step)
+        if hi is not None and lo is not None:
+            return (hi - lo) / (2.0 * step)
+        if hi is not None:
+            return (hi - d0) / step
+        if lo is not None:
+            return (d0 - lo) / step
+        return math.inf
+
+    da = 1e-3            # deg
+    dv = 1e-6            # 정규 좌표
+    g_p = deriv(lambda q: ground_plane_range(cam_h, q, v_norm, roll_deg, bearing_deg), pitch_down_deg, da)
+    g_r = deriv(lambda q: ground_plane_range(cam_h, pitch_down_deg, v_norm, q, bearing_deg), roll_deg, da)
+    g_v = deriv(lambda q: ground_plane_range(cam_h, pitch_down_deg, q, roll_deg, bearing_deg), v_norm, dv)
+    x0 = -math.tan(math.radians(bearing_deg))       # 가로 픽셀 → 방위
+    g_u = deriv(lambda q: ground_plane_range(cam_h, pitch_down_deg, v_norm, roll_deg,
+                                             -math.degrees(math.atan(q))), x0, dv)
+    var = (g_p * ang_sigma_deg) ** 2 + (g_r * ang_sigma_deg) ** 2 + \
+        (g_v * pixel_sigma) ** 2 + (g_u * pixel_sigma) ** 2 + (d0 / cam_h * h_sigma) ** 2
+    return math.sqrt(var) if math.isfinite(var) else math.inf
 
 
 def wls_slope(samples):
@@ -103,10 +173,11 @@ class Track:
     last_t: float = 0.0
     passed: bool = False
     side: int = 0          # 0 미정, −1 = 장애물 왼쪽으로 지나감, +1 = 오른쪽
+    lidar: int = 0         # LiDAR 부표와 연관된 갱신 수(> 0 = LiDAR 가 보는 키 큰 장애물 → obstacle_r)
 
 
 class LowMap:
-    """낮은 장애물 지도: 세계 좌표 정적 점 칼만 + 색 다수결."""
+    """장애물 지도: 세계 좌표 정적 점 칼만 + 색 다수결(red = cls 0 '장애물 색' 표)."""
 
     def __init__(self, confirm_n=3, red_ratio=0.6, gate_m=0.35, chi2=13.8):
         self.tracks = []
@@ -114,7 +185,7 @@ class LowMap:
         self.gate_m, self.chi2 = gate_m, chi2
         self._next = 0
 
-    def update(self, zx, zy, R, red, t):
+    def update(self, zx, zy, R, red, t, lidar=False):
         best, bd = None, 1e18
         for tr in self.tracks:
             S = _add(tr.P, R)
@@ -124,7 +195,8 @@ class LowMap:
             if (m < self.chi2 or math.hypot(*d) < self.gate_m) and m < bd:
                 best, bd = tr, m
         if best is None:
-            self.tracks.append(Track(self._next, zx, zy, [row[:] for row in R], 1, int(red), t))
+            self.tracks.append(Track(self._next, zx, zy, [row[:] for row in R], 1, int(red), t,
+                                     lidar=int(bool(lidar))))
             self._next += 1
             return self.tracks[-1]
         K = _mul(best.P, _inv(_add(best.P, R)))
@@ -136,6 +208,7 @@ class LowMap:
         best.n += 1
         best.red += int(red)
         best.last_t = t
+        best.lidar += int(bool(lidar))
         return best
 
     def confirmed(self):
@@ -148,8 +221,12 @@ class AvoidParams:
     half_l: float = 0.83
     half_w: float = 0.285
     # 장애물·부표 (⚠️ 실측 필요)
-    low_r: float = 0.20
+    low_r: float = 0.20                    # LiDAR 연관 없는 카메라 단독 트랙 반경(예전 경로 — obstacle_requires_lidar false)
     buoy_r: float = 0.12
+    # 흰 장애물 반경 ⚠️ 가정 — 규정에 지름 없음(부표 지름·높이 운영측 문의 미회신). 지름 0.5 m 가정:
+    #   예전 low_r 0.20 보다 크게(키 큰 부표가 더 굵다고 보고 여유를 크게 = 안전 쪽), cluster_buoys 폭 검사가
+    #   받는 범위(이 값을 폭 검사 반경으로 넘긴다). 실측 후 교체.
+    obstacle_r: float = 0.25
     default_half_width_m: float = 1.5      # 노란부표 줄을 못 잡았을 때 통로 반폭 가정
     # 여유
     clear_low: float = 0.45                # 낮은 장애물(지도로만 피함) 선체–장애물 여유
@@ -175,6 +252,10 @@ class AvoidParams:
     # 거리 측정
     cam_h: float = 0.60                    # ⚠️ 실측 필요
     cam_pitch_deg: float = 0.0             # 아래로 숙인 각 ⚠️ 실측 필요
+    cam_roll_deg: float = 0.0              # 장착 롤(우현 아래 +) ⚠️ 실측 필요
+    cam_h_sigma_m: float = 0.05            # 카메라 수면 높이 σ ⚠️ 가정(마스트 미장착·적재로 흘수 변함)
+    pixel_sigma: float = 0.004             # 바닥 행·열 검출 σ, 정규 좌표(px / fy). 0.004 ≈ 2 px / fy 513
+    #                                        (OAK 640×360 HFOV 63.9° 기준) ⚠️ 실측 필요
     bearing_sigma_deg: float = 0.7
     pitch_sigma_hold: float = 0.5
     pitch_sigma_move: float = 2.0
@@ -185,7 +266,12 @@ class AvoidParams:
     confirm_n: int = 3
     red_ratio: float = 0.6
     wall_fill_step: float = 0.15
-    buoy_match_m: float = 0.35             # LiDAR 부표와 이 안이면 그 부표로 본다(지도에 안 넣음)
+    # LiDAR 연관 거리 여유: 카메라 거리와 LiDAR 부표 거리 차가 3σ + 이 값 안이어야 연관.
+    #   또 확정 장애물 트랙에서 이 안의 LiDAR 부표는 같은 물체로 보고 벽·부표 목록에서 뺀다.
+    buoy_match_m: float = 0.35
+    # 흰 장애물 연관 (계약서_흰부표_거리융합_v3_20261114 W2)
+    obstacle_match_deg: float = 5.0        # 카메라 방위 ↔ LiDAR 부표 방위 허용 ⚠️ OAK yaw 오프셋(1번배 약 −4°) 미보정
+    obstacle_requires_lidar: bool = True   # LiDAR 연관 없는 cls 0 검출은 지도에 안 넣음(흰 HSV 오검출 방어)
 
 
 @dataclass
@@ -211,6 +297,7 @@ class AvoidCore:
         self.map = LowMap(self.p.confirm_n, self.p.red_ratio)
         self.pose = _Pose()
         self.pitch = 0.0
+        self.roll = 0.0
         self.buoys = []
         self.psi0 = 0.0
         self.ox = self.oy = 0.0
@@ -255,9 +342,9 @@ class AvoidCore:
         return True
 
     def reset_keep_pose(self):
-        pose, pitch, buoys = self.pose, self.pitch, self.buoys
+        pose, pitch, roll, buoys = self.pose, self.pitch, self.roll, self.buoys
         self.reset()
-        self.pose, self.pitch, self.buoys = pose, pitch, buoys
+        self.pose, self.pitch, self.roll, self.buoys = pose, pitch, roll, buoys
         self.pose.hist = []
 
     def deactivate(self):
@@ -275,46 +362,91 @@ class AvoidCore:
         self.pose.hist = [h for h in self.pose.hist if t - h[0] <= 1.5]
 
     def set_pitch(self, pitch_down_deg):
+        """IMU 피치(선수 아래 +). 장착 cam_pitch_deg 에 더한다."""
         self.pitch = pitch_down_deg
 
+    def set_roll(self, roll_deg):
+        """IMU 롤(우현 아래 +). 장착 cam_roll_deg 에 더한다."""
+        self.roll = roll_deg
+
     def set_buoys(self, pts):
-        """LiDAR 노란부표 후보 (세계 x, y) 목록 — 매 스캔 갱신."""
+        """LiDAR 부표 후보 (세계 x, y) 목록 — 매 스캔 갱신. 노랑·흰(키 큰 장애물) 모두 — 색은 카메라 연관으로 붙인다."""
         self.buoys = list(pts)
+
+    def _match_buoy(self, x, y, yaw, brg, d, sr):
+        """카메라 검출(방위 brg 좌 +, 거리 d·σ sr) → 연관된 LiDAR 부표 (bx, by, LiDAR 거리) 또는 None.
+        조건: 방위 차 ≤ obstacle_match_deg, |LiDAR 거리 − d| ≤ 3σ + buoy_match_m(통로 벽 부표가 같은 방위에
+        있어도 거리로 가른다). 여럿이면 (방위 차/허용)² + (거리 차/σ)² 가 가장 작은 것."""
+        best, best_c = None, math.inf
+        tol = self.p.obstacle_match_deg
+        for bx, by in self.buoys:
+            db = abs(wrap180(wrap180(yaw - compass_bearing(x, y, bx, by)) - brg))
+            if db > tol:
+                continue
+            dl = math.hypot(bx - x, by - y)
+            if abs(dl - d) > 3.0 * sr + self.p.buoy_match_m:
+                continue
+            c = (db / max(tol, 1e-6)) ** 2 + ((dl - d) / max(sr, 1e-6)) ** 2
+            if c < best_c:
+                best, best_c = (bx, by, dl), c
+        return best
 
     def add_detections(self, t, x, y, yaw, dets):
         """카메라 검출 (촬영 순간 자세와 함께). dets = [(cls, bearing_left_deg, v_norm, range_m, conf[, age_s])].
-        cls 0 = 빨강(낮은 장애물), 2 = 노랑. 그 외는 무시. capture_ok 가 아니면 버린다.
-        age_s(노드 /avoid_detections VER 1)는 지금은 받기만 하고 쓰지 않는다(U5/U6 몫) — 5개짜리도 그대로 받는다."""
+        cls 0 = 장애물(검출기 obstacle_color, 기본 흰), 2 = 노랑. 그 외는 무시. capture_ok 가 아니면 버린다.
+        age_s(노드 /avoid_detections VER 1)는 지금은 받기만 하고 쓰지 않는다(U5/U6 몫) — 5개짜리도 그대로 받는다.
+
+        거리: range_m(D455)이 유한하면 그것, 아니면 단안 수면 교점(피치·롤 반영, ground_plane_point). 방위는
+        수면 교점이 있으면 피치·롤 반영 방위로 바꾼다. 둘 다 없으면(수평선 근처) 버린다(모르면 입을 다문다).
+        LiDAR 연관(계약서_흰부표_거리융합_v3_20261114 W2 ①④): 방위·거리로 LiDAR 부표에 붙으면 **LiDAR 위치**
+        (R = LiDAR σ — range_sigma_rel, 흰 장애물은 중심을 obstacle_r 로 고쳐)로 지도에 넣고 색 표만 카메라에서.
+        연관이 없으면 cls 0 은 obstacle_requires_lidar(기본 true)면 버리고(흰 HSV 오검출 방어), false 면
+        카메라 거리로 넣는다(예전 경로 — LiDAR 가 못 보는 낮은 장애물). 노랑은 늘 넣는다(다수결 표)."""
         if not (self.active and self.capture_ok):
             return 0
         moving = self.state == "DRIVE"
+        ang_sig = self.p.pitch_sigma_move if moving else self.p.pitch_sigma_hold
+        pitch = self.p.cam_pitch_deg + self.pitch
+        roll = self.p.cam_roll_deg + self.roll
+        ps = self.p.pos_sigma ** 2
         used = 0
-        for cls, brg, v_norm, rng, conf, *_age in dets:
+        for cls, brg_cam, v_norm, rng, conf, *_age in dets:
             if cls not in (0, 2):
                 continue
+            gp = ground_plane_point(self.p.cam_h, pitch, roll, brg_cam, v_norm)
+            brg = gp[1] if gp is not None else brg_cam
             if rng is not None and math.isfinite(rng) and rng > 0:
                 d, sr = rng, max(0.03, self.p.range_sigma_rel * rng)
-            else:
-                d = ground_plane_range(self.p.cam_h, self.p.cam_pitch_deg + self.pitch, v_norm)
-                if d is None:
+            elif gp is not None:
+                d = gp[0]
+                sr = ground_plane_sigma(self.p.cam_h, pitch, roll, brg_cam, v_norm,
+                                        ang_sig, self.p.pixel_sigma, self.p.cam_h_sigma_m)
+                if not math.isfinite(sr):
                     continue
-                sr = ground_plane_sigma(self.p.cam_h, d,
-                                        self.p.pitch_sigma_move if moving else self.p.pitch_sigma_hold)
+            else:
+                continue
             if d > self.p.max_range:
+                continue
+            m = self._match_buoy(x, y, yaw, brg, d, sr)
+            if m is not None:
+                bx, by, dl = m
+                if cls == 0:            # LiDAR 중심 = 표면 + buoy_r(노랑 가정) → 흰 장애물 반경으로 고침
+                    k = (self.p.obstacle_r - self.p.buoy_r) / max(dl, 1e-6)
+                    bx, by = bx + (bx - x) * k, by + (by - y) * k
+                sl = max(0.03, self.p.range_sigma_rel * dl)
+                R = [[sl * sl + ps, 0.0], [0.0, sl * sl + ps]]
+                self.map.update(bx, by, R, cls == 0, t, lidar=True)
+                used += 1
+                continue
+            if cls == 0 and self.p.obstacle_requires_lidar:
                 continue
             wb = math.radians(yaw - brg)
             ux, uy = math.sin(wb), math.cos(wb)
             vx, vy = uy, -ux
             sb = d * math.radians(self.p.bearing_sigma_deg)
-            ps = self.p.pos_sigma ** 2
             R = [[sr * sr * ux * ux + sb * sb * vx * vx + ps, sr * sr * ux * uy + sb * sb * vx * vy],
                  [sr * sr * ux * uy + sb * sb * vx * vy, sr * sr * uy * uy + sb * sb * vy * vy + ps]]
-            zx, zy = x + d * ux, y + d * uy
-            # eunwootest sensor_fusion 의 카메라–LiDAR 매칭: LiDAR 가 보는 물체 = 노란부표 → 지도에 안 넣는다.
-            #   매칭 안 되는 빨강 = LiDAR 가 못 보는 낮은 장애물(버리지 않는 게 이 미션의 핵심).
-            if any(math.hypot(zx - bx, zy - by) < self.p.buoy_match_m for bx, by in self.buoys):
-                continue
-            self.map.update(zx, zy, R, cls == 0, t)
+            self.map.update(x + d * ux, y + d * uy, R, cls == 0, t)
             used += 1
         return used
 
@@ -333,16 +465,29 @@ class AvoidCore:
         return 0.0 if v is None else v
 
     # ── 장애물·벽 ──
+    def obstacle_radius(self, tr):
+        """트랙 반경: LiDAR 연관(키 큰 흰 장애물) = obstacle_r, 카메라 단독(예전 경로) = low_r."""
+        return self.p.obstacle_r if tr.lidar else self.p.low_r
+
+    def free_buoys(self, confirmed=None):
+        """확정 장애물 트랙과 겹치지 않는(buoy_match_m 밖) LiDAR 부표 = 벽·부표로 쓸 것(W2 ② 이중 계산·벽 오인 방지)."""
+        conf = self.map.confirmed() if confirmed is None else confirmed
+        if not conf:
+            return list(self.buoys)
+        return [(bx, by) for bx, by in self.buoys
+                if all(math.hypot(bx - tr.x, by - tr.y) >= self.p.buoy_match_m for tr in conf)]
+
     def obstacles(self):
-        """(x, y, r, kind) — 확정 낮은 장애물 + LiDAR 노란부표."""
-        out = [(tr.x, tr.y, self.p.low_r, "low") for tr in self.map.confirmed()]
-        out += [(bx, by, self.p.buoy_r, "buoy") for bx, by in self.buoys]
+        """(x, y, r, kind) — 확정 장애물(kind 'low' — 이름은 예전 그대로) + 그와 겹치지 않는 LiDAR 부표."""
+        conf = self.map.confirmed()
+        out = [(tr.x, tr.y, self.obstacle_radius(tr), "low") for tr in conf]
+        out += [(bx, by, self.p.buoy_r, "buoy") for bx, by in self.free_buoys(conf)]
         return out
 
     def walls(self, s_c):
-        """s_c 근처(±3 m) 노란부표 가로 위치 중앙값 → (l_left, l_right)."""
+        """s_c 근처(±3 m) 노란부표 가로 위치 중앙값 → (l_left, l_right). 확정 장애물 자리 부표는 뺀다."""
         left, right = [], []
-        for bx, by in self.buoys:
+        for bx, by in self.free_buoys():
             s, l_ = self.to_course(bx, by)
             if abs(s - s_c) <= 3.0:
                 (left if l_ < 0 else right).append(l_)
@@ -352,9 +497,9 @@ class AvoidCore:
         return ll, lr
 
     def wall_points(self):
-        """이웃 노란부표(0.6~1.4 m) 사이를 메운 가상 벽 점 (x, y, r)."""
+        """이웃 노란부표(0.6~1.4 m) 사이를 메운 가상 벽 점 (x, y, r). 확정 장애물 자리 부표는 뺀다."""
         pts = []
-        b = sorted(self.buoys, key=lambda q: self.to_course(*q))
+        b = sorted(self.free_buoys(), key=lambda q: self.to_course(*q))
         for i, (x1, y1) in enumerate(b):
             for x2, y2 in b[i + 1:]:
                 d = math.hypot(x2 - x1, y2 - y1)
@@ -364,8 +509,8 @@ class AvoidCore:
         return pts
 
     def virtual_obstacles(self, extra=0.20):
-        """ship_direction 에 넘길 가상 장애물: 낮은 장애물(+extra) + 노란부표 벽."""
-        v = [(tr.x, tr.y, self.p.low_r + extra) for tr in self.map.confirmed()]
+        """ship_direction 에 넘길 가상 장애물: 확정 장애물(+extra) + 노란부표 벽."""
+        v = [(tr.x, tr.y, self.obstacle_radius(tr) + extra) for tr in self.map.confirmed()]
         return v + self.wall_points()
 
     def _ahead(self, lead_s):
@@ -387,7 +532,7 @@ class AvoidCore:
             if tr.passed:
                 continue
             s_o, _ = self.to_course(tr.x, tr.y)
-            if s_o < s_b - (self.p.half_l + self.p.low_r):
+            if s_o < s_b - (self.p.half_l + self.obstacle_radius(tr)):
                 tr.passed = True
                 passed_now += 1
         if passed_now:
@@ -458,7 +603,7 @@ class AvoidCore:
         best = None
         for tr in self.map.confirmed():
             s_o, l_o = self.to_course(tr.x, tr.y)
-            if s_o > s_b - (self.p.half_l + self.p.low_r) and (best is None or s_o < best[1]):
+            if s_o > s_b - (self.p.half_l + self.obstacle_radius(tr)) and (best is None or s_o < best[1]):
                 best = (tr, s_o, l_o)
         return best
 
@@ -466,10 +611,11 @@ class AvoidCore:
         ll, lr = self.walls(s_o)
         lo = ll + self.p.buoy_r + self.p.half_w + self.p.clear_wall
         hi = lr - self.p.buoy_r - self.p.half_w - self.p.clear_wall
-        off = self.p.low_r + self.p.half_w + self.p.clear_low
+        r = self.obstacle_radius(tr)
+        off = r + self.p.half_w + self.p.clear_low
         if tr.side == 0:   # 편 확정(한 번 정하면 유지 — 뒤집기 금지)
-            free_l = (l_o - self.p.low_r) - (ll + self.p.buoy_r)
-            free_r = (lr - self.p.buoy_r) - (l_o + self.p.low_r)
+            free_l = (l_o - r) - (ll + self.p.buoy_r)
+            free_r = (lr - self.p.buoy_r) - (l_o + r)
             tr.side = -1 if free_l >= free_r else 1
         lp = l_o + tr.side * off
         return min(max(lp, lo), hi), lo, hi
@@ -478,8 +624,9 @@ class AvoidCore:
         """s_q 에서 확정 장애물 겹침 구간이면 확정된 편 경계로 밀어낸다."""
         for tr in self.map.confirmed():
             s_o, l_o = self.to_course(tr.x, tr.y)
-            if abs(s_o - s_q) < self.p.low_r + self.p.half_l + self.p.clear_low:
-                off = self.p.low_r + self.p.half_w + self.p.clear_low
+            r = self.obstacle_radius(tr)
+            if abs(s_o - s_q) < r + self.p.half_l + self.p.clear_low:
+                off = r + self.p.half_w + self.p.clear_low
                 if abs(l_q - l_o) < off:
                     side = tr.side or (1 if l_q >= l_o else -1)
                     l_q = l_o + side * off

@@ -1,6 +1,7 @@
 # ship_avoid 파라미터 — 코드 기본값(core.AvoidParams·노드)과 같게 유지 (CLAUDE.md §1-4).
 # 🚨 소수점 값은 반드시 소수점으로(정수로 쓰면 타입 불일치로 노드가 죽을 수 있다).
-# ⚠️ 실측 필요: low_r, buoy_r, default_half_width_m, cam_h, cam_pitch_deg, dori_lead_s, stop_lead_s, pitch_sign
+# ⚠️ 실측 필요: low_r, buoy_r, obstacle_r, default_half_width_m, cam_h, cam_pitch_deg, cam_roll_deg, cam_h_sigma_m,
+#   pixel_sigma, obstacle_match_deg, dori_lead_s, stop_lead_s, pitch_sign, roll_sign
 /ship_avoid:
   ros__parameters:
     # 회피 방식 스위치 (계약서_도리도리회피_launch_20261113 C1, v2_20261114 U1 + 사용자 결정 11-14).
@@ -21,12 +22,16 @@
     yaw_stale_sec: 0.5
     detections_quiet_warn_sec: 5.0
     lidar_forward_deg: 80.0
-    pitch_sign: 1.0
+    pitch_sign: 1.0                 # ⚠️ /imu/data 피치 부호: 선수 숙임 = 양수가 되게
+    roll_sign: 1.0                  # ⚠️ /imu/data 롤 부호: 우현 아래 = 양수가 되게
     virtual_extra_m: 0.2
     half_l: 0.83
     half_w: 0.285
-    low_r: 0.2
+    low_r: 0.2                      # LiDAR 연관 없는 카메라 단독 트랙 반경(obstacle_requires_lidar false 경로)
     buoy_r: 0.12
+    # 흰 장애물 반경 ⚠️ 가정(지름 0.5 m — 규정에 지름 없음, 운영측 미회신). 회피 여유 계산 + LiDAR 폭 검사
+    #   반경(max(buoy_r, obstacle_r)). 흰 지름이 약 1.2 m 를 넘으면 폭 검사 상한이 부족 → 실측 후 교체.
+    obstacle_r: 0.25
     default_half_width_m: 1.5
     clear_low: 0.45
     clear_wall: 0.35
@@ -48,6 +53,9 @@
     step_deg: 10.0
     cam_h: 0.6
     cam_pitch_deg: 0.0
+    cam_roll_deg: 0.0               # 장착 롤(우현 아래 +) ⚠️ 실측
+    cam_h_sigma_m: 0.05             # 카메라 수면 높이 σ ⚠️ 가정 — σd/d = σh/h
+    pixel_sigma: 0.004              # 바닥 행·열 σ, 정규 좌표(px / fy). 0.004 ≈ 2 px / fy 513(OAK 640×360 HFOV 63.9°) ⚠️
     bearing_sigma_deg: 0.7
     pitch_sigma_hold: 0.5
     pitch_sigma_move: 2.0
@@ -57,4 +65,12 @@
     confirm_n: 3
     red_ratio: 0.6
     wall_fill_step: 0.15
+    # LiDAR 연관 거리 여유(|LiDAR − 카메라 거리| ≤ 3σ + 이 값) · 확정 장애물 자리 LiDAR 부표를 벽에서 뺄 반경
     buoy_match_m: 0.35
+    # 흰 장애물 = LiDAR 군집 + 카메라 색 표 (계약서_흰부표_거리융합_v3_20261114 W2)
+    #   obstacle_match_deg: 카메라 방위 ↔ LiDAR 부표 방위 허용 ⚠️ OAK yaw 오프셋(1번배 약 −4°) 미보정이라 4° 넘게.
+    #   obstacle_requires_lidar: true = LiDAR 연관 없는 cls 0 은 지도에 안 넣음(흰 HSV 오검출 방어).
+    #     🚨 검출기 obstacle_color 를 red(LiDAR 에 안 보이는 낮은 장애물)로 되돌리면 false 로 같이 바꿀 것 —
+    #        true 그대로면 빨강을 지도에 하나도 못 넣는다.
+    obstacle_match_deg: 5.0
+    obstacle_requires_lidar: true

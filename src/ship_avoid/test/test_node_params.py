@@ -39,7 +39,7 @@ YAML = os.path.join(PKG, 'config', 'ship_avoid.yaml')
 NODE_NAME = 'ship_avoid'
 # AvoidParams 가 아닌 노드 자체 파라미터
 NODE_ONLY = {'active_wp_mode', 'period_sec', 'gps_stale_sec', 'yaw_stale_sec', 'detections_quiet_warn_sec',
-             'lidar_forward_deg', 'pitch_sign', 'virtual_extra_m', 'avoid_mode', 'wp_mode_stale_sec',
+             'lidar_forward_deg', 'pitch_sign', 'roll_sign', 'virtual_extra_m', 'avoid_mode', 'wp_mode_stale_sec',
              'avoid_zone_stale_sec', 'det_max_age_s'}
 
 
@@ -84,6 +84,8 @@ def _yaml_params():
                 if v[0] in '"\'':
                     assert v[-1] == v[0], f'따옴표 짝 {raw!r}'
                     val = v[1:-1]
+                elif v in ('true', 'false'):
+                    val = v == 'true'
                 elif re.match(r'^[-+]?\d+$', v):
                     val = int(v)
                 else:
@@ -662,3 +664,52 @@ def test_node_doridori_gps_missing_with_detections_stays_silent(node_mod):
     _hb(node)
     _tick(node)                                # zone·검출 살아 있음, GPS·yaw 없음 → 지금처럼 발행 중지 + ERROR
     assert _cands(node) == [] and _errors(node, 'GPS')
+
+
+def _quat(roll_deg, pitch_deg):
+    r, p = math.radians(roll_deg) / 2.0, math.radians(pitch_deg) / 2.0
+    return _Msg(w=math.cos(r) * math.cos(p), x=math.sin(r) * math.cos(p),
+                y=math.cos(r) * math.sin(p), z=-math.sin(r) * math.sin(p))
+
+
+def test_node_imu_feeds_pitch_and_roll_with_signs(node_mod):
+    """W2 ⑥: /imu/data 에서 피치·롤 둘 다 읽어 부호 파라미터를 곱해 코어로."""
+    mod, _ = node_mod
+    node = mod.ShipAvoid()
+    node.subs['/imu/data'](_Msg(orientation=_quat(3.0, 2.0)))
+    assert abs(node.core.pitch - 2.0) < 1e-6 and abs(node.core.roll - 3.0) < 1e-6 and node.imu_t is not None
+    OVERRIDES.update(pitch_sign=-1.0, roll_sign=-1.0)
+    node = mod.ShipAvoid()
+    node.subs['/imu/data'](_Msg(orientation=_quat(3.0, 2.0)))
+    assert abs(node.core.pitch + 2.0) < 1e-6 and abs(node.core.roll + 3.0) < 1e-6
+
+
+def test_node_activation_without_imu_warns_mount_only(node_mod):
+    mod, clock = node_mod
+    node = mod.ShipAvoid()
+    _step(node, clock, dt=0.0)
+    assert node.core.active and len(_warns(node, '/imu/data')) == 1
+    assert node.core.pitch == 0.0 and node.core.roll == 0.0       # 장착값(cam_pitch_deg·cam_roll_deg)만
+    node = mod.ShipAvoid()
+    node.subs['/imu/data'](_Msg(orientation=_quat(0.0, 1.0)))
+    _step(node, clock)
+    assert node.core.active and not _warns(node, '/imu/data')
+
+
+def test_node_scan_width_check_uses_obstacle_r(node_mod):
+    """W2 ③: 폭 검사 반경 = max(buoy_r, obstacle_r) — 넓은 흰 부표 군집도 LiDAR 부표로."""
+    mod, clock = node_mod
+    rng = [math.inf] * 720
+    for a in range(520, 553):                     # 16° 폭 @ 3 m
+        rng[a] = 3.0
+    scan = _Msg(ranges=rng, angle_min=math.radians(-180.0), angle_increment=math.radians(0.5))
+    OVERRIDES.update(obstacle_r=0.12)
+    node = mod.ShipAvoid()
+    _pose(node, clock)
+    node.subs['/scan'](scan)
+    assert node.core.buoys == []
+    OVERRIDES.clear()
+    node = mod.ShipAvoid()
+    _pose(node, clock)
+    node.subs['/scan'](scan)
+    assert len(node.core.buoys) == 1
