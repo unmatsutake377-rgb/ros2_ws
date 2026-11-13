@@ -42,12 +42,13 @@
     # ---- P1 단안·삼각측량 (계약서_흰부표_거리융합_v3 B-2 + '수식 정밀화', 11-14) ----
     # 🚨 입력 /oak_detections 발행자(D1 image_subscriber_objects)는 아직 없다. 둘 다 false 면 출력은 P1 이전과 비트 동일.
     #    켜기 = P2(rosbag·그림자 비교 뒤). 롤백 = false 한 줄 + launch 재시작.
-    # 🚨 아래 장착값은 전부 가정값(⚠️ 실측 필요). 배별 값 통로(G-4 perception_fusion_A/B.yaml)는 아직 없다 → 공용 값.
+    # 🚨 아래 장착값: oak_cam_h_m·oak_pitch_deg = 마스트 설계값(mast v2, 11-14 사용자 결정 — 실측 아님), 나머지는 가정값
+    #    (⚠️ 실측 필요). 배별 값 통로(G-4 perception_fusion_A/B.yaml)는 아직 없다 → 두 배 공용 값.
     use_mono: false                 # OAK 단안 수면 교점 거리
     use_triangulation: false        # OAK 방위 + RTK GPS 기선 삼각측량 거리
-    oak_cam_h_m: 0.6                # OAK 렌즈 수면 위 높이(m)  ⚠️ 실측 필요 (ship_avoid cam_h 와 같은 가정값)
+    oak_cam_h_m: 0.415              # OAK 렌즈 수면 위 높이(m). 설계값(mast v2), 실측 아님 ⚠️ — 두 배 공통, ship_avoid cam_h 와 같은 값
     oak_cam_h_sigma_m: 0.05         # 높이 σ(흘수·적재 변화)  ⚠️ 실측 필요
-    oak_pitch_deg: 0.0              # OAK 장착 피치(아래 +)  ⚠️ 실측 필요 — 1° 오차가 3 m 에서 약 0.4 m
+    oak_pitch_deg: 11.0             # OAK 장착 피치(아래 +). 설계값(mast v2), 실측 아님 ⚠️ — 두 배 공통. 1° 오차가 3 m 에서 약 0.4 m
     oak_roll_deg: 0.0               # OAK 장착 롤(우현 아래 +)  ⚠️ 실측 필요
     oak_x_from_lidar_m: 0.0         # OAK 위치(LiDAR 기준, 앞 +)  ⚠️ 실측 필요
     oak_y_from_lidar_m: 0.0         # OAK 위치(LiDAR 기준, 왼쪽 +)  ⚠️ 실측 필요

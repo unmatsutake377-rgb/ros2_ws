@@ -94,6 +94,24 @@ def test_yaml_equals_defaults_with_types():
         assert v == fl.DEFAULTS[k] and type(v) is type(fl.DEFAULTS[k]), f'{k}: yaml {v!r} ≠ 기본값 {fl.DEFAULTS[k]!r}'
 
 
+def test_oak_mount_defaults_are_mast_design_values():
+    """사용자 결정(11-14): OAK 수면 위 0.415 m·아래로 11° = 마스트 설계값(mast v2), 두 배 공통, 실측 아님.
+    코드 리터럴 == yaml == DEFAULTS 는 위 두 테스트가 묶고, 여기선 값과 '실측 아님' 표시를 묶는다."""
+    dec = {k: v for k, (v, _) in _declares().items()}
+    y = _yaml_params()
+    for key, want in (('oak_cam_h_m', 0.415), ('oak_pitch_deg', 11.0)):
+        assert fl.DEFAULTS[key] == dec[key] == y[key] == want, key
+        assert type(dec[key]) is float and type(y[key]) is float, key
+    raw = open(YAML, encoding='utf-8').read().splitlines()
+    for key in ('oak_cam_h_m', 'oak_pitch_deg'):
+        line = next(ln for ln in raw if ln.strip().startswith(key + ':'))
+        assert '설계값(mast v2), 실측 아님' in line, line
+    src = open(NODE_SRC, encoding='utf-8').read().splitlines()
+    for key in ('oak_cam_h_m', 'oak_pitch_deg'):
+        line = next(ln for ln in src if f"declare_parameter('{key}'" in ln)
+        assert '설계값(mast v2), 실측 아님' in line, line
+
+
 def test_node_name():
     names = [n.args[0].value for n in ast.walk(_tree())
              if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) and n.func.attr == '__init__'
@@ -373,6 +391,10 @@ def _feed_scan(node, clock, t0, rel_r):
         scan_cb(_scan_msg(rel_r))
 
 
+# _mono_row·삼각측량 장면은 높이 0.6 m·피치 0 기하로 합성 → 그 기하를 파라미터로 고정(설계값 기본과 무관).
+GEOM = {'oak_cam_h_m': 0.6, 'oak_pitch_deg': 0.0}
+
+
 def _mono_row(D, beta_deg, h=0.6, color=3):
     """피치·롤 0, 수면 점 (D, β) → /oak_detections 한 줄 (bearing_left, v_norm_bottom)."""
     x = -math.sin(math.radians(beta_deg)) * D
@@ -419,10 +441,19 @@ def test_node_bit_identical_without_camera_path(node_mod, overrides, feed):
     assert want and got == want
 
 
+def test_node_mount_geometry_change_is_invisible_while_camera_off(node_mod):
+    """use_mono·use_triangulation 기본 false → 장착 기본값(0.6/0° → 0.415/11°)을 바꿔도 /fused_objects 비트 동일."""
+    mod, clock = node_mod
+    want, _ = _run_scene(mod, clock, {'oak_cam_h_m': 0.6, 'oak_pitch_deg': 0.0}, True)
+    got, _ = _run_scene(mod, clock, {}, True)
+    assert fl.DEFAULTS['use_mono'] is False and fl.DEFAULTS['use_triangulation'] is False
+    assert want and got == want
+
+
 def test_node_mono_on_adds_object_and_bits(node_mod):
     mod, clock = node_mod
     base, _ = _run_scene(mod, clock, {}, False)
-    got, node = _run_scene(mod, clock, {'use_mono': True}, True)
+    got, node = _run_scene(mod, clock, {'use_mono': True, **GEOM}, True)
     objs = fl.decode(got[-1])
     old = fl.decode(base[-1])
     assert len(objs) == len(old) + 1, '−30° 4 m 단안 물체 하나 더(LiDAR 없음 → src 4)'
@@ -480,7 +511,7 @@ def _fix(lat, lon, status=2, sigma=0.015):
 def test_node_triangulation_end_to_end(node_mod, status, want_tri):
     """동쪽 1 m/s 로 지나가며 부표 (6, 4) m 를 봄 → src 5 물체가 참 거리. GPS 비FIXED(status 0) 면 안 나옴."""
     mod, clock = node_mod
-    OVERRIDES.update(use_triangulation=True)
+    OVERRIDES.update(use_triangulation=True, **GEOM)
     node = mod.PerceptionFusion()
     tick = _timer(node, 10.0)
     gps_cb, yaw_cb, oak_cb = (node.subs[t][0] for t in ('/ublox_gps_node/fix', '/imu/yaw', '/oak_detections'))

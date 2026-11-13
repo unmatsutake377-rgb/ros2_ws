@@ -88,9 +88,9 @@ class PerceptionFusion(Node):
             # ---- P1 단안·삼각측량 (기본 꺼짐, 장착값 전부 ⚠️ 가정값 — yaml 주석) ----
             'use_mono': self.declare_parameter('use_mono', False).value,
             'use_triangulation': self.declare_parameter('use_triangulation', False).value,
-            'oak_cam_h_m': self.declare_parameter('oak_cam_h_m', 0.6).value,                # ⚠️ 실측 필요
+            'oak_cam_h_m': self.declare_parameter('oak_cam_h_m', 0.415).value,  # 설계값(mast v2), 실측 아님 ⚠️
             'oak_cam_h_sigma_m': self.declare_parameter('oak_cam_h_sigma_m', 0.05).value,   # ⚠️ 실측 필요
-            'oak_pitch_deg': self.declare_parameter('oak_pitch_deg', 0.0).value,            # ⚠️ 실측 필요
+            'oak_pitch_deg': self.declare_parameter('oak_pitch_deg', 11.0).value,  # 설계값(mast v2), 실측 아님 ⚠️
             'oak_roll_deg': self.declare_parameter('oak_roll_deg', 0.0).value,              # ⚠️ 실측 필요
             'oak_x_from_lidar_m': self.declare_parameter('oak_x_from_lidar_m', 0.0).value,  # ⚠️ 실측 필요
             'oak_y_from_lidar_m': self.declare_parameter('oak_y_from_lidar_m', 0.0).value,  # ⚠️ 실측 필요
@@ -187,10 +187,10 @@ class PerceptionFusion(Node):
             f"(/oak_detections VER {fl.OAK_VER} STRIDE {fl.OAK_STRIDE}). OAK h {p['oak_cam_h_m']} m "
             f"피치 {p['oak_pitch_deg']}° 롤 {p['oak_roll_deg']}° yaw {p['oak_yaw_offset_deg']}°, "
             f"삼각측량 기선 ≥ {p['tri_min_baseline_m']} m · 시차 ≥ {p['tri_min_parallax_deg']}° · "
-            f"Δt ≤ {p['tri_max_dt_s']} s · RTK FIXED 만 (⚠️ 장착값 전부 가정값, 배별 통로 없음)")
+            f"Δt ≤ {p['tri_max_dt_s']} s · RTK FIXED 만 (⚠️ 높이·피치 기본 = 마스트 설계값, 나머지 가정값, 배별 통로 없음)")
         if p['use_mono'] and p['oak_pitch_deg'] == fl.DEFAULTS['oak_pitch_deg']:
             self.get_logger().warn(
-                f"perception_fusion: use_mono=true 인데 oak_pitch_deg 가 기본값 {p['oak_pitch_deg']}°(미실측) — "
+                f"perception_fusion: use_mono=true 인데 oak_pitch_deg 가 기본값 {p['oak_pitch_deg']}°(마스트 설계값, 실측 아님) — "
                 '장착 피치 1° 오차가 3 m 에서 약 0.4 m. 실측값을 yaml 에 넣기 전엔 단안 거리를 믿지 말 것')
 
     # ---------------------- 주기 로그 ----------------------

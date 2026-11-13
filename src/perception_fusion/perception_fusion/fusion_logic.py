@@ -104,13 +104,13 @@ DEFAULTS = {
     'cam_x_from_lidar_m': 0.0,
     'cam_y_from_lidar_m': 0.0,
     'cam_yaw_offset_deg': 0.0,
-    # ---- P1 단안·삼각측량 (계약서_흰부표_거리융합_v3 B-2 + 수식 정밀화). 장착값 전부 ⚠️ 가정값 ----
+    # ---- P1 단안·삼각측량 (계약서_흰부표_거리융합_v3 B-2 + 수식 정밀화). 높이·피치 = 설계값, 나머지 ⚠️ 가정값 ----
     #   배별 값 통로(G-4 perception_fusion_A/B.yaml)는 이번 범위 밖 → 공용 값 하나.
     'use_mono': False,
     'use_triangulation': False,
-    'oak_cam_h_m': 0.6,
+    'oak_cam_h_m': 0.415,           # 설계값(mast v2), 실측 아님 — OAK 렌즈 수면 위
     'oak_cam_h_sigma_m': 0.05,
-    'oak_pitch_deg': 0.0,
+    'oak_pitch_deg': 11.0,          # 설계값(mast v2), 실측 아님 — 아래로 11°
     'oak_roll_deg': 0.0,
     'oak_x_from_lidar_m': 0.0,
     'oak_y_from_lidar_m': 0.0,

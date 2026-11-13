@@ -20,8 +20,9 @@ import pytest
 
 from perception_fusion import fusion_logic as fl
 
-P = dict(fl.DEFAULTS)
 H = 0.6
+# 합성 장면은 높이 H·피치 0 기하로 만들었다 → 장착 기본값(설계값 0.415 m·11°)과 무관하게 고정.
+P = dict(fl.DEFAULTS, oak_cam_h_m=H, oak_pitch_deg=0.0)
 
 
 # ------------------------------------------------------------ 골든 장면 (HEAD 11db5c9 fusion_logic 으로 만든 값)
