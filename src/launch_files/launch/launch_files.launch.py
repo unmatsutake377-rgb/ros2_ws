@@ -606,7 +606,7 @@ def generate_launch_description():
              name='image_subscriber_turn', output='screen', parameters=[VISION_CFG]),
         Node(package='color_shape_detector', executable='basic_image_subscriberdock',
              name='image_subscriber_dock', output='screen', parameters=[VISION_CFG]),
-        # mode 5 도리도리 검출기 — OAK 빨강·노랑 다중 윤곽 → /avoid_detections(프레임마다, N=0 하트비트).
+        # mode 5 도리도리 검출기 — OAK 장애물 색(vision.yaml obstacle_color, 기본 흰색)·노랑 다중 윤곽 → /avoid_detections(프레임마다, N=0 하트비트).
         #   camera_info 없으면 안 냄 + ERROR. 기본 avoid_mode fused 라 장애물 구간 다리(/avoid_zone true)에서 바로 쓰인다.
         #   실행 파일이 없으면(pull 뒤 재빌드 안 함) _avoid_detector 가 LogInfo 만 내고 건너뛴다.
         OpaqueFunction(function=_avoid_detector),
