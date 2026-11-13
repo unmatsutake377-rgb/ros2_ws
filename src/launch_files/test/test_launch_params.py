@@ -12,7 +12,7 @@
 
 지키는 것 (값은 비교하지 않는다 — 결정 ②: yaml 이 이긴다, 키·타입만 강제)
   T1 노드별 Node 정확히 1개 + parameters 첫 항목이 _pkg_yaml('<pkg>') = share/<pkg>/config/<pkg>.yaml
-     T1b OpaqueFunction 진입점(_yaw_mux·_course_check·_oak_camera·_d455_depth·_perception_fusion·
+     T1b OpaqueFunction 진입점(_yaw_mux·_course_check·_oak_camera·_d455_depth·_avoid_detector·_perception_fusion·
          _search_nodes·_ship_avoid·_control_nodes·_blackbox)이 launch 목록에 각 1개
      T1~T4·T6 은 perception_fusion(계약서_인식융합_20261112)도 대조한다 — 미션 노드는 아니지만 같은 _pkg_yaml 패턴
      T1~T4·T6 은 ship_avoid(계약서_도리도리회피_launch_20261113 C2)도 대조한다 — _ship_avoid 가 띄운다
@@ -344,7 +344,7 @@ def test_t4_yaml_types_match_declared(name, yaml_path, source):
 
 # OpaqueFunction 으로 노드를 띄우는 진입점. 함수가 있어도 목록에서 빠지면 그 노드는 안 뜬다
 # (에러 없음) — T1·T5·T7 은 함수 안의 Node 만 보므로 따로 검사한다.
-OPAQUE_ENTRIES = ('_yaw_mux', '_course_check', '_oak_camera', '_d455_depth', '_perception_fusion',
+OPAQUE_ENTRIES = ('_yaw_mux', '_course_check', '_oak_camera', '_d455_depth', '_avoid_detector', '_perception_fusion',
                   '_search_nodes', '_ship_avoid', '_control_nodes', '_blackbox')
 
 

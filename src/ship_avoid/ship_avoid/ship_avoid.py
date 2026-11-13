@@ -11,7 +11,8 @@ avoid_mode (yaml, 기본 'fused' — 사용자 결정 11-14): lidar = 담당 모
   zone false·stale 이나 담당 모드 이탈이면 지도를 버린다.
   판정·검출 형식 파싱은 avoid_mode_logic (순수 함수 plan_tick·parse_detections).
   🚨 기본 fused. north 는 /avoid_zone 을 늘 낸다(U2) — 폴리곤이 비면 늘 false → mode 5 에서 20000(ZONE_OFF).
-     폴리곤을 채우면 WP6→WP7 다리에서 true, 검출기(U3) 전이면 그 다리에서 DET_DEAD(20000 + ERROR).
+     폴리곤을 채우면 WP6→WP7 다리에서 true → 검출기(U3 image_subscriber_avoid) 하트비트가 있으면 도리도리(DORI),
+     검출기가 안 떴거나 camera_info 가 없어 침묵하면 그 다리에서 DET_DEAD(20000 + ERROR).
 🚨 대회 launch 에 들어 있다(launch_files _ship_avoid, 계약서 C2 원자 묶음 — 한 커밋):
    north_goal_angle FALLBACK_MODES (8,)(mode 5 폴백 뺌) + ssf_tools wp_nodes 5→ship_avoid + launch Node.
    하나만 되돌리면 mode 5 /candidate_angle 발행자가 2개이거나 healthcheck 거짓 경보(test_avoid_mission 이 검사).
@@ -31,7 +32,8 @@ avoid_mode (yaml, 기본 'fused' — 사용자 결정 11-14): lidar = 담당 모
        age_s = 촬영부터 발행까지 초 — det_max_age_s 넘는 검출은 버린다(지금은 그 밖에 안 씀).
        N = 0 = 본 것 없음(살아 있음 하트비트). VER·STRIDE·길이 불일치 → 메시지 버림 + ERROR(살아 있음으로 안 침).
        예전 stride 5 형식(머리 없음)은 받지 않는다.
-       ⚠️ 발행 검출기 미구현(U3) — fused 여도 침묵이면 20000 폴백(진입 후 quiet 초 넘으면 ERROR).
+       발행자 = color_shape_detector image_subscriber_avoid(U3, mode 5 프레임마다 — 본 것 없어도 N=0).
+       fused 여도 침묵이면 20000 폴백(진입 후 quiet 초 넘으면 ERROR).
 출력
   /candidate_angle (Float32)       lidar·검출 침묵 = 20000, 주행 = (B) 각도, 도리도리 = 5000/6000/50000
   /virtual_obstacle_state (Float32MultiArray)  /geofence_state 형식 (ship_direction 병합은 계약 단위 ①)

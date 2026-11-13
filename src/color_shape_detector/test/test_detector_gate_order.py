@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-검출기 3종(gate·turn·dock)의 color_callback 에서 모드 게이트가 **어떤 발행보다 먼저** 오는지
+검출기 4종(gate·turn·dock·avoid)의 color_callback 에서 모드 게이트가 **어떤 발행보다 먼저** 오는지
 정적 검사. ROS·OpenCV 없이 돈다 — 소스 파일을 ast 로만 읽는다(import 하지 않는다).
     python3 src/color_shape_detector/test/test_detector_gate_order.py
 
@@ -19,6 +19,7 @@ DETECTORS = (
     'basic_image_subscribergate.py',
     'basic_image_subscriberturn.py',
     'basic_image_subscriberdock.py',
+    'basic_image_subscriberavoid.py',     # 계약서_도리도리회피_v2_20261114 U3
 )
 
 _p = _t = 0
@@ -92,6 +93,10 @@ def test_dock_detector_gate_before_publish():
     _assert_gate_before_publish('basic_image_subscriberdock.py')
 
 
+def test_avoid_detector_gate_before_publish():
+    _assert_gate_before_publish('basic_image_subscriberavoid.py')
+
+
 def test_dock_branches_on_dock_frame_action():
     """dock 은 dock_frame_action 결과로 분기해야 한다 — 게이트 뒤, 첫 발행 앞에서 호출."""
     fname = 'basic_image_subscriberdock.py'
@@ -114,7 +119,7 @@ def test_dock_branches_on_dock_frame_action():
 
 
 def test_all_detectors_covered():
-    """세 검출기 파일이 모두 있다 — 이름이 바뀌면 이 검사가 조용히 빠지지 않게."""
+    """네 검출기 파일이 모두 있다 — 이름이 바뀌면 이 검사가 조용히 빠지지 않게."""
     for f in DETECTORS:
         assert os.path.isfile(os.path.join(PKG_DIR, f)), f"{f} 없음"
 

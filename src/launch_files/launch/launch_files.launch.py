@@ -22,7 +22,7 @@ from launch.actions import (IncludeLaunchDescription, TimerAction, DeclareLaunch
 from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from ament_index_python.packages import get_package_share_directory, PackageNotFoundError
+from ament_index_python.packages import get_package_prefix, get_package_share_directory, PackageNotFoundError
 import os
 from launch_ros.actions import Node
 
@@ -201,7 +201,7 @@ def _oak_camera(context):
         get_package_share_directory('depthai_ros_driver')
     except PackageNotFoundError:
         return [LogInfo(msg='⏭️ depthai_ros_driver 없음 — 카메라 노드 건너뜀 '
-                            '(sudo apt install ros-humble-depthai-ros). 검출기 3종은 영상 없이 침묵한다.')]
+                            '(sudo apt install ros-humble-depthai-ros). 검출기 4종은 영상 없이 침묵한다.')]
     oak_cfg = os.path.join(get_package_share_directory('launch_files'), 'config', 'oak_640x360_full.yaml')
     return [
         LogInfo(msg=f'OAK-1 PoE: depthai_ros_driver camera_node name=oak, 파일={oak_cfg} '
@@ -313,7 +313,7 @@ def _ship_avoid(context):
 
     🚨 원자 묶음: north_goal_angle FALLBACK_MODES (8,)(mode 5 폴백 뺌) · ssf_tools wp_nodes 5→ship_avoid ·
        test_avoid_mission 과 한 커밋. 하나만 되돌리면 mode 5 발행자가 2개(값 섞임)이거나 healthcheck 거짓 경보.
-    방식은 yaml avoid_mode(기본 'fused' — /avoid_zone·검출기 전엔 매 틱 20000) — 바꾸면 launch 재시작.
+    방식은 yaml avoid_mode(기본 'fused' — /avoid_zone true·검출기 하트비트가 없으면 매 틱 20000) — 바꾸면 launch 재시작.
     패키지가 없으면 **건너뛴다**(launch 전체를 세우지 않는다). 그때 mode 5 는 발행자 0 — ship_direction 이
     모드 전환 때 20000 으로 리셋하고 못 받은 동안 20000 을 쓰므로 주행은 같다. healthcheck 는 담당 침묵으로 알린다.
     """
@@ -330,6 +330,37 @@ def _ship_avoid(context):
             output='screen',
             parameters=[_pkg_yaml('ship_avoid')],
         ),
+    ]
+
+
+AVOID_DETECTOR_EXE = 'basic_image_subscriberavoid'
+
+
+def _avoid_detector(context):
+    """8) 도리도리 검출기 image_subscriber_avoid — mode 5 /avoid_detections (계약서_도리도리회피_v2_20261114 U3).
+
+    🚨 실행 파일이 없으면 **건너뛴다**(launch 전체를 세우지 않는다). git pull 만 하고 color_shape_detector 를
+       다시 빌드하지 않으면 install/lib 에 이 entry point 스크립트가 없다 → Node 를 그대로 두면
+       'executable not found' 로 대회 launch 가 통째로 죽는다(검출기 3종은 이미 설치돼 있어 해당 없음).
+       건너뛰면 mode 5 /avoid_detections 발행자 0 → ship_avoid 가 zone 안에서 DET_DEAD(20000 + ERROR) = lidar 와 같은 주행.
+    파라미터는 다른 검출기와 같은 vision.yaml(image_subscriber_avoid 절 + /** 공통).
+    """
+    try:
+        prefix = get_package_prefix('color_shape_detector')
+        share = get_package_share_directory('color_shape_detector')
+    except PackageNotFoundError:
+        return [LogInfo(msg='⏭️ color_shape_detector 없음 — 도리도리 검출기 건너뜀 (colcon build 확인).')]
+    exe = os.path.join(prefix, 'lib', 'color_shape_detector', AVOID_DETECTOR_EXE)
+    if not os.path.exists(exe):
+        return [LogInfo(msg=f'⏭️ {AVOID_DETECTOR_EXE} 실행 파일 없음({exe}) — '
+                            'color_shape_detector 재빌드 필요 — 건너뜀. '
+                            'mode 5 /avoid_detections 발행자 0 → ship_avoid 는 장애물 구간에서 20000 + ERROR(검출 침묵). '
+                            '고치기: cd ~/ros2_ws && colcon build --symlink-install '
+                            '--packages-select color_shape_detector')]
+    return [
+        Node(package='color_shape_detector', executable='basic_image_subscriberavoid',  # = AVOID_DETECTOR_EXE
+             name='image_subscriber_avoid',     # = vision.yaml 의 image_subscriber_avoid 절
+             output='screen', parameters=[os.path.join(share, 'config', 'vision.yaml')]),
     ]
 
 
@@ -563,7 +594,7 @@ def generate_launch_description():
         #      mode 3   → ship_turn(orbit 기본) / ship_back(search_behavior:=hold)
         #                            ← turn 검출기 (turn_color_mode3 부표) — 검출기 쪽은 스위치와 무관
         #      mode 7   → ship_dock  ← dock 검출기 (/image_angle)
-        #      mode 5   → ship_avoid (avoid_mode 기본 fused, 구역 신호·검출기 전엔 20000) ← 검출기 없음(U3 전까지) → 검출기 전부 비활성
+        #      mode 5   → ship_avoid (avoid_mode 기본 fused) ← avoid 검출기 (/avoid_detections, 계약서_도리도리회피_v2 U3)
         #      mode 8   → 순수 회피(담당 없음, north 20000 폴백) → 검출기 전부 비활성
         #
         #    🚨 dock 과 turn 은 둘 다 /image_angle 을 발행한다. 모드가 겹치면 한 토픽에
@@ -575,6 +606,10 @@ def generate_launch_description():
              name='image_subscriber_turn', output='screen', parameters=[VISION_CFG]),
         Node(package='color_shape_detector', executable='basic_image_subscriberdock',
              name='image_subscriber_dock', output='screen', parameters=[VISION_CFG]),
+        # mode 5 도리도리 검출기 — OAK 빨강·노랑 다중 윤곽 → /avoid_detections(프레임마다, N=0 하트비트).
+        #   camera_info 없으면 안 냄 + ERROR. 기본 avoid_mode fused 라 장애물 구간 다리(/avoid_zone true)에서 바로 쓰인다.
+        #   실행 파일이 없으면(pull 뒤 재빌드 안 함) _avoid_detector 가 LogInfo 만 내고 건너뛴다.
+        OpaqueFunction(function=_avoid_detector),
         # basic_image_subscriberhsv 는 튜닝 전용 — 대회 launch 에 넣지 않는다.
 
         # ============================================================
@@ -593,7 +628,7 @@ def generate_launch_description():
              parameters=[_pkg_yaml('ship_dock')]),
         # ship_turn·ship_back 은 search_behavior 인자에 따라 파라미터가 달라 _search_nodes 가 띄운다.
         OpaqueFunction(function=_search_nodes),
-        # 9b) ship_avoid — mode 5 담당(기본 avoid_mode fused, 구역 신호·검출기 전엔 20000). 패키지 없으면 _ship_avoid 가 건너뛴다.
+        # 9b) ship_avoid — mode 5 담당(기본 avoid_mode fused, 구역 신호·검출기 하트비트 없으면 20000). 패키지 없으면 _ship_avoid 가 건너뛴다.
         OpaqueFunction(function=_ship_avoid),
 
         # ============================================================

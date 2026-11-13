@@ -124,7 +124,8 @@
 #     mode 3   → ship_turn(active_wp_mode=3, search_behavior 기본 orbit) — hold 옵션이면 ship_back [2,3]
 #                 ⚠️ 검출기 turn 의 active_wp_modes [2, 3] 은 두 행동 모두 그대로. 3 의 미션 노드만 바뀐다.
 #     mode 7   → ship_dock  (active_wp_mode=7)
-#     mode 5   → ship_avoid(기본 avoid_mode lidar = 20000, 11-13 C2) — 검출기 전부 비활성(도리도리 검출기는 C6)
+#     mode 5   → ship_avoid(avoid_mode 기본 fused, 11-14) ← avoid 검출기 하나(image_subscriber_avoid, /avoid_detections,
+#                 계약서_도리도리회피_v2_20261114 U3). gate·turn·dock 은 비활성
 #     mode 8   → north 폴백(순수 회피) → 검출기 전부 비활성
 #
 # 🚨 dock 과 turn 은 둘 다 /image_angle 을 발행한다. 모드가 겹치면 한 토픽에 발행자 2개가
@@ -221,3 +222,27 @@ image_subscriber_dock:
     square_circularity_max: 0.60
     y_zone_lo: 0.15            # ⚠️ 실측 필요 — 거리별 표식 화면 높이로 확정
     y_zone_hi: 0.55
+
+# ------------------------------------------------------------------
+# 도리도리 회피 검출기 (계약서_도리도리회피_v2_20261114 U3) — mode 5 ship_avoid 의 눈.
+#   OAK 컬러에서 빨강(hsv.red 두 구간)·노랑(hsv.yellow) 윤곽을 **여러 개** 찾아 /avoid_detections 로
+#   [VER 1, STRIDE 6, N, N × (cls 0빨강/2노랑, 방위 좌+, v_norm, range_m NaN, conf, age_s)] 를 **프레임마다** 낸다.
+#   본 것이 없어도 N=0(하트비트). camera_info 가 없으면 안 내고 ERROR → ship_avoid 가 5 s 뒤 DET_DEAD 로 드러낸다.
+#   HSV 는 위 `/**` 공통값을 그대로 쓴다(단일 출처) — 여기 hsv.* 를 두면 이 노드만 다른 색을 본다.
+# 🚨 §7-2 안전 스위치: active_wp_modes [5] · debug_view false. 바꾸면 test_mode_gate.py LAYOUT 도 같이.
+#   권위 출처 = ship_avoid active_wp_mode(5). 이 검출기는 기본 avoid_mode fused 에서 바로 쓰인다(11-14 결정).
+# ------------------------------------------------------------------
+image_subscriber_avoid:
+  ros__parameters:
+    active_wp_modes: [5]
+    debug_view: false
+    camera_info_topic: "/oak/rgb/camera_info"   # OAK depthai name=oak (런북 10-31). K 의 fx·fy·cx·cy 로 방위·v_norm
+    # ⚠️ 실측 필요(아래 넷) — 장애물 구간 rosbag(/oak/rgb/image_raw + camera_info)으로 정한다(계약 F절 데이터 수집).
+    #   min_area_px: 공통 절 40.0 과 같게 시작. 낮은 빨간 부표가 먼 거리에서 이보다 작으면 놓친다.
+    #   min_solidity: gate require_shape=false 경로 기본과 같은 0.7 — 윤슬·물보라 조각을 거른다.
+    #   conf_full_area_px: conf = min(1, 면적/이 값) × solidity. 지금 ship_avoid 는 conf 를 안 읽는다(U5/U6 에서 씀).
+    #   max_detections: 한 프레임 최대 검출 수(면적 큰 순). 🚨 정수로 써라.
+    min_area_px: 40.0
+    min_solidity: 0.7
+    conf_full_area_px: 400.0
+    max_detections: 16

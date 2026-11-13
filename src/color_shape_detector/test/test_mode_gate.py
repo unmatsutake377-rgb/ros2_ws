@@ -102,6 +102,7 @@ LAYOUT = {
     "gate": ({0, 1}, {"/red_angle", "/green_angle"}),
     "turn": ({2, 3}, {"/image_angle", "/image_color"}),
     "dock": ({7}, {"/image_angle"}),
+    "avoid": ({5}, {"/avoid_detections"}),     # 계약서_도리도리회피_v2_20261114 U3 — mode 5 = ship_avoid 의 눈
 }
 
 
@@ -139,28 +140,61 @@ def test_layout_matches_mission_nodes():
         "ship_back": {2},            # active_wp_modes=[2] (/image_angle 소비)
         "ship_turn": {3},            # active_wp_mode=3   (/image_angle 소비)
         "ship_dock": {7},            # active_wp_mode=7   (/image_angle 소비)
+        "ship_avoid": {5},           # active_wp_mode=5   (/avoid_detections 소비, avoid_mode fused)
     }
     need_red = mission["ship_gate"]
     need_image = mission["ship_back"] | mission["ship_turn"] | mission["ship_dock"]
+    need_avoid = mission["ship_avoid"]
 
     have_red = LAYOUT["gate"][0]
     have_image = LAYOUT["turn"][0] | LAYOUT["dock"][0]
+    have_avoid = LAYOUT["avoid"][0]
 
     assert need_red <= have_red, \
         f"/red_angle 이 필요한 모드 {sorted(need_red - have_red)} 에 검출기가 없다"
     assert need_image <= have_image, \
         f"/image_angle 이 필요한 모드 {sorted(need_image - have_image)} 에 검출기가 없다"
+    assert need_avoid <= have_avoid, \
+        f"/avoid_detections 가 필요한 모드 {sorted(need_avoid - have_avoid)} 에 검출기가 없다"
 
 
 def test_avoidance_modes_have_no_detector():
-    """mode 5, 8 은 회피 구간 — 검출기를 돌릴 이유가 없다(8 = 담당 노드 없음, 5 = ship_avoid 기본 lidar).
+    """mode 8(토너먼트 회피)은 담당 노드가 없다(north 20000 폴백) — 검출기를 돌릴 이유가 없다(불필요 CPU).
 
-    5 의 담당은 11-13 부터 ship_avoid(계약서_도리도리회피_launch_20261113 C2)지만 기본 avoid_mode lidar 는
-    검출을 안 쓴다. 도리도리 검출기(image_subscriber_avoid, C6)를 넣을 때 이 테스트를 같이 고친다.
+    mode 5 는 U3(계약서_도리도리회피_v2_20261114)부터 avoid 검출기가 있다 → test_mode5_has_only_avoid_detector.
     """
-    for m in (5, 8):
-        for name, (modes, _t) in LAYOUT.items():
-            assert m not in modes, f"회피 모드 {m} 에 {name} 이 활성이다(불필요 CPU)"
+    for name, (modes, _t) in LAYOUT.items():
+        assert 8 not in modes, f"회피 모드 8 에 {name} 이 활성이다(불필요 CPU)"
+
+
+def test_mode5_has_only_avoid_detector():
+    """mode 5 = ship_avoid(계약서_도리도리회피_v2_20261114 U3). 검출기는 avoid 하나 — /avoid_detections 발행자 1개.
+
+    gate·turn·dock 이 mode 5 에 켜지면 /red_angle·/image_angle 을 받는 미션 노드가 없는데 CPU 만 쓴다.
+    """
+    active = sorted(name for name, (modes, _t) in LAYOUT.items() if 5 in modes)
+    assert active == ["avoid"], f"mode 5 검출기 {active} — avoid 하나여야 한다"
+    pubs = [name for name, (_m, topics) in LAYOUT.items() if "/avoid_detections" in topics]
+    assert pubs == ["avoid"], f"/avoid_detections 발행자 {pubs}"
+
+
+def _yaml_active_modes(section):
+    """vision.yaml `section:` 절의 active_wp_modes 정수 집합 (pyyaml 없이)."""
+    import re
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'config', 'vision.yaml')
+    txt = open(path, encoding='utf-8').read()
+    m = re.search(r'^' + re.escape(section) + r':\s*$(.*?)(?=^\S|\Z)', txt, re.M | re.S)
+    assert m, f"vision.yaml 에 {section}: 절이 없다"
+    a = re.search(r'^\s+active_wp_modes:\s*\[([^\]]*)\]', m.group(1), re.M)
+    assert a, f"{section}: active_wp_modes 없음"
+    return {int(x) for x in a.group(1).split(',') if x.strip()}
+
+
+def test_layout_matches_vision_yaml():
+    """🚨 §7-2: LAYOUT(이 표) = vision.yaml 각 절의 active_wp_modes. 표만 고치고 yaml 을 안 고치면 검사가 헛돈다."""
+    for name, (modes, _t) in LAYOUT.items():
+        got = _yaml_active_modes(f"image_subscriber_{name}")
+        assert got == modes, f"image_subscriber_{name}: vision.yaml {sorted(got)} ≠ LAYOUT {sorted(modes)}"
 
 
 def main():

@@ -16,6 +16,9 @@ mode 5 담당을 north_goal_angle 폴백에서 ship_avoid 로 옮긴 원자 묶�
   ⑤ ssf_tools(healthcheck) 의 mode 5 담당 = ship_avoid — launch 와 같은 커밋이어야 거짓 경보가 없다
   ⑥ /avoid_zone(Bool) 발행자는 north_goal_angle 하나, 구독자는 ship_avoid — 둘 다 RELIABLE
      (계약서_도리도리회피_v2_20261114 U2. 발행자가 둘이면 구역 신호가 섞이고, BEST_EFFORT 발행은 RELIABLE 구독과 안 맞는다)
+  ⑦ 도리도리 검출기(U3) Node 는 _avoid_detector 안에만 1개 — 실행 파일이 있으면 Node 1(vision.yaml),
+     없으면(pull 뒤 재빌드 안 함) Node 0 + LogInfo(launch 전체가 'executable not found' 로 죽지 않게).
+     /avoid_detections 발행자는 color_shape_detector 하나, 구독자는 ship_avoid — 둘 다 RELIABLE
 """
 
 import ast
@@ -310,3 +313,72 @@ def test_avoid_zone_subscriber_ship_avoid_reliable():
     _, typ, prof = subs[0]
     assert typ == 'Bool'
     assert prof is not None and 'ReliabilityPolicy.RELIABLE' in prof, prof
+
+
+# ------------------------------------------------------------ ⑦ 도리도리 검출기 가드 (U3)
+
+AVOID_EXE = 'basic_image_subscriberavoid'
+
+
+def test_avoid_detector_node_only_inside_guard():
+    assert len(_nodes(_tree(), AVOID_EXE)) == 1, '도리도리 검출기 Node 는 정확히 1개'
+    assert len(_nodes(_func(_tree(), '_avoid_detector'), AVOID_EXE)) == 1, 'Node 가 _avoid_detector 밖에 있다'
+    for exe in ('basic_image_subscribergate', 'basic_image_subscriberturn', 'basic_image_subscriberdock'):
+        assert len(_nodes(_tree(), exe)) == 1, f'{exe} Node 수가 바뀌었다'
+
+
+def _run_avoid_detector(tmp_path, exe_exists=True, missing_pkg=False):
+    """_avoid_detector 를 떼어 가짜 ament 조회로 실행. 접두 경로는 tmp_path(실행 파일을 만들거나 안 만든다)."""
+    tree = _tree()
+    const = [n for n in tree.body if isinstance(n, ast.Assign)
+             and any(isinstance(t, ast.Name) and t.id == 'AVOID_DETECTOR_EXE' for t in n.targets)]
+    assert len(const) == 1, 'AVOID_DETECTOR_EXE 상수 없음'
+    prefix = str(tmp_path / 'install' / 'color_shape_detector')
+    if exe_exists:
+        d = tmp_path / 'install' / 'color_shape_detector' / 'lib' / 'color_shape_detector'
+        d.mkdir(parents=True)
+        (d / AVOID_EXE).write_text('#!/usr/bin/env python3\n')
+
+    def lookup(kind):
+        def f(pkg):
+            if missing_pkg:
+                raise _NotFound(pkg)
+            assert pkg == 'color_shape_detector'
+            return prefix if kind == 'prefix' else prefix + '/share/color_shape_detector'
+        return f
+
+    ns = {'os': os, 'Node': _Node, 'LogInfo': _LogInfo, 'PackageNotFoundError': _NotFound,
+          'get_package_prefix': lookup('prefix'), 'get_package_share_directory': lookup('share')}
+    exec(compile(ast.Module(body=const + [_func(tree, '_avoid_detector')], type_ignores=[]), '<launch>', 'exec'), ns)
+    out = ns['_avoid_detector'](None)
+    return [a for a in out if isinstance(a, _Node)], [a for a in out if isinstance(a, _LogInfo)], prefix
+
+
+def test_avoid_detector_present_gives_one_node(tmp_path):
+    nodes, logs, prefix = _run_avoid_detector(tmp_path)
+    assert len(nodes) == 1 and logs == []
+    kw = nodes[0].kw
+    assert kw['package'] == 'color_shape_detector' and kw['executable'] == AVOID_EXE
+    assert kw['name'] == 'image_subscriber_avoid', '이름이 다르면 vision.yaml 절이 안 닿는다'
+    assert kw['parameters'] == [prefix + '/share/color_shape_detector/config/vision.yaml']
+
+
+def test_avoid_detector_missing_executable_skips(tmp_path):
+    """pull 만 하고 재빌드 안 함 → Node 0 + LogInfo(예외 없음 — launch 전체가 서지 않는다)."""
+    nodes, logs, _ = _run_avoid_detector(tmp_path, exe_exists=False)
+    assert nodes == [], '실행 파일이 없는데 Node 를 냈다(executable not found 로 launch 사망)'
+    assert len(logs) == 1 and '⏭️' in logs[0].msg and '재빌드' in logs[0].msg and AVOID_EXE in logs[0].msg
+
+
+def test_avoid_detector_missing_package_skips(tmp_path):
+    nodes, logs, _ = _run_avoid_detector(tmp_path, missing_pkg=True)
+    assert nodes == [] and len(logs) == 1 and '⏭️' in logs[0].msg
+
+
+def test_avoid_detections_single_publisher_and_subscriber_reliable():
+    pubs = _topic_sites('publisher', '/avoid_detections')
+    assert [p[0] for p in pubs] == ['color_shape_detector'], f'/avoid_detections 발행자 {pubs}'
+    assert pubs[0][1] == 'Float32MultiArray'
+    assert pubs[0][2] is not None and 'ReliabilityPolicy.RELIABLE' in pubs[0][2] and 'depth=10' in pubs[0][2]
+    subs = _topic_sites('subscription', '/avoid_detections')
+    assert [s[0] for s in subs] == ['ship_avoid'], f'/avoid_detections 구독자 {subs}'

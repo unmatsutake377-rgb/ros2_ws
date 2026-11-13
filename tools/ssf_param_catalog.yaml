@@ -83,6 +83,11 @@ groups:
          hint: "fused 일 때만: /avoid_detections 의 age_s(촬영→발행)가 이보다 큰 검출은 버림(WARN). 메시지는 살아 있음으로 침",
          advice: "기본 0.5 ⚠️ 검출기 지연 실측 전 가정값. 0 이하·숫자 아님은 ERROR + 0.5. 🚨 바꾸면 launch 재시작",
          change: measure, when: "현장 조정표에 기준 없음", revert: "0.5"}
+      - {pkg: color_shape_detector, section: image_subscriber_avoid, key: min_area_px, label: 도리도리 검출 최소 면적, unit: "px²", step: 5,
+         limits: [1.0, 5000.0],
+         hint: "mode 5 도리도리 검출기(/avoid_detections): 빨강·노랑 덩어리가 이보다 작으면 버림. 색 범위는 '색' 묶음의 hsv.red(두 구간)·hsv.yellow 를 같이 씀",
+         advice: "기본 40.0(비전 공통과 같게 시작) ⚠️ 실측 전 — 장애물 구간 rosbag 으로 정함. 올리면 먼 낮은 부표를 놓치고, 내리면 윤슬·물보라가 검출로 나감. 🚨 소수로(40.0). 바꾸면 launch 재시작",
+         change: measure, when: "현장 조정표에 기준 없음 — 장애물 구간 영상(rosbag)으로 실측해 정한다"}
       - {pkg: ship_direction, key: dwa_enabled, label: DWA 회피 켜기,
          hint: "동적 창 회피. 토너먼트 파일 true, 공통(종합임무) false",
          advice: "물 위 확인(시작 로그 'DWA 켬: 선체 <그 배>', 부표 접촉·갇힘 없음) 실패하면 끔",
@@ -186,7 +191,8 @@ groups:
          hint: "공지 색으로 교체 — 목록 = 이 검출기가 아는 색뿐(공지 색이 없으면 코드 수정 필요)", choices: [red, green, white, yellow, black],
          change: daily, when: "당일 공지 색으로 교체. 그 색의 HSV 범위도 같이 실측",
          advice: "2026 규정·OT(11-12): 빨강·초록 = 우현선회(시계) · 노랑·검정 = 좌현선회(반시계) — 방향은 이 색으로 정해진다. 검정이면 hsv.black 을 반드시 실측(기본 V 상한 40 은 자리표시자)"}
-      - {pkg: color_shape_detector, key: hsv.red, label: 빨강 HSV 범위, hint: "[H저,S저,V저,H고,S고,V고] ×1~2 구간 — 그 시각 실측값", advice: 🚨 정수 6개 또는 12개,
+      - {pkg: color_shape_detector, key: hsv.red, label: 빨강 HSV 범위, hint: "[H저,S저,V저,H고,S고,V고] ×1~2 구간 — 그 시각 실측값. mode 5 도리도리 검출기(장애물 빨강)도 늘 이 값을 쓴다",
+         advice: 🚨 정수 6개 또는 12개,
          change: daily, when: "공지 색일 때만, 경기 시각·그 해 방향에서 실측(basic_image_subscriberhsv, p 키 = yaml 줄)",
          check: "역광이면 V 하한, 광택이면 S 하한이 먼저 깨진다 · 하늘·물·선체가 같이 잡히지 않는지", revert: 저장소 값}
       - {pkg: color_shape_detector, key: hsv.green, label: 초록 HSV 범위, advice: 🚨 정수 6개,
@@ -199,6 +205,7 @@ groups:
          change: daily, when: "공지 색일 때만, 경기 시각·그 해 방향에서 실측(basic_image_subscriberhsv, p 키 = yaml 줄)",
          check: "역광이면 V 하한, 광택이면 S 하한이 먼저 깨진다 · 하늘·물·선체가 같이 잡히지 않는지", revert: 저장소 값}
       - {pkg: color_shape_detector, key: hsv.yellow, label: 노랑 HSV 범위, advice: 🚨 정수 6개,
+         hint: "mode 5 도리도리 검출기(장애물 구간 노란 부표)도 늘 이 값을 쓴다",
          change: daily, when: "공지 색일 때만, 경기 시각·그 해 방향에서 실측(basic_image_subscriberhsv, p 키 = yaml 줄)",
          check: "역광이면 V 하한, 광택이면 S 하한이 먼저 깨진다 · 하늘·물·선체가 같이 잡히지 않는지", revert: 저장소 값}
       - {pkg: color_shape_detector, key: hsv.black, label: 검정 HSV 범위, advice: "🚨 정수 6개. 색상이 없어 V 상한만으로 잡는다 — 기본 40 은 자리표시자",
