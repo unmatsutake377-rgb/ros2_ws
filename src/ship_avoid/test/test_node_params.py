@@ -40,7 +40,7 @@ NODE_NAME = 'ship_avoid'
 # AvoidParams 가 아닌 노드 자체 파라미터
 NODE_ONLY = {'active_wp_mode', 'period_sec', 'gps_stale_sec', 'yaw_stale_sec', 'detections_quiet_warn_sec',
              'lidar_forward_deg', 'pitch_sign', 'roll_sign', 'virtual_extra_m', 'avoid_mode', 'wp_mode_stale_sec',
-             'avoid_zone_stale_sec', 'det_max_age_s'}
+             'avoid_zone_stale_sec', 'det_max_age_s', 'imu_stale_sec'}
 
 
 def _tree():
@@ -124,6 +124,7 @@ def test_logic_fallback_defaults_equal_declared():
     assert dec['detections_quiet_warn_sec'] == ml.DEFAULT_DET_QUIET_SEC
     assert dec['avoid_zone_stale_sec'] == ml.DEFAULT_ZONE_STALE_SEC == 1.0
     assert dec['det_max_age_s'] == ml.DEFAULT_DET_MAX_AGE_S
+    assert dec['imu_stale_sec'] == ml.DEFAULT_IMU_STALE_SEC == 1.0
     assert _yaml_params()['avoid_mode'] == 'fused'
     assert ml.CANDIDATE_INVALID == 20000.0
     from ship_avoid import core
@@ -713,3 +714,60 @@ def test_node_scan_width_check_uses_obstacle_r(node_mod):
     _pose(node, clock)
     node.subs['/scan'](scan)
     assert len(node.core.buoys) == 1
+
+
+# ------------------------------------------------------------ W2b (계약서_흰부표_거리융합_v3 'W2 리뷰·검증 메모')
+
+def test_camera_mount_defaults_are_mast_design_values():
+    """⑧ 사용자 결정(11-14): OAK 수면 위 0.415 m·아래로 11° = 마스트 설계값(mast v2), 두 배 공통, 실측 아님.
+    AvoidParams == 선언 리터럴 == yaml 은 위 테스트가 묶고, 여기선 값과 '실측 아님' 표시."""
+    dec = {k: v for k, (v, _) in _declares().items()}
+    y = _yaml_params()
+    for key, want in (('cam_h', 0.415), ('cam_pitch_deg', 11.0)):
+        assert getattr(AvoidParams(), key) == dec[key] == y[key] == want, key
+    raw = open(YAML, encoding='utf-8').read().splitlines()
+    src = open(NODE_SRC, encoding='utf-8').read().splitlines()
+    for key in ('cam_h', 'cam_pitch_deg'):
+        assert '설계값(mast v2), 실측 아님' in next(ln for ln in raw if ln.strip().startswith(key + ':'))
+        assert '설계값(mast v2), 실측 아님' in next(ln for ln in src if f"declare_parameter('{key}'" in ln)
+
+
+def test_imu_status():
+    assert ml.imu_status(None, 100.0, 1.0) == ml.IMU_NEVER
+    assert ml.imu_status(99.5, 100.0, 1.0) == ml.IMU_OK
+    assert ml.imu_status(98.5, 100.0, 1.0) == ml.IMU_STALE
+
+
+def test_node_imu_stale_zeroes_attitude_and_warns_periodically(node_mod):
+    """⑦ 받다가 imu_stale_sec(1 s) 넘게 끊기면 피치·롤 0(장착값만) + 주기 WARN. 한 번도 못 받은 경우는 1회 WARN 만."""
+    mod, clock = node_mod
+    node = mod.ShipAvoid()
+    node.subs['/imu/data'](_Msg(orientation=_quat(3.0, 2.0)))
+    _step(node, clock)
+    assert node.core.active and abs(node.core.pitch - 2.0) < 1e-6 and not _warns(node, '묵음')
+    _step(node, clock, dt=0.5)
+    assert abs(node.core.pitch - 2.0) < 1e-6                         # 1 s 안 = 그대로
+    _step(node, clock, dt=0.7)
+    assert node.core.pitch == 0.0 and node.core.roll == 0.0
+    assert len(_warns(node, '/imu/data')) == 1 and _warns(node, '묵음')
+    node.subs['/imu/data'](_Msg(orientation=_quat(1.0, -1.0)))       # 돌아오면 다시 씀
+    _step(node, clock)
+    assert abs(node.core.pitch + 1.0) < 1e-6 and abs(node.core.roll - 1.0) < 1e-6
+    node = mod.ShipAvoid()                                           # 한 번도 못 받음(지금 배)
+    for _ in range(30):
+        _step(node, clock)
+    assert node.core.active and len(_warns(node, '/imu/data')) == 1 and not _warns(node, '묵음')
+
+
+def test_node_scan_marks_wide_clusters(node_mod):
+    """⑤ scan_cb 가 cluster_buoys(classify=True) 의 넓은 군집 표시를 코어로 넘긴다."""
+    mod, clock = node_mod
+    rng = [math.inf] * 720
+    for a in range(520, 553):                     # 16° @ 3 m — 흰 폭으로만 통과
+        rng[a] = 3.0
+    for a in range(600, 605):                     # 2° @ 2 m — 노랑 폭
+        rng[a] = 2.0
+    node = mod.ShipAvoid()
+    _pose(node, clock)
+    node.subs['/scan'](_Msg(ranges=rng, angle_min=math.radians(-180.0), angle_increment=math.radians(0.5)))
+    assert node.core.buoy_wide == [True, False]

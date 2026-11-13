@@ -17,11 +17,21 @@
 
   · --tall (계약서_흰부표_거리융합_v3_20261114 W3): 장애물 = 키 큰 흰 부표(반경 WHITE_R ⚠️ 가정) — LiDAR 세계에도
     넣는다(LiDAR·카메라 모두 보임). 검출 cls 0 = 흰. core 는 AvoidParams 기본(obstacle_requires_lidar true)으로 돈다.
-    --tall 이 없으면 예전 세계(빨간 낮은 장애물, LiDAR 불가시) — core 는 obstacle_requires_lidar false·obstacle_r = LOW_R.
+    --tall 이 없으면 옛 세계(빨간 낮은 장애물, LiDAR 불가시) — R1 폐기(11-14, 빨강도 LiDAR 에 보임)로 실제와 맞지 않는
+    비교용. core 는 obstacle_requires_lidar false·obstacle_r = LOW_R.
+  · W2b(같은 계약서): 카메라 = OAK 설계값(수면 위 CAM_H 0.415 m, 아래로 CAM_PITCH 11°, mast v2 — 실측 아님) +
+    파도 피치·롤(WAVE_SIG_*). /imu/data 는 발행되지 않으므로(11-14 결정) core 는 기본으로 파도를 모른다(--imu 로 가정 가능).
+    검출 바닥 행 = 부표 수면선 카메라 쪽 끝. 실제 검출기는 range_m 을 늘 NaN 으로 낸다 → 판정은 --no-rs(단안만).
+    전략별 난수는 crc32(전략 이름)로 고정 — PYTHONHASHSEED 와 무관하게 결정적.
+    --white-lidar-drop p: 스캔마다 흰 부표를 LiDAR 가 확률 p 로 놓친다(파도 — LiDAR 설계 +27 cm vs 흰 0.2~0.3 m ⚠️).
+    --seed0: 시드 범위 시작. 표의 막힘접촉 = core 가 안전 헤딩 탐색 막힘(best_ok None, DRIVE) 상태에서 낸 접촉 수,
+    트랙최대 = 한 구간(시드) 지도 트랙 수 최대값.
+    --events: core 접촉 이벤트 진단 CSV(L = 흰/낮은 장애물: 가장 가까운 트랙 n·red·확정·LiDAR 수, 그 자리 LiDAR 점·병합
+    의심, 그 장애물의 회피 반경·종류, 안전 헤딩 탐색이 막혔나 blocked = best_ok None).
 
 재현:  python3 tools/sim/doridori_sim.py            (기본 20 시드 × 폭 3/4 m × τ 0/0.5)
        python3 tools/sim/doridori_sim.py --seeds 5 --widths 3
-       python3 tools/sim/doridori_sim.py --tall --strats lidar_only core --seeds 10 --out-dir /tmp/w2
+       python3 tools/sim/doridori_sim.py --tall --no-rs --strats lidar_only core --out-dir /tmp/w2b --events   (W3 판정)
 의존: numpy, matplotlib. ROS 불필요. ⚠️ 모든 센서·부표 치수는 가정값 — 실측 후 교체.
 """
 import argparse
@@ -31,6 +41,7 @@ import math
 import os
 import random
 import sys
+import zlib
 
 import numpy as np
 
@@ -63,9 +74,11 @@ COURSE_L = 14.0
 # ── 센서 (⚠️ 가정) ──────────────────────────────────────────────
 CAM_HFOV = 80.32                  # vision.yaml hfov_deg (OAK 실측 전)
 CAM_MAX = 8.0
-CAM_H = 0.60                      # ⚠️ 카메라 높이
+CAM_H = 0.415                     # OAK 수면 위 높이 — 설계값(mast v2), 실측 아님 (= AvoidParams.cam_h 기본)
+CAM_PITCH = 11.0                  # OAK 아래로 숙인 각 — 설계값(mast v2), 실측 아님 (= AvoidParams.cam_pitch_deg 기본)
 CAM_VFOV = 55.0                   # ⚠️ 세로 화각
-CAM_DMIN = CAM_H / math.tan(math.radians(CAM_VFOV / 2.0))   # 근거리 사각 ≈ 1.15 m
+CAM_DMIN = CAM_H / math.tan(math.radians(CAM_VFOV / 2.0 + CAM_PITCH))   # 근거리 사각 ≈ 0.52 m(화면 아래 끝)
+WAVE_SIG_MOVE, WAVE_SIG_HOLD = 2.0, 0.5   # deg, 파도 피치·롤(주행·정지) ⚠️ 가정 — /imu/data 없으면 core 는 모른다
 CAM_LAT = 0.08                    # s, 촬영→처리 지연(보상 안 함)
 SIG_BEAR = 0.4                    # deg, 픽셀+IMU
 SIG_POS = 0.02                    # m, RTK fix
@@ -246,10 +259,12 @@ def plan_path(lm, yellow, width, x, y, goal, infl_low, infl_y):
 
 
 def run(seed, width, strat, tau=0.0, current=0.05, use_rs=True, infl_low=0.20, max_t=400.0,
-        vote=False, wall=False, spin_guard=False, guard_cont=False, sweep_margin=0.10, tall=False):
-    rng = random.Random(seed * 31 + hash(strat) % 997)
+        vote=False, wall=False, spin_guard=False, guard_cont=False, sweep_margin=0.10, tall=False, white_drop=0.0):
+    # 전략별 난수 소금 — hash(str) 는 PYTHONHASHSEED 마다 달라 결과가 비결정이었다(W2 리뷰) → crc32 로 고정.
+    rng = random.Random(seed * 31 + zlib.crc32(strat.encode("utf-8")) % 997)
     yellow, low = build_world(seed, width, obs_r=WHITE_R if tall else LOW_R)
     lidar_world = FastWorld(yellow + low if tall else yellow)   # 기본: LiDAR 는 노란부표만 / --tall: 흰 장애물도
+    drop_rng = random.Random(seed * 7907 + 17)                  # LiDAR 흰 탈락 전용(다른 난수 흐름과 분리)
     goal = (0.0, COURSE_L + 1.5)
     x, y, psi = 0.0, -1.5, 0.0
     v = w = 0.0
@@ -348,7 +363,8 @@ def run(seed, width, strat, tau=0.0, current=0.05, use_rs=True, infl_low=0.20, m
                 cand = rel % 360.0
         sd.candidate_callback(Float32(cand))
         # ── 스캔: LiDAR(노랑만) + 가상 장애물 min 병합 ──
-        scan = lidar_world.lidar_scan(x, y, psi, max_range=20.0)
+        scan = lidar_scan_drop(yellow, low, tall, white_drop, drop_rng, x, y, psi) if white_drop > 0 else \
+            lidar_world.lidar_scan(x, y, psi, max_range=20.0)
         if use_cam:
             vs = virtual_scan(lm, x, y, psi, infl_low, wall_pts)
             if vs is not None:
@@ -414,15 +430,64 @@ from ship_avoid.core import AvoidCore, AvoidParams, hull_clear as core_hull_clea
 from ship_avoid.lidar_buoys import cluster_buoys                                   # noqa: E402
 
 
+def lidar_scan_drop(yellow, low, tall, white_drop, rng, x, y, psi):
+    """LiDAR 한 스캔. --tall 이고 white_drop > 0 이면 흰 부표마다 이 스캔에서 확률 white_drop 으로 안 보인다
+    (파도 때 LiDAR 빔(설계 수면 +27 cm)이 흰 부표(수면 위 0.2~0.3 m 추정) 위로 지나감 — 11-14 1번배 추정, ⚠️ 가정)."""
+    objs = list(yellow)
+    if tall:
+        objs += [o for o in low if white_drop <= 0.0 or rng.random() >= white_drop]
+    return FastWorld(objs).lidar_scan(x, y, psi, max_range=20.0)
+
+
+def cam_project(D, beta_deg, pitch_deg, roll_deg, h=CAM_H):
+    """수면 위 점(수평 거리 D, 방위 β 좌 +)을 피치(아래 +)·롤(우현 아래 +) 카메라에 투영 → (bearing_left_deg, v_norm).
+    core._level_ray 의 역(롤 → 피치 순 회전의 역). 카메라 뒤면 None."""
+    b = math.radians(beta_deg)
+    r_, dn, fw = -D * math.sin(b), h, D * math.cos(b)
+    p, q = math.radians(pitch_deg), math.radians(roll_deg)
+    y1 = dn * math.cos(p) - fw * math.sin(p)
+    z = dn * math.sin(p) + fw * math.cos(p)
+    if z <= 1e-6:
+        return None
+    x = r_ * math.cos(q) + y1 * math.sin(q)
+    y = -r_ * math.sin(q) + y1 * math.cos(q)
+    return -math.degrees(math.atan(x / z)), y / z
+
+
+def _diag_contact(core, ox, oy, yellow, lidar_pts):
+    """L 이벤트 진단(W2b ④): 그 장애물에 가장 가까운 트랙(n·red·확정·LiDAR 수·거리), 그 자리 LiDAR 군집
+    (가장 가까운 점 거리, 그 점이 노란부표와도 0.6 m 안 = 병합 의심), 회피 탐색이 막혔나(best_ok None)."""
+    conf = core.map.confirmed()
+    tr = min(core.map.tracks, key=lambda q: math.hypot(q.x - ox, q.y - oy), default=None)
+    out = dict(tr_n=None, tr_red=None, tr_conf=None, tr_lidar=None, tr_d=None)
+    if tr is not None:
+        out.update(tr_n=tr.n, tr_red=tr.red, tr_conf=tr in conf, tr_lidar=tr.lidar,
+                   tr_d=round(math.hypot(tr.x - ox, tr.y - oy), 2))
+    lp = min(lidar_pts, key=lambda q: math.hypot(q[0] - ox, q[1] - oy), default=None)
+    out["lid_d"] = None if lp is None else round(math.hypot(lp[0] - ox, lp[1] - oy), 2)
+    out["lid_merged"] = (lp is not None and math.hypot(lp[0] - ox, lp[1] - oy) < 0.8 and
+                         any(math.hypot(lp[0] - yx, lp[1] - yy) < 0.6 for yx, yy, _ in yellow))
+    obs = [(q[0], q[1], q[2], q[3]) for q in core.obstacles()]
+    near = min(obs, key=lambda q: math.hypot(q[0] - ox, q[1] - oy), default=None)
+    out["obs_r"] = None if near is None or math.hypot(near[0] - ox, near[1] - oy) > 0.6 else near[2]
+    out["obs_kind"] = None if out["obs_r"] is None else near[3]
+    out["blocked"] = bool(getattr(core, "drive_blocked", False))
+    return out
+
+
 def run_core(seed, width, tau=0.0, current=0.05, use_rs=True, max_t=400.0, cam_dmin=None, params=None,
-             tall=False, cam_yaw_off=0.0):
+             tall=False, cam_yaw_off=0.0, imu=False, surface_bottom=True, white_drop=0.0):
     """S5 core — src/ship_avoid/core.py (실제 미션 노드 두뇌) 를 그대로 돌린다.
     칸 = 장애물 하나 통과. 가상 장애물(장애물+노란부표 벽)은 스캔에 min 병합(계약 단위 ①).
     tall: 흰 장애물이 LiDAR 에 보임 + core 기본 파라미터. 아니면 예전 세계 + obstacle_requires_lidar false.
-    cam_yaw_off: OAK→선체 yaw 장착 오차(deg, 검출 방위에 더함 — 1번배 약 −4° ⚠️)."""
+    cam_yaw_off: OAK→선체 yaw 장착 오차(deg, 검출 방위에 더함 — 1번배 약 −4° ⚠️).
+    카메라(W2b ⑧): 참 자세 = 장착 CAM_PITCH(설계 11°) + 파도 피치·롤(WAVE_SIG_*). imu False(기본 — /imu/data 는
+      발행되지 않는다, 11-14 결정)면 core 는 파도를 모르고 장착값만 쓴다. True 면 측정 = 파도 + N(0, 0.3°).
+    surface_bottom: 검출 바닥 행 = 부표 수면선의 카메라 쪽 끝(중심 거리 − 반경) — 실제 블롭 바닥과 같게."""
     rng = random.Random(seed * 31 + 4242)
     yellow, low = build_world(seed, width, obs_r=WHITE_R if tall else LOW_R)
     lidar_world = FastWorld(yellow + low if tall else yellow)
+    drop_rng = random.Random(seed * 7907 + 17)                  # LiDAR 흰 탈락 전용(다른 난수 흐름과 분리)
     if params is None:
         params = AvoidParams() if tall else AvoidParams(obstacle_requires_lidar=False, obstacle_r=LOW_R)
     goal = (0.0, COURSE_L + 1.5)
@@ -431,12 +496,13 @@ def run_core(seed, width, tau=0.0, current=0.05, use_rs=True, max_t=400.0, cam_d
     cur_dir = rng.uniform(0, 360)
     cvx, cvy = current * math.sin(math.radians(cur_dir)), current * math.cos(math.radians(cur_dir))
     yaw_bias = rng.gauss(0, 1.0)
-    dmin = CAM_DMIN if cam_dmin is None else cam_dmin
+    v_max = math.tan(math.radians(CAM_VFOV / 2.0))
     Clock.t = 0.0
     sd = SD.ShipDirection(); mc = MC.MotorController()
     sd.wp_mode_cb(Int32(AVOID_MODE))
     core = AvoidCore(params)
-    hits_low = hits_y = hits_spin = 0
+    hits_low = hits_y = hits_spin = hits_blk = 0
+    max_tracks = 0
     hit_flag = {}
     min_clear_low = math.inf
     out_ch = False
@@ -450,31 +516,43 @@ def run_core(seed, width, tau=0.0, current=0.05, use_rs=True, max_t=400.0, cam_d
         px, py = x + rng.gauss(0, SIG_POS), y + rng.gauss(0, SIG_POS)
         core.set_pose(t, px, py, yaw_m, yaw_rate=w + rng.gauss(0, 0.5))
         moving = abs(v) > 0.05 or abs(w) > 5.0
-        core.set_pitch(rng.gauss(0, 2.0 if moving else 0.5))       # 측정 피치 = 참값 0 + 잡음
-        core.set_roll(rng.gauss(0, 2.0 if moving else 0.5))        # 측정 롤 = 참값 0 + 잡음
-        raw = lidar_world.lidar_scan(x, y, psi, max_range=20.0)
+        ws = WAVE_SIG_MOVE if moving else WAVE_SIG_HOLD
+        wave_p, wave_r = rng.gauss(0, ws), rng.gauss(0, ws)          # 참 파도 자세(이 프레임)
+        if imu:
+            core.set_pitch(wave_p + rng.gauss(0, 0.3))
+            core.set_roll(wave_r + rng.gauss(0, 0.3))
+        raw = lidar_scan_drop(yellow, low, tall, white_drop, drop_rng, x, y, psi) if white_drop > 0 else \
+            lidar_world.lidar_scan(x, y, psi, max_range=20.0)
         bl = cluster_buoys(raw.tolist(), K.SCAN_ANGLE_MIN_DEG, K.SCAN_INC_DEG, buoy_r=params.buoy_r,
-                           width_r=max(params.buoy_r, params.obstacle_r))   # 노드 scan_cb 와 같게
-        core.set_buoys([(px + d * math.sin(math.radians(yaw_m - a)), py + d * math.cos(math.radians(yaw_m - a)))
-                        for a, d in bl])
+                           width_r=max(params.buoy_r, params.obstacle_r), classify=True)   # 노드 scan_cb 와 같게
+        lidar_pts = [(px + c[1] * math.sin(math.radians(yaw_m - c[0])),
+                      py + c[1] * math.cos(math.radians(yaw_m - c[0]))) + tuple(c[2:]) for c in bl]
+        core.set_buoys(lidar_pts)
         if not activated:
             activated = core.activate(t)
         # 카메라 → dets
         dets = []
         p_det = 0.9 if abs(w) < 5.0 else 0.5
-        for (ox, oy, _), is_low in [(o, True) for o in low] + [(o, False) for o in yellow]:
+        for (ox, oy, orad), is_low in [(o, True) for o in low] + [(o, False) for o in yellow]:
             d = math.hypot(ox - x, oy - y)
             rel = wrap180(psi - bearing(x, y, ox, oy))
-            if abs(rel) > CAM_HFOV / 2 or d > CAM_MAX or d < dmin or rng.random() > p_det:
+            if abs(rel) > CAM_HFOV / 2 or d > CAM_MAX or rng.random() > p_det:
                 continue
+            ds = max(0.05, d - orad) if surface_bottom else d
+            pr = cam_project(ds, rel, CAM_PITCH + wave_p, wave_r)
+            if pr is None:
+                continue
+            brg_c, v_norm = pr
+            if v_norm > v_max or (cam_dmin is not None and d < cam_dmin):
+                continue                                              # 화면 아래 끝 밖(근거리 사각)
             red = is_low if rng.random() > P_MISCLS else (not is_low)
-            v_norm = CAM_H / (d * math.cos(math.radians(rel)))       # 참 피치·롤 0: 수면 점의 정규 y = h / 앞거리
             rr = float("nan")
             if use_rs and abs(rel) <= RS_HFOV / 2 and d <= RS_MAX:
                 rr = d + rng.gauss(0, 0.0047 * d * d * 1.5)
-            dets.append((0 if red else 2, rel + rng.gauss(0, SIG_BEAR) + w * CAM_LAT + cam_yaw_off, v_norm, rr, 1.0))
+            dets.append((0 if red else 2, brg_c + rng.gauss(0, SIG_BEAR) + w * CAM_LAT + cam_yaw_off, v_norm, rr, 1.0))
         core.add_detections(t, px, py, yaw_m, dets)
         cand = core.step(t)
+        max_tracks = max(max_tracks, len(core.map.tracks))
         if cand is None:
             cand = CANDIDATE_INVALID_SIM
         sd.candidate_callback(Float32(cand))
@@ -491,8 +569,8 @@ def run_core(seed, width, tau=0.0, current=0.05, use_rs=True, max_t=400.0, cam_d
             mc.obstacle_callback(sd.pubs["/obstacle_distance_array"].last)
         mc.failsafe_callback(sd.pubs["/failsafe_level"].last)
         mc.timer_callback()
-        code = mc.pubs["Motor_run"].last.data; pr, pl = code // 10000, code % 10000
-        TR, TL = 1500 - pr, 1500 - pl
+        code = mc.pubs["Motor_run"].last.data; pr_, pl_ = code // 10000, code % 10000
+        TR, TL = 1500 - pr_, 1500 - pl_
         v_cmd, w_cmd = K.K_V * (TR + TL) / 2.0, K.K_W * (TL - TR)
         if tau > 0:
             v += (v_cmd - v) * DT / tau; w += (w_cmd - w) * DT / tau
@@ -510,11 +588,18 @@ def run_core(seed, width, tau=0.0, current=0.05, use_rs=True, max_t=400.0, cam_d
             min_clear_low = min(min_clear_low, c)
             if c < 0 and not hit_flag.get(("l", i)):
                 hit_flag[("l", i)] = True; hits_low += 1; hits_spin += int(spinning)
-                events.append(("L", round(t, 1), i, round(x, 2), round(y, 2), round(psi), cand, core.status()))
+                hits_blk += int(bool(getattr(core, "drive_blocked", False)) and core.state == "DRIVE")
+                ev = dict(kind="L", t=round(t, 1), i=i, x=round(x, 2), y=round(y, 2), psi=round(psi), cand=cand,
+                          status=core.status(), ox=round(ox, 2), oy=round(oy, 2))
+                ev.update(_diag_contact(core, ox, oy, yellow, lidar_pts))
+                events.append(ev)
         for i, (ox, oy, r) in enumerate(yellow):
             if abs(oy - y) <= 2.0 and hull_clear(x, y, psi, ox, oy, r) < 0 and not hit_flag.get(("y", i)):
                 hit_flag[("y", i)] = True; hits_y += 1; hits_spin += int(spinning)
-                events.append(("Y", round(t, 1), i, round(x, 2), round(y, 2), round(psi), cand, core.status()))
+                hits_blk += int(bool(getattr(core, "drive_blocked", False)) and core.state == "DRIVE")
+                events.append(dict(kind="Y", t=round(t, 1), i=i, x=round(x, 2), y=round(y, 2), psi=round(psi),
+                                   cand=cand, status=core.status(), ox=round(ox, 2), oy=round(oy, 2),
+                                   blocked=bool(getattr(core, "drive_blocked", False))))
     conf = core.map.confirmed()
     errs = [min(math.hypot(tr.x - ox, tr.y - oy) for tr in conf) for (ox, oy, _) in low if conf]
     errs = [e for e in errs if e < 0.6]
@@ -522,7 +607,7 @@ def run_core(seed, width, tau=0.0, current=0.05, use_rs=True, max_t=400.0, cam_d
     return dict(ok=ok, t=t, hits_low=hits_low, hits_y=hits_y, hits_spin=hits_spin, min_clear_low=min_clear_low,
                 map_err=(float(np.mean(errs)) if errs else float("nan")), missed=len(low) - len(errs),
                 phantom=phantom, n_dori=core.n_dori, spin_time=0.0, events=events, n_skip=core.n_skip,
-                out=out_ch, cells=core.cells)
+                out=out_ch, cells=core.cells, hits_blk=hits_blk, max_tracks=max_tracks)
 
 
 CANDIDATE_INVALID_SIM = INVALID
@@ -544,25 +629,46 @@ def main():
     ap.add_argument("--tall", action="store_true",
                     help="장애물 = 키 큰 흰 부표(LiDAR 에도 보임, 반경 WHITE_R ⚠️ 가정) — 계약서 v3 W3")
     ap.add_argument("--cam-yaw-off", type=float, default=0.0, help="core: OAK yaw 장착 오차 deg(검출 방위에 더함)")
+    ap.add_argument("--imu", action="store_true",
+                    help="core: /imu/data 가 있다고 가정(파도 피치·롤 측정). 기본 없음 = 실제(11-14 결정, 장착값만)")
+    ap.add_argument("--seed0", type=int, default=1, help="첫 시드(기본 1) — 시드 범위 = seed0 .. seed0+seeds−1")
+    ap.add_argument("--white-lidar-drop", type=float, default=0.0,
+                    help="--tall: 스캔마다 흰 부표를 LiDAR 가 놓칠 확률(파도 — LiDAR +27 cm vs 흰 0.2~0.3 m ⚠️)")
+    ap.add_argument("--match-deg", type=float, default=None, help="core: obstacle_match_deg 덮어쓰기")
+    ap.add_argument("--cam-yaw-corr", type=float, default=None, help="core: cam_yaw_offset_deg 덮어쓰기(보정)")
+    ap.add_argument("--events", action="store_true", help="core 접촉 이벤트 진단 CSV(doridori_events<tag>.csv)")
     ap.add_argument("--out-dir", default=os.path.join(HERE, "out"), help="CSV 출력 폴더(기본 tools/sim/out)")
     a = ap.parse_args()
+    core_params = None
+    if a.match_deg is not None or a.cam_yaw_corr is not None:
+        kw = {}
+        if a.match_deg is not None:
+            kw["obstacle_match_deg"] = a.match_deg
+        if a.cam_yaw_corr is not None:
+            kw["cam_yaw_offset_deg"] = a.cam_yaw_corr
+        core_params = AvoidParams(**kw) if a.tall else AvoidParams(obstacle_requires_lidar=False, obstacle_r=LOW_R, **kw)
     os.makedirs(a.out_dir, exist_ok=True)
     out_csv = os.path.join(a.out_dir, f"doridori_sim{a.tag}.csv")
     rows = []
     print(f"도리도리 회피 시뮬 — 시드 {a.seeds}, 폭 {a.widths}, τ {a.taus}, D455 {'없음' if a.no_rs else '있음'}, "
           f"{'대책 v3' if a.v3 else ('대책 v2' if a.v2 else '대책 없음 v1')}, 조류 {a.current} m/s, 낮은장애물 추가여유 {a.infl_low} m, 카메라 근거리 사각 {CAM_DMIN:.2f} m, "
-          f"{'흰 키 큰 장애물(LiDAR 보임, r ' + str(WHITE_R) + ')' if a.tall else '빨간 낮은 장애물(LiDAR 불가시)'}, OAK yaw 오차 {a.cam_yaw_off}°")
-    print(f"{'폭':>4} {'τ':>4} {'전략':<12} {'완주':>5} {'낮은접촉':>8} {'노랑접촉':>8} {'회전중접촉':>10} "
-          f"{'무접촉':>6} {'시간중앙':>8} {'>120s':>6} {'최소여유중앙':>12} {'지도오차':>8} {'놓침':>4} {'유령':>4} {'이탈':>4} {'스킵':>4}")
+          f"{'흰 키 큰 장애물(LiDAR 보임, r ' + str(WHITE_R) + ')' if a.tall else '빨간 낮은 장애물(LiDAR 불가시)'}, OAK yaw 오차 {a.cam_yaw_off}°, "
+          f"OAK h {CAM_H} m 피치 {CAM_PITCH}°(설계값), /imu/data {'있음' if a.imu else '없음(장착값만)'}, "
+          f"시드 {a.seed0}~{a.seed0 + a.seeds - 1}, 흰 LiDAR 탈락 {a.white_lidar_drop}, match {a.match_deg}, yaw 보정 {a.cam_yaw_corr}")
+    print(f"{'폭':>4} {'τ':>4} {'전략':<12} {'완주':>5} {('흰접촉' if a.tall else '낮은접촉'):>8} {'노랑접촉':>8} {'회전중접촉':>10} "
+          f"{'무접촉':>6} {'시간중앙':>8} {'>120s':>6} {'최소여유중앙':>12} {'지도오차':>8} {'놓침':>4} {'유령':>4} {'이탈':>4} {'스킵':>4}"
+          f" {'막힘접촉':>6} {'트랙최대':>6}")
     for W in a.widths:
         for tau in a.taus:
             for s in a.strats:
                 R = []
-                for seed in range(1, a.seeds + 1):
+                for seed in range(a.seed0, a.seed0 + a.seeds):
                     r = run_core(seed, W, tau=tau, current=a.current, use_rs=not a.no_rs, tall=a.tall,
-                                 cam_yaw_off=a.cam_yaw_off) if s == "core" else run(seed, W, s, tau=tau, current=a.current, use_rs=not a.no_rs, infl_low=a.infl_low,
+                                 cam_yaw_off=a.cam_yaw_off, imu=a.imu, params=core_params,
+                                 white_drop=a.white_lidar_drop) if s == "core" else run(seed, W, s, tau=tau, current=a.current, use_rs=not a.no_rs, infl_low=a.infl_low,
                             vote=a.v2 or a.v3, wall=a.v2 or a.v3, spin_guard=a.v2 or a.v3,
-                            guard_cont=a.v3, sweep_margin=0.25 if a.v3 else 0.10, tall=a.tall)
+                            guard_cont=a.v3, sweep_margin=0.25 if a.v3 else 0.10, tall=a.tall,
+                            white_drop=a.white_lidar_drop)
                     r.update(width=W, tau=tau, strat=s, seed=seed); R.append(r); rows.append(r)
                 n = len(R)
                 ts = sorted(r["t"] for r in R if r["ok"])
@@ -574,12 +680,23 @@ def main():
                       f" {sum(r['hits_spin'] for r in R) / n:10.2f} {sum(1 for r in R if r['hits_low'] + r['hits_y'] == 0):>6}"
                       f" {tm:8.0f} {sum(1 for r in R if r['t'] > 120):>6} {mcl:12.2f}"
                       f" {(np.mean(me) if me else float('nan')):8.2f} {sum(r['missed'] for r in R):>4} {sum(r['phantom'] for r in R):>4}"
-                      f" {sum(r['out'] for r in R):>4} {sum(r['n_skip'] for r in R):>4}")
+                      f" {sum(r['out'] for r in R):>4} {sum(r['n_skip'] for r in R):>4}"
+                      f" {sum(r.get('hits_blk', 0) for r in R):>6} {max(r.get('max_tracks', 0) for r in R):>6}")
     with open(out_csv, "w", newline="", encoding="utf-8") as f:
         keys = ["width", "tau", "strat", "seed", "ok", "t", "hits_low", "hits_y", "hits_spin", "min_clear_low",
-                "map_err", "missed", "phantom", "n_dori", "spin_time", "n_skip", "out"]
+                "map_err", "missed", "phantom", "n_dori", "spin_time", "n_skip", "out", "hits_blk", "max_tracks"]
         wr = csv.DictWriter(f, fieldnames=keys, extrasaction="ignore"); wr.writeheader(); wr.writerows(rows)
     print(f"CSV → {out_csv}")
+    if a.events:
+        ev_csv = os.path.join(a.out_dir, f"doridori_events{a.tag}.csv")
+        evs = [dict(width=r["width"], tau=r["tau"], strat=r["strat"], seed=r["seed"], **e)
+               for r in rows if r["strat"] == "core" for e in r["events"] if isinstance(e, dict)]
+        keys = []
+        for e in evs:
+            keys += [k for k in e if k not in keys]
+        with open(ev_csv, "w", newline="", encoding="utf-8") as f:
+            wr = csv.DictWriter(f, fieldnames=keys or ["width"]); wr.writeheader(); wr.writerows(evs)
+        print(f"이벤트 CSV → {ev_csv} ({len(evs)}건)")
 
 
 if __name__ == "__main__":

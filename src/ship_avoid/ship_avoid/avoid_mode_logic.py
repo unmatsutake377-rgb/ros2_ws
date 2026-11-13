@@ -37,7 +37,8 @@ avoid_mode (yaml 스위치, 기본 'fused')
 
 /avoid_detections (Float32MultiArray) 형식 — G1 (a)
   [VER=1, STRIDE=6, N, N × (cls, bearing_left_deg, v_norm, range_m, conf, age_s)]
-    cls 0 = 빨강(낮은 장애물), 2 = 노랑. bearing 좌 +(deg). v_norm = (v_bottom − cy)/fy.
+    cls 0 = 장애물(검출기 obstacle_color, 기본 흰 — 계약서_흰부표_거리융합_v3 W1), 2 = 노랑. bearing 좌 +(deg).
+    v_norm = (v_bottom − cy)/fy.
     range_m = D455 거리, 모르면 NaN. age_s = 촬영부터 발행까지 초.
   · VER·STRIDE·N·길이가 하나라도 안 맞거나 cls·bearing·v_norm·conf·age_s 가 유한수가 아니면 → 메시지 전체를 버린다
     (살아 있음으로도 안 친다 — 검출기 고장).
@@ -60,6 +61,7 @@ DEFAULT_WP_MODE_STALE_SEC = 1.0     # north /wp_mode 주기(period_sec 0.5)의 2
 DEFAULT_DET_QUIET_SEC = 5.0
 DEFAULT_ZONE_STALE_SEC = 1.0        # north /avoid_zone 주기(timer_cb, period_sec 0.5)의 2배 — /wp_mode 와 같은 기준
 DEFAULT_DET_MAX_AGE_S = 0.5         # ⚠️ 실측 필요(검출기 U3 지연). 근거는 ship_avoid.yaml 주석
+DEFAULT_IMU_STALE_SEC = 1.0         # /imu/data 이보다 묵으면 IMU 피치·롤 0(장착값만) — W2b ⑦
 
 DET_VER = 1
 DET_STRIDE = 6
@@ -78,6 +80,11 @@ ZONE_NEVER = 'NEVER'     # 한 번도 못 받음 (U2 north 발행 전에는 늘 
 ZONE_STALE = 'STALE'     # 받은 적은 있는데 묵음
 ZONE_FALSE = 'FALSE'
 ZONE_TRUE = 'TRUE'
+
+# /imu/data 상태 (imu_status 반환) — W2b ⑦
+IMU_NEVER = 'NEVER'      # 한 번도 못 받음 — 지금 배의 정상(iahrs 미발행, 11-14 결정): 활성 때 WARN 1회
+IMU_STALE = 'STALE'      # 받다가 끊김 → 피치·롤 0(장착값만) + 주기 WARN
+IMU_OK = 'OK'
 
 _FIXED = {LIDAR: CANDIDATE_INVALID, ZONE_OFF: CANDIDATE_INVALID,
           DET_WAIT: CANDIDATE_INVALID, DET_DEAD: CANDIDATE_INVALID}
@@ -123,6 +130,13 @@ def zone_status(zone, zone_t, now, zone_stale_sec):
     if not _fresh(zone_t, now, zone_stale_sec):
         return ZONE_STALE
     return ZONE_TRUE if zone else ZONE_FALSE
+
+
+def imu_status(imu_t, now, imu_stale_sec):
+    """/imu/data 상태 → IMU_NEVER / IMU_STALE / IMU_OK."""
+    if imu_t is None:
+        return IMU_NEVER
+    return IMU_OK if _fresh(imu_t, now, imu_stale_sec) else IMU_STALE
 
 
 def plan_tick(avoid_mode, wp_mode, wp_mode_t, active_wp_mode, now, wp_mode_stale_sec,

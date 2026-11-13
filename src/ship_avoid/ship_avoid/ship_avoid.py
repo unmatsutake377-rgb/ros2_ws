@@ -24,15 +24,19 @@ avoid_mode (yaml, 기본 'fused' — 사용자 결정 11-14): lidar = 담당 모
                                    wp_mode_stale_sec 넘게 묵으면 발행 중지(north 주기 0.5 s)
   /imu/yaw (Float64)               나침반 yaw(deg)
   /imu/data (sensor_msgs/Imu)      피치·롤(수면 교점 단안 거리). pitch_sign·roll_sign ⚠️ 실측.
-                                   한 번도 안 오면 장착값(cam_pitch_deg·cam_roll_deg)만 쓰고 활성 때 WARN
+                                   한 번도 안 오면 장착값(cam_pitch_deg·cam_roll_deg — 설계값 11°·0°)만 쓰고 활성 때
+                                   WARN 1회(지금 iahrs 는 발행 안 함 = 정상, 11-14 결정). 받다가 imu_stale_sec 넘게
+                                   끊기면 피치·롤 0(장착값만) + 5 s 주기 WARN
   /ublox_gps_node/fix (NavSatFix)  위치 → 첫 fix 기준 로컬 m
-  /scan (LaserScan)                부표 추출(lidar_buoys — 노랑 + 키 큰 흰 장애물, 폭 검사 반경 max(buoy_r, obstacle_r))
+  /scan (LaserScan)                부표 추출(lidar_buoys — 노랑 + 키 큰 흰 장애물, 폭 검사 반경 max(buoy_r, obstacle_r),
+                                   노랑 폭으론 안 되는 넓은 군집 표시 classify)
                                    — BEST_EFFORT depth 1
   /avoid_zone (Bool)               장애물 구간 다리(명세 8, north 발행 — U2). avoid_zone_stale_sec 넘게 묵으면 false 로 본다.
        north 가 0.5 s 마다 낸다 — /wp_mode 는 오는데 이게 한 번도 안 오면 north 버전·QoS 문제(WARN 1회).
   /avoid_detections (Float32MultiArray)  [VER=1, STRIDE=6, N, N × (cls, bearing_left_deg, v_norm, range_m, conf, age_s)]
        cls 0 = 장애물(검출기 설정 색, 기본 흰), 2 = 노랑. bearing 좌 +. v_norm = (v_bottom − cy)/fy.
-       range_m 모르면 NaN. cls 0 은 기본(obstacle_requires_lidar true) LiDAR 부표에 방위로 연관될 때만 지도에.
+       range_m 모르면 NaN(지금 검출기는 늘 NaN → 단안). cls 0 은 기본(obstacle_requires_lidar true) LiDAR 점에
+       방위·거리로 일대일 연관될 때만 지도에.
        age_s = 촬영부터 발행까지 초 — det_max_age_s 넘는 검출은 버린다(지금은 그 밖에 안 씀).
        N = 0 = 본 것 없음(살아 있음 하트비트). VER·STRIDE·길이 불일치 → 메시지 버림 + ERROR(살아 있음으로 안 침).
        예전 stride 5 형식(머리 없음)은 받지 않는다.
@@ -75,6 +79,7 @@ class ShipAvoid(Node):
         self.lidar_forward = float(self.declare_parameter('lidar_forward_deg', 80.0).value)
         self.pitch_sign = float(self.declare_parameter('pitch_sign', 1.0).value)    # ⚠️ 실측: 선수 숙임 = 양수가 되게
         self.roll_sign = float(self.declare_parameter('roll_sign', 1.0).value)      # ⚠️ 실측: 우현 아래 = 양수가 되게
+        imu_stale = self.declare_parameter('imu_stale_sec', 1.0).value                # 넘으면 피치·롤 0(장착값만)
         self.virtual_extra = float(self.declare_parameter('virtual_extra_m', 0.2).value)
         avoid_mode = self.declare_parameter('avoid_mode', 'fused').value              # 'lidar' | 'fused'
         wp_stale = self.declare_parameter('wp_mode_stale_sec', 1.0).value             # north /wp_mode 주기 0.5 s 의 2배
@@ -105,8 +110,9 @@ class ShipAvoid(Node):
         P.turn_in_m = float(self.declare_parameter('turn_in_m', 2.5).value)
         P.max_steer_deg = float(self.declare_parameter('max_steer_deg', 60.0).value)
         P.step_deg = float(self.declare_parameter('step_deg', 10.0).value)
-        P.cam_h = float(self.declare_parameter('cam_h', 0.6).value)                    # ⚠️ 실측 필요
-        P.cam_pitch_deg = float(self.declare_parameter('cam_pitch_deg', 0.0).value)    # ⚠️ 실측 필요
+        P.turn_gain_per_s = float(self.declare_parameter('turn_gain_per_s', 0.5).value)  # ⚠️ 실측(선회 응답)
+        P.cam_h = float(self.declare_parameter('cam_h', 0.415).value)                  # 설계값(mast v2), 실측 아님 ⚠️
+        P.cam_pitch_deg = float(self.declare_parameter('cam_pitch_deg', 11.0).value)   # 설계값(mast v2), 실측 아님 ⚠️
         P.cam_roll_deg = float(self.declare_parameter('cam_roll_deg', 0.0).value)      # ⚠️ 실측 필요
         P.cam_h_sigma_m = float(self.declare_parameter('cam_h_sigma_m', 0.05).value)   # ⚠️ 가정
         P.pixel_sigma = float(self.declare_parameter('pixel_sigma', 0.004).value)      # 정규 좌표(px/fy) ⚠️
@@ -120,7 +126,8 @@ class ShipAvoid(Node):
         P.red_ratio = float(self.declare_parameter('red_ratio', 0.6).value)
         P.wall_fill_step = float(self.declare_parameter('wall_fill_step', 0.15).value)
         P.buoy_match_m = float(self.declare_parameter('buoy_match_m', 0.35).value)
-        P.obstacle_match_deg = float(self.declare_parameter('obstacle_match_deg', 5.0).value)   # ⚠️ OAK yaw 오프셋
+        P.obstacle_match_deg = float(self.declare_parameter('obstacle_match_deg', 6.5).value)   # ⚠️ 근거 core 주석
+        P.cam_yaw_offset_deg = float(self.declare_parameter('cam_yaw_offset_deg', 0.0).value)   # ⚠️ 실측(배별)
         P.obstacle_requires_lidar = bool(self.declare_parameter('obstacle_requires_lidar', True).value)
 
         self.avoid_mode, err, note = ml.check_avoid_mode(avoid_mode)
@@ -138,6 +145,9 @@ class ShipAvoid(Node):
         if err:
             self._err_param(err)
         self.det_max_age, err = ml.check_stale_sec('det_max_age_s', det_max_age, ml.DEFAULT_DET_MAX_AGE_S)
+        if err:
+            self._err_param(err)
+        self.imu_stale, err = ml.check_stale_sec('imu_stale_sec', imu_stale, ml.DEFAULT_IMU_STALE_SEC)
         if err:
             self._err_param(err)
         self.core = AvoidCore(P)
@@ -213,11 +223,11 @@ class ShipAvoid(Node):
         p = self.core.p
         bl = cluster_buoys(list(msg.ranges), math.degrees(msg.angle_min), math.degrees(msg.angle_increment),
                            lidar_forward_deg=self.lidar_forward, buoy_r=p.buoy_r,
-                           width_r=max(p.buoy_r, p.obstacle_r))
+                           width_r=max(p.buoy_r, p.obstacle_r), classify=True)
         pts = []
-        for rel, d in bl:
+        for rel, d, wide in bl:
             wb = math.radians(self.yaw - rel)
-            pts.append((self.x + d * math.sin(wb), self.y + d * math.cos(wb)))
+            pts.append((self.x + d * math.sin(wb), self.y + d * math.cos(wb), wide))
         self.core.set_buoys(pts)
 
     def zone_cb(self, msg):
@@ -279,7 +289,12 @@ class ShipAvoid(Node):
     def _warn_no_imu(self):
         self.get_logger().warn(
             "ship_avoid: /imu/data 를 한 번도 못 받음 → 단안 거리에 장착 피치·롤(cam_pitch_deg·cam_roll_deg)만 씀 "
-            "(iahrs /imu/data 발행 확인)")
+            "(지금 iahrs 는 /imu/data 를 발행하지 않는다 — 정상, 파도 피치 미보정. 이 경고는 zone 구간마다 1회)")
+
+    def _warn_imu_stale(self, age):
+        self.get_logger().warn(
+            f"ship_avoid: /imu/data {age:.1f} s 묵음(> {self.imu_stale:g} s) → IMU 피치·롤 0, 장착값만 씀(iahrs 확인)",
+            throttle_duration_sec=5.0)
 
     def _info_state(self, s):
         self.get_logger().info(f"ship_avoid: {s}")
@@ -308,8 +323,19 @@ class ShipAvoid(Node):
         elif zs == ml.ZONE_STALE:
             self._err_zone_stale(now - self.zone_t)
 
+    def _check_imu(self, now):
+        """받다가 끊긴 /imu/data 는 묵은 자세로 쓰지 않는다(W2b ⑦): 피치·롤 0 + 코어가 돌 때 주기 WARN.
+        한 번도 못 받은 경우(지금 배 정상)는 활성 때 WARN 1회(_warn_no_imu)뿐."""
+        if ml.imu_status(self.imu_t, now, self.imu_stale) != ml.IMU_STALE:
+            return
+        self.core.set_pitch(0.0)
+        self.core.set_roll(0.0)
+        if self.was_active:
+            self._warn_imu_stale(now - self.imu_t)
+
     def timer_cb(self):
         now = time.monotonic()
+        self._check_imu(now)
         state = ml.plan_tick(self.avoid_mode, self.wp_mode, self.wp_mode_t, self.active_wp_mode, now,
                              self.wp_stale, self.last_det_t, self.active_since, self.det_quiet,
                              self.zone, self.zone_t, self.zone_stale)
