@@ -13,6 +13,9 @@
       예외(계약서_인식융합_20261112 §10 Q1 승인): distance_source 가 fill/fused 면 /fused_objects
       (perception_fusion: LiDAR·D455 뎁스 융합 물체 목록)의 거리를 쓴다 — 비전 방위 분기(_target) 한 곳만.
       fill = LiDAR 먼저·못 보면 fused, fused = fused 먼저·없으면 LiDAR, lidar = 옛 동작(구독도 없음).
+      기본 = fused(계약서_흰부표_거리융합_v3 G-9). perception_fusion 이 꺼졌거나 묵으면 LiDAR 거리만 + 5 s 주기
+      WARN(= lidar 와 같은 출력). 잘못된 값 → ERROR 후 lidar. hold_source=gps 의 mode 2 는 이 거리를 안 쓴다([6]).
+      LiDAR 우선(G-5): 고른 물체가 depth(D455 단독)이고 LiDAR 값이 있으면 LiDAR — depth 는 채우기 전용.
   [4] (계약 전체코스 §2-4·§2-5) 획득(SEARCH→HOLD)은 비전 색 확인으로만. LiDAR 전방 최근접은
       HOLD 유지 중 직전 비전 방위가 lost_sec 안일 때 보조로만(lidar_acquire=true 면 옛 동작).
       SEARCH 시간 초과로 DONE 래치하지 않는다(search_timeout_ends=true 면 옛 동작).
@@ -166,10 +169,11 @@ class ShipBack(Node):     # 🚨 작년엔 ShipTurn 이었다(복붙). 이름을
         # HOLD 중 비전 방위가 잠깐 끊길 때 LiDAR 전방 섹터 최근접을 부표로 본다(lidar_acquire 참조)
         self.front_sector_half_deg = float(self.declare_parameter('front_sector_half_deg', 30.0).value)
 
-        # 거리 출처(계약서_인식융합_20261112 §10). 코드 기본값 = yaml = 'fill'(대회값). 잘못된 값 → ERROR 후 lidar.
+        # 거리 출처(계약서_인식융합_20261112 §10). 코드 기본값 = yaml = 'fused'(계약서_흰부표_거리융합_v3 G-9,
+        #   11-14 — 옛 대회값 fill). 잘못된 값 → ERROR 후 lidar.
         #   lidar 면 /fused_objects 구독을 만들지 않는다(DDS 그래프까지 옛 동작). 구독보다 먼저 선언.
         self.distance_source, src_err = check_distance_source(
-            self.declare_parameter('distance_source', 'fill').value)
+            self.declare_parameter('distance_source', 'fused').value)
         self.fused_topic = str(self.declare_parameter('fused_topic', '/fused_objects').value)
         self.fused_stale_sec = float(self.declare_parameter('fused_stale_sec', 0.5).value)   # ⚠️ 실측
         self.fused_match_deg = float(self.declare_parameter('fused_match_deg', 5.0).value)   # ⚠️ 실측

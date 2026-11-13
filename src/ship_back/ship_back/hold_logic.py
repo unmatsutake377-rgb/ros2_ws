@@ -381,7 +381,8 @@ FUSED_COLOR_IDS = {'unknown': 0, 'red': 1, 'green': 2, 'white': 3, 'yellow': 4,
                    'black': 5, 'orange': 6, 'blue': 7}
 FUSED_SRC_IDS = {'lidar': 0, 'depth': 1, 'fused': 2, 'row': 3}
 # distance_source: lidar = /scan 만(구독도 안 만듦) / fill = LiDAR 먼저, None 일 때만 fused
-#   / fused = fused 먼저, 맞는 물체 없으면 LiDAR. (§10 Q2)
+#   / fused = fused 먼저, 맞는 물체 없으면 LiDAR. (§10 Q2) 단 fused 의 depth(D455 단독) 물체는 노드 LiDAR 가
+#   못 볼 때만 채운다(계약서_흰부표_거리융합_v3 G-5 'LiDAR 우선').
 DISTANCE_SOURCES = ('lidar', 'fill', 'fused')
 
 FusedObj = namedtuple('FusedObj', 'color_id bearing_deg range_m conf src_id')
@@ -508,11 +509,18 @@ def choose_distance(mode, lidar_d, fused_hit):
     fused_hit : match_fused 결과 (range_m, src_id). /fused_objects 가 stale·미수신이면 None 으로 넘긴다.
     출처 이름: 'lidar' = 이 노드의 /scan, 'fused:<src>' = /fused_objects 물체.
     lidar: LiDAR 그대로 / fill: LiDAR 먼저, None 일 때만 fused / fused: fused 먼저, None 이면 LiDAR.
+    🚨 fused 라도 고른 물체가 src depth(D455 단독)이고 노드 LiDAR 값이 있으면 LiDAR(계약서_흰부표_거리융합_v3
+       G-5 'LiDAR 우선' — depth 단독은 LiDAR 가 못 볼 때 채우기 전용). perception_fusion 의 LiDAR 가 stale
+       (flags bit1)이면 그 물체는 전부 src depth 라 같은 규칙으로 덮인다. src lidar·fused 는 그대로 fused 먼저.
+       출처 이름은 실제로 쓴 값('lidar')을 말한다.
     """
     lid = (lidar_d, 'lidar') if lidar_d is not None else (None, None)
     fus = (fused_hit[0], fused_src_label(fused_hit[1])) if fused_hit is not None else (None, None)
     if mode == 'fill':
         return lid if lid[0] is not None else fus
     if mode == 'fused':
-        return fus if fus[0] is not None else lid
+        depth_only = fused_hit is not None and fused_hit[1] == FUSED_SRC_IDS['depth']
+        if fus[0] is not None and not (depth_only and lid[0] is not None):
+            return fus
+        return lid if lid[0] is not None else fus
     return lid

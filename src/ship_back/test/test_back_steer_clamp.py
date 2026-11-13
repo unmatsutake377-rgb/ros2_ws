@@ -250,13 +250,19 @@ def test_forward_within_limit_unchanged():
         assert _one(out) == want, f"{a} → {out} (기대 {want})"
 
 
+def clamp_warns(n):
+    """클램프 WARN 만. 기본 distance_source=fused(11-14 G-9)라 /fused_objects 미수신 WARN(5 s 주기)이
+    같이 찍힌다 — 그건 test_fused_match 가 본다."""
+    return [ln for ln in warns(n) if '/fused_objects' not in ln[1]]
+
+
 def test_warn_only_when_clamped():
     n, _ = tick(180.0)
-    w = warns(n)
+    w = clamp_warns(n)
     assert len(w) == 1 and w[0][2].get('throttle_duration_sec') == 1.0, f"warns={w}"
     for a in (80.0, -80.0, 30.0):
         n, _ = tick(a)
-        assert warns(n) == [], f"{a}: warns={warns(n)}"
+        assert clamp_warns(n) == [], f"{a}: warns={clamp_warns(n)}"
 
 
 # ---------------- 다른 분기는 그대로

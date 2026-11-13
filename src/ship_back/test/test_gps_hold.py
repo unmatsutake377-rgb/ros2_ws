@@ -360,12 +360,37 @@ def _vision_signature(r):
 
 
 def test_vision_explicit_bit_identical_to_before():
-    r = _vision_scenario(_make(hold_source='vision', active_wp_modes=[2, 3]))
+    # 골든의 로그 수(WARN 121)는 distance_source=fill(11-13 기본) 로 뜬 값 — 그 설정을 명시한다.
+    #   기본 fused(11-14 G-9)의 출력 동일성은 아래 test_vision_default_fused_without_fusion_same_as_lidar.
+    r = _vision_scenario(_make(hold_source='vision', active_wp_modes=[2, 3], distance_source='fill'))
     out, states, lv = _vision_signature(r)
     assert out == VISION_GOLDEN_OUT, out
     assert states == VISION_GOLDEN_STATES, states
     # 시작 INFO 한 줄 내용만 늘었다(hold_source 표시) — 줄 수·심각도는 그대로
     assert lv == VISION_GOLDEN_LEVELS, lv
+
+
+def _levels_without_fused_warn(r):
+    lines = r.n.get_logger().lines
+    return {x: sum(1 for y, m in lines if y == x and not (y == 'WARN' and '/fused_objects' in m))
+            for x in ('INFO', 'WARN', 'ERROR')}
+
+
+def test_vision_default_fused_without_fusion_same_as_lidar():
+    """기본 distance_source=fused(계약서_흰부표_거리융합_v3 G-9) + perception_fusion 없음(/fused_objects 미수신)
+    → vision 전 시나리오의 발행값·상태가 lidar 와 같다(= 골든). 다른 점은 '미수신' WARN(실제 5 s 주기) 뿐."""
+    rd = _vision_scenario(_make(hold_source='vision', active_wp_modes=[2, 3]))
+    assert rd.n.distance_source == 'fused'
+    rl = _vision_scenario(_make(hold_source='vision', active_wp_modes=[2, 3], distance_source='lidar'))
+    out_d, st_d, _ = _vision_signature(rd)
+    out_l, st_l, _ = _vision_signature(rl)
+    assert out_d == out_l == VISION_GOLDEN_OUT, out_d
+    assert st_d == st_l == VISION_GOLDEN_STATES, st_d
+    assert _levels_without_fused_warn(rd) == _levels_without_fused_warn(rl), (
+        _levels_without_fused_warn(rd), _levels_without_fused_warn(rl))
+    # 이 스텁 로거는 throttle 인자를 버린다(5 s 주기는 test_fused_match 가 본다) — 내용만 확인.
+    fw = [m for y, m in rd.n.get_logger().lines if y == 'WARN' and '/fused_objects' in m]
+    assert fw and all('미수신' in m and 'LiDAR 거리만' in m for m in fw), fw[:3]
 
 
 def test_vision_no_goal_distance_subscription():
