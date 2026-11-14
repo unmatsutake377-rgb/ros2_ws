@@ -143,8 +143,7 @@ fi
 if [ -z "${SSF_TOURNAMENT_DRY:-}" ]; then
   setup=$(ls /opt/ros/*/setup.bash 2>/dev/null | tail -1)
   [ -n "$setup" ] && [ -f install/setup.bash ] || die "ROS(/opt/ros/*/setup.bash) 또는 install/setup.bash 없음 — colcon build 확인"
-  # ROS setup 스크립트는 정의 안 된 변수(AMENT_TRACE_SETUP_FILES 등)를 읽는다 → set -u 를 잠깐 끈다
-  # (11-14 1번배 실측: set -u 그대로면 "AMENT_TRACE_SETUP_FILES: unbound variable" 로 죽음. DRY 는 이 줄을 건너뛰어 못 잡았다).
+  # ROS setup 파일은 정의 안 된 변수(AMENT_TRACE_SETUP_FILES 등)를 읽는다 → set -u 면 여기서 죽는다(11-14 1번배·2번배 실측).
   set +u
   # shellcheck disable=SC1090
   source "$setup"
@@ -152,8 +151,10 @@ if [ -z "${SSF_TOURNAMENT_DRY:-}" ]; then
   source install/setup.bash
   set -u
 fi
+set +u
 # shellcheck disable=SC1091
 source tools/ssf_ros_net.sh && ssf_ros_net
+set -u
 
 args=("boat:=$boat" "course:=tournament" "waypoints_file:=$wp"
       "d455_depth:=false" "perception_fusion:=false" "$@")
