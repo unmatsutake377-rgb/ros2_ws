@@ -127,12 +127,18 @@ else
   fi
 fi
 
-# ⑦ IMU 방위 오프셋 — 정보만(막지 않는다). 1번배 IMU 는 USB 전원 순간 뱃머리 = 0° → 전원마다 다시 잡는다.
+# ⑦ 방위 — 정보만(막지 않는다). 11-15 부터 공통 기본 heading_source = gps_cog(계약서_GPS방위 보완 C):
+#    IMU 오프셋 불필요. 출발 위치에서 뱃머리를 결승 쪽 T1 로 겨눈 뒤 AUTO → 0.5 m/s 넘게 직진하면 '첫 COG 채택'.
+#    imu_relative 로 되돌린 노트북(보완 C-Q3)만 옛 안내: 1번배 IMU 는 USB 전원 순간 뱃머리 = 0° →
 #    출발 위치에서 tools/ssf_imu_aim.py 로 잡고 재시작(IMU USB 그대로). 값은 커밋하지 않는다.
 hy="$repo/src/ssf_heading/config/ssf_heading_${boat}.yaml"
+hsrc=$(sed -n 's/^[[:space:]]*heading_source:[[:space:]]*"\{0,1\}\([A-Za-z_]*\).*/\1/p' "$repo/src/ssf_heading/config/ssf_heading.yaml" 2>/dev/null | head -1)
 moff=$(sed -n 's/^[[:space:]]*mount_offset_deg:[[:space:]]*\([-+0-9.eE]*\).*/\1/p' "$hy" 2>/dev/null | head -1)
 minv=$(sed -n 's/^[[:space:]]*invert_yaw:[[:space:]]*\([A-Za-z]*\).*/\1/p' "$hy" 2>/dev/null | head -1)
-if [ "${moff:-0.0}" = "0.0" ] || [ "${moff:-0}" = "0" ]; then
+if [ "${hsrc:-?}" != "imu_relative" ]; then
+  echo "ℹ️  heading_source = ${hsrc:-?} — IMU 오프셋 불필요(ssf_imu_aim 안 씀). 출발 위치에서 뱃머리를 결승 쪽 T1 에 겨눈 뒤"
+  echo "    조종기 AUTO → 로그 'INIT_GOAL(…)' → 0.5 m/s 넘게 직진하면 'gps_cog: 첫 COG 채택'. 실내(GPS 없음)에선 /imu/yaw 가 안 나온다"
+elif [ "${moff:-0.0}" = "0.0" ] || [ "${moff:-0}" = "0" ]; then
   echo "⚠️  IMU mount_offset_deg = ${moff:-?} (invert_yaw ${minv:-?}) — 아직 안 잡았다. 띄운 뒤 출발 위치에서 뱃머리를 결승 쪽 T1 에"
   echo "    겨누고 다른 창에서: python3 tools/ssf_imu_aim.py $boat $lane → y → 이 launch Ctrl+C 한 번 → 다시 실행"
 else

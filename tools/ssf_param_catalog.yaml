@@ -245,10 +245,10 @@ groups:
     items:
       - {pkg: ssf_heading, key: heading_source, label: 방위 출처, choices: [imu_relative, gps_cog],
          hint: "imu_relative = IMU(자이로) + 장착 보정 / gps_cog = GPS 도플러 진행방향(≥0.5 m/s 전진만) + 후진·선회·직후에만 IMU 회전량(보완 B). 공통 파일 값 — 두 배 같이 바뀐다",
-         advice: "지금 공통 기본값 imu_relative(두 배 공통 gps_cog 전환 = 계약서_GPS방위_20261114 보완 C, 미승인). gps_cog 면 출발 때 뱃머리를 현재 WP 로 겨눈 뒤 AUTO(첫 COG 전엔 WP 방위를 씀). 실내(GPS 없음)에선 /imu/yaw 가 안 나온다. 🚨 바꾸면 launch 재시작(init 때 한 번 읽음)",
-         change: rarely, when: "현장 조정표에 기준 없음 — 계약서_GPS방위_20261114(본문 C1·보완 B·C): IMU 가 흐르는 날(11-14 전진 중 약 0.6°/s) gps_cog",
+         advice: "공통 기본값 gps_cog(두 배, 계약서_GPS방위_20261114 보완 C — 사용자 11-15). imu_relative 는 그 노트북만 되돌릴 때(보완 C-Q3, 커밋 안 함)·실내 벤치용. gps_cog 면 출발 때 뱃머리를 현재 WP 로 겨눈 뒤 AUTO(첫 COG 전엔 WP 방위를 씀). 실내(GPS 없음)에선 /imu/yaw 가 안 나온다. 🚨 바꾸면 launch 재시작(init 때 한 번 읽음)",
+         change: rarely, when: "현장 조정표에 기준 없음 — 계약서_GPS방위_20261114 보완 C: 기본 gps_cog. GPS 진행방향이 안 잡히는 배(순항 0.5 m/s 미만)·실내 벤치만 imu_relative",
          check: "시작 로그 'yaw_mux 시작: source=…' · gps_cog 면 'IMU 보조=on' · AUTO 뒤 'INIT_GOAL(…)' → 0.5 m/s 넘게 직진하면 '첫 COG 채택' · /heading_status gps_cog:OK/HOLD/ASSIST",
-         revert: "imu_relative"}
+         revert: "gps_cog"}
       - {pkg: ssf_heading, key: gps_cog_imu_assist, label: GPS 방위 IMU 회전량 보조, choices: [true, false],
          hint: "gps_cog 일 때만. 후진·제자리 선회·그 직후에 IMU 가 돈 각도(Δ)만 GPS 방위에 더한다. 다음 COG·마지막 기동 신호 뒤 10 s·IMU 끊김(0.5 s) 이면 끝",
          advice: "기본 true(보완 B 승인 11-15, 시뮬 도리도리 켬 완주 91→99). false = C1(기동 중 방위 얼림)과 같다. 🚨 바꾸면 launch 재시작",
