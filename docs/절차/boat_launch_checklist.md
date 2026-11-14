@@ -104,6 +104,11 @@ cd ~/ros2_ws && tools/ssf_tournament.sh A 1      # 1번배 레인 1 (2번배: to
 - 띄우기 전 확인: 배 = `~/.ssf_boat`, 대회 launch 중복 없음, 웨이포인트 2개 이상·전부 mode 8, `geofence_polygon` 채움(비면 경고 + `y` 입력해야 띄움).
 - `d455_depth:=false perception_fusion:=false` 를 붙인다(토너먼트는 전부 mode 8 이라 안 씀 → USB 허브 부담만 줄임). 다시 켜려면 뒤에 `d455_depth:=true perception_fusion:=true`. 다른 인자도 뒤에 붙이면 그대로 전달(예: `record:=false`).
 - 판 끝 = Ctrl+C 한 번 → 다음 판은 스크립트 다시 실행. 아래 T2~T6 로그 확인은 그대로 한다.
+- **IMU 방위 오프셋 — 출발 위치 겨누기(11-14)**: IMU USB 를 꽂은 뒤(경기 끝까지 안 뽑음) 스크립트로 띄우고 RC MANUAL, 출발 위치에서 뱃머리를 결승 쪽 T1 에 똑바로 겨눠 멈춘다 → 다른 창 `cd ~/ros2_ws && source install/setup.bash && python3 tools/ssf_imu_aim.py A 1` → 5 s 평균, `RTK 위치 → T1 방위 − yaw_raw` 를 `ssf_heading_<배>.yaml` 에 쓸지 y → launch Ctrl+C 한 번 → 스크립트 다시 → `/imu/yaw` 가 표시된 목표 ±2°.
+  - 33 m 에서 겨눈 선이 1 m 빗나가면 1.7°. 흔들림 > 1° 면 거부(배가 도는 중). 결승 WP 까지 10 m 미만이면 거부.
+  - 먼저 `invert_yaw` 확인: 뱃머리를 시계방향으로 돌리면 `/imu/yaw` 가 커져야 한다(작아지면 true). invert 가 틀리면 겨눈 방향만 맞고 나머지 방위는 거울로 틀린다.
+  - 값은 커밋하지 않는다(IMU 전원마다 다름). USB 재연결·재부팅 뒤엔 다시. 경기 직전 같은 겨누기로 한 번 더 확인(자이로 표류).
+  - 이 파일이 로컬로 바뀐 상태면 `git pull` 이 막힌다 → `git stash` → pull → `git stash pop`.
 
 **토너먼트 출발 전 체크**
 

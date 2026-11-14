@@ -115,6 +115,18 @@ else
   fi
 fi
 
+# ⑦ IMU 방위 오프셋 — 정보만(막지 않는다). 1번배 IMU 는 USB 전원 순간 뱃머리 = 0° → 전원마다 다시 잡는다.
+#    출발 위치에서 tools/ssf_imu_aim.py 로 잡고 재시작(IMU USB 그대로). 값은 커밋하지 않는다.
+hy="$repo/src/ssf_heading/config/ssf_heading_${boat}.yaml"
+moff=$(sed -n 's/^[[:space:]]*mount_offset_deg:[[:space:]]*\([-+0-9.eE]*\).*/\1/p' "$hy" 2>/dev/null | head -1)
+minv=$(sed -n 's/^[[:space:]]*invert_yaw:[[:space:]]*\([A-Za-z]*\).*/\1/p' "$hy" 2>/dev/null | head -1)
+if [ "${moff:-0.0}" = "0.0" ] || [ "${moff:-0}" = "0" ]; then
+  echo "⚠️  IMU mount_offset_deg = ${moff:-?} (invert_yaw ${minv:-?}) — 아직 안 잡았다. 띄운 뒤 출발 위치에서 뱃머리를 결승 쪽 T1 에"
+  echo "    겨누고 다른 창에서: python3 tools/ssf_imu_aim.py $boat $lane → y → 이 launch Ctrl+C 한 번 → 다시 실행"
+else
+  echo "ℹ️  IMU mount_offset_deg = $moff (invert_yaw ${minv:-?}) — 이번 IMU 전원에서 잡은 값인지 확인(USB 재연결·재부팅 뒤면 다시)"
+fi
+
 # ROS 환경 — 대화형 터미널이면 이미 돼 있어도 다시 읽어 무해. 두 배 섞임 방지 격리도 같은 값으로.
 if [ -z "${SSF_TOURNAMENT_DRY:-}" ]; then
   setup=$(ls /opt/ros/*/setup.bash 2>/dev/null | tail -1)
