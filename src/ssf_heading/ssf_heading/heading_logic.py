@@ -629,6 +629,32 @@ def gps_cog_status_text(trk, status, t):
     return f"{SRC_GPS_COG}:{status} rej={rej}{gate}"
 
 
+def init_goal_overdue_sec(source, status, boat_mode, auto_enter_t, t, warn_after_sec):
+    """
+    C-Q5 (계약서_GPS방위_20261114 보완 C 위험 1): AUTO 진입 뒤 첫 COG 없이 INIT_GOAL 이 오래 가나.
+    경고할 때면 AUTO 진입 뒤 경과 [s], 아니면 None. **부작용 없음** — 로그 판정만, 출력·상태 불변.
+
+    경고 조건 (전부):
+      · source == gps_cog          (imu_relative 등은 tp 를 안 쓴다)
+      · status == INIT_GOAL        (첫 COG 채택 뒤면 OK/HOLD/ASSIST — 안 냄. INIT 침묵은
+                                    yaw_mux '헤딩 없음' WARN 이 이미 드러낸다)
+      · boat_mode == AUTO 이고 auto_enter_t 있음
+            기준 시각 = 마지막 AUTO **진입** 시각(보완 A 의 초기화 시각과 같은 순간).
+            AUTO 를 한 번도 못 받았으면(미수신·MANUAL·WAIT 만) 안 낸다 — 부팅 기준이면 벤치·
+            MANUAL 대기 중 INIT_GOAL 은 정상인데 계속 울린다(거짓 경고). /boat_mode 미수신은
+            yaw_mux 의 별도 WARN(BOAT_MODE_WARN_AFTER_SEC)이 드러낸다.
+            AUTO 를 떠나 MANUAL/WAIT 이면 조종기가 몰고 있으니 안 낸다. 재진입마다 호출부가
+            auto_enter_t 를 새 진입 시각으로 바꾼다(= 기준 재설정).
+      · t − auto_enter_t > warn_after_sec (엄격히 큼)
+    """
+    if source != SRC_GPS_COG or status != ST_INIT_GOAL:
+        return None
+    if boat_mode != BOAT_MODE_AUTO or auto_enter_t is None:
+        return None
+    elapsed = t - auto_enter_t
+    return elapsed if elapsed > warn_after_sec else None
+
+
 # ---------------------------------------------------------------- 믹서
 class HeadingMux:
     """
