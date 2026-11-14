@@ -241,10 +241,31 @@ groups:
          change: daily, when: "대회장에서 공지된 장애물 구간 꼭짓점을 RTK FIXED 로 찍는다. 안쪽으로 줄이지 않는다",
          check: "시작 로그 '🚧 장애물 구간 경계 ON(n점) — 켜는 WP: …' 에 회피 WP 가 다 있고 3 m 미만 WARN 이 없는지 · 도킹 접근 WP 는 없어야 한다", revert: "[]"}
 
-  - name: 헤딩 (배마다 다름)
+  - name: 헤딩 (방위 출처 · 배마다 다름)
     items:
+      - {pkg: ssf_heading, key: heading_source, label: 방위 출처, choices: [imu_relative, gps_cog],
+         hint: "imu_relative = IMU(자이로) + 장착 보정 / gps_cog = GPS 도플러 진행방향(≥0.5 m/s 전진만) + 후진·선회·직후에만 IMU 회전량(보완 B). 공통 파일 값 — 두 배 같이 바뀐다",
+         advice: "지금 공통 기본값 imu_relative(두 배 공통 gps_cog 전환 = 계약서_GPS방위_20261114 보완 C, 미승인). gps_cog 면 출발 때 뱃머리를 현재 WP 로 겨눈 뒤 AUTO(첫 COG 전엔 WP 방위를 씀). 실내(GPS 없음)에선 /imu/yaw 가 안 나온다. 🚨 바꾸면 launch 재시작(init 때 한 번 읽음)",
+         change: rarely, when: "현장 조정표에 기준 없음 — 계약서_GPS방위_20261114(본문 C1·보완 B·C): IMU 가 흐르는 날(11-14 전진 중 약 0.6°/s) gps_cog",
+         check: "시작 로그 'yaw_mux 시작: source=…' · gps_cog 면 'IMU 보조=on' · AUTO 뒤 'INIT_GOAL(…)' → 0.5 m/s 넘게 직진하면 '첫 COG 채택' · /heading_status gps_cog:OK/HOLD/ASSIST",
+         revert: "imu_relative"}
+      - {pkg: ssf_heading, key: gps_cog_imu_assist, label: GPS 방위 IMU 회전량 보조, choices: [true, false],
+         hint: "gps_cog 일 때만. 후진·제자리 선회·그 직후에 IMU 가 돈 각도(Δ)만 GPS 방위에 더한다. 다음 COG·마지막 기동 신호 뒤 10 s·IMU 끊김(0.5 s) 이면 끝",
+         advice: "기본 true(보완 B 승인 11-15, 시뮬 도리도리 켬 완주 91→99). false = C1(기동 중 방위 얼림)과 같다. 🚨 바꾸면 launch 재시작",
+         change: rarely, when: "현장 조정표에 기준 없음 — IMU 가 끊기거나 회전량이 틀려 보이면(물 위 확인 1 미달) false",
+         check: "시작 로그 'IMU 보조=on/off' · 선회 중 /heading_status 'gps_cog:ASSIST d=…' · 'IMU 없음' WARN 이 없는지",
+         revert: "true"}
+      - {pkg: ssf_heading, key: gps_cog_min_speed_mps, label: GPS 방위 채택 최저 속도, unit: m/s, step: 0.1, limits: [0.3, 1.5],
+         hint: "gps_cog 일 때 이 속도 이상 전진 중인 GPS 진행방향만 방위로 쓴다",
+         advice: "0.5(본문 Q3, 두 배 같음 — baseline 11-15). 0.3 은 시뮬에서 나아지지 않음(오차 꼬리↑). 배가 이보다 느리면 첫 COG 가 영영 안 잡혀 출발 WP 방위로만 간다",
+         change: rarely, when: "현장 조정표에 기준 없음 — 바꾸지 않는다(순항 속도가 0.5 m/s 미만인 배는 imu_relative 로)",
+         check: "AUTO 뒤 몇 초 안에 '첫 COG 채택' INFO", revert: "0.5"}
+      - {pkg: ssf_heading, key: gps_cog_imu_assist_max_sec, label: IMU 보조 최대 지속, unit: s, step: 1.0, limits: [2.0, 30.0],
+         hint: "마지막 후진·선회 신호 뒤 이 시간이 지나도 COG 가 안 들어오면 그 값에서 얼린다(드리프트 누적 제한)",
+         advice: "10.0(보완 B-Q2). 시뮬 10/20/30 s 결과 같음",
+         change: rarely, when: "현장 조정표에 기준 없음 — 바꾸지 않는다", revert: "10.0"}
       - {pkg: ssf_heading, key: mount_offset_deg, label: IMU 장착 각도 보정, unit: "°", step: 0.5, limits: [-360.0, 360.0],
-         hint: /imu/yaw 가 진북 기준 뱃머리를 가리키게 맞추는 값, advice: "🚨 소수(37.0). 이 배 파일(_A/_B)에 저장",
-         change: measure, when: "배마다 실측해서 넣는다"}
-      - {pkg: ssf_heading, key: invert_yaw, label: IMU 회전 방향 뒤집기, hint: 시계방향으로 돌렸는데 값이 줄면 true,
+         hint: /imu/yaw 가 진북 기준 뱃머리를 가리키게 맞추는 값, advice: "🚨 소수(37.0). 이 배 파일(_A/_B)에 저장. heading_source gps_cog 에선 안 쓴다",
+         change: measure, when: "배마다 실측해서 넣는다(imu_relative 일 때만 의미)"}
+      - {pkg: ssf_heading, key: invert_yaw, label: IMU 회전 방향 뒤집기, hint: "시계방향으로 돌렸는데 값이 줄면 true. gps_cog 에선 IMU 보조 회전량(Δ)의 부호에 쓰인다",
          change: measure, when: "시계방향으로 돌려 보고 값이 줄면 true"}
