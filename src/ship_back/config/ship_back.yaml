@@ -20,6 +20,8 @@
     # vision = 부표 색(검출기 turn_color_mode2) + LiDAR 거리 능동 유지(위 hold_dist_m, 옛 동작). 롤백 = 이 한 줄.
     #   잘못된 값 → ERROR 후 gps. search_behavior:=hold 의 mode 3 은 이 값과 무관하게 vision.
     hold_source: "gps"
+    #   /buoy_bearings(남색 부표 다중 방위, image_subscriber_stop) 은 계약서 v2 (a) 부터 구독·저장만 한다 —
+    #   위 어느 hold_source 에서도 아직 쓰지 않는다(동작 불변). 사각형 위치유지는 변경 단위 (b). 새 파라미터 없음.
     # 🚨 gps_enter_m ≥ north arrive_radius_hold_modes_m(3.5), gps_resume_m ≥ gps_enter_m,
     #    gps_keep_radius_m > gps_resume_m — 어기면 시작 ERROR + 셋 모두 기본값.
     #    (enter < 3.5 면 20000 동안 north 가 3.5 m 안 dwell 0.5 s 로 WP 를 넘겨 정지 전에 끝난다)

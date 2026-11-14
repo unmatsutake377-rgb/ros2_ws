@@ -12,8 +12,9 @@
 
 지키는 것 (값은 비교하지 않는다 — 결정 ②: yaml 이 이긴다, 키·타입만 강제)
   T1 노드별 Node 정확히 1개 + parameters 첫 항목이 _pkg_yaml('<pkg>') = share/<pkg>/config/<pkg>.yaml
-     T1b OpaqueFunction 진입점(_yaw_mux·_course_check·_oak_camera·_d455_depth·_avoid_detector·_perception_fusion·
-         _search_nodes·_ship_avoid·_control_nodes·_blackbox)이 launch 목록에 각 1개
+     T1b OpaqueFunction 진입점(_yaw_mux·_course_check·_oak_camera·_d455_depth·_avoid_detector·_stop_detector·
+         _perception_fusion·_search_nodes·_ship_avoid·_control_nodes·_blackbox)이 launch 목록에 각 1개
+         _stop_detector(계약서 v2 위치유지 사각형 (a)): 실행 파일 있으면 Node 1(vision.yaml), 없으면 Node 0 + LogInfo
      T1~T4·T6 은 perception_fusion(계약서_인식융합_20261112)도 대조한다 — 미션 노드는 아니지만 같은 _pkg_yaml 패턴
      T1~T4·T6 은 ship_avoid(계약서_도리도리회피_launch_20261113 C2)도 대조한다 — _ship_avoid 가 띄운다
   T2 yaml 절 이름 = launch name= = 노드 super().__init__ 인자 (어긋나면 yaml 이 통째로 안 닿는다)
@@ -344,8 +345,8 @@ def test_t4_yaml_types_match_declared(name, yaml_path, source):
 
 # OpaqueFunction 으로 노드를 띄우는 진입점. 함수가 있어도 목록에서 빠지면 그 노드는 안 뜬다
 # (에러 없음) — T1·T5·T7 은 함수 안의 Node 만 보므로 따로 검사한다.
-OPAQUE_ENTRIES = ('_yaw_mux', '_course_check', '_oak_camera', '_d455_depth', '_avoid_detector', '_perception_fusion',
-                  '_search_nodes', '_ship_avoid', '_control_nodes', '_blackbox')
+OPAQUE_ENTRIES = ('_yaw_mux', '_course_check', '_oak_camera', '_d455_depth', '_avoid_detector', '_stop_detector',
+                  '_perception_fusion', '_search_nodes', '_ship_avoid', '_control_nodes', '_blackbox')
 
 
 def _launch_list():
@@ -381,6 +382,87 @@ def test_t1b_every_context_function_is_listed():
                      and [a.arg for a in n.args.args] == ['context'])
     assert ctx_fns == sorted(OPAQUE_ENTRIES), f'진입점 함수 {ctx_fns}'
     assert sorted(t for t in _opaque_targets()) == sorted(OPAQUE_ENTRIES)
+
+
+# ------------------------------------------------------------ T1b  _stop_detector 가드 (계약서 v2 (a))
+# 실행 파일이 없으면(pull 뒤 재빌드 안 함) Node 를 내지 않는다 — 'executable not found' 로 launch 전체가 죽지 않게.
+
+STOP_EXE = 'basic_image_subscriberstop'
+
+
+class _FakeNode:
+    def __init__(self, **kw):
+        self.kw = kw
+
+
+class _FakeLogInfo:
+    def __init__(self, msg):
+        self.msg = msg
+
+
+class _FakeNotFound(Exception):
+    pass
+
+
+def test_t1b_stop_detector_node_only_inside_guard():
+    assert len(_nodes(_tree(), STOP_EXE)) == 1, '위치유지 부표 검출기 Node 는 정확히 1개'
+    assert len(_nodes(_func(_tree(), '_stop_detector'), STOP_EXE)) == 1, 'Node 가 _stop_detector 밖에 있다'
+
+
+def _run_stop_detector(tmp_path, exe_exists=True, missing_pkg=False):
+    """_stop_detector 를 떼어 가짜 ament 조회로 실행. 접두 경로는 tmp_path(실행 파일을 만들거나 안 만든다)."""
+    tree = _tree()
+    const = [n for n in tree.body if isinstance(n, ast.Assign)
+             and any(isinstance(t, ast.Name) and t.id == 'STOP_DETECTOR_EXE' for t in n.targets)]
+    assert len(const) == 1, 'STOP_DETECTOR_EXE 상수 없음'
+    prefix = str(tmp_path / 'install' / 'color_shape_detector')
+    if exe_exists:
+        d = tmp_path / 'install' / 'color_shape_detector' / 'lib' / 'color_shape_detector'
+        d.mkdir(parents=True)
+        (d / STOP_EXE).write_text('#!/usr/bin/env python3\n')
+
+    def lookup(kind):
+        def f(pkg):
+            if missing_pkg:
+                raise _FakeNotFound(pkg)
+            assert pkg == 'color_shape_detector'
+            return prefix if kind == 'prefix' else prefix + '/share/color_shape_detector'
+        return f
+
+    ns = {'os': os, 'Node': _FakeNode, 'LogInfo': _FakeLogInfo, 'PackageNotFoundError': _FakeNotFound,
+          'get_package_prefix': lookup('prefix'), 'get_package_share_directory': lookup('share')}
+    exec(compile(ast.Module(body=const + [_func(tree, '_stop_detector')], type_ignores=[]), '<launch>', 'exec'), ns)
+    out = ns['_stop_detector'](None)
+    return [a for a in out if isinstance(a, _FakeNode)], [a for a in out if isinstance(a, _FakeLogInfo)], prefix
+
+
+def test_t1b_stop_detector_present_gives_one_node(tmp_path):
+    nodes, logs, prefix = _run_stop_detector(tmp_path)
+    assert len(nodes) == 1 and logs == []
+    kw = nodes[0].kw
+    assert kw['package'] == 'color_shape_detector' and kw['executable'] == STOP_EXE
+    assert kw['name'] == 'image_subscriber_stop', '이름이 다르면 vision.yaml 절이 안 닿는다'
+    assert kw['parameters'] == [prefix + '/share/color_shape_detector/config/vision.yaml']
+
+
+def test_t1b_stop_detector_missing_executable_skips(tmp_path):
+    """pull 만 하고 재빌드 안 함 → Node 0 + LogInfo(예외 없음 — launch 전체가 서지 않는다)."""
+    nodes, logs, _ = _run_stop_detector(tmp_path, exe_exists=False)
+    assert nodes == [], '실행 파일이 없는데 Node 를 냈다(executable not found 로 launch 사망)'
+    assert len(logs) == 1 and '⏭️' in logs[0].msg and '재빌드' in logs[0].msg and STOP_EXE in logs[0].msg
+
+
+def test_t1b_stop_detector_missing_package_skips(tmp_path):
+    nodes, logs, _ = _run_stop_detector(tmp_path, missing_pkg=True)
+    assert nodes == [] and len(logs) == 1 and '⏭️' in logs[0].msg
+
+
+def test_t1b_stop_detector_entry_point_and_yaml_section():
+    """setup.py entry point 와 vision.yaml 절이 launch 의 executable·name 과 같다(어긋나면 노드가 안 뜨거나 yaml 이 안 닿는다)."""
+    setup = open(os.path.join(SRC, 'color_shape_detector', 'setup.py'), encoding='utf-8').read()
+    assert f'"{STOP_EXE} = color_shape_detector.{STOP_EXE}:main"' in setup
+    vision = open(os.path.join(SRC, 'color_shape_detector', 'config', 'vision.yaml'), encoding='utf-8').read()
+    assert re.search(r'^image_subscriber_stop:\s*$', vision, re.M)
 
 
 # ------------------------------------------------------------ T5  [yaml, dict] — dict 맨 뒤

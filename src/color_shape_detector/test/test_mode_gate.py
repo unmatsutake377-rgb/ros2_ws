@@ -103,6 +103,7 @@ LAYOUT = {
     "turn": ({2, 3}, {"/image_angle", "/image_color"}),
     "dock": ({7}, {"/image_angle"}),
     "avoid": ({5}, {"/avoid_detections"}),     # 계약서_도리도리회피_v2_20261114 U3 — mode 5 = ship_avoid 의 눈
+    "stop": ({2}, {"/buoy_bearings"}),         # 계약서 v2 위치유지 사각형 (a) — mode 2 남색 부표(ship_back)
 }
 
 
@@ -145,10 +146,12 @@ def test_layout_matches_mission_nodes():
     need_red = mission["ship_gate"]
     need_image = mission["ship_back"] | mission["ship_turn"] | mission["ship_dock"]
     need_avoid = mission["ship_avoid"]
+    need_buoy = mission["ship_back"]  # /buoy_bearings 구독(계약서 v2 (a): 저장만, (b) 에서 사각형 FSM)
 
     have_red = LAYOUT["gate"][0]
     have_image = LAYOUT["turn"][0] | LAYOUT["dock"][0]
     have_avoid = LAYOUT["avoid"][0]
+    have_buoy = LAYOUT["stop"][0]
 
     assert need_red <= have_red, \
         f"/red_angle 이 필요한 모드 {sorted(need_red - have_red)} 에 검출기가 없다"
@@ -156,6 +159,8 @@ def test_layout_matches_mission_nodes():
         f"/image_angle 이 필요한 모드 {sorted(need_image - have_image)} 에 검출기가 없다"
     assert need_avoid <= have_avoid, \
         f"/avoid_detections 가 필요한 모드 {sorted(need_avoid - have_avoid)} 에 검출기가 없다"
+    assert need_buoy <= have_buoy, \
+        f"/buoy_bearings 가 필요한 모드 {sorted(need_buoy - have_buoy)} 에 검출기가 없다"
 
 
 def test_avoidance_modes_have_no_detector():
@@ -176,6 +181,19 @@ def test_mode5_has_only_avoid_detector():
     assert active == ["avoid"], f"mode 5 검출기 {active} — avoid 하나여야 한다"
     pubs = [name for name, (_m, topics) in LAYOUT.items() if "/avoid_detections" in topics]
     assert pubs == ["avoid"], f"/avoid_detections 발행자 {pubs}"
+
+
+def test_mode2_stop_alongside_turn_and_single_buoy_publisher():
+    """계약서 v2 (a): mode 2 = turn(/image_angle) + stop(/buoy_bearings). turn 의 [2, 3] 은 그대로.
+
+    /buoy_bearings 발행자는 stop 하나. stop 은 mode 2 만 — mode 3(탐색 선회)·8 에 켜지면 CPU 만 쓴다.
+    """
+    assert LAYOUT["turn"][0] == {2, 3}, "turn active_wp_modes [2, 3] 불변(계약서 v2)"
+    assert LAYOUT["stop"][0] == {2}
+    active2 = sorted(name for name, (modes, _t) in LAYOUT.items() if 2 in modes)
+    assert active2 == ["stop", "turn"], f"mode 2 검출기 {active2}"
+    pubs = [name for name, (_m, topics) in LAYOUT.items() if "/buoy_bearings" in topics]
+    assert pubs == ["stop"], f"/buoy_bearings 발행자 {pubs}"
 
 
 def _yaml_active_modes(section):

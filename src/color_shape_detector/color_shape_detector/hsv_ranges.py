@@ -60,6 +60,12 @@ class HsvRangeError(ValueError):
 #          검정은 색상(H)이 없다 → H 전체·S 전체·**V 상한**만으로 잡는다. V 상한 40 은 실측값이 아니라
 #          "검정이 덜 잡히는 쪽" 자리표시자다. ⚠️ 실측 필요 — basic_image_subscriberhsv 로 부표 V 최대와
 #          그늘진 물·선체 그림자·도크·타이어 같은 어두운 물체를 함께 재서 정한다. 오탐 위험이 가장 큰 색이다.
+#  navy  : 2026-11-15 추가(계약서 v2 위치유지 사각형 (a), Davidson 답 — 남색 부표 4개 5×5 m, wp_mode 2).
+#          검출기 image_subscriber_stop(/buoy_bearings) 이 쓴다. 남색 = 파랑대(H 100~130) + 고채도 + **저명도**.
+#          blue(V 50~255) 와 H·S 가 겹치지만 V 상한 140 이 맑은 하늘(≈V230)을 뺀다. 짙은 물·그늘(저명도 파랑)은
+#          이 범위 안일 수 있다. ⚠️ 실측 필요 — basic_image_subscriberhsv 로 부표·물·그늘을 함께 재서 정한다.
+#          부수효과: VALID_COLORS 에 들어가 avoid obstacle_color·hsv 튜닝 도구 허용색이 된다.
+#          dock target_color 는 dock_logic.VALID_COLORS 가 따로라 안 바뀐다(test_hsv_ranges HSV_ONLY).
 # 모양은 검출기가 쓰는 것과 같다: {색: [(lo, hi), …]}  — lo/hi 는 (H, S, V) 3원소.
 DEFAULT_RANGES = {
     "red":    [((0, 140, 80), (5, 255, 255)),
@@ -70,6 +76,7 @@ DEFAULT_RANGES = {
     "yellow": [((21, 120, 60), (37, 255, 255))],
     "blue":   [((100, 100, 50), (130, 255, 255))],
     "black":  [((0, 0, 0), (180, 255, 40))],      # ⚠️ 실측 필요 — V 상한 자리표시자
+    "navy":   [((100, 100, 30), (130, 255, 140))],  # ⚠️ 실측 필요 — 위치유지 남색 부표 임시값
 }
 
 # 버린 값 — 실외 튜닝 때 "이쪽이 맞았나" 를 비교할 수 있게 남긴다.

@@ -79,6 +79,11 @@
     #   검정은 색상이 없어 V 상한으로만 잡는다. 40 은 **자리표시자** — ⚠️ 실측 필요(부표 V 최대 +
     #   그늘진 물·그림자·도크·타이어 오탐 대조). turn_color_mode2·turn_color_mode3 가 black 일 때만 쓰인다.
     hsv.black: [0, 0, 0, 180, 255, 40]
+    # navy: 2026-11-15 추가(계약서 v2 위치유지 사각형 (a), 남색 부표 4개 5×5 m — wp_mode 2). image_subscriber_stop 이 쓴다.
+    #   파랑대 H 100~130 + S≥100 + **V≤140**(남색 = 저명도). hsv.blue 와 H·S 가 겹치지만 V 상한이 맑은 하늘(≈V230)을 뺀다.
+    #   ⚠️ 실측 필요 — 짙은 물·그늘·선체 그림자(저명도 파랑) 오탐 미확인. 부표와 물을 같이 재서 정한다.
+    #   부수효과: hsv 색 목록이 늘어 avoid obstacle_color·hsv 튜닝 도구가 navy 를 허용한다(dock target_color 는 그대로).
+    hsv.navy: [100, 100, 30, 130, 255, 140]
 
     # ------------------------------------------------------------------
     # 최소 면적·확인프레임 (2026-08-12 파라미터화)
@@ -121,6 +126,7 @@
 #   권위 출처는 미션 노드의 active_wp_mode 다 — 바꿀 땐 양쪽을 함께 바꿔라.
 #     mode 0,1 → ship_gate  (active_wp_modes=[0,1])
 #     mode 2   → ship_back  (active_wp_modes 기본 orbit [2], hold 옵션 [2,3])
+#                 ← turn(turn_color_mode2, /image_angle) + stop(buoy_color navy, /buoy_bearings — 계약서 v2 (a))
 #     mode 3   → ship_turn(active_wp_mode=3, search_behavior 기본 orbit) — hold 옵션이면 ship_back [2,3]
 #                 ⚠️ 검출기 turn 의 active_wp_modes [2, 3] 은 두 행동 모두 그대로. 3 의 미션 노드만 바뀐다.
 #     mode 7   → ship_dock  (active_wp_mode=7)
@@ -239,7 +245,7 @@ image_subscriber_avoid:
     debug_view: false
     camera_info_topic: "/oak/rgb/camera_info"   # OAK depthai name=oak (런북 10-31). K 의 fx·fy·cx·cy 로 방위·v_norm
     # ---- W1(11-14, G-1): mode 5 장애물 색 → /avoid_detections cls 0. 흰색 교체는 미션 5 장애물만(게이트·탐색·위치유지 색 그대로).
-    #   허용: red / green / white / orange / blue / black (hsv_ranges 가 아는 색 중 yellow 제외 — adl.OBSTACLE_COLORS).
+    #   허용: red / green / white / orange / blue / black / navy (hsv_ranges 가 아는 색 중 yellow 제외 — adl.OBSTACLE_COLORS).
     #   yellow(cls 2 노랑 부표·벽과 구분 불가)·모르는 색 → 부팅 ERROR + "white". 대소문자·앞뒤 공백 무관.
     #   롤백 = "red"(W1 전 동작). 🚨 바꾸면 launch 재시작.
     #   🚨 HSV 는 `/**` 의 hsv.<이 색> 을 그대로 쓴다. hsv.white 는 turn mode 2(turn_color_mode2 "white")·dock white 표식과
@@ -256,3 +262,33 @@ image_subscriber_avoid:
     min_solidity: 0.7
     conf_full_area_px: 400.0
     max_detections: 16
+
+# ------------------------------------------------------------------
+# 위치유지 남색 부표 검출기 (계약서 v2 위치유지 사각형 변경 단위 (a)) — mode 2 ship_back 의 눈(부표 4개 5×5 m).
+#   OAK 컬러에서 buoy_color(→ `/**` 의 hsv.<그 색>, 기본 navy) 윤곽을 **여러 개** 찾아 /buoy_bearings 로
+#   [VER 1, STRIDE 4, N, N × (bearing_left_deg 좌+, area_px, conf, age_s)] 를 **프레임마다** 낸다. 거리 없음(§3).
+#   본 것이 없어도 N=0(하트비트). camera_info 가 없으면 안 내고 ERROR. 방위는 camera_info fx·cx(hfov_deg 안 씀).
+#   윤곽·방위 로직은 avoid 검출기(avoid_detect_logic)와 같은 함수다.
+#   HSV 는 위 `/**` 공통값을 그대로 쓴다(단일 출처) — 여기 hsv.* 를 두면 이 노드만 다른 색을 본다.
+#   지금(a) 구독자 ship_back 은 저장만 한다 — 위치유지 동작(hold_source gps)은 그대로.
+#   mode 2 에서 turn 검출기도 같이 돈다(/image_angle) — 토픽이 달라 발행자 충돌 없음(test_mode_gate).
+# 🚨 §7-2 안전 스위치: active_wp_modes [2] · debug_view false. 바꾸면 test_mode_gate.py LAYOUT 도 같이.
+#   권위 출처 = ship_back active_wp_modes([2]).
+# ------------------------------------------------------------------
+image_subscriber_stop:
+  ros__parameters:
+    active_wp_modes: [2]
+    debug_view: false
+    camera_info_topic: "/oak/rgb/camera_info"   # OAK depthai name=oak (런북 10-31). K 의 fx·cx 로 방위
+    # 부표 색. 허용 = hsv_ranges 가 아는 색(red/green/white/orange/yellow/blue/black/navy). 모르는 색 → 부팅 ERROR + "navy".
+    #   대소문자·앞뒤 공백 무관. 🚨 바꾸면 launch 재시작.
+    buoy_color: "navy"
+    # ⚠️ 실측 필요(아래 넷) — 사각형 부표 rosbag(/oak/rgb/image_raw + camera_info)으로 정한다.
+    #   min_area_px: 공통 절 40.0 과 같게 시작. 먼 부표가 이보다 작으면 놓친다.
+    #   min_solidity: avoid 와 같은 0.7 — 윤슬·물보라 조각을 거른다.
+    #   conf_full_area_px: conf = min(1, 면적/이 값) × solidity.
+    #   max_detections: 한 프레임 최대 검출 수(면적 큰 순). 부표 4개 + 여유. 🚨 정수로 써라.
+    min_area_px: 40.0
+    min_solidity: 0.7
+    conf_full_area_px: 400.0
+    max_detections: 8

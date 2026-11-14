@@ -106,6 +106,13 @@ FUSED_QOS = QoSProfile(
     history=HistoryPolicy.KEEP_LAST,
     depth=1,
 )
+# /buoy_bearings 구독 QoS(계약서 v2 위치유지 사각형 (a)): 발행 RELIABLE 10(image_subscriber_stop) ↔ 구독 BEST_EFFORT d1
+#   — 최신 한 장만 쓴다(/fused_objects·/scan 과 같은 이유: 묵은 큐 burst 가 수신 시각을 속이지 않게).
+BUOY_QOS = QoSProfile(
+    reliability=ReliabilityPolicy.BEST_EFFORT,
+    history=HistoryPolicy.KEEP_LAST,
+    depth=1,
+)
 
 
 class ShipBack(Node):     # 🚨 작년엔 ShipTurn 이었다(복붙). 이름을 파일·패키지와 맞춘다.
@@ -213,6 +220,10 @@ class ShipBack(Node):     # 🚨 작년엔 ShipTurn 이었다(복붙). 이름을
         if self.hold_source == 'gps':
             # 새 토픽 아님 — north 발행(RELIABLE d2) 구독자 추가. 구독 RELIABLE d5(ship_dock 과 같음).
             self.create_subscription(Float32, '/goal_distance', self.goal_distance_cb, qos)
+        # 남색 부표 다중 방위(계약서 v2 위치유지 사각형 (a)) — image_subscriber_stop 발행, mode 2 프레임마다.
+        #   🚨 (a) 에선 **원시 저장만** 한다(파싱·검증·제어 사용 없음). 위치유지 동작은 hold_source 그대로 —
+        #   사각형 FSM 이 쓰는 것은 변경 단위 (b). 형식 [VER 1, STRIDE 4, N, (bearing_left_deg, area_px, conf, age_s)×N].
+        self.create_subscription(Float32MultiArray, '/buoy_bearings', self.buoy_bearings_cb, BUOY_QOS)
 
         # ---- 상태 ----
         self.wp_mode = -1
@@ -223,6 +234,8 @@ class ShipBack(Node):     # 🚨 작년엔 ShipTurn 이었다(복붙). 이름을
         self.fused_objs = None         # 마지막 정상 /fused_objects 물체 목록
         self.t_fused = None            # 그 수신 시각(monotonic) — stale 판정
         self.dist_src = None           # 마지막 거리 출처 이름('lidar'·'fused:depth' …) — 바뀔 때 INFO
+        self.buoy_bearings_raw = None  # 마지막 /buoy_bearings data(list, 검사 전 그대로). None = 한 번도 못 받음
+        self.t_buoy_bearings = None    # 그 수신 시각(monotonic) — (b) 의 stale 판정용
 
         self.state = "INIT"
         self.state_t = None
@@ -296,6 +309,12 @@ class ShipBack(Node):     # 🚨 작년엔 ShipTurn 이었다(복붙). 이름을
         with self.lock:
             self.latest_scan = msg
             self.t_scan = time.monotonic()
+
+    def buoy_bearings_cb(self, msg):
+        """/buoy_bearings 원시 저장만(계약서 v2 (a)). 파싱·형식 검사는 (b) 에서 쓸 때 — 지금은 어떤 출력도 안 바꾼다."""
+        with self.lock:
+            self.buoy_bearings_raw = list(msg.data)
+            self.t_buoy_bearings = time.monotonic()
 
     def fused_cb(self, msg):
         objs, err = parse_fused_objects(msg.data)

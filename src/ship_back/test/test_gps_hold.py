@@ -317,10 +317,11 @@ def _rle(seq):
 
 
 # ─────────── vision 명시 = 지금(수정 전) 동작과 출력 비트 동일 ───────────
-def _vision_scenario(node):
+def _vision_scenario(node, runner=_Run):
     """mode 2 → 3 를 오가는 vision 경로 전 분기(전진·클램프·후진·데드밴드·LiDAR 보조·놓침 창·성공·
-    2→2 래치·2→3 리셋·unknown 포기·3→3 래치). GPS 거리도 같이 넣는다 — vision 이면 무시돼야 한다."""
-    r = _Run(node)
+    2→2 래치·2→3 리셋·unknown 포기·3→3 래치). GPS 거리도 같이 넣는다 — vision 이면 무시돼야 한다.
+    runner = _Run(기본) 또는 _RunBB(/buoy_bearings 도 매 틱 넣음 — 동작 불변 확인)."""
+    r = runner(node)
     ring6 = _Scan(ring=6.0)
     r.tick(mode=2, scan=ring6, goal=0.0)                      # 진입(직전 WP 0 m 가 와도)
     r.run(9, scan=ring6, goal=1.0)                            # INIT 1 s
@@ -446,6 +447,69 @@ def test_cross_package_north_radius_le_gps_enter():
     north_r = float(next(iter(raw.values()))['ros__parameters']['arrive_radius_hold_modes_m'])
     assert north_r == NORTH_ARRIVE_HOLD_M, (north_r, NORTH_ARRIVE_HOLD_M)
     assert north_r <= y['gps_enter_m'] <= y['gps_resume_m'] < y['gps_keep_radius_m'], (north_r, y)
+
+
+# ─────────── /buoy_bearings 구독·저장만 (계약서 v2 위치유지 사각형 (a)) — 동작 불변 ───────────
+class _RunBB(_Run):
+    """틱마다 /buoy_bearings(남색 부표 4개 + 형식 깨진 값 섞어)를 먼저 넣는 _Run. 출력은 _Run 과 같아야 한다."""
+
+    MSGS = ([1.0, 4.0, 4.0, 20.0, 900.0, 1.0, 0.05, 5.0, 400.0, 0.9, 0.05, -10.0, 300.0, 0.8, 0.05,
+             -25.0, 100.0, 0.3, 0.05], [1.0, 4.0, 0.0], [9.0, 9.0], [])
+
+    def tick(self, **kw):
+        CLOCK.t = self.t()
+        self.n.buoy_bearings_cb(_Msg(list(self.MSGS[self.k % len(self.MSGS)])))
+        super().tick(**kw)
+
+
+def _bb_subs(n):
+    return [s for s in n.subs if s[1] == '/buoy_bearings']
+
+
+def test_buoy_bearings_subscribed_best_effort_d1_both_sources():
+    for src in ('gps', 'vision'):
+        n = _make(hold_source=src)
+        subs = _bb_subs(n)
+        assert len(subs) == 1, (src, n.subs)
+        assert subs[0][3].kw == dict(reliability='BEST_EFFORT', history='KEEP_LAST', depth=1), subs[0][3].kw
+        assert subs[0][2] == n.buoy_bearings_cb
+        assert n.buoy_bearings_raw is None and n.t_buoy_bearings is None, '못 받았으면 None(지어내지 않음)'
+
+
+def test_buoy_bearings_cb_stores_raw_and_monotonic_time():
+    n = _make()
+    CLOCK.t = T0 + 3.25
+    n.buoy_bearings_cb(_Msg((1.0, 4.0, 1.0, 12.5, 300.0, 0.7, 0.05)))
+    assert n.buoy_bearings_raw == [1.0, 4.0, 1.0, 12.5, 300.0, 0.7, 0.05] and n.t_buoy_bearings == T0 + 3.25
+    CLOCK.t = T0 + 4.0
+    n.buoy_bearings_cb(_Msg([7.0, 7.0]))                 # 형식이 깨져도 검사 없이 그대로(파싱은 (b))
+    assert n.buoy_bearings_raw == [7.0, 7.0] and n.t_buoy_bearings == T0 + 4.0
+    assert _lines(n, 'ERROR') == [] and _lines(n, 'WARN') == []
+    src = open(NODE_SRC, encoding='utf-8').read()
+    assert 'time.time(' not in src
+
+
+def test_buoy_bearings_does_not_change_vision_output():
+    """vision 골든 시나리오에 /buoy_bearings 를 매 틱 넣어도 발행값·상태·로그 수가 그대로."""
+    r = _vision_scenario(_make(hold_source='vision', active_wp_modes=[2, 3], distance_source='fill'), _RunBB)
+    out, states, lv = _vision_signature(r)
+    assert out == VISION_GOLDEN_OUT and states == VISION_GOLDEN_STATES and lv == VISION_GOLDEN_LEVELS
+
+
+def test_buoy_bearings_does_not_change_gps_output():
+    """기본 gps 경로 같은 입력 — /buoy_bearings 유무와 무관하게 발행값·상태가 같다."""
+    def scenario(runner):
+        r = runner(_make())
+        vis = dict(angle=15.0, scan=_Scan(ring=1.2))
+        r.tick(mode=2, goal=0.1, **vis)
+        r.run(11, goal=20.0, **vis)
+        r.run(30, goal=10.0, **vis)
+        r.run(65, goal=3.4, **vis)
+        r.run(10, goal=4.4, **vis)
+        return r
+    a, b = scenario(_Run), scenario(_RunBB)
+    assert a.out == b.out and a.states == b.states, (a.out, b.out)
+    assert b.n.state == 'DONE' and b.n.buoy_bearings_raw is not None
 
 
 # ─────────── gps 노드 동작 ───────────

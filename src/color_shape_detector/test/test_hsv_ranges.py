@@ -160,11 +160,61 @@ class TestSyncWithVisionYaml(unittest.TestCase):
         self.assertIsNotNone(m, f"vision.yaml 에 hsv.{color} 가 없다")
         return [int(x) for x in m.group(1).replace(" ", "").split(",") if x]
 
-    def test_일곱_색_모두_yaml과_같다(self):
-        self.assertEqual(len(VALID_COLORS), 7)   # 2026-11-11 black 추가
+    def test_여덟_색_모두_yaml과_같다(self):
+        self.assertEqual(len(VALID_COLORS), 8)   # 2026-11-11 black, 2026-11-15 navy 추가
         for c in VALID_COLORS:
             self.assertEqual(self._yaml_flat(c), default_flat(c),
                              f"hsv.{c}: vision.yaml 과 hsv_ranges.DEFAULT_RANGES 가 어긋났다")
+
+
+class TestNavy(unittest.TestCase):
+    """위치유지(wp_mode 2) 남색 부표 — 계약서 v2 (a). 값은 임시값(⚠️ 실측 필요)이라 대역·동기만 검사한다."""
+
+    def test_navy가_유효색이다(self):
+        self.assertIn("navy", VALID_COLORS)
+
+    def test_navy_값(self):
+        self.assertEqual(default_flat("navy"), [100, 100, 30, 130, 255, 140])
+
+    def test_navy는_파랑대_저명도다(self):
+        """OpenCV H 0~179 에서 파랑 ≈ 120. 남색 = H 100~130 안 + V 상한이 맑은 하늘(≈V230) 아래."""
+        for lo, hi in DEFAULT_RANGES["navy"]:
+            self.assertGreaterEqual(lo[0], 100)
+            self.assertLessEqual(hi[0], 130)
+            self.assertLessEqual(lo[0], hi[0], "남색은 색상환 0 을 넘지 않는다")
+            self.assertLess(hi[2], 230, "V 상한이 하늘 V 보다 낮아야 blue 와 갈린다")
+
+    def test_navy가_파싱된다(self):
+        self.assertEqual(parse_flat(default_flat("navy"), "navy"), DEFAULT_RANGES["navy"])
+
+    def test_navy_yaml_동기(self):
+        txt = open(TestSyncWithVisionYaml.YAML, encoding='utf-8').read()
+        m = re.search(r'^    hsv\.navy:\s*\[([^\]]*)\]', txt, re.M)
+        self.assertIsNotNone(m, "vision.yaml `/**` 에 hsv.navy 가 없다")
+        self.assertEqual([int(x) for x in m.group(1).split(',')], [100, 100, 30, 130, 255, 140])
+
+
+class TestNavySideEffects(unittest.TestCase):
+    """🚨 VALID_COLORS 에 navy 를 넣은 부수효과(계약서 v2 위험 4) — 어디가 바뀌고 어디가 안 바뀌는지 못 박는다."""
+
+    def test_avoid_장애물색_허용에_navy가_들어간다(self):
+        from color_shape_detector import avoid_detect_logic as adl
+        self.assertIn("navy", adl.OBSTACLE_COLORS)
+        vals, errs = adl.check_params({'obstacle_color': 'navy'})
+        self.assertEqual((vals['obstacle_color'], errs), ('navy', []))
+        self.assertEqual(adl.DEFAULT_OBSTACLE_COLOR, 'white', "avoid 기본 장애물 색은 그대로")
+
+    def test_hsv_튜닝_도구가_navy를_순회한다(self):
+        """basic_image_subscriberhsv 는 hsv_ranges.VALID_COLORS 를 그대로 돈다(소스 확인)."""
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'color_shape_detector',
+                            'basic_image_subscriberhsv.py')
+        src = open(path, encoding='utf-8').read()
+        self.assertIn("self.colors = list(hsv_ranges.VALID_COLORS)", src)
+
+    def test_dock_target_color_는_navy를_안_받는다(self):
+        from color_shape_detector.dock_logic import VALID_COLORS as DOCK_COLORS
+        self.assertNotIn("navy", DOCK_COLORS)
+        self.assertEqual(len(DOCK_COLORS), 6, "도크 허용색 불변")
 
 
 class TestFormatYaml(unittest.TestCase):
@@ -192,7 +242,9 @@ class TestSyncWithDockLogic(unittest.TestCase):
 
     # HSV 표에만 있고 도크 목표 색으로는 안 받는 색. black = turn 전용(위치유지 2026-11-11·탐색 좌현 11-12) —
     #   도크 표식(파랑 네모·초록 동그라미·빨강 삼각형)에 검정은 없다. 도크 동작 불변.
-    HSV_ONLY = {"black"}
+    #   navy = 위치유지 사각형 부표(image_subscriber_stop, 계약서 v2 (a)) — dock_logic.VALID_COLORS 는 안 건드린다
+    #   (도크 target_color 허용색·도크 동작 불변). 도크 표식 색이 남색으로 공지되면 dock_logic 과 같이 넣는다.
+    HSV_ONLY = {"black", "navy"}
 
     def test_유효색_목록이_같다(self):
         from color_shape_detector.dock_logic import VALID_COLORS as DOCK_COLORS

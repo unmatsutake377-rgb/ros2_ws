@@ -364,6 +364,37 @@ def _avoid_detector(context):
     ]
 
 
+STOP_DETECTOR_EXE = 'basic_image_subscriberstop'
+
+
+def _stop_detector(context):
+    """8c) 위치유지 남색 부표 검출기 image_subscriber_stop — mode 2 /buoy_bearings (계약서 v2 위치유지 사각형 (a)).
+
+    🚨 실행 파일이 없으면 **건너뛴다**(launch 전체를 세우지 않는다) — _avoid_detector 와 같은 이유: git pull 만 하고
+       color_shape_detector 를 다시 빌드하지 않으면 install/lib 에 이 entry point 스크립트가 없어 Node 가
+       'executable not found' 로 대회 launch 를 통째로 죽인다.
+       건너뛰면 mode 2 /buoy_bearings 발행자 0 → 지금(a) ship_back 은 저장만 하므로 위치유지 동작(hold_source gps)은 같다.
+    파라미터는 다른 검출기와 같은 vision.yaml(image_subscriber_stop 절 + /** 공통).
+    """
+    try:
+        prefix = get_package_prefix('color_shape_detector')
+        share = get_package_share_directory('color_shape_detector')
+    except PackageNotFoundError:
+        return [LogInfo(msg='⏭️ color_shape_detector 없음 — 위치유지 부표 검출기 건너뜀 (colcon build 확인).')]
+    exe = os.path.join(prefix, 'lib', 'color_shape_detector', STOP_DETECTOR_EXE)
+    if not os.path.exists(exe):
+        return [LogInfo(msg=f'⏭️ {STOP_DETECTOR_EXE} 실행 파일 없음({exe}) — '
+                            'color_shape_detector 재빌드 필요 — 건너뜀. '
+                            'mode 2 /buoy_bearings 발행자 0 (ship_back 위치유지 동작은 그대로). '
+                            '고치기: cd ~/ros2_ws && colcon build --symlink-install '
+                            '--packages-select color_shape_detector')]
+    return [
+        Node(package='color_shape_detector', executable='basic_image_subscriberstop',  # = STOP_DETECTOR_EXE
+             name='image_subscriber_stop',      # = vision.yaml 의 image_subscriber_stop 절
+             output='screen', parameters=[os.path.join(share, 'config', 'vision.yaml')]),
+    ]
+
+
 def _blackbox(context):
     """13) blackbox(CSV 기록, 구독 전용·발행 0). ssf_tools 가 없으면 **건너뛴다** — launch 를 안 세운다.
 
@@ -591,6 +622,7 @@ def generate_launch_description():
         #    권위 출처 = 미션 노드의 active_wp_mode(s). 바꿀 땐 양쪽을 함께 바꿔라:
         #      mode 0,1 → ship_gate  ← gate 검출기 (/red_angle, /green_angle)
         #      mode 2   → ship_back  ← turn 검출기 (turn_color_mode2 부표, /image_angle)
+        #                            + stop 검출기 (남색 부표 다중, /buoy_bearings — 계약서 v2 (a), 지금은 저장만)
         #      mode 3   → ship_turn(orbit 기본) / ship_back(search_behavior:=hold)
         #                            ← turn 검출기 (turn_color_mode3 부표) — 검출기 쪽은 스위치와 무관
         #      mode 7   → ship_dock  ← dock 검출기 (/image_angle)
@@ -610,6 +642,9 @@ def generate_launch_description():
         #   camera_info 없으면 안 냄 + ERROR. 기본 avoid_mode fused 라 장애물 구간 다리(/avoid_zone true)에서 바로 쓰인다.
         #   실행 파일이 없으면(pull 뒤 재빌드 안 함) _avoid_detector 가 LogInfo 만 내고 건너뛴다.
         OpaqueFunction(function=_avoid_detector),
+        # mode 2 위치유지 남색 부표 검출기 — OAK hsv.navy 다중 윤곽 → /buoy_bearings(프레임마다, N=0 하트비트).
+        #   camera_info 없으면 안 냄 + ERROR. 실행 파일이 없으면 _stop_detector 가 LogInfo 만 내고 건너뛴다.
+        OpaqueFunction(function=_stop_detector),
         # basic_image_subscriberhsv 는 튜닝 전용 — 대회 launch 에 넣지 않는다.
 
         # ============================================================

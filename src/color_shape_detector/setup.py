@@ -29,6 +29,7 @@ setup(
             "basic_image_subscribergate = color_shape_detector.basic_image_subscribergate:main",
             "basic_image_subscriberturn = color_shape_detector.basic_image_subscriberturn:main",
             "basic_image_subscriberavoid = color_shape_detector.basic_image_subscriberavoid:main",
+            "basic_image_subscriberstop = color_shape_detector.basic_image_subscriberstop:main",
         ],
     },
 )

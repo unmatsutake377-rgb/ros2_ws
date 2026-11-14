@@ -80,6 +80,7 @@ rclpy 는 소스 위치별로 심각도를 캐싱해 `ValueError: Logger severit
 | `/gates_passed` | `Int32` | `ship_gate` | `blackbox` — 🚨 `/gate_pass_count` 아님 |
 | `/geofence_state` | `Float32MultiArray` | `north_goal_angle` | `ship_direction` |
 | `/image_color` | `String` | `basic_image_subscriberturn` | `ship_turn`, `blackbox` |
+| `/buoy_bearings` | `Float32MultiArray` | `basic_image_subscriberstop` (mode 2, 프레임마다, RELIABLE) | `ship_back` (저장만 — 위치유지 사각형 (b) 전까지 동작에 안 씀) — `[VER=1, STRIDE=4, N, (bearing_left_deg, area_px, conf, age_s)×N]`, 남색(`hsv.navy`) 부표 전부, 방위 = camera_info fx·cx(좌 +), **거리 없음**. 0개면 N=0 하트비트 |
 | `/boat_mode` `/boat_id` | `Int32` | `ssf_bridge` | `mission_monitor` |
 | `/boat_cmd_watchdog` `/boat_estop` | `Bool` | `ssf_bridge` | `mission_monitor` |
 | `/obstacle_distance_array` | `Float32MultiArray` | `ship_direction` | `motor_control`, `blackbox` — `[거리(m), 각도(deg)]`, 없으면 `[inf, nan]` |
@@ -123,7 +124,7 @@ SPIN 중심 `spin_forward_pwm`(기본 1500 → 1400/1600 = 제자리 선회). �
 | wp_mode | 미션 | 미션 노드 | 검출기 → 발행 |
 |---|---|---|---|
 | 0, 1 | 게이트 시작·끝 | `ship_gate` (`active_wp_modes: [0, 1]`, `ship_last` 제거됨) | `gate` → `/red_angle`, `/green_angle` |
-| 2 | 위치유지 | `ship_back` | `turn`(white) → `/image_angle` |
+| 2 | 위치유지 | `ship_back` | `turn`(white) → `/image_angle`, `stop`(navy) → `/buoy_bearings` |
 | 3 | 부표 선회 | `ship_turn` | `turn`(red) → `/image_angle`, `/image_color` |
 | 5 | 회피 (dwell 50 s) | **없음 = 정상** | 없음 — `ship_direction` 순수 회피 |
 | 7 | 도킹 (dwell 60 s) | `ship_dock` | `dock` → `/image_angle` |
@@ -211,8 +212,8 @@ colcon test                     # 🚨 lint 포함 — 권위 있는 실행기
 |---|---|---|
 | `cog_require_reverse_gate` (yaw_mux) | `true` | `healthcheck` → `/health_ok=false` (`heading_source: cog_offset` 일 때만) |
 | `require_geofence_subscriber` (healthcheck) | `true` | `healthcheck` → `/health_ok=false` |
-| `debug_view` (비전 4종) | `false` (헤드리스 `cv2.imshow` 가 노드를 죽임) | 기본값이 안전 쪽 |
-| `active_wp_modes` (검출기 3종) | §3 wp_mode 표대로 | `test_mode_gate.py` |
+| `debug_view` (검출기 5종 gate·turn·dock·avoid·stop) | `false` (헤드리스 `cv2.imshow` 가 노드를 죽임) | 기본값이 안전 쪽 |
+| `active_wp_modes` (검출기 5종 gate·turn·dock·avoid·stop) | §3 wp_mode 표대로 | `test_mode_gate.py` |
 
 사람이 할 확인(조향 부호·IMU 절대방위·`gps_vel_frame`·`hfov_deg`·`/health_ok` true) 절차는 상세 §7-2. `/health_ok` 빨간불을 켜둔 채 두지 않는다.
 🚨 IMU 절대방위: **나침반은 자북**을 가리킨다. `imu_relative` 는 편각을 안 쓰므로(`SOURCE_IS_MAGNETIC`) 나침반 정북에 맞췄을 때 `/imu/yaw` 목표값은 0 이 아니라 **360 + 편각(한국 약 −8° → 약 352)** 이다. 지도·GPS 로 진북을 직접 잡았으면 0.
