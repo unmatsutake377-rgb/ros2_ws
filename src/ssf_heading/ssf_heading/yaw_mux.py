@@ -36,7 +36,7 @@ from geometry_msgs.msg import TwistWithCovarianceStamped
 
 from ssf_heading.heading_logic import (
     ALL_SOURCES, BOAT_MODE_AUTO, GPS_COG_INIT_GOAL, PUBLISH_STATES,
-    SRC_COG_OFFSET, SRC_GPS_COG, SRC_IMU_RELATIVE,
+    SRC_COG_OFFSET, SRC_GPS_COG,
     ST_HOLD, ST_IMU_ASSIST, ST_INIT_GOAL, ST_OK,
     COGOffsetEstimator, GPSCOGTracker, HeadingMux, cog_from_velocity, gps_cog_status_text,
 )
@@ -53,7 +53,8 @@ class YawMux(Node):
         super().__init__('yaw_mux')
 
         # ---- 파라미터 (config/ssf_heading.yaml) ----
-        source = str(self.declare_parameter('heading_source', SRC_IMU_RELATIVE).value)
+        # 기본값 gps_cog — 두 배 공통(보완 C, 사용자 11-15). 공통 yaml 과 같이 맞출 것(§1-4).
+        source = str(self.declare_parameter('heading_source', SRC_GPS_COG).value)
         if source not in ALL_SOURCES:
             # 조용히 기본값으로 떨어지지 않는다. 오타 하나가 엉뚱한 소스를 쓰게 두면 안 된다.
             raise RuntimeError(

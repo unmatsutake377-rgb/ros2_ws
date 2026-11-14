@@ -87,7 +87,11 @@ def test_common_yaml_equals_code_defaults():
             f'{key}: 공통 yaml {val!r} ≠ 코드 기본값 {decl[key]!r} (CLAUDE.md 1-4)')
 
 
-def test_common_heading_source_stays_imu_relative():
-    """공통 기본값은 imu_relative — gps_cog 전환은 배별 파일에서만 (C2)."""
-    assert _params(COMMON)['heading_source'] == heading_logic.SRC_IMU_RELATIVE
-    assert _declared()['heading_source'] == heading_logic.SRC_IMU_RELATIVE
+def test_common_heading_source_is_gps_cog():
+    """두 배 공통 기본값은 gps_cog — 공통 yaml = 코드 기본값 (보완 C, 사용자 11-15).
+
+    C1 의 '공통은 imu_relative 유지(C2 배별 전환)' 계약을 뒤집었다. 배별 파일엔 이 키가 없다
+    (test_boat_config.py). 배 하나만 되돌리기는 그 노트북 로컬 공통 yaml 한 줄(커밋 안 함, C-Q3).
+    """
+    assert _params(COMMON)['heading_source'] == heading_logic.SRC_GPS_COG
+    assert _declared()['heading_source'] == heading_logic.SRC_GPS_COG
