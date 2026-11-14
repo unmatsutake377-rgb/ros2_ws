@@ -57,7 +57,19 @@ own="$HOME/ssf_logs/waypoints_tournament_${boat}_${lane}.yaml"
 shared="$repo/tools/tournament_lanes/waypoints_tournament_${lane}.yaml"
 if [ -f "$own" ]; then
   wp="$own"
-  [ -f "$shared" ] && ! cmp -s "$own" "$shared" && \
+  # 웨이포인트 값(위도·경도·mode·dwell)만 비교 — 머리 주석 차이는 같은 레인으로 본다
+  [ -f "$shared" ] && ! (cd / && python3 - "$own" "$shared" <<'EOF_SAME'
+import sys
+import yaml
+def key(p):
+    wps = (yaml.safe_load(open(p, encoding="utf-8")) or {}).get("waypoints") or []
+    return [(float(w["lat"]), float(w["lon"]), int(w["mode"]), float(w.get("dwell", 0))) for w in wps]
+try:
+    sys.exit(0 if key(sys.argv[1]) == key(sys.argv[2]) else 1)
+except Exception:  # noqa: BLE001
+    sys.exit(1)
+EOF_SAME
+) && \
     echo "⚠️  자기 녹화본을 쓴다(공유 레인 $shared 와 내용 다름) — 공유본을 쓰려면 자기 녹화본 이름을 바꿔 치울 것"
 elif [ -f "$shared" ]; then
   wp="$shared"
@@ -131,7 +143,7 @@ fi
 if [ -z "${SSF_TOURNAMENT_DRY:-}" ]; then
   setup=$(ls /opt/ros/*/setup.bash 2>/dev/null | tail -1)
   [ -n "$setup" ] && [ -f install/setup.bash ] || die "ROS(/opt/ros/*/setup.bash) 또는 install/setup.bash 없음 — colcon build 확인"
-  # ROS setup 파일은 안 정해진 변수(AMENT_TRACE_SETUP_FILES 등)를 읽는다 → set -u 면 여기서 멈춘다(11-14 2번배).
+  # ROS setup 파일은 정의 안 된 변수(AMENT_TRACE_SETUP_FILES 등)를 읽는다 → set -u 면 여기서 죽는다(11-14 1번배·2번배 실측).
   set +u
   # shellcheck disable=SC1090
   source "$setup"

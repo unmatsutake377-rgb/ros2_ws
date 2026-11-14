@@ -84,14 +84,17 @@ def test_declared_defaults_equal_logic_defaults():
     dec = {k: v for k, (v, _) in _declares().items()}
     assert dec == fl.DEFAULTS
     for k, v in dec.items():
-        assert type(v) is type(fl.DEFAULTS[k]), f'{k}: 타입 {type(v)} ≠ {type(fl.DEFAULTS[k])}'
+        # bool/int 구분이 목적이라 isinstance 가 아니라 정확한 타입 비교
+        want = type(fl.DEFAULTS[k])
+        assert type(v) is want, f'{k}: 타입 {type(v)} ≠ {want}'  # noqa: E721
 
 
 def test_yaml_equals_defaults_with_types():
     y = _yaml_params()
     assert set(y) == set(fl.DEFAULTS), f'yaml 키 차이 {set(y) ^ set(fl.DEFAULTS)}'
     for k, v in y.items():
-        assert v == fl.DEFAULTS[k] and type(v) is type(fl.DEFAULTS[k]), f'{k}: yaml {v!r} ≠ 기본값 {fl.DEFAULTS[k]!r}'
+        same_type = type(v) is type(fl.DEFAULTS[k])  # noqa: E721
+        assert v == fl.DEFAULTS[k] and same_type, f'{k}: yaml {v!r} ≠ 기본값 {fl.DEFAULTS[k]!r}'
 
 
 def test_oak_mount_defaults_are_mast_design_values():
