@@ -13,9 +13,10 @@ from ssf_heading.heading_logic import (  # noqa: E402
     ALL_SOURCES, SOURCE_IS_MAGNETIC, SILENT_STATES, PUBLISH_STATES,
     SRC_IMU_RELATIVE, SRC_COG_OFFSET, SRC_DUAL_GPS, SRC_IMU_ABSOLUTE, SRC_GPS_COG,
     ST_OK, ST_NO_DATA, ST_STALE, ST_NOT_IMPLEMENTED, ST_NOT_CONVERGED,
-    ST_HOLD, ST_INIT_GOAL, ST_INIT,
+    ST_HOLD, ST_INIT_GOAL, ST_INIT, ST_IMU_ASSIST,
     SPIN_RIGHT, SPIN_LEFT, GPS_COG_INIT_GOAL, BOAT_MODE_AUTO,
     HeadingMux, COGOffsetEstimator, GPSCOGTracker, cog_from_velocity, saturation_samples,
+    gps_cog_status_text,
     wrap360, wrap180, ang_diff, is_finite, apply_corrections, is_spin_code,
 )
 
@@ -786,6 +787,26 @@ def test_imu_relative_bit_identical_with_cog_input():
                     assert st == ST_OK and yaw == want, \
                         f"{tag} (boat_mode {bm}): {yaw} != {want}"
 
+                # 보완 B: gps_cog 추적기가 뒤에서 IMU 보조(ASSIST)를 돌려도 imu_relative 출력은 불변.
+                # 추적기에 앵커를 세우고(settle 지난 뒤 전진 COG) 선회 코드로 보조를 켠 채 IMU 를 돌린다.
+                tb = t + 10.0
+                mux.update_imu(r, tb)
+                mux.update_reverse(False, tb)
+                mux.update_desired_angle(12.0, tb)
+                mux.update_cog(100.0, 2.0, tb)
+                assert mux.gps_cog.heading(tb)[1] == ST_OK, f"{tag}: 추적기 앵커 없음"
+                for k, r2 in enumerate((r, r + 5.0, r + 9.5, r + 400.0, r - 7.0, r)):
+                    tk = tb + 0.01 * (k + 1)
+                    mux.update_desired_angle(SPIN_RIGHT, tk)
+                    mux.update_reverse(k % 2 == 0, tk)
+                    mux.update_imu(r2, tk)
+                    want2 = apply_corrections(wrap360(r2), invert_yaw=invert,
+                                              mount_offset_deg=mount)
+                    yaw, st = mux.heading(tk)
+                    assert mux.gps_cog.assist_active, f"{tag}: 보조가 안 돌았다(검사 무의미)"
+                    assert st == ST_OK and yaw == want2, \
+                        f"{tag} (gps_cog 보조 중 r={r2}): {yaw} != {want2}"
+
 
 def test_cog_offset_invert_turning_reject_uses_abs():
     """8) invert=T 에서도 선회 배제는 abs(선회율) — 좌·우 선회 모두 'turning'."""
@@ -806,13 +827,22 @@ def test_cog_offset_invert_turning_reject_uses_abs():
 
 
 # ================================================================ gps_cog (계약서_GPS방위_20261114)
-def _gmux(require_gate=True, **mux_kw):
-    """계약 기본값(공통 yaml 과 같은 값)으로 gps_cog 믹서."""
+# 보완 B 메타 테스트가 False 로 바꿔 C1·보완 A 테스트를 IMU 보조 off 로 다시 돌린다.
+_GMUX_ASSIST = [True]
+
+
+def _gmux(require_gate=True, imu_assist=None, imu_assist_max_sec=10.0,
+          imu_max_step_deg=10.0, **mux_kw):
+    """계약 기본값(공통 yaml 과 같은 값)으로 gps_cog 믹서. IMU stale = 믹서 stale_sec (B-Q3)."""
+    mux_kw.setdefault('stale_sec', 0.5)
     trk = GPSCOGTracker(min_speed_mps=0.5, fresh_sec=1.5, predict_max_sec=1.5,
                         max_rate_dps=30.0, settle_sec=2.0, jump_deg=90.0,
                         init=GPS_COG_INIT_GOAL, init_stale_sec=2.0,
-                        require_gate=require_gate)
-    mux_kw.setdefault('stale_sec', 0.5)
+                        require_gate=require_gate,
+                        imu_assist=_GMUX_ASSIST[0] if imu_assist is None else imu_assist,
+                        imu_assist_max_sec=imu_assist_max_sec,
+                        imu_max_step_deg=imu_max_step_deg,
+                        imu_stale_sec=mux_kw['stale_sec'])
     return HeadingMux(SRC_GPS_COG, gps_cog=trk, **mux_kw)
 
 
@@ -1277,6 +1307,390 @@ def test_boat_mode_auto_matches_contract():
     with open(ng, encoding='utf-8') as f:
         m = re.search(r'^MODE_AUTO\s*=\s*(\d+)', f.read(), re.M)
     assert m and int(m.group(1)) == BOAT_MODE_AUTO, f"north_goal_angle MODE_AUTO ≠ {BOAT_MODE_AUTO}"
+
+
+# ================================================================ 보완 B: 기동 구간 IMU 상대 회전량 보조 (C1b)
+def _imu_ramp(mux, t0, t1, r0, rate, dt=0.01, desired=None, reverse=None, sig_every=10):
+    """
+    IMU 100 Hz 경사 r(t) = r0 + rate·(t − t0) 를 t0..t1 로 민다. sig_every 샘플마다(기본 0.1 s)
+    desired·reverse 신호를 같은 시각에 먼저 준다. (마지막 시각, 마지막 r) 을 돌려준다.
+    """
+    n = int(round((t1 - t0) / dt))
+    t = t0
+    r = r0
+    for i in range(n + 1):
+        t = t0 + i * dt
+        if i % sig_every == 0:
+            if desired is not None:
+                mux.update_desired_angle(desired, t)
+            if reverse is not None:
+                mux.update_reverse(reverse, t)
+        r = r0 + rate * (i * dt)
+        mux.update_imu(r, t)
+    return t, r
+
+
+def _anchored(mux, cog=30.0, t=1.0, imu=50.0):
+    """COG 두 표본(같은 방위, 회전율 0)으로 앵커 + IMU 신선. 시각 t 에 OK."""
+    assert _gfeed(mux, cog, t - 1.0)
+    assert _gfeed(mux, cog, t)
+    mux.update_imu(imu, t)
+    assert mux.heading(t) == (cog, ST_OK)
+
+
+# ---- B1) 선회 코드 수신 순간 출력 연속, 상태 ASSIST
+def test_assist_starts_continuous_on_spin():
+    for code in (SPIN_RIGHT, SPIN_LEFT):
+        mux = _gmux()
+        assert _gfeed(mux, 0.0, 0.0)
+        assert _gfeed(mux, 20.0, 1.0)               # 20°/s 외삽 중
+        mux.update_imu(50.0, 1.49)
+        before = mux.heading(1.4999)[0]
+        mux.update_desired_angle(code, 1.5)
+        yaw, st = mux.heading(1.5)
+        assert st == ST_IMU_ASSIST, (code, st)
+        assert near(yaw, 30.0, 1e-6) and abs(ang_diff(yaw, before)) < 0.01, (code, before, yaw)
+        # IMU 가 안 움직이면 값도 그대로 (외삽 계속 아님)
+        mux.update_imu(50.0, 1.6)
+        assert mux.heading(2.0) == (yaw, ST_IMU_ASSIST)
+
+
+# ---- B2) 선회 중 IMU +90 → +90, 359→29 랩
+def test_assist_follows_imu_delta_and_wraps():
+    mux = _gmux()
+    _anchored(mux, 30.0, 1.0, imu=50.0)
+    t, _ = _imu_ramp(mux, 1.0, 3.0, 50.0, 45.0, desired=SPIN_RIGHT)   # +90°
+    yaw, st = mux.heading(t)
+    assert st == ST_IMU_ASSIST and near(yaw, 120.0, 1e-6), (yaw, st)
+
+    # 출력 359 → 29, IMU 원시도 350 → 20 으로 감김 (+30°)
+    mux = _gmux()
+    _anchored(mux, 359.0, 1.0, imu=350.0)
+    t, _ = _imu_ramp(mux, 1.0, 2.0, 350.0, 30.0, desired=SPIN_LEFT)
+    yaw, st = mux.heading(t)
+    assert st == ST_IMU_ASSIST and near(yaw, 29.0, 1e-6), (yaw, st)
+    # 반대 방향(CCW)도
+    mux = _gmux()
+    _anchored(mux, 10.0, 1.0, imu=5.0)
+    t, _ = _imu_ramp(mux, 1.0, 2.0, 5.0, -40.0, desired=SPIN_LEFT)
+    assert near(mux.heading(t)[0], 330.0, 1e-6), mux.heading(t)
+
+
+# ---- B3) 누적 400° (unwrapped) — 상태 문자열 d 에도 보존
+def test_assist_accumulates_beyond_360():
+    mux = _gmux()
+    _anchored(mux, 30.0, 1.0, imu=0.0)
+    t, _ = _imu_ramp(mux, 1.0, 11.0, 0.0, 40.0, desired=SPIN_RIGHT)  # 10 s × 40°/s
+    yaw, st = mux.heading(t)
+    assert st == ST_IMU_ASSIST and near(yaw, wrap360(30.0 + 400.0), 1e-6), (yaw, st)
+    assert near(mux.gps_cog.assist_total_deg, 400.0, 1e-6)
+    txt = gps_cog_status_text(mux.gps_cog, st, t)
+    assert txt.startswith("gps_cog:ASSIST d=+400.0 t=10.0 "), txt
+
+
+# ---- B4) invert_yaw=True 면 Δ 반대, mount 40.3·편각 −8 무영향
+def test_assist_invert_flips_delta_mount_decl_ignored():
+    for invert, want in ((False, 120.0), (True, 300.0)):
+        mux = _gmux(invert_yaw=invert, mount_offset_deg=40.3, declination_deg=-8.0)
+        _anchored(mux, 30.0, 1.0, imu=50.0)
+        t, _ = _imu_ramp(mux, 1.0, 3.0, 50.0, 45.0, desired=SPIN_RIGHT)  # 원시 +90
+        yaw, st = mux.heading(t)
+        assert st == ST_IMU_ASSIST and near(yaw, want, 1e-6), (invert, yaw, st)
+
+
+# ---- B5) 후진 True 도 보조 시작
+def test_assist_starts_on_reverse():
+    mux = _gmux()
+    _anchored(mux, 30.0, 1.0, imu=50.0)
+    mux.update_reverse(True, 1.5)
+    assert mux.heading(1.5) == (30.0, ST_IMU_ASSIST)
+    t, _ = _imu_ramp(mux, 1.5, 2.5, 50.0, -20.0, reverse=True)
+    yaw, st = mux.heading(t)
+    assert st == ST_IMU_ASSIST and near(yaw, 10.0, 1e-6), (yaw, st)
+    # 후진 중 COG(뒤로 가는 방향)는 여전히 거부, 보조는 계속
+    assert not _gfeed(mux, 190.0, t, reverse=True)
+    assert mux.gps_cog.last_reject == "reverse"
+    assert mux.heading(t)[1] == ST_IMU_ASSIST and near(mux.heading(t)[0], 10.0, 1e-6)
+
+
+# ---- B6) settle → slow 에도 계속 → COG 채택으로 OK
+def test_assist_continues_through_settle_and_slow_then_cog():
+    mux = _gmux()
+    _anchored(mux, 30.0, 1.0, imu=50.0)
+    t, r = _imu_ramp(mux, 1.0, 2.0, 50.0, 60.0, desired=SPIN_RIGHT)    # +60 → 90
+    assert near(mux.heading(t)[0], 90.0, 1e-6)
+    # 선회 끝(12) — settle 동안 COG 거부(settle)지만 IMU 를 계속 따라간다
+    t, r = _imu_ramp(mux, 2.01, 3.0, r + 0.6, 10.0, desired=12.0)
+    assert not _gfeed(mux, 200.0, 3.0, speed=1.0)
+    assert mux.gps_cog.last_reject == "settle"
+    exp = 90.0 + 0.6 + 10.0 * 0.99
+    assert mux.heading(3.0)[1] == ST_IMU_ASSIST and near(mux.heading(3.0)[0], exp, 1e-6)
+    # settle 뒤 저속(규칙 2 의 '정지')이어도 보조 중이면 계속 (B-Q7)
+    t, r = _imu_ramp(mux, 3.01, 5.0, r + 0.1, 5.0, desired=12.0)
+    assert not _gfeed(mux, 200.0, 5.0, speed=0.3)
+    assert mux.gps_cog.last_reject == "slow"
+    exp = exp + 0.1 + 5.0 * 1.99
+    yaw, st = mux.heading(5.0)
+    assert st == ST_IMU_ASSIST and near(yaw, exp, 1e-6), (yaw, exp, st)
+    # 전진 COG 채택 → 앵커 = COG, OK (보조 종료)
+    assert _gfeed(mux, 115.0, 5.5)
+    assert mux.heading(5.5) == (115.0, ST_OK)
+    assert not mux.gps_cog.assist_active and mux.gps_cog.assist_ends["cog"] == 1
+    # 채택 뒤 IMU 가 돌아도 출력 불변(보조 밖)
+    _imu_ramp(mux, 5.51, 6.0, r, 30.0, desired=12.0)
+    assert near(mux.heading(6.0)[0], 115.0, 1e-9)
+
+
+# ---- B7) 보조 밖 slow 는 IMU 가 돌아도 불변 (C1 얼림)
+def test_assist_not_started_by_slow_outside_maneuver():
+    mux = _gmux()
+    _anchored(mux, 30.0, 1.0, imu=50.0)
+    assert not _gfeed(mux, 200.0, 2.0, speed=0.2)
+    assert mux.gps_cog.last_reject == "slow"
+    t, _ = _imu_ramp(mux, 2.0, 30.0, 50.0, 10.0, desired=12.0)
+    yaw, st = mux.heading(t)
+    assert yaw == 30.0 and st == ST_HOLD, (yaw, st)
+    assert not mux.gps_cog.assist_active
+
+
+# ---- B8) 상한(B-Q2 (iii) 마지막 기동 신호 뒤 10 s): 얼림·HOLD·다음 기동에 재시작
+def test_assist_limit_from_last_maneuver_then_restart():
+    mux = _gmux()
+    _anchored(mux, 30.0, 1.0, imu=0.0)
+    # 선회 신호 1.0~3.0 (마지막 신호 3.0), IMU 는 5°/s 로 계속 돈다
+    t, r = _imu_ramp(mux, 1.0, 3.0, 0.0, 5.0, desired=SPIN_RIGHT)
+    last_sig = t
+    # 신호가 이어지는 동안엔 시작 기준이 아니라 마지막 신호 기준 — 3 s 지났어도 계속
+    t, r = _imu_ramp(mux, 3.01, 12.9, r + 0.05, 5.0, desired=12.0)
+    yaw, st = mux.heading(12.9)
+    assert st == ST_IMU_ASSIST and near(yaw, 30.0 + 5.0 * 11.9, 1e-6), (yaw, st)
+    # 마지막 신호 + 10 s 넘김 → 그 값에서 얼림, HOLD
+    t, r = _imu_ramp(mux, 12.91, 20.0, r + 0.05, 5.0, desired=12.0)
+    yaw, st = mux.heading(20.0)
+    assert st == ST_HOLD, st
+    assert mux.gps_cog.assist_ends["limit"] == 1
+    frozen = 30.0 + 5.0 * (last_sig + 10.0 - 1.0)
+    assert abs(yaw - frozen) <= 5.0 * 0.011, (yaw, frozen)
+    assert mux.heading(25.0)[0] == yaw, "얼린 뒤 IMU 회전이 새어들어감"
+    # 다음 기동 → 얼린 값에서 재시작
+    mux.update_desired_angle(SPIN_LEFT, 20.0)
+    assert mux.heading(20.0) == (yaw, ST_IMU_ASSIST)
+    t, _ = _imu_ramp(mux, 20.01, 21.0, r + 0.05, 5.0, desired=SPIN_LEFT)
+    assert near(mux.heading(t)[0], yaw + 5.0 * 1.0, 1e-6), (mux.heading(t), yaw)
+
+
+# ---- B9) 보조 중 IMU stale → 마지막 값, 시작 때 IMU 없음 → C1
+def test_assist_imu_stale_freezes_and_no_imu_is_c1():
+    mux = _gmux()
+    _anchored(mux, 30.0, 1.0, imu=50.0)
+    t, r = _imu_ramp(mux, 1.0, 2.0, 50.0, 20.0, desired=SPIN_RIGHT)      # +20 → 50
+    last = mux.heading(t)[0]
+    assert near(last, 50.0, 1e-6)
+    # IMU 끊김, 선회 신호는 계속
+    for k in range(1, 30):
+        mux.update_desired_angle(SPIN_RIGHT, 2.0 + 0.1 * k)
+    yaw, st = mux.heading(4.9)
+    assert yaw == last and st == ST_HOLD, (yaw, st)
+    assert mux.gps_cog.assist_ends["imu_stale"] == 1
+    assert not mux.gps_cog.imu_fresh(4.9)
+    # 0.5 s 경계 안쪽은 아직 보조
+    m2 = _gmux()
+    _anchored(m2, 30.0, 1.0, imu=50.0)
+    m2.update_desired_angle(SPIN_RIGHT, 1.2)
+    assert m2.heading(1.5)[1] == ST_IMU_ASSIST
+    assert m2.heading(1.5001) == (30.0, ST_OK), "IMU stale → 보조 끝(마지막 COG 1.0 s 전이라 OK)"
+
+    # 시작 때 IMU 없음 → C1 과 같다 (보조 off 믹서와 같은 출력)
+    a = _gmux()
+    b = _gmux(imu_assist=False)
+    for m in (a, b):
+        assert _gfeed(m, 0.0, 0.0)
+        assert _gfeed(m, 20.0, 1.0)
+        m.update_desired_angle(SPIN_RIGHT, 1.5)
+    for tt in (1.5, 2.0, 5.0, 30.0):
+        assert a.heading(tt) == b.heading(tt), (tt, a.heading(tt), b.heading(tt))
+    assert a.heading(30.0)[1] == ST_HOLD and near(a.heading(30.0)[0], 30.0, 1e-6)
+    assert not a.gps_cog.assist_active
+
+
+# ---- B10) 튐: 한 샘플(+82 원복)은 영향 0, 계단은 한 샘플만 손실
+def test_assist_spike_dropped_step_loses_one_sample():
+    mux = _gmux()
+    _anchored(mux, 30.0, 1.0, imu=50.0)
+    mux.update_desired_angle(SPIN_RIGHT, 1.0)
+    for k, r in enumerate((50.0, 50.0, 132.0, 50.0, 50.0)):     # 한 샘플 +82 튀었다 원복
+        mux.update_imu(r, 1.01 + 0.01 * k)
+    yaw, st = mux.heading(1.06)
+    assert st == ST_IMU_ASSIST and yaw == 30.0, (yaw, st)
+    assert mux.gps_cog.imu_step_rejects == 2, "튀는 Δ·돌아오는 Δ 둘 다 버린다"
+    # 기준 계단(+20 그대로 유지) → 그 한 샘플만 잃고 이후 회전은 따라간다
+    for k, r in enumerate((70.0, 70.0, 71.0, 72.0)):
+        mux.update_imu(r, 1.07 + 0.01 * k)
+    yaw, st = mux.heading(1.11)
+    assert st == ST_IMU_ASSIST and near(yaw, 32.0, 1e-9), (yaw, st)
+    assert mux.gps_cog.imu_step_rejects == 3
+    # 정확히 10° 는 '넘게' 가 아니다
+    mux.update_imu(82.0, 1.12)
+    assert near(mux.heading(1.12)[0], 42.0, 1e-9) and mux.gps_cog.imu_step_rejects == 3
+    # NaN·inf 는 샘플 자체를 무시
+    mux.update_imu(float('nan'), 1.13)
+    mux.update_imu(float('inf'), 1.14)
+    assert near(mux.heading(1.14)[0], 42.0, 1e-9)
+
+
+# ---- B11) 180° 선회 뒤 첫 COG 즉시 채택 (jump 대기 없음)
+def test_assist_180_spin_then_first_cog_accepted():
+    for assist, accepted in ((True, True), (False, False)):
+        mux = _gmux(imu_assist=assist)
+        _anchored(mux, 0.0, 1.0, imu=10.0)
+        t, r = _imu_ramp(mux, 1.0, 5.0, 10.0, 45.0, desired=SPIN_RIGHT)   # +180
+        t, r = _imu_ramp(mux, 5.01, 7.5, r, 0.0, desired=12.0)             # settle 끝
+        got = _gfeed(mux, 181.0, 7.5)
+        assert got is accepted, (assist, got, mux.gps_cog.last_reject)
+        if assist:
+            assert mux.heading(7.5) == (181.0, ST_OK)
+        else:
+            assert mux.gps_cog.last_reject == "jump", "보조 off(C1)는 2회 연속 규칙"
+
+
+# ---- B12) 보조 중 AUTO 진입 → INIT_GOAL (보조 상태도 지움)
+def test_assist_cleared_by_auto_entry():
+    mux = _gmux()
+    mux.update_boat_mode(1)
+    _anchored(mux, 30.0, 1.0, imu=50.0)
+    t, r = _imu_ramp(mux, 1.0, 2.0, 50.0, 30.0, desired=SPIN_RIGHT)
+    assert mux.heading(t)[1] == ST_IMU_ASSIST
+    mux.update_goal_bearing(200.0, t)
+    assert mux.update_boat_mode(BOAT_MODE_AUTO) is True
+    assert mux.heading(t) == (200.0, ST_INIT_GOAL)
+    assert not mux.gps_cog.assist_active and mux.gps_cog.assist_ends["reset"] == 1
+    # IMU 가 계속 돌고 선회 신호가 와도 INIT_GOAL 그대로 (B-Q6)
+    mux.update_goal_bearing(200.0, t + 0.5)
+    _imu_ramp(mux, t + 0.01, t + 1.0, r, 30.0, desired=SPIN_RIGHT)
+    assert mux.heading(t + 1.0) == (200.0, ST_INIT_GOAL)
+
+
+# ---- B13) INIT_GOAL 중 기동 → C1 (보조 안 함)
+def test_assist_not_during_init_goal():
+    a = _gmux()
+    b = _gmux(imu_assist=False)
+    for m in (a, b):
+        m.update_goal_bearing(77.0, 0.0)
+        m.update_imu(10.0, 0.0)
+        _imu_ramp(m, 0.0, 2.0, 10.0, 45.0, desired=SPIN_RIGHT)
+        m.update_goal_bearing(77.0, 2.0)
+    assert a.heading(2.0) == b.heading(2.0) == (77.0, ST_INIT_GOAL)
+    assert not a.gps_cog.assist_active
+    # 첫 COG 채택(settle 뒤) 뒤엔 앵커가 생겨 다음 기동부터 보조
+    for m in (a, b):
+        _imu_ramp(m, 2.01, 4.5, 100.0, 0.0, desired=12.0)
+        assert _gfeed(m, 120.0, 4.5)
+    assert a.heading(4.5) == b.heading(4.5) == (120.0, ST_OK)
+    a.update_desired_angle(SPIN_RIGHT, 4.6)
+    assert a.heading(4.6) == (120.0, ST_IMU_ASSIST)
+
+
+# ---- B14) gps_cog_imu_assist=False → C1 과 비트 동일 (IMU·기동 다 줘도)
+def _assist_scenario(mux, with_imu):
+    """앵커 → 선회(IMU 회전) → settle → 저속 → 후진 → 전진 COG. 탐침 시각별 heading 을 돌려준다."""
+    out = []
+    probes = (0.5, 1.0, 1.5, 2.2, 3.0, 3.9, 5.0, 6.3, 7.0, 8.4, 9.9, 12.0, 15.0, 30.0)
+    events = []
+    for i in range(0, 3001):                    # 0~30 s, 100 Hz
+        t = i * 0.01
+        if with_imu:
+            events.append((t, 'imu', 20.0 + 17.0 * t))
+        if i % 10 == 0:
+            if 1.5 <= t < 4.0:
+                events.append((t, 'des', SPIN_RIGHT))
+            else:
+                events.append((t, 'des', 12.0))
+            events.append((t, 'rev', 7.0 <= t < 8.0))
+        if i % 100 == 0:
+            spd = 0.3 if 9.0 <= t < 12.0 else 1.0
+            events.append((t, 'cog', (10.0 + 3.0 * t, spd)))
+    pi = 0
+    for t, kind, v in events:
+        while pi < len(probes) and probes[pi] < t:
+            out.append((probes[pi], mux.heading(probes[pi])))
+            pi += 1
+        if kind == 'imu':
+            mux.update_imu(v, t)
+        elif kind == 'des':
+            mux.update_desired_angle(v, t)
+        elif kind == 'rev':
+            mux.update_reverse(v, t)
+        else:
+            mux.update_cog(v[0], v[1], t)
+    while pi < len(probes):
+        out.append((probes[pi], mux.heading(probes[pi])))
+        pi += 1
+    return out
+
+
+def test_assist_off_is_bit_identical_to_c1():
+    off_with_imu = _assist_scenario(_gmux(imu_assist=False), with_imu=True)
+    c1_no_imu = _assist_scenario(_gmux(imu_assist=False), with_imu=False)
+    on_no_imu = _assist_scenario(_gmux(imu_assist=True), with_imu=False)
+    assert off_with_imu == c1_no_imu, "보조 off 인데 IMU 가 출력에 새어들어감"
+    assert on_no_imu == c1_no_imu, "IMU 가 없으면 보조 on 이어도 C1 과 같아야 한다"
+    on_with_imu = _assist_scenario(_gmux(imu_assist=True), with_imu=True)
+    assert on_with_imu != c1_no_imu, "보조 on + IMU 인데 차이가 없다(시나리오가 보조를 안 태움)"
+    assert any(h[1] == ST_IMU_ASSIST for _, h in on_with_imu)
+
+
+# ---- B16) ASSIST 는 발행 상태, 침묵 상태 아님, 접두 gps_cog:
+def test_assist_state_publishes_and_status_prefix():
+    assert ST_IMU_ASSIST == "ASSIST"
+    assert ST_IMU_ASSIST in PUBLISH_STATES, "빠지면 기동마다 /imu/yaw 침묵 → 페일세이프"
+    assert ST_IMU_ASSIST not in SILENT_STATES
+    assert not (set(PUBLISH_STATES) & set(SILENT_STATES))
+    for gate in (True, False):
+        mux = _gmux(require_gate=gate)
+        _anchored(mux, 30.0, 1.0, imu=50.0)
+        mux.update_desired_angle(SPIN_RIGHT, 1.2)
+        mux.update_imu(97.3, 1.3)
+        mux.update_imu(97.3, 1.4)
+        yaw, st = mux.heading(1.4)
+        assert st == ST_IMU_ASSIST
+        txt = gps_cog_status_text(mux.gps_cog, st, 1.4)
+        assert txt.startswith("gps_cog:ASSIST "), txt
+        assert txt.endswith(" gate=off") is (not gate), txt
+        assert not txt.endswith(":OK")
+    # 다른 상태 문자열은 예전 그대로
+    mux = _gmux()
+    assert gps_cog_status_text(mux.gps_cog, ST_INIT, 0.0) == "gps_cog:INIT rej=-"
+    _anchored(mux, 30.0, 1.0, imu=50.0)
+    assert gps_cog_status_text(mux.gps_cog, ST_OK, 1.0) == "gps_cog:OK"
+    assert gps_cog_status_text(mux.gps_cog, ST_HOLD, 3.0) == "gps_cog:HOLD age=2.0 rej=-"
+
+
+# ---- 보완 B 검증 계획 '기존 테스트': C1 gps_cog·보완 A 테스트가 보조 off 에서도 같게 통과
+_C1_AND_A_TESTS = (
+    "test_gps_cog_init_goal_before_first_cog", "test_gps_cog_slow_holds_forever_and_keeps_publishing",
+    "test_gps_cog_reverse_true_or_unknown_blocks_update", "test_gps_cog_gate_off_accepts_unknown",
+    "test_gps_cog_spin_and_settle_block_update", "test_gps_cog_reverse_end_starts_settle",
+    "test_gps_cog_desired_unknown_blocks_update", "test_gps_cog_rate_wraparound",
+    "test_gps_cog_predict_stops_at_max_and_rate_clamped", "test_gps_cog_freeze_is_continuous",
+    "test_gps_cog_jump_needs_two_in_a_row", "test_gps_cog_ignores_mount_invert_declination",
+    "test_gps_cog_does_not_read_imu", "test_gps_cog_enu_north_and_east",
+    "test_auto_entry_resets_to_init_goal", "test_auto_entry_on_first_message",
+    "test_auto_repeat_does_not_reset", "test_auto_reentry_resets_each_time",
+    "test_no_boat_mode_is_c1_behaviour", "test_auto_entry_with_stale_goal_is_silent",
+    "test_auto_entry_first_cog_skips_jump_and_drops_pending",
+    "test_auto_entry_keeps_reverse_and_spin_gates",
+)
+
+
+def test_c1_and_auto_tests_pass_with_assist_off():
+    g = globals()
+    assert _GMUX_ASSIST[0] is True, "기본 실행은 보조 on (코드 기본값 true, B-Q8)"
+    _GMUX_ASSIST[0] = False
+    try:
+        for name in _C1_AND_A_TESTS:
+            g[name]()
+    finally:
+        _GMUX_ASSIST[0] = True
 
 
 def main():

@@ -33,7 +33,8 @@ SRC_IMU_RELATIVE = "imu_relative"   # 지금 쓸 수 있는 것: IMU 상대 yaw 
 SRC_COG_OFFSET   = "cog_offset"     # 옵션 B: GPS COG 로 IMU 오프셋을 추정 (N2)
 SRC_DUAL_GPS     = "dual_gps"       # 옵션 A: 듀얼 F9P relPosNED (N3, 보드 확보 후)
 SRC_IMU_ABSOLUTE = "imu_absolute"   # 옵션 C: IMU 지자기 절대 heading (N4, 드라이버 조사 후)
-SRC_GPS_COG      = "gps_cog"        # GPS 도플러 진행방향(COG) 그대로. IMU 배제 (계약서_GPS방위_20261114)
+SRC_GPS_COG      = "gps_cog"        # GPS 도플러 진행방향(COG) 그대로. IMU 절대값 배제 — 기동 구간만
+                                    # IMU 상대 회전량(Δ)으로 보조 (계약서_GPS방위_20261114 보완 B)
 
 ALL_SOURCES = (SRC_IMU_RELATIVE, SRC_COG_OFFSET, SRC_DUAL_GPS, SRC_IMU_ABSOLUTE,
                SRC_GPS_COG)
@@ -45,7 +46,7 @@ SOURCE_IS_MAGNETIC = {
     SRC_COG_OFFSET:   False,   # COG = 진북 기준
     SRC_DUAL_GPS:     False,   # relPosNED = 진북 기준
     SRC_IMU_ABSOLUTE: True,    # 자기북 기준 → 편각 보정 필요
-    SRC_GPS_COG:      False,   # COG = 진북 기준. mount·invert 도 안 건다 (HeadingMux.heading)
+    SRC_GPS_COG:      False,   # COG = 진북 기준. mount 는 안 건다, invert 는 보조 Δ 부호에만 (HeadingMux.heading)
 }
 
 # ---------------------------------------------------------------- 상태 코드
@@ -58,16 +59,18 @@ ST_NOT_CONVERGED   = "NOT_CONVERGED"    # 소스는 돌고 있는데 아직 추�
 ST_HOLD            = "HOLD"             # 새 COG 가 gps_cog_fresh_sec 넘게 없다 → 마지막 방위 유지·발행
 ST_INIT_GOAL       = "INIT_GOAL"        # 첫 유효 COG 전 → /north_goal_angle_tp 를 초기 방위로 발행
 ST_INIT            = "INIT"             # 첫 유효 COG 전 + tp 도 없음(또는 stale) → 침묵
+ST_IMU_ASSIST      = "ASSIST"           # 기동(선회·후진) 구간 — COG 앵커 + IMU 상대 회전량 ΣΔ 발행 (보완 B)
 
 # 침묵해야 하는 상태. 틀린 방위를 내보내느니 안 내보낸다.
 # (north_goal_angle 은 /imu/yaw 없으면 geofence 를 침묵시키고,
 #  ship_goal_angle 은 imu_stale 이면 /yaw_error 발행을 멈춘다 — 둘 다 이미 그렇게 돼 있다)
 SILENT_STATES = (ST_NO_DATA, ST_STALE, ST_NOT_IMPLEMENTED, ST_NOT_CONVERGED, ST_INIT)
 
-# 발행하는 상태. HOLD·INIT_GOAL 은 SILENT_STATES 에 넣지 않는다(계약 — 출발 교착·정지 중 침묵 방지).
+# 발행하는 상태. HOLD·INIT_GOAL·ASSIST 는 SILENT_STATES 에 넣지 않는다(계약 — 출발 교착·정지 중 침묵 방지).
 # 🚨 INIT_GOAL 은 CLAUDE.md §1-6·§3 "헤딩 없으면 발행하지 않는다" 의 **승인된 예외**다
 #    (Davidson Q1 = (c), 11-14). 출발 때 뱃머리를 현재 WP 로 겨눈다는 전제. tp 도 없으면 INIT(침묵).
-PUBLISH_STATES = (ST_OK, ST_HOLD, ST_INIT_GOAL)
+# 🚨 ASSIST 가 여기서 빠지면 기동마다 /imu/yaw 가 침묵 → /yaw_error 정지 → 페일세이프 (보완 B 위험 5).
+PUBLISH_STATES = (ST_OK, ST_HOLD, ST_INIT_GOAL, ST_IMU_ASSIST)
 
 # ---------------------------------------------------------------- /desired_angle 특수 신호
 # 🚨 CLAUDE.md §3 특수 신호표와 값까지 같아야 한다 (공유 모듈 금지 §1-8 — ssf-reviewer 6번 점검 대상).
@@ -85,6 +88,9 @@ BOAT_MODE_AUTO = 2
 # gps_cog 첫 유효 COG 전 동작 (Q1). 지금은 (c) 하나 — 모르는 값은 조용히 넘기지 않고 거부한다.
 GPS_COG_INIT_GOAL = "goal"
 GPS_COG_INIT_CHOICES = (GPS_COG_INIT_GOAL,)
+
+# 보완 B: 이 거부 사유가 나면 IMU 회전량 보조를 시작한다(기동 구간). 그 밖의 거부는 보조 '계속' 만.
+ASSIST_START_REJECTS = ("reverse", "spin", "settle")
 
 
 # ---------------------------------------------------------------- 각도 유틸
@@ -310,7 +316,9 @@ class COGOffsetEstimator:
 # ---------------------------------------------------------------- gps_cog 추적기
 class GPSCOGTracker:
     """
-    GPS 도플러 진행방향(COG)을 그대로 방위로 쓴다 (계약서_GPS방위_20261114). IMU 는 안 쓴다.
+    GPS 도플러 진행방향(COG)을 그대로 방위로 쓴다 (계약서_GPS방위_20261114).
+    IMU **절대값**은 안 쓴다. 기동(선회·후진) 구간에 한해 IMU **상대 회전량(Δ)만** 빌린다(보완 B, 11-15
+    — 본문 사용자 규칙 6 "IMU 배제"·부록 R-Q9 를 이 범위에서 번복). 절대 방위의 앵커는 늘 COG 다.
 
     출력 = 앵커(값 v, 시각 t0, 회전율 w) 에서
         yaw(t) = v + w · min(max(t − t0, 0), predict_max_sec)
@@ -318,8 +326,14 @@ class GPSCOGTracker:
         ±max_rate_dps 클램프. 짝이 없으면 0.
       · 거부·선회/후진 시작 순간엔 그 순간 출력값에서 **얼린다**(w=0). 마지막 COG 로 되돌아가며
         튀지 않게 — 출력은 연속이다.
-      · 🚨 R3(부록 R, spin_rotation)는 선회 중 회전량을 이 앵커 값에 더하는 자리다.
-        C1 은 얼림만 한다(R-Q4 결정: 구조만 남기고 /spin_rotation 구독은 넣지 않는다).
+      · 기동 구간 IMU 보조 (보완 B — 부록 R 의 R3 자리를 IMU 가 차지, R3 폐기·B-Q9):
+          yaw(t) = 앵커 + ΣΔ,  Δ_i = ang_diff(s·r_i, s·r_{i−1})  (s = invert_yaw 부호, mount·편각은 상쇄)
+          시작: 앵커 있음 + IMU 신선(imu_stale_sec) + imu_assist 이고, 기동 신호(note_maneuver)
+                또는 update() 거부 사유 reverse/spin/settle.  INIT/INIT_GOAL(앵커 없음) 중엔 안 함(B-Q6).
+          계속: 보조 중엔 slow·jump·no_*_gate·bad_input 거부에도 계속(B-Q7). 보조 밖 slow 는 C1 얼림.
+          끝:   COG 채택 / 마지막 기동 신호 뒤 imu_assist_max_sec 초과(B-Q2 (iii)) / IMU stale(B-Q3)
+                / reset_to_init / 스위치 off. 끝나는 순간 값에서 얼린다(안 튐).
+          튐:   샘플당 |Δ| > imu_max_step_deg 인 Δ 만 버린다(B-Q4). °/s 기준은 안 쓴다(stamp 없음).
 
     표본 채택 조건 (계약 '구현 요구'):
       속도 ≥ min_speed_mps, 후진 아님, 최근 /desired_angle 이 5000/6000 아님,
@@ -328,9 +342,10 @@ class GPSCOGTracker:
       앵커와 jump_deg 넘게 다른 표본은 **2회 연속**(서로 jump_deg 안)일 때만 채택
       — 후진 관성으로 뒤로 밀릴 때의 180° 오채택 방지 (Q5).
 
-    상태:
+    상태 (우선순위 INIT/INIT_GOAL > ASSIST > HOLD > OK):
       INIT       첫 채택 전 + 초기 방위(tp) 없음/stale → None (침묵)
       INIT_GOAL  첫 채택 전 + tp 신선 → tp 를 그대로 (§1-6 승인된 예외, Q1 (c))
+      ASSIST     기동 구간 IMU 보조 중 → 앵커 + ΣΔ (보완 B)
       OK         마지막 채택 표본 나이 ≤ fresh_sec
       HOLD       그보다 오래됨 → 마지막 방위를 **시간 제한 없이** 유지·발행 (사용자 규칙 2)
 
@@ -339,7 +354,9 @@ class GPSCOGTracker:
 
     def __init__(self, *, min_speed_mps=0.5, fresh_sec=1.5, predict_max_sec=1.5,
                  max_rate_dps=30.0, settle_sec=2.0, jump_deg=90.0,
-                 init=GPS_COG_INIT_GOAL, init_stale_sec=2.0, require_gate=True):
+                 init=GPS_COG_INIT_GOAL, init_stale_sec=2.0, require_gate=True,
+                 imu_assist=True, imu_assist_max_sec=10.0, imu_max_step_deg=10.0,
+                 imu_stale_sec=0.5):
         if init not in GPS_COG_INIT_CHOICES:
             raise ValueError(
                 f"gps_cog_init '{init}' 를 모른다. 가능한 값: {list(GPS_COG_INIT_CHOICES)}")
@@ -361,6 +378,20 @@ class GPSCOGTracker:
         self._goal = (None, None)       # (/north_goal_angle_tp, 수신시각) — INIT_GOAL 용
         self.last_reject = None         # 왜 버렸는지 (진단용)
 
+        # ---- 보완 B: 기동 구간 IMU 상대 회전량 보조 ----
+        self.imu_assist = bool(imu_assist)                  # 스위치 = 런타임 되돌리기
+        self.imu_assist_max_sec = float(imu_assist_max_sec)  # 마지막 기동 신호 뒤 경과 상한 (B-Q2 (iii))
+        self.imu_max_step_deg = float(imu_max_step_deg)      # 샘플당 |Δ| 튐 기준 (B-Q4)
+        self.imu_stale_sec = float(imu_stale_sec)            # yaw_mux stale_sec 재사용 (B-Q3)
+        self._imu_last = (None, None)   # (s·r, 수신시각) — 직전 원시 샘플. 절대값으로는 안 쓴다
+        self._assist = False
+        self._assist_sum = 0.0          # 현재 앵커 이후 ΣΔ (얼림·재앵커마다 0 으로)
+        self._assist_total = 0.0        # 이번 보조 시작 이후 ΣΔ (unwrapped, 진단용)
+        self._assist_t0 = None          # 이번 보조 시작 시각
+        # 보조 종료 사유별 누적 횟수·튐 거부 누적 — yaw_mux 가 증가분으로 로그를 낸다(§1-6 드러내기)
+        self.assist_ends = {"cog": 0, "limit": 0, "imu_stale": 0, "reset": 0}
+        self.imu_step_rejects = 0
+
     # ------------------------------------------------ 입력
     def update_goal(self, bearing_deg, t):
         if is_finite(bearing_deg):
@@ -373,7 +404,12 @@ class GPSCOGTracker:
         → 다음 출력은 tp 신선하면 INIT_GOAL, 아니면 INIT(침묵).
         🚨 지우지 않는 것: 선회·후진 settle 시각(_last_maneuver_t)·tp(_goal) — 실제 기동 상태라 유지.
         진입 뒤 첫 COG 는 앵커가 없으니 jump 검사 없이 채택된다(진입 전 표본과 비교 안 함).
+        보조(보완 B)도 끈다 — 앵커가 없으니 INIT_GOAL 중엔 보조하지 않는다(B-Q6).
+        IMU 직전 샘플(_imu_last)은 센서 상태라 유지한다.
         """
+        if self._assist:
+            self.assist_ends["reset"] += 1
+        self._stop_assist()
         self._anchor = None
         self._prev_accept = None
         self._last_accept_t = None
@@ -381,17 +417,69 @@ class GPSCOGTracker:
         self.last_reject = None
 
     def note_maneuver(self, t):
-        """선회(5000/6000) 또는 후진을 봤다. 그 순간 값에서 얼리고 settle 시계를 다시 건다."""
+        """
+        선회(5000/6000) 또는 후진을 봤다. 그 순간 값에서 얼리고 settle 시계를 다시 건다.
+        보완 B: 앵커가 있고 IMU 가 신선하면 IMU 회전량 보조를 시작한다(이미 보조 중이면 계속).
+        상한은 이 신호 시각부터 다시 잰다(B-Q2 (iii)).
+        """
+        self._expire_assist(t)          # 상한·IMU 공백은 이 신호 '전' 기준으로 먼저 판정
         self._last_maneuver_t = t
         self._pending = None
         self._prev_accept = None
         self._freeze(t)
+        self._try_start_assist(t)
+
+    def update_imu(self, yaw_cf_deg, t):
+        """
+        보완 B: IMU 원시 샘플 (invert 만 적용한 s·r — HeadingMux 가 넘긴다).
+        절대값은 쓰지 않는다. 보조 중일 때만 직전 원시 샘플 대비 Δ 를 앵커에 더한다.
+        mount_offset_deg·편각은 상수라 Δ 에서 상쇄된다(B 로컬 40.3 무관).
+        """
+        if not is_finite(yaw_cf_deg):
+            return
+        y = wrap360(yaw_cf_deg)
+        self._expire_assist(t)          # 공백·상한을 넘긴 뒤에 온 샘플은 더하지 않는다
+        prev = self._imu_last[0]
+        self._imu_last = (y, t)
+        if not self._assist or prev is None:
+            return
+        d = ang_diff(y, prev)
+        if abs(d) > self.imu_max_step_deg:
+            # 그 Δ 만 버린다. 한 샘플 튀었다 돌아오면 두 Δ 다 버려져 순증 0,
+            # 기준이 계단으로 바뀌면 그 한 샘플만 잃는다(B-Q4).
+            self.imu_step_rejects += 1
+            return
+        self._assist_sum += d
+        self._assist_total += d
+
+    def imu_fresh(self, t):
+        """마지막 IMU 샘플이 imu_stale_sec 안에 있나 (보조 시작·유지 조건)."""
+        it = self._imu_last[1]
+        return it is not None and (t - it) <= self.imu_stale_sec
+
+    @property
+    def assist_active(self):
+        return self._assist
+
+    @property
+    def assist_total_deg(self):
+        """이번 보조 시작 이후 IMU 회전량 합 (unwrapped, CW+). 보조 밖이면 마지막 보조 값."""
+        return self._assist_total
+
+    def assist_elapsed(self, t):
+        """이번 보조 시작 뒤 경과 [s]. 보조 밖이면 None."""
+        if not self._assist or self._assist_t0 is None:
+            return None
+        return t - self._assist_t0
 
     def update(self, cog_deg, speed_mps, t, *, reverse, spin):
         """
         COG 표본 하나. 채택하면 True.
         reverse / spin: True / False / None(모름). None 은 require_gate 면 거부.
+        보완 B: 채택하면 IMU 보조를 끝내고 COG 로 다시 앵커를 잡는다. jump 검사는 보조가 반영된
+        출력과 비교한다(180° 선회 뒤 첫 COG 를 바로 채택).
         """
+        self._expire_assist(t)
         if not is_finite(speed_mps):
             return self._reject("bad_input", t)
         if reverse is True:
@@ -424,6 +512,9 @@ class GPSCOGTracker:
             if 0.0 < dt <= self.fresh_sec:
                 rate = max(-self.max_rate_dps,
                            min(self.max_rate_dps, ang_diff(c, pc) / dt))
+        if self._assist:
+            self.assist_ends["cog"] += 1
+        self._stop_assist()
         self._anchor = (c, t, rate)
         self._prev_accept = (c, t)
         self._last_accept_t = t
@@ -439,7 +530,10 @@ class GPSCOGTracker:
             if gt is None or (t - gt) > self.init_stale_sec:
                 return None, ST_INIT
             return g, ST_INIT_GOAL
+        self._expire_assist(t)
         yaw = self._output(t)
+        if self._assist:
+            return yaw, ST_IMU_ASSIST
         if (t - self._last_accept_t) > self.fresh_sec:
             return yaw, ST_HOLD
         return yaw, ST_OK
@@ -453,12 +547,17 @@ class GPSCOGTracker:
     # ------------------------------------------------ 내부
     def _output(self, t):
         v, t0, rate = self._anchor
+        if self._assist:
+            # 보조 중 앵커는 얼려 있다(회전율 0) — 출력 = 앵커 + IMU ΣΔ
+            return wrap360(v + self._assist_sum)
         dt = min(max(t - t0, 0.0), self.predict_max_sec)
         return wrap360(v + rate * dt)
 
     def _freeze(self, t):
+        """그 순간 출력값(보조 중이면 ΣΔ 반영값)에서 앵커를 다시 잡고 회전율·ΣΔ 를 0 으로 → 출력 연속."""
         if self._anchor is not None:
             self._anchor = (self._output(t), t, 0.0)
+            self._assist_sum = 0.0
 
     def _reject(self, reason, t, keep_pending=False):
         self.last_reject = reason
@@ -466,7 +565,68 @@ class GPSCOGTracker:
             self._pending = None
         self._prev_accept = None
         self._freeze(t)
+        if reason in ASSIST_START_REJECTS:
+            self._try_start_assist(t)       # 보완 B: 후진·선회·settle 거부도 보조 시작 신호
         return False
+
+    # ------------------------------------------------ 내부: IMU 보조 (보완 B)
+    def _try_start_assist(self, t):
+        """조건이 맞으면 보조 시작. 이미 보조 중이면 그대로 계속(얼림이 이미 재앵커했다)."""
+        if (self._assist or not self.imu_assist or self._anchor is None
+                or not self.imu_fresh(t)):
+            return
+        if (self._last_maneuver_t is not None
+                and (t - self._last_maneuver_t) > self.imu_assist_max_sec):
+            return                          # 상한을 이미 넘긴 기동 신호로는 시작하지 않는다
+        self._freeze(t)                     # 시작 순간 출력값 = 앵커 (연속)
+        self._assist = True
+        self._assist_sum = 0.0
+        self._assist_total = 0.0
+        self._assist_t0 = t
+
+    def _expire_assist(self, t):
+        """보조 중 IMU stale 또는 상한(마지막 기동 신호 뒤 경과) 초과면 그 값에서 얼리고 끝낸다."""
+        if not self._assist:
+            return
+        if not self.imu_fresh(t):
+            reason = "imu_stale"            # 마지막 IMU 샘플 시점 값에서 멈춘다(그 뒤 ΣΔ 없음)
+        else:
+            base = (self._last_maneuver_t if self._last_maneuver_t is not None
+                    else self._assist_t0)
+            if (t - base) <= self.imu_assist_max_sec:
+                return
+            reason = "limit"
+        self.assist_ends[reason] += 1
+        self._freeze(t)
+        self._stop_assist()
+
+    def _stop_assist(self):
+        self._assist = False
+        self._assist_sum = 0.0
+        self._assist_t0 = None
+
+
+def gps_cog_status_text(trk, status, t):
+    """
+    gps_cog 의 /heading_status 문자열 (yaw_mux 가 그대로 발행). 접두 '<source>:<state>' 유지.
+    OK 는 뒤에 아무것도 안 붙인다 — healthcheck 가 endswith(':OK') 로 본다(게이트가 꺼졌을 때만 gate=off).
+    ASSIST: 'gps_cog:ASSIST d=+47.3 t=3.2 rej=spin[ gate=off]' — d = 이번 보조 IMU 회전량(unwrapped),
+    t = 보조 경과 [s] (보완 B-Q5). healthcheck 엔 진단 ⚠️ 하나 추가될 뿐 /health_ok 무영향.
+    """
+    gate = "" if trk.require_gate else " gate=off"
+    rej = trk.last_reject or '-'
+    if status == ST_OK:
+        return f"{SRC_GPS_COG}:{ST_OK}{gate}"
+    if status == ST_HOLD:
+        age = trk.age(t)
+        age_s = '--' if age is None else f'{age:.1f}'
+        return f"{SRC_GPS_COG}:{ST_HOLD} age={age_s} rej={rej}{gate}"
+    if status == ST_IMU_ASSIST:
+        el = trk.assist_elapsed(t)
+        el_s = '--' if el is None else f'{el:.1f}'
+        return (f"{SRC_GPS_COG}:{ST_IMU_ASSIST} d={trk.assist_total_deg:+.1f} t={el_s} "
+                f"rej={rej}{gate}")
+    return f"{SRC_GPS_COG}:{status} rej={rej}{gate}"
 
 
 # ---------------------------------------------------------------- 믹서
@@ -522,6 +682,10 @@ class HeadingMux:
             # 최단 부호차로 미분한다. 359→1 을 -358°/s 로 읽으면 안 된다.
             self._turn_rate_dps = ang_diff(y, prev) / (t - prev_t)
         self._imu = (y, t)
+        # 보완 B: gps_cog 추적기에 invert 만 적용한 s·r 를 밀어 넣는다(Δ 부호 = invert_yaw 반영).
+        #   _imu 슬롯·_turn_rate_dps 는 위 그대로 — imu_relative 등 다른 소스 출력은 비트 단위 불변.
+        #   추적기는 기동 구간 보조 중일 때만 Δ 를 쓴다(절대값은 안 쓴다).
+        self.gps_cog.update_imu(self._cog_frame_yaw(y), t)
 
     def update_cog(self, cog_deg, speed_mps, t):
         """COG 표본 도착. gps_cog 추적기에 넣고, IMU 와 짝지어 추정기에 넣는다.
@@ -529,7 +693,7 @@ class HeadingMux:
         cog_deg=None, speed 0.0 (정지 — COG 정의 안 됨)도 받는다: gps_cog 는 그 순간 얼린다.
         추정기 경로는 예전처럼 무시한다.
         """
-        # gps_cog 는 IMU 슬롯을 읽지 않는다 — 후진·선회 게이트만 본다.
+        # gps_cog 는 IMU 슬롯을 읽지 않는다 — 후진·선회 게이트만 본다(IMU Δ 는 update_imu 가 따로 민다).
         self.gps_cog.update(cog_deg, speed_mps, t,
                             reverse=self.reverse_state(t), spin=self.spin_state(t))
         if not (is_finite(cog_deg) and is_finite(speed_mps)):
@@ -618,10 +782,12 @@ class HeadingMux:
             return self._from_slot(self._imu, t)
 
         if self.source == SRC_GPS_COG:
-            # 🚨 IMU 슬롯을 읽지 않는다(사용자 규칙 6). _correct 도 거치지 않는다 —
-            #    mount_offset_deg·invert_yaw 는 IMU 장착값이라 COG 에 걸면 그만큼 틀어지고
-            #    (B 로컬 40.3 이면 40°), 편각은 COG 가 진북 기준이라 이중 보정이다.
-            #    HOLD·INIT_GOAL 도 값을 낸다 → 호출부는 PUBLISH_STATES 로 발행을 판정한다.
+            # 🚨 IMU 슬롯(절대값)을 읽지 않는다(사용자 규칙 6 — 보완 B 로 'IMU 절대값 배제' 로 정정).
+            #    기동 구간 IMU 상대 회전량(Δ)은 update_imu 가 추적기에 따로 밀어 넣는다.
+            #    _correct 도 거치지 않는다 — mount_offset_deg 는 IMU 장착값이라 COG 에 걸면 그만큼
+            #    틀어지고(B 로컬 40.3 이면 40°), 편각은 COG 가 진북 기준이라 이중 보정이다.
+            #    invert_yaw 는 보조 Δ 의 부호에만 들어간다(_cog_frame_yaw).
+            #    HOLD·INIT_GOAL·ASSIST 도 값을 낸다 → 호출부는 PUBLISH_STATES 로 발행을 판정한다.
             return self.gps_cog.heading(t)
 
         if self.source == SRC_DUAL_GPS:

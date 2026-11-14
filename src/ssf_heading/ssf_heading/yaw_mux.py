@@ -18,7 +18,8 @@ yaw_mux — /imu/yaw 의 **단독 발행자**.
   - 입력이 stale 하거나 소스가 미구현이면 **발행하지 않는다.**
     (예외 — gps_cog: HOLD 는 마지막 방위를, INIT_GOAL 은 /north_goal_angle_tp 를 낸다.
      계약서_GPS방위_20261114 Q1 (c) 승인. tp 도 없으면 INIT 로 침묵.
-     /boat_mode 가 AUTO(2)로 바뀌는 순간 첫 COG 전 상태로 되돌린다 — 보완 A)
+     /boat_mode 가 AUTO(2)로 바뀌는 순간 첫 COG 전 상태로 되돌린다 — 보완 A.
+     선회·후진 기동 구간엔 IMU 상대 회전량(Δ)으로 방위를 따라간다(ASSIST) — 보완 B)
     틀린 방위 하나가 배를 정반대로 보낸다. 소비자는 이미 침묵을 처리한다:
       ship_goal_angle  → /yaw_error 발행 중단 → ship_direction 이 감속/정지
       north_goal_angle → geofence 침묵(빈 배열)
@@ -36,8 +37,8 @@ from geometry_msgs.msg import TwistWithCovarianceStamped
 from ssf_heading.heading_logic import (
     ALL_SOURCES, BOAT_MODE_AUTO, GPS_COG_INIT_GOAL, PUBLISH_STATES,
     SRC_COG_OFFSET, SRC_GPS_COG, SRC_IMU_RELATIVE,
-    ST_HOLD, ST_INIT_GOAL, ST_OK,
-    COGOffsetEstimator, GPSCOGTracker, HeadingMux, cog_from_velocity,
+    ST_HOLD, ST_IMU_ASSIST, ST_INIT_GOAL, ST_OK,
+    COGOffsetEstimator, GPSCOGTracker, HeadingMux, cog_from_velocity, gps_cog_status_text,
 )
 
 
@@ -45,6 +46,8 @@ class YawMux(Node):
     # gps_cog 에서 부팅 뒤 이 시간 넘게 /boat_mode 를 한 번도 못 받으면 WARN (보완 A, §1-6 드러내기).
     # 계약서 고정값 — 로그 시점일 뿐 제어에 안 쓴다(새 yaml 키는 boat_mode_topic 하나만, 보완 A).
     BOAT_MODE_WARN_AFTER_SEC = 5.0
+    # gps_cog IMU 보조(보완 B) 'IMU 없음' WARN 도 부팅 뒤 이 시간부터 (첫 틱엔 IMU 가 아직 안 왔다).
+    IMU_ASSIST_WARN_AFTER_SEC = BOAT_MODE_WARN_AFTER_SEC
 
     def __init__(self):
         super().__init__('yaw_mux')
@@ -106,6 +109,13 @@ class YawMux(Node):
             init_stale_sec=float(
                 self.declare_parameter('gps_cog_init_stale_sec', 2.0).value),
             require_gate=require_gate,
+            # 보완 B: 기동(선회·후진) 구간 IMU 상대 회전량 보조. 런타임 되돌리기 = false + 재시작.
+            imu_assist=bool(self.declare_parameter('gps_cog_imu_assist', True).value),
+            imu_assist_max_sec=float(
+                self.declare_parameter('gps_cog_imu_assist_max_sec', 10.0).value),
+            imu_max_step_deg=float(
+                self.declare_parameter('gps_cog_imu_max_step_deg', 10.0).value),
+            imu_stale_sec=self.stale_sec,      # 새 키 없음 — stale_sec 재사용 (B-Q3)
         )
 
         self.mux = HeadingMux(
@@ -185,6 +195,10 @@ class YawMux(Node):
         self._gps_init_goal_logged = False
         self._gps_first_cog_logged = False
         self._boot_t = time.monotonic()      # /boat_mode 미수신 WARN 기준 (단조시계, §1-5)
+        # 보완 B 로그: 추적기 누적 카운터의 증가분으로 낸다 (보조 시작마다는 로그 없음 — 상태 문자열로만)
+        self._seen_assist_limit = 0
+        self._seen_assist_imu_stale = 0
+        self._seen_imu_step_rejects = 0
 
         self.timer = self.create_timer(self.period_sec, self.tick)
 
@@ -203,11 +217,15 @@ class YawMux(Node):
         if source == SRC_GPS_COG:
             trk = self.mux.gps_cog
             self.get_logger().info(
-                f"gps_cog: /imu/yaw = GPS 도플러 진행방향(게걸음 포함). IMU 배제, "
-                f"mount_offset_deg·invert_yaw·편각 미적용. "
+                f"gps_cog: /imu/yaw = GPS 도플러 진행방향(게걸음 포함). IMU 절대값 배제, "
+                f"mount_offset_deg·편각 미적용. "
                 f"채택 속도≥{trk.min_speed_mps}m/s, settle={trk.settle_sec}s, "
                 f"fresh={trk.fresh_sec}s, 첫 COG 전 초기값={goal_bearing_topic}(INIT_GOAL), "
-                f"{boat_mode_topic}={BOAT_MODE_AUTO}(AUTO) 진입마다 초기화")
+                f"{boat_mode_topic}={BOAT_MODE_AUTO}(AUTO) 진입마다 초기화\n"
+                f"   IMU 보조={'on' if trk.imu_assist else 'off'} "
+                f"(선회·후진 기동 구간에만 {raw_topic} 상대 회전량 Δ, invert_yaw 는 Δ 부호에 반영), "
+                f"상한=마지막 기동 신호 뒤 {trk.imu_assist_max_sec}s, "
+                f"튐 기준 |Δ|>{trk.imu_max_step_deg}°/샘플, IMU stale {trk.imu_stale_sec}s")
 
     # ───────────────────────── 콜백 ─────────────────────────
     def raw_yaw_cb(self, msg):
@@ -283,7 +301,7 @@ class YawMux(Node):
             self.get_logger().info(
                 f"gps_cog INIT_GOAL: 첫 유효 COG 전 → 현재 WP 방위 {yaw:.1f}° 를 /imu/yaw 로 발행 "
                 f"(전제: 출발 때 뱃머리를 현재 WP 로 겨눴다)")
-        if status in (ST_OK, ST_HOLD) and not self._gps_first_cog_logged:
+        if status in (ST_OK, ST_HOLD, ST_IMU_ASSIST) and not self._gps_first_cog_logged:
             self._gps_first_cog_logged = True
             self.get_logger().info(f"gps_cog: 첫 COG 채택 → {yaw:.1f}°")
 
@@ -307,11 +325,50 @@ class YawMux(Node):
                 "(MANUAL 중 채택한 COG 가 그대로 남는다). ssf_bridge 가 떠 있나?",
                 throttle_duration_sec=10.0)
 
+        self._gps_cog_assist_logs(yaw, now)
+
         # 선회 게이트가 안 와서 갱신이 멈춰 있으면 조용히 두지 않는다 (후진 게이트 경고와 같은 취지)
         if trk.require_gate and self.mux.spin_state(now) is None:
             self.get_logger().warn(
                 "/desired_angle 없음(또는 stale) → gps_cog 갱신 정지(마지막 방위 유지). "
                 "ship_direction 이 떠 있나? 헤딩만 벤치 중이면 cog_require_reverse_gate:=false.",
+                throttle_duration_sec=10.0)
+
+    def _gps_cog_assist_logs(self, yaw, now):
+        """보완 B IMU 보조 로그. 🚨 심각도마다 호출 지점을 나눈다 (CLAUDE.md 1-7)."""
+        trk = self.mux.gps_cog
+        yaw_s = '--' if yaw is None else f'{yaw:.1f}'
+
+        n = trk.assist_ends["limit"]
+        if n != self._seen_assist_limit:
+            self._seen_assist_limit = n
+            self.get_logger().info(
+                f"gps_cog IMU 보조 상한 종료: 마지막 기동 신호 뒤 {trk.imu_assist_max_sec}s 경과 "
+                f"→ {yaw_s}° 에서 얼림(새 COG 채택까지 HOLD)",
+                throttle_duration_sec=10.0)
+
+        n = trk.assist_ends["imu_stale"]
+        if n != self._seen_assist_imu_stale:
+            self._seen_assist_imu_stale = n
+            self.get_logger().warn(
+                f"gps_cog IMU 보조 중 IMU 끊김({trk.imu_stale_sec}s 넘게 미수신) → 보조 종료, "
+                f"마지막 IMU 샘플 시점 값 {yaw_s}° 에서 얼림 (누적 {n}회)",
+                throttle_duration_sec=5.0)
+
+        n = trk.imu_step_rejects
+        if n != self._seen_imu_step_rejects:
+            self._seen_imu_step_rejects = n
+            self.get_logger().warn(
+                f"gps_cog IMU 보조: 튐 샘플 Δ 버림 누적 {n}회 "
+                f"(샘플당 |Δ|>{trk.imu_max_step_deg}°)",
+                throttle_duration_sec=5.0)
+
+        # healthcheck 는 /imu/yaw OK 면 원시 yaw 를 안 본다 → 이게 유일한 표시 (§1-6)
+        if (trk.imu_assist and not trk.imu_fresh(now)
+                and (now - self._boot_t) > self.IMU_ASSIST_WARN_AFTER_SEC):
+            self.get_logger().warn(
+                "gps_cog: IMU 없음(/imu/yaw_raw 미수신·stale) → 기동 중 회전 보조 불가(C1 얼림). "
+                "iahrs_driver 가 떠 있나?",
                 throttle_duration_sec=10.0)
 
     def _publish_status(self, status, now):
@@ -335,20 +392,8 @@ class YawMux(Node):
             f" rej={est.last_reject or '-'}{gate}")))
 
     def _gps_cog_status(self, status, now):
-        """
-        gps_cog 상태 문자열. 접두 '<source>:<state>' 유지.
-        OK 는 뒤에 아무것도 안 붙인다 — healthcheck 가 endswith(':OK') 로 본다(게이트가 꺼졌을 때만 gate=off).
-        """
-        trk = self.mux.gps_cog
-        gate = "" if trk.require_gate else " gate=off"
-        rej = trk.last_reject or '-'
-        if status == ST_OK:
-            return f"{SRC_GPS_COG}:{ST_OK}{gate}"
-        if status == ST_HOLD:
-            age = trk.age(now)
-            age_s = '--' if age is None else f'{age:.1f}'
-            return f"{SRC_GPS_COG}:{ST_HOLD} age={age_s} rej={rej}{gate}"
-        return f"{SRC_GPS_COG}:{status} rej={rej}{gate}"
+        """gps_cog 상태 문자열 — 순수 로직 gps_cog_status_text 로 옮겼다(테스트 가능하게, 보완 B)."""
+        return gps_cog_status_text(self.mux.gps_cog, status, now)
 
 
 def main(args=None):
