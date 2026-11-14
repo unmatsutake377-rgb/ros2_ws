@@ -194,7 +194,7 @@ def test_source_yaml_recording_order_includes_dock():
     t, reason = load_template(_WAYPOINTS_YAML)
     assert t is not None, reason
     rows, labels = t
-    assert [int(r[2]) for r in rows] == [5, 0, 1, 2, 5, 7, 7, 5, 3, 3, 3, 5, 5, 8], [int(r[2]) for r in rows]
+    assert [int(r[2]) for r in rows] == [5, 0, 1, 2, 5, 7, 7, 5, 3, 3, 3, 5, 5, 5, 8], [int(r[2]) for r in rows]
     assert "출항" in labels[0] and "위치유지" in labels[3] and all("도킹" in labels[k] for k in (4, 5, 6)), labels
     assert not any("위치유지 2" in lb for lb in labels), labels
 

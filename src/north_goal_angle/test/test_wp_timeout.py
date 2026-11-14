@@ -148,11 +148,11 @@ def test_timeout_for_mode_absent_is_none():
 
 # ---------------- 회귀: 현재 waypoints.yaml + 기본값
 def test_regression_real_waypoints():
-    """KABOAT 2026 OT(11-12) 순서 + 맨 앞 출항(mode 5, 11-14) = 14개: 출항 → 게이트 2 → 위치유지(1회) → 도킹 정렬 6m(5) → 도크 정면·이탈(7)
+    """KABOAT 2026 OT(11-12) 순서 + 맨 앞 출항(mode 5, 11-14) + 장애물 구간 접근(11-15) = 15개: 출항 → 게이트 2 → 위치유지(1회) → 도킹 정렬 6m(5) → 도크 정면·이탈(7)
     → 탐색 접근(5) → 탐색 3 → 회피 시작·끝 → WP10 종료(mode 8)."""
     wps = _real_waypoints()
-    assert len(wps) == 14, f"waypoints.yaml 가 14개가 아니다 ({len(wps)}) — 회귀 기준 재확인 필요"
-    assert [w[2] for w in wps] == [5, 0, 1, 2, 5, 7, 7, 5, 3, 3, 3, 5, 5, 8], [w[2] for w in wps]
+    assert len(wps) == 15, f"waypoints.yaml 가 15개가 아니다 ({len(wps)}) — 회귀 기준 재확인 필요"
+    assert [w[2] for w in wps] == [5, 0, 1, 2, 5, 7, 7, 5, 3, 3, 3, 5, 5, 5, 8], [w[2] for w in wps]
     got = per_wp_timeouts(wps, _default_table())
     assert got[0] == 120.0, got                            # 출항(mode 5)
     assert got[1:4] == [120.0, 120.0, 120.0], got          # 게이트 0·1, 위치유지
@@ -160,8 +160,9 @@ def test_regression_real_waypoints():
     assert got[5] == 150.0 and got[6] == 150.0, got        # WP8 도크 정면·WP9 이탈(mode 7)
     assert got[7] == 120.0, got                            # 탐색 접근(mode 5)
     assert got[8:11] == [90.0, 90.0, 90.0], got            # 탐색 3(mode 3)
-    assert got[11] == 120.0 and got[12] == 120.0, got      # 회피 시작·끝(mode 5)
-    assert got[13] is None, got                            # WP10 종료(mode 8): 없음
+    assert got[11] == 120.0, got                           # 장애물 구간 접근(mode 5, A7 자리)
+    assert got[12] == 120.0 and got[13] == 120.0, got      # 회피 시작·끝(mode 5)
+    assert got[14] is None, got                            # WP10 종료(mode 8): 없음
 
 
 def test_real_waypoints_dock_after_hold_align_and_exit():
