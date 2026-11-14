@@ -22,7 +22,9 @@ from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy, HistoryPolicy
 
 from ssf_tools import thermal
-from ssf_tools.health_logic import IMAGE_FAIL_STATES, STATE_NEVER, image_state
+from ssf_tools.health_logic import (
+    IMAGE_FAIL_STATES, STATE_NEVER, gate_off_source, image_state,
+)
 
 from std_msgs.msg import Int32, Float32, Float64, Bool, String
 from sensor_msgs.msg import Image, LaserScan, NavSatFix
@@ -288,13 +290,17 @@ class HealthCheck(Node):
         # cog_require_reverse_gate=false 면 후진 표본이 섞여 헤딩이 정확히 180° 틀린 값에
         # 수렴할 수 있다(R=1.0 이라 신뢰도로 못 걸러진다). 벤치용 스위치가 실전에 남는 건
         # 이런 편의 스위치의 고전적 말로다 — 사람 기억이 아니라 여기서 기계적으로 잡는다.
-        # ※ heading_source 가 cog_offset 일 때만 실패로 친다. imu_relative 로 도는 동안엔
-        #   이 게이트가 무의미해서 꺼져 있어도 무해하다 → 거짓 정지를 만들지 않는다.
+        # ※ heading_source 가 cog_offset·gps_cog 일 때만 실패로 친다(health_logic.gate_off_source).
+        #   gps_cog(11-15 두 배 공통 기본값)는 COG 를 헤딩 본체로 쓰고, 이 게이트가 후진·선회 중
+        #   COG 를 거부하는 유일한 장치다 → 꺼지면 후진 순간 헤딩 180° 튐. 예전엔 cog_offset 만 봐서
+        #   대회 기본 소스에서 이 검사가 빠져 있었다(계약서_GPS방위_20261114 보완 C, C-Q6).
+        #   imu_relative 등으로 도는 동안엔 이 게이트가 헤딩에 안 쓰여 꺼져 있어도 무해하다
+        #   → 거짓 정지를 만들지 않는다.
         gate_ok = True
-        hs = self._heading_status
-        if hs and hs.startswith("cog_offset:") and "gate=off" in hs:
-            lines.append("   ❌ cog_require_reverse_gate=false 인데 heading_source=cog_offset "
-                         "— 벤치 플래그가 대회 설정에 남았다. 후진 시 헤딩 180° 오수렴 위험")
+        gate_src = gate_off_source(self._heading_status)
+        if gate_src is not None:
+            lines.append(f"   ❌ cog_require_reverse_gate=false 인데 heading_source={gate_src} "
+                         "— 벤치 플래그가 대회 설정에 남았다. 후진·선회 시 헤딩 180° 오류 위험")
             gate_ok = False
 
         # --- /health_ok 판정 ---
