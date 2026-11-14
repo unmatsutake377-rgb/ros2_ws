@@ -111,8 +111,8 @@ rclpy 는 소스 위치별로 심각도를 캐싱해 `ValueError: Logger severit
 
 | 값 | 의미 |
 |---|---|
-| `5000.0` | 우선회 SPIN_RIGHT |
-| `6000.0` | 좌선회 SPIN_LEFT (현재 발행 노드 없음, 예약) |
+| `5000.0` | 우선회 SPIN_RIGHT — 발행: `ship_dock`(SEARCH 스윕·ALIGN, 모드 7), `ship_avoid`(DORI, 모드 5), `ship_turn`(SCAN 도리도리, 모드 3) |
+| `6000.0` | 좌선회 SPIN_LEFT — 발행: 5000 과 같은 세 노드. SPIN 은 일반 조향과 같은 `steer_invert` 경로라 조향 부호가 맞으면 같이 맞다 |
 | `20000.0` | 미션 없음 CANDIDATE_INVALID → fallback 전진 |
 | `50000.0` | 정지 STOP_HOLD / STOP_VALUE |
 

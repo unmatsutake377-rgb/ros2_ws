@@ -13,7 +13,8 @@
     approach_dist_m: 4.0     # ⚠️ 실측 필요 — 이 거리 안으로 들어오면 ORBIT 시작
     k_radial_deg_per_m: 30.0 # 반경 오차 1m 당 조향 보정각
     radial_limit_deg: 45.0   # 반경 보정 최대(접선을 완전히 덮지 않게)
-    orbit_target_deg: 360.0  # 한 바퀴
+    orbit_target_deg: 420.0  # 한 바퀴 이상(2026-11-15 승인, 계약서_탐색전도리도리 §14-7). 코드 기본값과 같이 고칠 것.
+                             #   더 올리면 orbit_max_sec(60, ORBIT 진입부터)도 같이 — 540° 는 시뮬 55 s 로 상한에 붙는다(§12)
 
     # ---- 시간 ----
     hold_sec: 2.0            # 진입 직후 정지(autonomous 접근)
@@ -21,6 +22,22 @@
     orbit_max_sec: 60.0      # 안전 타임아웃 (yaw 없어 진행각을 못 잴 때)
     cooldown_sec: 5.0        # 2026-11-11 부터 미사용(완료 → DONE 래치 20000) — 선언만 유지
     lost_sec: 2.0            # 부표를 이 시간 넘게 놓치면 SEARCH(20000) 로 — 다시 잡으면 진행각 0 부터
+
+    # ---- SCAN(도리도리) — 모드 3 첫 진입 INIT 뒤 한 번 (계약서_탐색전도리도리_20261115) ----
+    # STOP 50000 → 오른쪽 −scan_angle(SPIN_RIGHT 5000) → HOLD 50000 → 0 → 왼쪽 +scan_angle(SPIN_LEFT 6000) → HOLD
+    #   → 0(SPIN_RIGHT) → SEARCH. 공지 색 + 방위 보이면 즉시 APPROACH. 3→3 재실행 없음.
+    # 건너뜀(SEARCH + WARN): yaw 없음·stale / /scan 없음·stale / 회전 원(scan_clear_m) 안 반사 / scan_timeout_sec 초과.
+    # 🚨 대회 launch 가 이 yaml 을 넘긴다 → 코드 기본값과 같이 고칠 것. 전부 소수점(정수면 rclpy 타입 오류).
+    # 🚨 6000(SPIN_LEFT) 경로 실기 미검증 — 좌우 부호 틀리면 한쪽으로만 돌다 timeout 으로 SEARCH(멈추진 않음).
+    scan_enabled: true       # false = 옛 동작(INIT → SEARCH)
+    scan_angle_deg: 90.0     # ±90° + 카메라 HFOV ±40° ≈ ±130° 시야(§11 시뮬: ±60° 는 배 뒤 부표 놓침). 0 초과 150 이하
+    scan_tol_deg: 5.0        # ⚠️ 실측 필요 — 목표각 도달 허용(오버슈트)
+    scan_lead_sec: 0.3       # ⚠️ 실측 필요 — |yaw rate|×lead 만큼 일찍 멈춤
+    scan_stop_sec: 1.5       # ⚠️ 실측 필요 — 진입 시 정지 대기(관성)
+    scan_hold_sec: 1.2       # 끝각 정지 촬영(검출 confirm 여유)
+    scan_timeout_sec: 25.0   # SCAN 전체 상한 — 넘으면 SEARCH(무한 선회 금지, [5]① 재발 방지)
+    scan_clear_m: 1.0        # ⚠️ 실측 필요 — SCAN 시작 때 신선한 /scan 전 방위에 이보다 가까운 반사가 있으면 건너뜀
+                             #   (제자리 회전 원 반길이 ≈0.83 m + 여유. 선체 자기 반사가 잡히면 늘 건너뛴다 — 실기 확인)
 
     # ---- 신선도 / LiDAR ----
     angle_stale_sec: 1.0

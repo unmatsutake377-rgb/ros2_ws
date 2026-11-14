@@ -5,10 +5,15 @@
       tools/run_tests.sh ship_turn
 
 계약서 docs/문제와작업/계약서_탐색orbit_WP넘김_20261111.md (D1):
-  A. SEARCH = 20000(손 뗌) — 제자리 선회 SPIN 5000/6000 을 내지 않고, 시간 초과로 상태를 바꾸지 않는다.
+  A. SEARCH = 20000(손 뗌) — SEARCH 는 제자리 선회 SPIN 5000/6000 을 내지 않고, 시간 초과로 상태를 바꾸지 않는다.
+     (SPIN 은 D 의 SCAN 만. A 의 노드는 yaw 를 안 넣어 SCAN 을 건너뛰고 SEARCH 로 간다.)
   B. 한 바퀴(또는 orbit_max_sec) 뒤 DONE — 모드 3 이 끝날 때까지 20000. 3→3 래치 유지, 3→5→3 은 INIT.
   C. ORBIT 에선 LiDAR 추적이 카메라보다 먼저 — 검출기 grace 의 묵은 시야 끝 각을 이긴다.
      APPROACH 는 카메라 먼저(그대로).
+계약서 docs/문제와작업/계약서_탐색전도리도리_20261115.md (§14):
+  D. SCAN(도리도리) — INIT 뒤 한 번: 50000 → 5000 → 50000 → 6000 → 50000 → 5000 → 50000 → SEARCH.
+     색+방위 → 즉시 APPROACH / yaw 없음·/scan 없음·회전 원 막힘·scan_enabled=false·상한 초과 → SEARCH.
+     3→3 재실행 없음, 3→5→3 재실행.
 스텁 방식은 ship_back/test/test_back_steer_clamp.py 와 같다(import 동안만 sys.modules 에 넣고 되돌린다).
 """
 
@@ -183,7 +188,7 @@ def _orbit_node(cam_rel=None, scan_points=(), last_rel=-31.0):
 # ─────────────── A. SEARCH = 20000 ───────────────
 def test_search_publishes_invalid_not_spin():
     n = _node()
-    for _ in range(25):                 # INIT hold_sec 2 s → SEARCH
+    for _ in range(25):                 # INIT hold_sec 2 s → (yaw 없음 → SCAN 건너뜀) → SEARCH
         _tick(n)
     assert n.state == 'SEARCH', n.state
     del _pub(n)[:]
@@ -279,6 +284,220 @@ def test_approach_keeps_camera_first():
     n.state = 'APPROACH'
     _tick(n)
     assert n.rel_src == 'cam', n.rel_src
+
+
+# ─────────────── D. SCAN(도리도리) ───────────────
+SPIN_R, SPIN_L, STOP = 5000.0, 6000.0, 50000.0
+
+
+class _Plant:
+    """선회 모델: 마지막 /candidate_angle 이 5000 이면 yaw 증가(우선회, CW), 6000 이면 감소. 1차 지연."""
+
+    def __init__(self, n, yaw=10.0, spin_dps=30.0, tau=0.3):
+        self.n, self.yaw, self.rate, self.spin_dps, self.tau = n, yaw, 0.0, spin_dps, tau
+        self.feed = True
+
+    def after_tick(self, dt=0.1):
+        vals = _pub(self.n)
+        v = vals[-1] if vals else INVALID
+        want = self.spin_dps if v == SPIN_R else (-self.spin_dps if v == SPIN_L else 0.0)
+        self.rate += (want - self.rate) * min(1.0, dt / self.tau)
+        self.yaw = (self.yaw + self.rate * dt) % 360.0
+        if self.feed:
+            self.n.yaw_cb(_Msg(self.yaw))       # t_yaw = 지금(CLOCK)
+
+
+def _scan_node(scan_points=(), yaw=10.0, spin_dps=30.0, fresh_scan=True):
+    """모드 3 진입 직후(INIT) 노드 + 선회 모델. /scan 은 (fresh_scan 이면) 오래 신선."""
+    n = _node()
+    if fresh_scan:
+        n.latest_scan = _Scan(scan_points)
+        n.t_scan = CLOCK.t + 1000.0
+    pl = _Plant(n, yaw=yaw, spin_dps=spin_dps)
+    pl.after_tick()
+    return n, pl
+
+
+def _run(n, pl, ticks, stop_when=None):
+    for _ in range(ticks):
+        _tick(n)
+        pl.after_tick()
+        if stop_when is not None and stop_when(n):
+            return
+
+
+def _to_scan(n, pl):
+    _run(n, pl, 40, stop_when=lambda m: m.state != 'INIT')
+    assert n.state == 'SCAN', n.state
+
+
+def _warns(n):
+    return [m for lv, m in n._logger.lines if lv == 'WARN']
+
+
+def _squeeze(xs):
+    out = []
+    for x in xs:
+        if not out or out[-1] != x:
+            out.append(x)
+    return out
+
+
+def test_scan_sequence_order_then_search():
+    n, pl = _scan_node()
+    _to_scan(n, pl)
+    del _pub(n)[:]
+    _run(n, pl, 400, stop_when=lambda m: m.state != 'SCAN')
+    assert n.state == 'SEARCH', n.state
+    seq = _squeeze(_pub(n))
+    assert seq == [STOP, SPIN_R, STOP, SPIN_L, STOP, SPIN_R, STOP, INVALID], seq
+    assert not _warns(n), _warns(n)
+    del _pub(n)[:]
+    _run(n, pl, 100)                     # 그 뒤 SEARCH = 20000 만
+    assert set(_pub(n)) == {INVALID}, set(_pub(n))
+
+
+def test_scan_color_found_goes_approach_immediately():
+    n, pl = _scan_node()
+    _to_scan(n, pl)
+    _run(n, pl, 30)                      # 정지 1.5 s 뒤 오른쪽으로 도는 중
+    assert n.state == 'SCAN' and _pub(n)[-1] == SPIN_R, (n.state, _pub(n)[-1])
+    n.color_cb(_Msg('green'))
+    n.angle_cb(_Msg(-20.0))
+    _tick(n)
+    assert n.state == 'APPROACH' and n.dir_cw is True, (n.state, n.dir_cw)
+    assert n.scan_seq is None
+
+
+def test_scan_angle_without_color_keeps_scanning():
+    """방위만 있고 색이 없으면(회전 방향 모름) SCAN 계속 — SEARCH 와 같은 조건."""
+    n, pl = _scan_node()
+    _to_scan(n, pl)
+    n.angle_cb(_Msg(-20.0))
+    _run(n, pl, 3)
+    assert n.state == 'SCAN', n.state
+
+
+def test_scan_skipped_without_yaw():
+    n = _node()
+    n.latest_scan = _Scan()
+    n.t_scan = CLOCK.t + 1000.0
+    for _ in range(25):
+        _tick(n)
+    assert n.state == 'SEARCH', n.state
+    assert any('yaw' in w for w in _warns(n)), _warns(n)
+    assert SPIN_R not in _pub(n) and SPIN_L not in _pub(n)
+
+
+def test_scan_skipped_without_scan():
+    n, pl = _scan_node(fresh_scan=False)
+    _run(n, pl, 25)
+    assert n.state == 'SEARCH', n.state
+    assert any('/scan' in w for w in _warns(n)), _warns(n)
+
+
+def test_scan_skipped_with_stale_scan():
+    n, pl = _scan_node(fresh_scan=False)
+    n.latest_scan = _Scan()
+    n.t_scan = CLOCK.t                   # INIT 2 s 동안 묵는다(scan_stale_sec 1 s)
+    _run(n, pl, 25)
+    assert n.state == 'SEARCH', n.state
+    assert any('/scan' in w for w in _warns(n)), _warns(n)
+
+
+def test_scan_skipped_when_spin_circle_blocked():
+    n, pl = _scan_node(scan_points=[(170.0, 0.6)])     # 뒤쪽 0.6 m 도크 구조물
+    _run(n, pl, 25)
+    assert n.state == 'SEARCH', n.state
+    assert any('회전 원' in w for w in _warns(n)), _warns(n)
+    assert SPIN_R not in _pub(n) and SPIN_L not in _pub(n)
+
+
+def test_scan_runs_when_reflections_outside_circle():
+    n, pl = _scan_node(scan_points=[(170.0, 1.5), (0.0, 8.0)])
+    _to_scan(n, pl)
+
+
+def test_scan_disabled_goes_search_like_before():
+    PARAM_OVERRIDES['scan_enabled'] = False
+    try:
+        n, pl = _scan_node()
+    finally:
+        PARAM_OVERRIDES.pop('scan_enabled')
+    _run(n, pl, 25)
+    assert n.state == 'SEARCH', n.state
+    assert not _warns(n), _warns(n)
+    assert set(_pub(n)) == {INVALID}, set(_pub(n))
+
+
+def test_scan_bad_param_disables_scan_with_error():
+    PARAM_OVERRIDES['scan_angle_deg'] = 170.0
+    try:
+        n, pl = _scan_node()
+    finally:
+        PARAM_OVERRIDES.pop('scan_angle_deg')
+    assert n.scan_enabled is False
+    assert any(lv == 'ERROR' and 'scan_angle_deg' in m for lv, m in n._logger.lines), n._logger.lines
+    _run(n, pl, 25)
+    assert n.state == 'SEARCH', n.state
+
+
+def test_scan_timeout_goes_search():
+    n, pl = _scan_node(spin_dps=0.0)    # SPIN 이 안 먹는다(geofence 정지·부호 틀림)
+    _to_scan(n, pl)
+    _run(n, pl, 300, stop_when=lambda m: m.state != 'SCAN')
+    assert n.state == 'SEARCH', n.state
+    assert any('상한' in w for w in _warns(n)), _warns(n)
+    assert n.elapsed() == 0.0
+
+
+def test_scan_yaw_lost_midway_goes_search():
+    n, pl = _scan_node()
+    _to_scan(n, pl)
+    _run(n, pl, 25)
+    assert n.state == 'SCAN', n.state
+    pl.feed = False                      # /imu/yaw 끊김 → angle_stale_sec(1 s) 뒤 stale
+    _run(n, pl, 15)
+    assert n.state == 'SEARCH', n.state
+    assert any('yaw' in w for w in _warns(n)), _warns(n)
+    assert _pub(n)[-1] == INVALID, _pub(n)[-1]
+
+
+def test_scan_not_rerun_on_3_to_3():
+    n, pl = _scan_node()
+    _to_scan(n, pl)
+    _run(n, pl, 400, stop_when=lambda m: m.state != 'SCAN')
+    assert n.state == 'SEARCH', n.state
+    del _pub(n)[:]
+    n.wp_cb(_Msg(3))                     # 다음 탐색 WP(3→3)
+    _run(n, pl, 100)
+    assert n.state == 'SEARCH', n.state
+    assert set(_pub(n)) == {INVALID}, set(_pub(n))
+
+
+def test_scan_rerun_on_3_to_5_to_3():
+    n, pl = _scan_node()
+    _to_scan(n, pl)
+    _run(n, pl, 400, stop_when=lambda m: m.state != 'SCAN')
+    n.wp_cb(_Msg(5))
+    n.wp_cb(_Msg(3))
+    assert n.state == 'INIT' and n.scan_seq is None, (n.state, n.scan_seq)
+    _to_scan(n, pl)
+
+
+def test_mode_change_mid_scan_resets():
+    """SCAN 중 3→5→3 이면 처음(INIT)부터 — 반쯤 돈 시퀀스를 이어가지 않는다."""
+    n, pl = _scan_node()
+    _to_scan(n, pl)
+    _run(n, pl, 20)
+    n.wp_cb(_Msg(5))
+    n.wp_cb(_Msg(3))
+    assert n.state == 'INIT' and n.scan_seq is None, (n.state, n.scan_seq)
+
+
+def test_orbit_target_default_420():
+    n = _node()
+    assert n.orbit_target_deg == 420.0, n.orbit_target_deg
 
 
 if __name__ == '__main__':

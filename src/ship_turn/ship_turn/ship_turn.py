@@ -30,20 +30,35 @@
          → DONE 래치: 모드 3 이 끝날 때까지 20000(ship_back DONE 과 같은 규약, 3→3 미리셋).
       ③ ORBIT 중 검출기 grace 2 s 의 묵은 시야 끝 각 때문에 LiDAR 추적이 안 켜져 60–73° 에서 놓쳤다
          → ORBIT 에선 LiDAR 추적 먼저(orbit_logic.orbit_source).
-      그래서 이 노드는 더 이상 SPIN 5000/6000 을 내지 않는다. search_timeout_sec·cooldown_sec 는 미사용(선언만 유지).
+      그래서 SEARCH 는 SPIN 5000/6000 을 내지 않는다(20000). SPIN 은 [6] SCAN 만, 유한 시간(scan_timeout_sec) —
+      시간 상한이 있어 ① 은 재발하지 않는다. search_timeout_sec·cooldown_sec 는 미사용(선언만 유지).
+
+  [6] [2026-11-15] 탐색 직전 WP 에서 도리도리(SCAN, 계약서_탐색전도리도리_20261115). 예전엔 INIT 뒤 바로 SEARCH 라
+      GPS 로 WP3·4·5 를 따라가며 카메라가 우연히 보길 기다렸다 — 정면 시야(±40°) 밖 부표를 늦게 찾았다.
+      → 모드 3 첫 진입(INIT 뒤) **한 번** 제자리에서 둘러본다: STOP 50000(scan_stop_sec) → 오른쪽 −scan_angle 까지
+         SPIN_RIGHT 5000 → HOLD 50000(scan_hold_sec) → 0 → 왼쪽 +scan_angle 까지 SPIN_LEFT 6000 → HOLD → 0 까지
+         SPIN_RIGHT → SEARCH. 각도 기준 = /imu/yaw(orbit_logic.ScanSequence).
+      어느 틱이든 공지 색 + 신선한 방위 → 즉시 APPROACH(SEARCH 와 같은 조건).
+      건너뜀(→ SEARCH, WARN): scan_enabled=false(INFO 없이 지금 동작) / yaw 없음·stale / /scan 없음·stale(회전 원을 모름) /
+      회전 원 막힘(신선한 /scan 에 scan_clear_m 안 반사, 도크 구조물 — 계약 §8 위험 1) / scan_timeout_sec 초과.
+      3→3(다음 탐색 WP)은 래치라 재실행 없음, 3→다른 모드→3 이면 다시 INIT→SCAN.
+      🚨 6000(SPIN_LEFT) 경로는 실기 좌우 부호 미검증(steer_invert 와 같이 벤치 확인). 틀리면 한쪽으로만 돌다 timeout.
 
 파라미터(6c-[4]): orbit_radius_m(⚠️실측), radius_tol_m, approach_dist_m, k_radial_deg_per_m,
-                  orbit_target_deg(360).
+                  orbit_target_deg(420 — 2026-11-15 '한 바퀴 이상', 계약서_탐색전도리도리 §14-7).
+  SCAN(6c-[6]): scan_enabled, scan_angle_deg, scan_tol_deg, scan_lead_sec, scan_stop_sec, scan_hold_sec,
+                scan_timeout_sec, scan_clear_m.
   enabled(bool, 기본 true): false 면 이 노드는 **어떤 모드에서도** /candidate_angle 을 안 낸다.
     기본 true = launch search_behavior 기본 orbit(2026-11 경기규정 원 선회).
     hold 옵션(탐색 = 부표 앞 위치유지, ship_back 담당)이면 launch 가 false 를 넘긴다. 코드 기본값 = yaml.
     🚨 끄려고 active_wp_mode 를 -1 로 두지 마라 — 부팅 초기값(self.wp_mode=-1)과 일치해
     /wp_mode 첫 수신 전에 게이트를 통과, SPIN 5000 을 낸다.
 
-FSM: INIT → SEARCH → APPROACH → ORBIT → DONE (모드 3 이 끝날 때까지 래치)
-  INIT 20000(hold_sec) → SEARCH 20000(공지 색 부표+색이 잡힐 때까지, GPS 가 WP3·4·5 경로로 데려간다)
+FSM: INIT → SCAN → SEARCH → APPROACH → ORBIT → DONE (모드 3 이 끝날 때까지 래치)
+  INIT 20000(hold_sec) → SCAN 5000/6000/50000(도리도리, 유한 시간 — 색 보면 바로 APPROACH, 못 찾거나 건너뛰면 SEARCH)
+  → SEARCH 20000(공지 색 부표+색이 잡힐 때까지, GPS 가 WP3·4·5 경로로 데려간다)
   → APPROACH 부표 쪽 조향 → ORBIT 접선 조향(진행각 orbit_target_deg 또는 orbit_max_sec) → DONE 20000.
-  APPROACH·ORBIT 에서 부표를 lost_sec 놓치면 SEARCH(20000)로 — 다시 잡으면 진행각 0 부터.
+  APPROACH·ORBIT 에서 부표를 lost_sec 놓치면 SEARCH(20000)로 — 다시 잡으면 진행각 0 부터(SCAN 은 다시 안 한다).
   2026-11 규정 = 공지된 색 부표 **하나**를 돈다(검출기는 turn_color_mode3 한 색만 본다). 리셋은 모드 3 진입 때만.
 
 프레임 규약: /image_angle=상대각(0=정면, **좌 양수**). orbit 조향각을 상대(좌 양수)로 구해 rel_to_raw 로
@@ -75,13 +90,20 @@ from ship_turn.orbit_logic import (
     orbit_steer, orbit_expected_rel, orbit_source, buoy_world_bearing, OrbitProgress,
     orbit_direction_cw, clamp, clamp_pm180, is_active)
 from ship_turn.orbit_logic import (
+    ScanSequence, check_scan_params, scan_ring_min, SCAN_RUN, SCAN_DONE, SCAN_TIMEOUT, SCAN_NO_YAW)
+from ship_turn.orbit_logic import (
     check_distance_source, fused_allowed_src_ids, fused_color_id, parse_fused_objects,
     fused_fresh, match_fused, choose_distance)
 from ship_turn.lidar_track import lidar_track
 
 IMAGE_ANGLE_INVALID = 10000.0
 CANDIDATE_INVALID = 20000.0
-# SPIN_RIGHT 5000 / SPIN_LEFT 6000 (CLAUDE.md §3) — 2026-11-11 부터 이 노드는 내지 않는다(SEARCH = 20000).
+# 특수 신호 (CLAUDE.md §3 표와 값이 같아야 한다 — 공유 모듈 금지 §1-8, 각 노드가 따로 정의).
+#   SPIN 은 SCAN(도리도리)에서만 낸다 — SEARCH 는 20000(2026-11-11).
+SPIN_RIGHT = 5000.0
+SPIN_LEFT = 6000.0
+STOP_HOLD = 50000.0
+SCAN_CMD = {"right": SPIN_RIGHT, "left": SPIN_LEFT, "stop": STOP_HOLD}   # orbit_logic.ScanSequence 명령 → 신호
 LIDAR_FORWARD_DEG = 80.0     # LiDAR 프레임 정면
 # ship_direction (B) 매핑: mapped = 80 + raw, 정상 범위 0~160 → 상대 조향 |steer| ≤ 80 만 통과하고
 # 그 밖은 STOP_HOLD(1 s 스로틀 warn 뿐). orbit 진입(rel≈0, 90−gain)은 80 을 쉽게 넘으므로 발행 전 클램프.
@@ -130,7 +152,8 @@ class ShipTurn(Node):
         self.approach_dist_m = float(self.declare_parameter('approach_dist_m', 4.0).value)    # ⚠️ 실측
         self.k_radial = float(self.declare_parameter('k_radial_deg_per_m', 30.0).value)
         self.radial_limit_deg = float(self.declare_parameter('radial_limit_deg', 45.0).value)
-        self.orbit_target_deg = float(self.declare_parameter('orbit_target_deg', 360.0).value)
+        # 420 = 한 바퀴 이상(2026-11-15 승인, §12·§13 시뮬: orbit_max_sec 60 안에서 안전 타임아웃 0/40)
+        self.orbit_target_deg = float(self.declare_parameter('orbit_target_deg', 420.0).value)
 
         self.hold_sec = float(self.declare_parameter('hold_sec', 2.0).value)
         # 2026-11-11 부터 미사용(SEARCH 는 모드가 끝날 때까지 20000) — yaml·check_params 대조용으로 선언만 유지.
@@ -149,6 +172,22 @@ class ShipTurn(Node):
         #   ⚠️ 실측 필요: LiDAR 높이 ≠ 부표 높이면 못 본다 / 수조(6×6)에선 벽이 창 안 최근접이 될 수 있다.
         self.lidar_track_window_deg = float(self.declare_parameter('lidar_track_window_deg', 25.0).value)
         self.lidar_track_max_m = float(self.declare_parameter('lidar_track_max_m', 5.0).value)  # = orbit_radius 3 + 2
+
+        # [6] SCAN(도리도리) — 모드 3 첫 진입 INIT 뒤 한 번(계약서_탐색전도리도리_20261115). 코드 기본값 = yaml.
+        self.scan_enabled = bool(self.declare_parameter('scan_enabled', True).value)
+        self.scan_angle_deg = float(self.declare_parameter('scan_angle_deg', 90.0).value)
+        self.scan_tol_deg = float(self.declare_parameter('scan_tol_deg', 5.0).value)          # ⚠️ 실측(오버슈트)
+        self.scan_lead_sec = float(self.declare_parameter('scan_lead_sec', 0.3).value)        # ⚠️ 실측
+        self.scan_stop_sec = float(self.declare_parameter('scan_stop_sec', 1.5).value)        # ⚠️ 실측
+        self.scan_hold_sec = float(self.declare_parameter('scan_hold_sec', 1.2).value)
+        self.scan_timeout_sec = float(self.declare_parameter('scan_timeout_sec', 25.0).value)
+        self.scan_clear_m = float(self.declare_parameter('scan_clear_m', 1.0).value)          # ⚠️ 실측
+        scan_err = check_scan_params(self.scan_angle_deg, self.scan_tol_deg, self.scan_lead_sec,
+                                     self.scan_stop_sec, self.scan_hold_sec, self.scan_timeout_sec,
+                                     self.scan_clear_m)
+        if scan_err is not None:
+            self.get_logger().error(f"🚨 SCAN 파라미터 오류: {scan_err} → SCAN 끔(INIT 뒤 바로 SEARCH). yaml 확인.")
+            self.scan_enabled = False
 
         # 거리 출처(계약서_인식융합_20261112 §10) — APPROACH 카메라 분기만. 코드 기본값 = yaml = 'fused'
         #   (계약서_흰부표_거리융합_v3 G-9, 11-14 — 옛 대회값 fill).
@@ -202,6 +241,7 @@ class ShipTurn(Node):
         self.last_rel = None        # (B) 마지막 유효 부표 방위(카메라든 LiDAR 든) — LiDAR 추적의 예상 방위
         self.last_steer = None      # (A) ORBIT 마지막 유효 조향 — 방위 없을 때 유지
         self.rel_src = None         # "cam" / "lidar" — 소스 전환 로그용
+        self.scan_seq = None        # [6] SCAN 진행 중이면 orbit_logic.ScanSequence
 
         self.create_timer(self.period_sec, self.timer_cb)
         self.get_logger().info(
@@ -209,7 +249,9 @@ class ShipTurn(Node):
             f"orbit r={self.orbit_radius_m}m(⚠️실측), 목표 {self.orbit_target_deg}°.\n"
             f"   빨강·초록=시계 / 노랑·흰색·검정=반시계. 거리는 LiDAR. /image_color 없으면 SEARCH 유지.\n"
             f"   APPROACH 거리 distance_source={self.distance_source}"
-            + ("" if self.distance_source == 'lidar' else f"({self.fused_topic})") + "."
+            + ("" if self.distance_source == 'lidar' else f"({self.fused_topic})") + ".\n"
+            f"   SCAN(도리도리) scan_enabled={self.scan_enabled}, ±{self.scan_angle_deg}°, "
+            f"상한 {self.scan_timeout_sec}s, 회전 원 {self.scan_clear_m}m(⚠️실측)."
         )
         if not self.enabled:
             self.get_logger().warn(
@@ -266,6 +308,7 @@ class ShipTurn(Node):
         self.dir_cw = None
         self.progress.reset()
         self._forget_buoy()
+        self.scan_seq = None
 
     def _forget_buoy(self):
         """부표를 놓았을 때(SEARCH/COOLDOWN 진입) 추적 상태를 지운다 — 묵은 방위로 LiDAR 를 매칭하지 않게."""
@@ -352,6 +395,33 @@ class ShipTurn(Node):
                            expected_rel, self.lidar_track_window_deg, self.lidar_track_max_m,
                            LIDAR_FORWARD_DEG)
 
+    def _enter_scan_or_search(self, now, yaw, t_yaw):
+        """INIT 끝 → SCAN 시작, 못 하면 SEARCH. 모르면 돌지 않는다(§1-6) — 건너뛸 땐 WARN 한 줄."""
+        if not self.scan_enabled:
+            self.set_state("SEARCH")                # 지금 동작(scan_enabled=false)
+            return
+        if yaw is None:
+            self.get_logger().warn("도리도리 건너뜀: /imu/yaw 없음·stale → 각도를 모름 → SEARCH(20000)")
+            self.set_state("SEARCH")
+            return
+        scan = self.latest_scan
+        if scan is None or self.t_scan is None or (now - self.t_scan) > self.scan_stale_sec:
+            self.get_logger().warn("도리도리 건너뜀: /scan 없음·stale → 회전 원을 모름 → SEARCH(20000)")
+            self.set_state("SEARCH")
+            return
+        near = scan_ring_min(scan.ranges, getattr(scan, 'range_min', 0.0))
+        if near < self.scan_clear_m:
+            self.get_logger().warn(
+                f"도리도리 건너뜀: 회전 원 안 반사 {near:.2f}m < scan_clear_m {self.scan_clear_m}m "
+                f"(도크 구조물 등) → SEARCH(20000)")
+            self.set_state("SEARCH")
+            return
+        seq = ScanSequence(self.scan_angle_deg, self.scan_tol_deg, self.scan_lead_sec, self.scan_stop_sec,
+                           self.scan_hold_sec, self.scan_timeout_sec)
+        seq.start(now, yaw, t_yaw)
+        self.scan_seq = seq
+        self.set_state("SCAN")
+
     def publish(self, value):
         self.pub_candidate.publish(Float32(data=float(value)))
 
@@ -369,6 +439,7 @@ class ShipTurn(Node):
                 self.state_t = now
             rel, col = self._buoy(now)
             yaw = self.yaw if (self.t_yaw and (now - self.t_yaw) <= self.angle_stale_sec) else None
+            t_yaw = self.t_yaw
 
         # ---- 부표 (rel, dist): 소스 선택은 orbit_logic.orbit_source ----
         #   ORBIT = LiDAR 추적 먼저(검출기 grace 의 묵은 각 회피), 그 외 = 카메라 먼저·없으면 LiDAR 추적.
@@ -402,7 +473,35 @@ class ShipTurn(Node):
         if self.state == "INIT":
             self.publish(CANDIDATE_INVALID)
             if self.elapsed() >= self.hold_sec:
-                self.set_state("SEARCH")
+                self._enter_scan_or_search(now, yaw, t_yaw)
+            return
+
+        # ---- SCAN: 제자리 도리도리 한 번(유한 시간) — 색 보면 바로 APPROACH, 끝나거나 막히면 SEARCH ----
+        if self.state == "SCAN":
+            direction = orbit_direction_cw(col) if col else None
+            if rel is not None and direction is not None:
+                self.get_logger().info(f"👀 도리도리 중 공지 색 {col} 부표 발견(rel={rel:.0f}°) → APPROACH")
+                self.scan_seq = None
+                self.dir_cw = direction
+                self.progress.reset()
+                self.set_state("APPROACH")
+                return
+            seq = self.scan_seq
+            cmd, status = seq.step(now, yaw, t_yaw) if seq is not None else (None, SCAN_DONE)
+            if status == SCAN_RUN:
+                self.publish(SCAN_CMD[cmd])
+                return
+            self.scan_seq = None
+            if status == SCAN_NO_YAW:
+                self.get_logger().warn("도리도리 중 /imu/yaw 없음·stale → 중단, SEARCH(20000)")
+            elif status == SCAN_TIMEOUT:
+                self.get_logger().warn(
+                    f"도리도리 {self.scan_timeout_sec:.0f}s 상한 초과 → 중단, SEARCH(20000) "
+                    f"(SPIN 부호·geofence 정지·선회율 확인)")
+            else:
+                self.get_logger().info("도리도리 끝 — 공지 색 못 봄 → SEARCH(20000)")
+            self.publish(CANDIDATE_INVALID)
+            self.set_state("SEARCH")
             return
 
         # ---- SEARCH: 공지 색 부표+색이 잡힐 때까지 손 뗀다(20000 → GPS 가 WP 경로로) ----

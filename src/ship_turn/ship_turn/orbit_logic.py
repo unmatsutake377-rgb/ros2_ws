@@ -310,3 +310,176 @@ def choose_distance(mode, lidar_d, fused_hit):
             return fus
         return lid if lid[0] is not None else fus
     return lid
+
+
+# ==================== SCAN(도리도리) — 탐색 직전 WP 제자리 둘러보기 (계약서_탐색전도리도리_20261115) ====================
+# 모드 3 첫 진입(INIT 뒤) 한 번: 정지 → 오른쪽 −a → 정지 촬영 → 0 → 왼쪽 +a → 정지 촬영 → 0 → SEARCH.
+# 참고 구현 = ship_avoid core.py _start_dori/_dori_step(target = psi0 − rel, err = wrap180(target − yaw),
+#   err>0 → 오른쪽, |err| < tol + |rate|·lead 면 도달). 여기선 명령을 'right'/'left'/'stop' 이름으로 내고
+#   특수 신호 값(5000/6000/50000)은 노드(ship_turn.py)가 붙인다 — 상수는 노드 한 곳(§1-8).
+# 왼쪽 끝으로 갈 때 0 을 경유점("via")으로 거친다: −a → +a 를 한 번에 가면 a=90 에서 err ≈ ±180 이라 오버슈트
+#   몇 도에 회전 방향이 뒤집힌다. 그래서 한 다리(leg)는 늘 a 이하 → check_scan_params 가 a ≤ SCAN_ANGLE_MAX_DEG.
+#   경유점은 멈추지 않고 지나간다(6000 → 6000, 계약 §9) — 도달 창 안이거나 이미 지나쳤으면(err 부호 반전) 다음.
+
+SCAN_ANGLE_MAX_DEG = 150.0      # 한 다리 최대 — 오버슈트 30° 까지 err 부호가 안 뒤집힌다(위 설명)
+# 도달 뒤 '회전이 멎었다' 판정 — ship_avoid core.py _dori_step 과 같은 2.0 deg/s. ⚠️ 실측 필요(IMU yaw 잡음)
+#   잡음으로 영영 안 멎으면 scan_timeout_sec 가 끊는다(무한 대기 없음).
+SCAN_SETTLE_RATE_DPS = 2.0
+
+SCAN_RUN = "run"            # 진행 중 — 반환 명령을 낸다
+SCAN_DONE = "done"          # 끝까지 돌았다(못 찾음) → SEARCH
+SCAN_TIMEOUT = "timeout"    # scan_timeout_sec 초과 → SEARCH
+SCAN_NO_YAW = "no_yaw"      # yaw 없음·stale → SEARCH (각도를 모르면 돌지 않는다)
+
+
+def check_scan_params(angle_deg, tol_deg, lead_sec, stop_sec, hold_sec, timeout_sec, clear_m):
+    """SCAN 파라미터 검사 → 오류 메시지 or None. 순수 함수.
+
+    노드는 시작 때 한 번 부르고 메시지가 있으면 ERROR + SCAN 끔(지금 동작 = INIT → SEARCH).
+    """
+    vals = dict(scan_angle_deg=angle_deg, scan_tol_deg=tol_deg, scan_lead_sec=lead_sec,
+                scan_stop_sec=stop_sec, scan_hold_sec=hold_sec, scan_timeout_sec=timeout_sec,
+                scan_clear_m=clear_m)
+    for k, v in vals.items():
+        if not isinstance(v, (int, float)) or not math.isfinite(v):
+            return f"{k}={v!r} 가 유한한 수가 아님"
+    if not 0.0 < angle_deg <= SCAN_ANGLE_MAX_DEG:
+        return f"scan_angle_deg={angle_deg} 는 0 초과 {SCAN_ANGLE_MAX_DEG} 이하여야 함"
+    if not tol_deg > 0.0:
+        return f"scan_tol_deg={tol_deg} 는 0 보다 커야 함"
+    if not timeout_sec > 0.0:
+        return f"scan_timeout_sec={timeout_sec} 는 0 보다 커야 함"
+    if not clear_m > 0.0:
+        return f"scan_clear_m={clear_m} 는 0 보다 커야 함"
+    if lead_sec < 0.0 or stop_sec < 0.0 or hold_sec < 0.0:
+        return "scan_lead_sec·scan_stop_sec·scan_hold_sec 는 음수일 수 없음"
+    return None
+
+
+def scan_ring_min(ranges, range_min=0.0):
+    """제자리 회전 원 검사용: 전 방위 유효 빔 중 최소 거리. 유효 빔이 없으면 inf. 순수 함수.
+
+    유효 빔 = 유한 · > 0 · ≥ range_min(LaserScan 규격 — 그보다 가까우면 무효값).
+    노드는 '신선한 /scan' 일 때만 부르고, 결과 < scan_clear_m 이면 SCAN 을 건너뛴다(§8 위험 1).
+    """
+    rmin = range_min if (isinstance(range_min, (int, float)) and math.isfinite(range_min)) else 0.0
+    best = math.inf
+    for r in ranges:
+        if math.isfinite(r) and r > 0.0 and r >= rmin and r < best:
+            best = r
+    return best
+
+
+def scan_steps(angle_deg):
+    """SCAN 단계 목록 [(종류, 상대 목표각 좌 양수)].
+
+    stop/hold = 정지 대기(시간), spin = 그 각까지 회전 후 멎을 때까지 정지, via = 멈추지 않고 지나가는 경유점.
+    """
+    a = abs(float(angle_deg))
+    return [("stop", 0.0), ("spin", -a), ("hold", -a), ("via", 0.0),
+            ("spin", a), ("hold", a), ("spin", 0.0)]
+
+
+class ScanSequence:
+    """SCAN 한 틱 판정 — ROS 비의존. 노드는 start() 뒤 매 타이머 틱 step() 을 부른다.
+
+    yaw 는 나침반(CW 양수), 상대각은 좌 양수 → 목표 나침반 = psi0 − rel (ship_avoid _dori_step 과 같다).
+    회전 속도는 yaw 샘플(수신 시각 t_yaw 가 바뀔 때만) 차분으로 잰다 — 같은 샘플을 두 번 세면 0 으로 보인다.
+    step() → (명령 'right'/'left'/'stop' or None, 상태 SCAN_RUN/DONE/TIMEOUT/NO_YAW). 상태가 RUN 이 아니면
+    명령은 None — 노드가 SEARCH 로 넘긴다.
+    """
+
+    def __init__(self, angle_deg, tol_deg, lead_sec, stop_sec, hold_sec, timeout_sec,
+                 settle_rate_dps=SCAN_SETTLE_RATE_DPS):
+        self.steps = scan_steps(angle_deg)
+        self.tol_deg = float(tol_deg)
+        self.lead_sec = float(lead_sec)
+        self.stop_sec = float(stop_sec)
+        self.hold_sec = float(hold_sec)
+        self.timeout_sec = float(timeout_sec)
+        self.settle_rate_dps = float(settle_rate_dps)
+        self.psi0 = None
+        self.t0 = None
+        self.i = 0
+        self.step_t0 = None
+        self.arrived = False
+        self.leg_right = None       # via 단계의 회전 방향(첫 틱에 정함) — 지나침 판정용
+        self.rate = None
+        self._prev = None           # (t_yaw, yaw) — 회전 속도 차분용
+
+    def start(self, now, yaw, t_yaw=None):
+        """psi0 = 지금 yaw. yaw 가 None 이면 시작하지 않고 False."""
+        if yaw is None:
+            return False
+        self.psi0 = float(yaw)
+        self.t0 = now
+        self.i = 0
+        self.step_t0 = now
+        self.arrived = False
+        self.leg_right = None
+        self.rate = None
+        self._prev = (t_yaw, float(yaw)) if t_yaw is not None else None
+        return True
+
+    def step_name(self):
+        return self.steps[self.i][0] if self.i < len(self.steps) else "end"
+
+    def _update_rate(self, yaw, t_yaw):
+        if t_yaw is None:
+            return
+        if self._prev is not None and t_yaw != self._prev[0]:
+            dt = t_yaw - self._prev[0]
+            if dt > 0.0:
+                self.rate = clamp_pm180(yaw - self._prev[1]) / dt
+        if self._prev is None or t_yaw != self._prev[0]:
+            self._prev = (t_yaw, yaw)
+
+    def _settled(self):
+        return self.rate is not None and abs(self.rate) < self.settle_rate_dps
+
+    def _next(self, now):
+        self.i += 1
+        self.step_t0 = now
+        self.arrived = False
+        self.leg_right = None
+
+    def step(self, now, yaw, t_yaw=None):
+        if self.psi0 is None or self.i >= len(self.steps):
+            return None, SCAN_DONE
+        if now - self.t0 > self.timeout_sec:
+            return None, SCAN_TIMEOUT
+        if yaw is None:
+            return None, SCAN_NO_YAW
+        yaw = float(yaw)
+        self._update_rate(yaw, t_yaw)
+        kind, rel = self.steps[self.i]
+        el = now - self.step_t0
+        cmd = "stop"
+        if kind == "stop":
+            done = el >= self.stop_sec
+        elif kind == "hold":
+            done = el >= self.hold_sec
+        else:
+            target = (self.psi0 - rel) % 360.0           # 상대 좌 양수 → 나침반은 빼기
+            err = clamp_pm180(target - yaw)
+            rate = abs(self.rate) if self.rate is not None else 0.0
+            near = abs(err) < self.tol_deg + rate * self.lead_sec
+            if kind == "via":
+                if self.leg_right is None:
+                    self.leg_right = err > 0
+                if near or (err > 0) != self.leg_right:   # 창 안 또는 이미 지나침 → 멈추지 않고 다음 단계
+                    self._next(now)
+                    return self.step(now, yaw, None)    # 같은 틱에 다음 단계 명령(rate 는 이미 갱신)
+                return ("right" if self.leg_right else "left"), SCAN_RUN
+            if not self.arrived and near:
+                self.arrived = True                     # 도달 래치 — 멎을 때까지 정지(되돌아 떨지 않는다)
+            if self.arrived:
+                done = self._settled()
+            else:
+                cmd = "right" if err > 0 else "left"
+                done = False
+        if done:
+            self._next(now)
+            if self.i >= len(self.steps):
+                return None, SCAN_DONE
+        return cmd, SCAN_RUN

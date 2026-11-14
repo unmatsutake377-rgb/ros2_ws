@@ -8,9 +8,14 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
+import math  # noqa: E402
+
 from ship_turn.orbit_logic import (  # noqa: E402
     orbit_steer, orbit_expected_rel, orbit_source, buoy_world_bearing, OrbitProgress, orbit_direction_cw,
     is_active, clamp)
+from ship_turn.orbit_logic import (  # noqa: E402
+    ScanSequence, check_scan_params, scan_ring_min, scan_steps, clamp_pm180,
+    SCAN_RUN, SCAN_DONE, SCAN_TIMEOUT, SCAN_NO_YAW)
 
 fails = 0
 
@@ -206,6 +211,130 @@ def test_progress_jitter_cancels():
     p.update(110.0)
     prog = p.update(100.0)   # 되돌아옴
     check("지터 상쇄 → 0°", abs(prog) < 1e-6, f"progress={prog:.1f}")
+
+
+# ─────────────── SCAN(도리도리) — 계약서_탐색전도리도리_20261115 ───────────────
+SCAN_KW = dict(angle_deg=90.0, tol_deg=5.0, lead_sec=0.3, stop_sec=1.5, hold_sec=1.2, timeout_sec=25.0)
+
+
+def _run_scan(psi0=10.0, spin_dps=30.0, tau=0.3, dt=0.1, max_t=60.0, kw=None, yaw_ok=lambda t: True):
+    """1차 지연 선회 모델로 ScanSequence 를 끝까지 돌린다 → (명령 목록, 상대각 목록, 끝 상태, 끝 시각).
+
+    right = 나침반 yaw 증가(CW) = 상대각(좌 양수) 감소. 상대각 = −wrap180(yaw − psi0).
+    """
+    seq = ScanSequence(**(kw or SCAN_KW))
+    t, yaw, rate = 0.0, psi0, 0.0
+    assert seq.start(t, yaw, t)
+    cmds, rels = [], []
+    while t < max_t:
+        t += dt
+        cmd, st = seq.step(t, yaw if yaw_ok(t) else None, t)
+        if st != SCAN_RUN:
+            return cmds, rels, st, t
+        cmds.append(cmd)
+        want = spin_dps if cmd == "right" else (-spin_dps if cmd == "left" else 0.0)
+        rate += (want - rate) * min(1.0, dt / tau)
+        yaw = (yaw + rate * dt) % 360.0
+        rels.append(-clamp_pm180(yaw - psi0))
+    return cmds, rels, "max_t", t
+
+
+def _compress(xs):
+    out = []
+    for x in xs:
+        if not out or out[-1] != x:
+            out.append(x)
+    return out
+
+
+def test_scan_steps_shape():
+    st = scan_steps(90.0)
+    check("SCAN 단계 = stop → −a → hold → via 0 → +a → hold → 0",
+          st == [("stop", 0.0), ("spin", -90.0), ("hold", -90.0), ("via", 0.0),
+                 ("spin", 90.0), ("hold", 90.0), ("spin", 0.0)], str(st))
+
+
+def test_scan_order_right_hold_left_hold_right():
+    cmds, rels, st, t = _run_scan()
+    seq = _compress(cmds)
+    check("SCAN 명령 순서 stop→right→stop→left→stop→right→stop",
+          seq == ["stop", "right", "stop", "left", "stop", "right", "stop"], str(seq))
+    check("끝까지 돌면 DONE", st == SCAN_DONE, f"{st} t={t:.1f}")
+    check("상한 25 s 안에 끝남", t < 25.0, f"t={t:.1f}")
+
+
+def test_scan_reaches_both_ends_and_returns():
+    """lead(|rate|×0.3)로 일찍 멈추고 관성으로 미끄러져 끝각 근처에 선다 — tol+lead 창 안이면 통과."""
+    cmds, rels, st, t = _run_scan()
+    check("오른쪽 끝 ≈ −90°", -100.0 <= min(rels) <= -75.0, f"min={min(rels):.1f}")
+    check("왼쪽 끝 ≈ +90°", 75.0 <= max(rels) <= 100.0, f"max={max(rels):.1f}")
+    check("끝나면 처음 방향 근처", abs(rels[-1]) <= 10.0, f"last={rels[-1]:.1f}")
+
+
+def test_scan_wraps_north():
+    """psi0 = 350° (북 근처) — 0/360 경계를 넘어도 순서·끝각이 같다."""
+    cmds, rels, st, t = _run_scan(psi0=350.0)
+    check("북 근처 시작도 같은 순서",
+          _compress(cmds) == ["stop", "right", "stop", "left", "stop", "right", "stop"], str(_compress(cmds)))
+    check("북 근처 시작 DONE", st == SCAN_DONE, st)
+
+
+def test_scan_waits_until_rate_settles():
+    """도달 뒤 회전이 멎을 때까지(2 deg/s 미만) 정지 명령을 내고 다음 단계로 안 넘어간다."""
+    seq = ScanSequence(**SCAN_KW)
+    seq.start(0.0, 0.0, 0.0)
+    seq.i, seq.step_t0 = 1, 0.0                     # spin −90 (나침반 목표 90)
+    cmd, st = seq.step(0.1, 88.0, 0.1)              # 첫 샘플(rate 모름) — 창 안 → 도달
+    cmd, st = seq.step(0.2, 89.0, 0.2)              # rate 10 deg/s — 아직 돈다
+    check("도달 뒤 돌고 있으면 stop 유지·같은 단계", cmd == "stop" and seq.i == 1, f"{cmd} i={seq.i}")
+    cmd, st = seq.step(0.3, 89.1, 0.3)              # rate 1 deg/s → 멎음
+    check("멎으면 다음 단계(hold)", seq.step_name() == "hold", seq.step_name())
+
+
+def test_scan_via_does_not_reverse_on_overshoot():
+    """0 경유점을 지나쳐도(err 부호 반전) 되돌아가지 않고 왼쪽 끝으로 계속 간다."""
+    seq = ScanSequence(**dict(SCAN_KW, lead_sec=0.0))   # 창 = tol 5° 만(지나침 분기를 따로 본다)
+    seq.start(0.0, 100.0, 0.0)                      # psi0 = 100
+    seq.i, seq.step_t0 = 3, 0.0                     # via 0 (나침반 목표 100)
+    cmd, st = seq.step(0.1, 130.0, 0.1)             # 오른쪽 끝 근처 → 왼쪽으로
+    check("via: 왼쪽으로 간다", cmd == "left", cmd)
+    cmd, st = seq.step(0.2, 85.0, 0.2)              # 한 틱에 0 을 15° 지나침(창 5° 밖)
+    check("via 지나침 → 다음 단계(+a)로, 명령 left 유지", cmd == "left" and seq.step_name() == "spin",
+          f"{cmd} {seq.step_name()} i={seq.i}")
+
+
+def test_scan_timeout_when_not_turning():
+    """SPIN 이 안 먹으면(geofence 정지·부호 틀림) scan_timeout_sec 뒤 TIMEOUT — 무한 대기 없음."""
+    cmds, rels, st, t = _run_scan(spin_dps=0.0)
+    check("안 돌면 TIMEOUT", st == SCAN_TIMEOUT, st)
+    check("timeout_sec 직후 끝", 25.0 < t <= 25.2, f"t={t:.1f}")
+
+
+def test_scan_no_yaw_aborts():
+    cmds, rels, st, t = _run_scan(yaw_ok=lambda t: t < 3.0)
+    check("yaw 끊기면 NO_YAW", st == SCAN_NO_YAW and t < 3.2, f"{st} t={t:.1f}")
+
+
+def test_scan_start_needs_yaw():
+    seq = ScanSequence(**SCAN_KW)
+    check("yaw 없이 start → False", seq.start(0.0, None) is False)
+    check("시작 안 한 시퀀스 step → DONE(명령 없음)", seq.step(0.1, 10.0) == (None, SCAN_DONE))
+
+
+def test_check_scan_params():
+    ok = check_scan_params(90.0, 5.0, 0.3, 1.5, 1.2, 25.0, 1.0)
+    check("기본값 통과", ok is None, str(ok))
+    check("각 0 → 오류", check_scan_params(0.0, 5.0, 0.3, 1.5, 1.2, 25.0, 1.0) is not None)
+    check("각 170 → 오류(한 다리 150 초과)", check_scan_params(170.0, 5.0, 0.3, 1.5, 1.2, 25.0, 1.0) is not None)
+    check("NaN → 오류", check_scan_params(90.0, math.nan, 0.3, 1.5, 1.2, 25.0, 1.0) is not None)
+    check("timeout 0 → 오류", check_scan_params(90.0, 5.0, 0.3, 1.5, 1.2, 0.0, 1.0) is not None)
+    check("clear 0 → 오류", check_scan_params(90.0, 5.0, 0.3, 1.5, 1.2, 25.0, 0.0) is not None)
+
+
+def test_scan_ring_min():
+    check("유효 빔 최소", scan_ring_min([math.inf, 3.0, 0.7, 2.0]) == 0.7)
+    check("0·NaN·inf 무시 → inf", scan_ring_min([0.0, math.nan, math.inf]) == math.inf)
+    check("range_min 미만은 무효", scan_ring_min([0.1, 1.5], range_min=0.15) == 1.5)
 
 
 if __name__ == '__main__':
