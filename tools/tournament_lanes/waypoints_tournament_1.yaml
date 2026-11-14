@@ -1,8 +1,12 @@
 # 토너먼트 공유 레인 1 — 두 배(A·B) 공용. tools/ssf_tournament.sh 가 배 자기 녹화본
 # (~/ssf_logs/waypoints_tournament_<배>_1.yaml)이 없을 때 이 파일을 쓴다.
 # 출처: 1번배 노트북 ~/ssf_logs/waypoints_tournament_A_1.yaml (11-13 09:59 녹화), 11-14 사용자 결정으로 공유.
-# 경계: src/north_goal_angle/config/north_goal_angle_tournament.yaml 4점 — T0·T1 끝 변까지 각 2.5 m, T0→T1 33.0 m.
+# 11-14 10:4x 새 출발·도착점으로 교체(사용자 전달, 두 배 공통) — T0→T1 26.2 m, 방위 213°.
+#   옛 점(1번배 11-13 09:59 녹화): T0 35.1847763,128.5653979 / T1 35.1846002,128.5651050 (33.0 m, 234°).
+# 경계: src/north_goal_angle/config/north_goal_angle_tournament.yaml 4점(a3cf6c91 에서 긴 변 양쪽 2.5 m 넓힘)
+#   — 새 T0 옆 변 3.4 m·북동 끝 1.2 m(출발 방향 뒤쪽), 새 T1 옆 변 3.0 m.
+# 🚨 배 자기 녹화본(~/ssf_logs/waypoints_tournament_<배>_1.yaml)이 있으면 스크립트가 그걸 먼저 쓴다 → 옛 녹화본은 이름 바꿔 치울 것.
 # 🚨 전부 mode 8. 레인을 다시 녹화하면 이 파일도 바꾸고 경계 4점과 함께 확인.
 waypoints:
-  - {구역: "T0 출발 근처", lat: 35.1847763, lon: 128.5653979, mode: 8, dwell: 0.5}
-  - {구역: "T1 결승선 너머 3m", lat: 35.1846002, lon: 128.5651050, mode: 8, dwell: 0.5}
+  - {구역: "T0 출발점", lat: 35.1848206, lon: 128.5653762, mode: 8, dwell: 0.5}
+  - {구역: "T1 도착점", lat: 35.1846217, lon: 128.5652193, mode: 8, dwell: 0.5}

@@ -9,14 +9,14 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import ssf_imu_aim as m  # noqa: E402
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-T0 = (35.1847763, 128.5653979)
-T1 = (35.1846002, 128.5651050)
+T0 = (35.1848206, 128.5653762)
+T1 = (35.1846217, 128.5652193)
 
 
 def test_bearing_lane1_matches_planar():
-    # 공유 레인 1 T0→T1 은 평면 근사로 234°, 33.0 m (11-14 계산)
-    assert abs(m.bearing_deg(*T0, *T1) - 234.0) < 1.0
-    assert abs(m.dist_m(*T0, *T1) - 33.0) < 0.3
+    # 공유 레인 1 T0→T1 은 평면 근사로 213°, 26.2 m (11-14 10:4x 새 출발·도착점)
+    assert abs(m.bearing_deg(*T0, *T1) - 212.8) < 1.0
+    assert abs(m.dist_m(*T0, *T1) - 26.2) < 0.3
 
 
 def test_bearing_cardinals():
