@@ -131,13 +131,18 @@ fi
 if [ -z "${SSF_TOURNAMENT_DRY:-}" ]; then
   setup=$(ls /opt/ros/*/setup.bash 2>/dev/null | tail -1)
   [ -n "$setup" ] && [ -f install/setup.bash ] || die "ROS(/opt/ros/*/setup.bash) 또는 install/setup.bash 없음 — colcon build 확인"
+  # ROS setup 파일은 안 정해진 변수(AMENT_TRACE_SETUP_FILES 등)를 읽는다 → set -u 면 여기서 멈춘다(11-14 2번배).
+  set +u
   # shellcheck disable=SC1090
   source "$setup"
   # shellcheck disable=SC1091
   source install/setup.bash
+  set -u
 fi
+set +u
 # shellcheck disable=SC1091
 source tools/ssf_ros_net.sh && ssf_ros_net
+set -u
 
 args=("boat:=$boat" "course:=tournament" "waypoints_file:=$wp"
       "d455_depth:=false" "perception_fusion:=false" "$@")
