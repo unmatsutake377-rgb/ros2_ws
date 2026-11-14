@@ -344,7 +344,7 @@ class YawMux(Node):
             self._seen_assist_limit = n
             self.get_logger().info(
                 f"gps_cog IMU 보조 상한 종료: 마지막 기동 신호 뒤 {trk.imu_assist_max_sec}s 경과 "
-                f"→ {yaw_s}° 에서 얼림(새 COG 채택까지 HOLD)",
+                f"→ {yaw_s}° 에서 얼림(새 COG 채택까지 HOLD) (누적 {n}회)",
                 throttle_duration_sec=10.0)
 
         n = trk.assist_ends["imu_stale"]

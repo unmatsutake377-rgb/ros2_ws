@@ -1105,7 +1105,7 @@ def test_gps_cog_ignores_mount_invert_declination():
         assert mux.heading(0.0) == (123.0, ST_OK), (invert, mux.heading(0.0))
 
 
-# ---- 9) IMU 를 줬다 끊어도 출력 불변 (IMU 슬롯을 안 읽는다)
+# ---- 9) 기동이 없으면 IMU 무관 — IMU 를 줬다 끊어도 출력 불변 (IMU 슬롯을 안 읽는다, 보완 B)
 def test_gps_cog_does_not_read_imu():
     seq = [(0.0, 10.0), (1.0, 14.0), (2.0, 17.0), (3.0, 17.5)]
     a = _gmux()
