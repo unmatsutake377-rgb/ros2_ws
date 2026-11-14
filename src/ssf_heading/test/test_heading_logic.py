@@ -16,7 +16,7 @@ from ssf_heading.heading_logic import (  # noqa: E402
     ST_HOLD, ST_INIT_GOAL, ST_INIT, ST_IMU_ASSIST,
     SPIN_RIGHT, SPIN_LEFT, GPS_COG_INIT_GOAL, BOAT_MODE_AUTO,
     HeadingMux, COGOffsetEstimator, GPSCOGTracker, cog_from_velocity, saturation_samples,
-    gps_cog_status_text,
+    gps_cog_status_text, init_goal_overdue_sec,
     wrap360, wrap180, ang_diff, is_finite, apply_corrections, is_spin_code,
 )
 
@@ -1663,6 +1663,126 @@ def test_assist_state_publishes_and_status_prefix():
     _anchored(mux, 30.0, 1.0, imu=50.0)
     assert gps_cog_status_text(mux.gps_cog, ST_OK, 1.0) == "gps_cog:OK"
     assert gps_cog_status_text(mux.gps_cog, ST_HOLD, 3.0) == "gps_cog:HOLD age=2.0 rej=-"
+
+
+# ================================================================ C-Q5: INIT_GOAL 장기 지속 WARN 판정
+# yaw_mux 의 INIT_GOAL_WARN_AFTER_SEC 와 같은 값 (test_yaw_mux_params 가 상수를 고정한다)
+_IG_WARN = 10.0
+
+
+class _AutoClock:
+    """yaw_mux.boat_mode_cb 와 같은 규칙: update_boat_mode 가 진입(True)이면 그 시각을 기준으로."""
+
+    def __init__(self, mux):
+        self.mux = mux
+        self.enter_t = None
+
+    def mode(self, m, t):
+        if self.mux.update_boat_mode(m):
+            self.enter_t = t
+
+    def overdue(self, t):
+        self.mux.update_goal_bearing(250.0, t)          # tp 신선 유지 (north_goal_angle 이 계속 낸다)
+        yaw, st = self.mux.heading(t)
+        return init_goal_overdue_sec(self.mux.source, st, self.mux.boat_mode,
+                                     self.enter_t, t, _IG_WARN)
+
+
+# ---- Q5-1) AUTO 뒤 9.9 s 안 냄 / 10.0 s 안 냄(엄격) / 10.1 s 냄 — 판정은 출력을 안 바꾼다
+def test_init_goal_warn_after_auto_threshold():
+    mux = _gmux()
+    clk = _AutoClock(mux)
+    clk.mode(1, 0.0)
+    clk.mode(BOAT_MODE_AUTO, 100.0)
+    assert clk.overdue(100.0) is None
+    assert clk.overdue(109.9) is None
+    assert clk.overdue(110.0) is None, "경계는 엄격히 큼"
+    el = clk.overdue(110.1)
+    assert el is not None and near(el, 10.1, 1e-6), el
+    assert clk.overdue(500.0) is not None, "첫 COG 없으면 계속(throttle 은 래퍼 몫)"
+    assert mux.heading(500.0) == (250.0, ST_INIT_GOAL), "로그 판정이 값·상태를 바꾸면 안 된다"
+
+
+# ---- Q5-2) 첫 COG 채택 뒤엔 안 냄 (OK·HOLD·ASSIST 모두)
+def test_init_goal_warn_stops_after_first_cog():
+    mux = _gmux()
+    clk = _AutoClock(mux)
+    clk.mode(BOAT_MODE_AUTO, 0.0)
+    assert clk.overdue(12.0) is not None
+    assert _gfeed(mux, 250.0, 12.5)
+    assert clk.overdue(12.5) is None                    # OK
+    assert mux.heading(30.0)[1] == ST_HOLD
+    assert clk.overdue(30.0) is None                    # HOLD (오래돼도 INIT_GOAL 로 안 돌아간다)
+    mux.update_imu(50.0, 30.0)
+    mux.update_desired_angle(SPIN_RIGHT, 30.0)
+    mux.update_imu(55.0, 30.1)
+    assert mux.heading(30.1)[1] == ST_IMU_ASSIST
+    assert clk.overdue(30.1) is None                    # ASSIST
+
+
+# ---- Q5-3) AUTO 미수신이면 안 냄 (부팅 기준 아님 — 벤치·MANUAL 대기 중 거짓 경고 금지)
+def test_init_goal_warn_needs_auto_entry():
+    mux = _gmux()
+    clk = _AutoClock(mux)
+    assert mux.boat_mode is None
+    assert clk.overdue(1000.0) is None, "/boat_mode 미수신"
+    for m in (0, 1):
+        clk.mode(m, 1000.0)
+        assert clk.overdue(2000.0) is None, f"boat_mode {m} 만 받음"
+    # 진입 시각이 없으면(호출부 기록 누락) boat_mode 가 AUTO 여도 안 낸다
+    assert init_goal_overdue_sec(SRC_GPS_COG, ST_INIT_GOAL, BOAT_MODE_AUTO,
+                                 None, 1e6, _IG_WARN) is None
+
+
+# ---- Q5-4) 재진입(AUTO→MANUAL→AUTO)마다 기준 재설정, AUTO 밖에선 안 냄
+def test_init_goal_warn_reentry_resets_reference():
+    mux = _gmux()
+    clk = _AutoClock(mux)
+    clk.mode(BOAT_MODE_AUTO, 0.0)
+    assert clk.overdue(10.5) is not None
+    clk.mode(1, 11.0)
+    assert clk.overdue(11.0) is None, "MANUAL 이면 조종기가 몬다 — 안 냄"
+    clk.mode(BOAT_MODE_AUTO, 20.0)
+    assert clk.enter_t == 20.0
+    assert clk.overdue(29.9) is None, "옛 진입(0 s) 기준이 남아 있다"
+    assert clk.overdue(30.1) is not None
+    for _ in range(5):                                  # AUTO→AUTO 반복은 진입 아님 — 기준 그대로
+        clk.mode(BOAT_MODE_AUTO, 31.0)
+    assert clk.enter_t == 20.0
+    # 첫 COG 뒤 재진입 → INIT_GOAL 로 돌아가 다시 10 s 기준
+    assert _gfeed(mux, 250.0, 32.0)
+    assert clk.overdue(32.0) is None
+    clk.mode(0, 33.0)
+    clk.mode(BOAT_MODE_AUTO, 40.0)
+    assert clk.overdue(40.0) is None
+    assert mux.heading(40.0)[1] == ST_INIT_GOAL
+    assert clk.overdue(49.9) is None
+    assert clk.overdue(50.1) is not None
+
+
+# ---- Q5-5) imu_relative 등 다른 소스에선 안 냄
+def test_init_goal_warn_only_for_gps_cog():
+    mux = HeadingMux(SRC_IMU_RELATIVE, stale_sec=0.5)
+    clk = _AutoClock(mux)
+    clk.mode(BOAT_MODE_AUTO, 0.0)
+    mux.update_imu(10.0, 20.0)
+    assert clk.overdue(20.0) is None
+    for src in ALL_SOURCES:
+        if src == SRC_GPS_COG:
+            continue
+        assert init_goal_overdue_sec(src, ST_INIT_GOAL, BOAT_MODE_AUTO,
+                                     0.0, 100.0, _IG_WARN) is None, src
+
+
+# ---- Q5-6) INIT(tp 없음·침묵)은 이 경고 대상 아님 — '헤딩 없음' WARN 이 이미 드러낸다
+def test_init_goal_warn_not_for_silent_init():
+    mux = _gmux()
+    clk = _AutoClock(mux)
+    clk.mode(BOAT_MODE_AUTO, 0.0)
+    yaw, st = mux.heading(20.0)                         # tp 한 번도 없음
+    assert (yaw, st) == (None, ST_INIT)
+    assert init_goal_overdue_sec(SRC_GPS_COG, st, mux.boat_mode, clk.enter_t,
+                                 20.0, _IG_WARN) is None
 
 
 # ---- 보완 B 검증 계획 '기존 테스트': C1 gps_cog·보완 A 테스트가 보조 off 에서도 같게 통과

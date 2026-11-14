@@ -87,7 +87,43 @@ def test_common_yaml_equals_code_defaults():
             f'{key}: 공통 yaml {val!r} ≠ 코드 기본값 {decl[key]!r} (CLAUDE.md 1-4)')
 
 
-def test_common_heading_source_stays_imu_relative():
-    """공통 기본값은 imu_relative — gps_cog 전환은 배별 파일에서만 (C2)."""
-    assert _params(COMMON)['heading_source'] == heading_logic.SRC_IMU_RELATIVE
-    assert _declared()['heading_source'] == heading_logic.SRC_IMU_RELATIVE
+def test_common_heading_source_is_gps_cog():
+    """두 배 공통 기본값은 gps_cog — 공통 yaml = 코드 기본값 (보완 C, 사용자 11-15).
+
+    C1 의 '공통은 imu_relative 유지(C2 배별 전환)' 계약을 뒤집었다. 배별 파일엔 이 키가 없다
+    (test_boat_config.py). 배 하나만 되돌리기는 그 노트북 로컬 공통 yaml 한 줄(커밋 안 함, C-Q3).
+    """
+    assert _params(COMMON)['heading_source'] == heading_logic.SRC_GPS_COG
+    assert _declared()['heading_source'] == heading_logic.SRC_GPS_COG
+
+
+def _yaw_mux_class():
+    with open(YAW_MUX, encoding='utf-8') as f:
+        tree = ast.parse(f.read(), filename=YAW_MUX)
+    return next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == 'YawMux')
+
+
+def test_init_goal_warn_constant_and_reference():
+    """C-Q5: INIT_GOAL 장기 지속 WARN — 상수 10.0 s(계약), 기준 = AUTO 진입 시각(boat_mode_cb 에서 기록).
+
+    순수 판정(init_goal_overdue_sec)은 test_heading_logic 이 본다. 여기선 래퍼 배선만 정적으로:
+    ① 클래스 상수 INIT_GOAL_WARN_AFTER_SEC = 10.0 (float)  ② boat_mode_cb 가 진입(entered)일 때
+    self._auto_enter_t 에 시각을 넣는다 — 소스 조기 return 보다 먼저(재진입마다 재설정).
+    """
+    cls = _yaw_mux_class()
+    consts = {t.id: n.value.value for n in cls.body if isinstance(n, ast.Assign)
+              for t in n.targets if isinstance(t, ast.Name) and isinstance(n.value, ast.Constant)}
+    assert consts.get('INIT_GOAL_WARN_AFTER_SEC') == 10.0
+    assert type(consts['INIT_GOAL_WARN_AFTER_SEC']) is float
+
+    cb = next(n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name == 'boat_mode_cb')
+    set_line = ret_line = None
+    for n in ast.walk(cb):
+        if (isinstance(n, ast.If) and isinstance(n.test, ast.Name) and n.test.id == 'entered'
+                and any(isinstance(s, ast.Assign) and isinstance(s.targets[0], ast.Attribute)
+                        and s.targets[0].attr == '_auto_enter_t' for s in n.body)):
+            set_line = n.lineno
+        if isinstance(n, ast.Return) and ret_line is None:
+            ret_line = n.lineno
+    assert set_line is not None, 'boat_mode_cb 가 진입 때 _auto_enter_t 를 안 넣는다'
+    assert ret_line is None or set_line < ret_line, '진입 시각 기록이 조기 return 뒤에 있다'

@@ -36,9 +36,10 @@ from geometry_msgs.msg import TwistWithCovarianceStamped
 
 from ssf_heading.heading_logic import (
     ALL_SOURCES, BOAT_MODE_AUTO, GPS_COG_INIT_GOAL, PUBLISH_STATES,
-    SRC_COG_OFFSET, SRC_GPS_COG, SRC_IMU_RELATIVE,
+    SRC_COG_OFFSET, SRC_GPS_COG,
     ST_HOLD, ST_IMU_ASSIST, ST_INIT_GOAL, ST_OK,
     COGOffsetEstimator, GPSCOGTracker, HeadingMux, cog_from_velocity, gps_cog_status_text,
+    init_goal_overdue_sec,
 )
 
 
@@ -48,12 +49,17 @@ class YawMux(Node):
     BOAT_MODE_WARN_AFTER_SEC = 5.0
     # gps_cog IMU 보조(보완 B) 'IMU 없음' WARN 도 부팅 뒤 이 시간부터 (첫 틱엔 IMU 가 아직 안 왔다).
     IMU_ASSIST_WARN_AFTER_SEC = BOAT_MODE_WARN_AFTER_SEC
+    # gps_cog: AUTO 진입 뒤 이 시간 넘게 첫 COG 없이 INIT_GOAL 이면 WARN (보완 C 위험 1, C-Q5).
+    # 계약서 고정값(위 상수와 같은 패턴) — 로그 시점일 뿐 제어에 안 쓴다. 기준 시각 근거는
+    # heading_logic.init_goal_overdue_sec (AUTO 진입 시각이 있을 때만 — 부팅 기준은 거짓 경고).
+    INIT_GOAL_WARN_AFTER_SEC = 10.0
 
     def __init__(self):
         super().__init__('yaw_mux')
 
         # ---- 파라미터 (config/ssf_heading.yaml) ----
-        source = str(self.declare_parameter('heading_source', SRC_IMU_RELATIVE).value)
+        # 기본값 gps_cog — 두 배 공통(보완 C, 사용자 11-15). 공통 yaml 과 같이 맞출 것(§1-4).
+        source = str(self.declare_parameter('heading_source', SRC_GPS_COG).value)
         if source not in ALL_SOURCES:
             # 조용히 기본값으로 떨어지지 않는다. 오타 하나가 엉뚱한 소스를 쓰게 두면 안 된다.
             raise RuntimeError(
@@ -195,6 +201,10 @@ class YawMux(Node):
         self._gps_init_goal_logged = False
         self._gps_first_cog_logged = False
         self._boot_t = time.monotonic()      # /boat_mode 미수신 WARN 기준 (단조시계, §1-5)
+        # C-Q5: 마지막 AUTO 진입 시각(None = 한 번도 진입 못 함) · 최근 GPS 속도 (속도, 수신시각).
+        #   로그 단서용일 뿐 — 출력·상태엔 안 쓴다.
+        self._auto_enter_t = None
+        self._last_gps_speed = (None, None)
         # 보완 B 로그: 추적기 누적 카운터의 증가분으로 낸다 (보조 시작마다는 로그 없음 — 상태 문자열로만)
         self._seen_assist_limit = 0
         self._seen_assist_imu_stale = 0
@@ -237,6 +247,7 @@ class YawMux(Node):
     def gps_vel_cb(self, msg):
         v = msg.twist.twist.linear
         cog, speed = cog_from_velocity(v.x, v.y, self.gps_vel_frame)
+        self._last_gps_speed = (speed, time.monotonic())   # C-Q5 WARN 단서 (로그만)
         # 정지/무효면 cog=None — 0.0 을 대신 넣지 않는다. 그래도 넘긴다: gps_cog 는 이 순간
         # 얼려야 한다(외삽 계속 금지). 추정기 경로는 update_cog 안에서 예전처럼 무시한다.
         self.mux.update_cog(cog, speed, time.monotonic())
@@ -249,9 +260,13 @@ class YawMux(Node):
 
     def boat_mode_cb(self, msg):
         entered = self.mux.update_boat_mode(int(msg.data))
+        now = time.monotonic()
+        if entered:
+            # C-Q5 기준 재설정 — 재진입(AUTO→MANUAL→AUTO)마다 새 진입 시각. 소스 무관하게 기록해도
+            # 판정(init_goal_overdue_sec)이 gps_cog 만 본다.
+            self._auto_enter_t = now
         if not (entered and self.mux.source == SRC_GPS_COG):
             return
-        now = time.monotonic()
         yaw, status = self.mux.heading(now)
         # 진입 INFO 가 INIT_GOAL 을 알렸으면 tick 의 INIT_GOAL INFO 는 다시 안 낸다
         # (INIT 으로 들어갔으면 나중에 tp 가 와서 INIT_GOAL 이 될 때 알린다).
@@ -325,6 +340,8 @@ class YawMux(Node):
                 "(MANUAL 중 채택한 COG 가 그대로 남는다). ssf_bridge 가 떠 있나?",
                 throttle_duration_sec=10.0)
 
+        self._gps_cog_init_goal_overdue_log(yaw, status, now)
+
         self._gps_cog_assist_logs(yaw, now)
 
         # 선회 게이트가 안 와서 갱신이 멈춰 있으면 조용히 두지 않는다 (후진 게이트 경고와 같은 취지)
@@ -333,6 +350,30 @@ class YawMux(Node):
                 "/desired_angle 없음(또는 stale) → gps_cog 갱신 정지(마지막 방위 유지). "
                 "ship_direction 이 떠 있나? 헤딩만 벤치 중이면 cog_require_reverse_gate:=false.",
                 throttle_duration_sec=10.0)
+
+    def _gps_cog_init_goal_overdue_log(self, yaw, status, now):
+        """
+        C-Q5: AUTO 뒤 첫 COG 없이 INIT_GOAL 장기 지속 → WARN (로그만, 값·발행·상태 불변).
+        INIT_GOAL 은 '출발 때 뱃머리를 WP 로 겨눴다' 는 전제로 tp 를 그대로 내므로, COG 가 안 잡히면
+        배가 실제 방향과 무관하게 직진한다(위험 1). 판정은 순수 함수 init_goal_overdue_sec.
+        🚨 WARN 호출 지점은 여기 하나 (CLAUDE.md 1-7 — 로거를 변수에 담지 않는다).
+        """
+        elapsed = init_goal_overdue_sec(
+            self.mux.source, status, self.mux.boat_mode, self._auto_enter_t, now,
+            self.INIT_GOAL_WARN_AFTER_SEC)
+        if elapsed is None:
+            return
+        trk = self.mux.gps_cog
+        spd, spd_t = self._last_gps_speed
+        spd_s = ('GPS 속도 미수신' if spd_t is None
+                 else f'최근 GPS 속도 {spd:.2f}m/s({now - spd_t:.1f}s 전)')
+        yaw_s = '--' if yaw is None else f'{yaw:.1f}'
+        self.get_logger().warn(
+            f"gps_cog: AUTO 뒤 {elapsed:.0f}s 째 첫 COG 없음 — /imu/yaw 는 현재 WP 방위 "
+            f"{yaw_s}°(INIT_GOAL)를 그대로 쓰는 중(실제 뱃머리와 무관). 배가 "
+            f"{trk.min_speed_mps}m/s(gps_cog_min_speed_mps) 넘게 직진하는지 확인 — "
+            f"마지막 거부 사유 rej={trk.last_reject or '-'}, {spd_s}",
+            throttle_duration_sec=10.0)
 
     def _gps_cog_assist_logs(self, yaw, now):
         """보완 B IMU 보조 로그. 🚨 심각도마다 호출 지점을 나눈다 (CLAUDE.md 1-7)."""

@@ -6,16 +6,26 @@
 yaw_mux:
   ros__parameters:
     # ------------------------------------------------------------ 소스 선택
-    # imu_relative : 기본값. IMU 상대 yaw + mount_offset_deg 고정 보정. 입력 조건 없이 바로 발행.
+    # imu_relative : IMU 상대 yaw + mount_offset_deg 고정 보정. 입력 조건 없이 바로 발행.
+    #                벤치 IMU 경로·배 하나만 되돌리기에 쓴다(보완 C-Q3·C-Q4, 아래 🚨).
     # cog_offset   : 옵션 B — GPS COG 로 오프셋 추정 (N2, 구현됨 5a69c0a — 수렴 전엔 발행 안 함)
     # dual_gps     : 옵션 A — 듀얼 F9P relPosNED   (N3, 보드 확보 후)
     # imu_absolute : 옵션 C — IMU 지자기 절대 heading (N4, 드라이버 조사 후)
-    # gps_cog      : GPS 도플러 진행방향(COG) 그대로, IMU 절대값 배제 — 선회·후진 기동 구간만 IMU 상대
+    # gps_cog      : 기본값(두 배 공통, 보완 C — 사용자 11-15).
+    #                GPS 도플러 진행방향(COG) 그대로, IMU 절대값 배제 — 선회·후진 기동 구간만 IMU 상대
     #                회전량으로 보조 (계약서_GPS방위_20261114 + 보완 B). 아래 gps_cog 절
     # 미구현 소스를 고르면 조용히 0 을 내지 않고 발행을 멈춘다 (NOT_IMPLEMENTED).
-    # 🚨 공통 기본값은 imu_relative 유지 — 배별 전환은 배별 파일에서(C2). init 에서 한 번 읽는다
-    #    → `ros2 param set` 으로는 안 바뀐다, launch 재시작.
-    heading_source: "imu_relative"
+    # 🚨 두 배 공통 기본값 = gps_cog (보완 C, 사용자 11-15 — 계약서_GPS방위_20261114 '보완 C').
+    #    배별 파일(ssf_heading_A/B.yaml)엔 이 키를 넣지 않는다. 코드 기본값(yaw_mux.py)과 같이 맞출 것.
+    #    init 에서 한 번 읽는다 → `ros2 param set` 으로는 안 바뀐다, launch 재시작.
+    #    배 하나만 되돌리기 = 그 노트북에서 이 줄만 "imu_relative" 로(커밋 안 함, C-Q3) → launch 재시작.
+    #    벤치 IMU 경로(C-Q4 ①) = 이 파일 복사본(이 줄만 imu_relative) **뒤에 배별 파일을 하나 더**:
+    #      ros2 run ssf_heading yaw_mux --ros-args --params-file <복사본.yaml> \
+    #          --params-file src/ssf_heading/config/ssf_heading_<배>.yaml
+    #      배별 파일을 빼면 mount_offset_deg 0.0·invert_yaw false 로 떠서 장착 오프셋만큼 틀린다.
+    #      부팅 로그 `source=imu_relative`·`mount=…°` 로 확인.
+    #      `-p heading_source:=...` 는 params 파일과 같이 주면 yaml 노드 절에 밀린다.
+    heading_source: "gps_cog"
 
     period_sec: 0.02        # 50Hz. 드라이버는 100Hz, 소비자(ship_goal_angle)는 20Hz
     stale_sec: 0.5          # 이 시간 넘게 원시 yaw 가 끊기면 발행 중단 (gps_cog 는 IMU 보조 종료, 보완 B-Q3)
@@ -69,7 +79,11 @@ yaw_mux:
     #           · yaw_mux 가 부팅 때 ERROR 로그
     #           · /heading_status 에 gate=off 표시
     #           · healthcheck 가 heading_source=cog_offset + gate=off 를 보면 /health_ok=false
-    #         (imu_relative 로 도는 동안엔 이 게이트가 무의미해서 꺼져 있어도 무해 → 거짓 정지 없음)
+    #         🚨 기본 소스가 gps_cog 라 이 게이트는 이제 **두 배 모두의 실제 게이트**다(보완 C)
+    #            — 꺼지면 후진·제자리 선회 중 COG 를 방위로 채택한다(후진이면 180° 반대).
+    #            ⚠️ gps_cog 에서 꺼져도 /health_ok 로는 안 잡힌다(healthcheck 는 'cog_offset:' 만 본다)
+    #               — yaw_mux 부팅 ERROR + /heading_status 의 ' gate=off' 꼬리(healthcheck 진단의
+    #               ⚠️ 줄)로만 보인다(C-Q6 에서 보강 예정).
     #         출발 전 체크리스트: CLAUDE.md 7-2
     cog_require_reverse_gate: true
 

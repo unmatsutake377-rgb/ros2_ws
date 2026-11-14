@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
 """토너먼트 출발 위치에서 IMU 방위 오프셋(mount_offset_deg) 잡기 — 물 위 직진(§9-0g) 대신 '겨누기'.
 
+🚨 11-15 부터 두 배 공통 기본 heading_source = gps_cog(계약서_GPS방위_20261114 보완 C) — 이 도구는 **필요 없다.**
+   gps_cog 는 mount_offset_deg 를 쓰지 않는다. 출발 위치에서 뱃머리를 T1 쪽으로 겨눈 뒤 AUTO 하면 첫 COG 전엔
+   현재 WP 방위(INIT_GOAL)를 쓰고, 0.5 m/s 넘게 직진하면 GPS 진행방향으로 바뀐다(로그 '첫 COG 채택').
+   그래서 아래 4) 의 '/imu/yaw ≈ 목표 ±2°' 확인은 IMU 와 상관없이 **저절로 통과**한다 — 그걸로 IMU 를 맞췄다고 믿지 말 것.
+   쓰는 경우: 그 노트북만 heading_source 를 imu_relative 로 되돌렸을 때(보완 C-Q3).
+
 원리: 1번배 IMU 는 USB 전원 들어온 순간 뱃머리 = 0° 인 상대각(/imu/yaw_raw)이다.
       yaw_mux 는 /imu/yaw = (invert_yaw 면 −raw, 아니면 raw) + mount_offset_deg.
       출발 위치에서 뱃머리를 레인 결승 WP(T1) 쪽으로 똑바로 겨눠 세우면 참 방위 = RTK 현재 위치 → T1 방위.
@@ -128,6 +134,16 @@ def collect(seconds):
     return raw, yaw, fixes
 
 
+def read_heading_source(path=None):
+    """공통 ssf_heading.yaml 의 heading_source (없거나 못 읽으면 None)."""
+    path = path or os.path.join(REPO, 'src', 'ssf_heading', 'config', 'ssf_heading.yaml')
+    try:
+        m = re.search(r'^\s*heading_source:\s*"?([A-Za-z_]+)"?', open(path, encoding='utf-8').read(), re.M)
+    except OSError:
+        return None
+    return m.group(1) if m else None
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description='출발 위치 겨누기로 IMU mount_offset_deg 잡기')
     ap.add_argument('boat', type=str.upper, choices=['A', 'B'])
@@ -146,6 +162,10 @@ def main(argv=None):
     yml = os.path.join(REPO, 'src', 'ssf_heading', 'config', f'ssf_heading_{a.boat}.yaml')
     text = open(yml, encoding='utf-8').read()
     invert = read_invert(text)
+    src = read_heading_source()
+    if src != 'imu_relative':
+        print(f'⚠️  공통 heading_source = {src or "?"} — 이 오프셋은 쓰이지 않는다(gps_cog 는 mount 미적용).'
+              ' 뱃머리를 T1 로 겨눈 뒤 AUTO 하면 된다. 재시작 뒤 /imu/yaw ≈ 목표는 INIT_GOAL 이라 저절로 맞는다.')
 
     print(f'… {a.seconds:.0f} s 모으는 중 — 배를 움직이지 말 것(대회 launch 가 떠 있어야 한다)')
     raw, yaw, fixes = collect(a.seconds)
