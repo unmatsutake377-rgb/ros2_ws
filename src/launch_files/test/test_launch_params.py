@@ -18,9 +18,10 @@
      T1~T4·T6 은 ship_avoid(계약서_도리도리회피_launch_20261113 C2)도 대조한다 — _ship_avoid 가 띄운다
   T2 yaml 절 이름 = launch name= = 노드 super().__init__ 인자 (어긋나면 yaml 이 통째로 안 닿는다)
      T2~T4 는 코스 yaml(<pkg>_tournament.yaml)도 대조한다 (계약서_토너먼트분리_20261109 T1-4)
+     T2~T4 는 ship_turn 배별 yaml(ship_turn_A/B.yaml)도 대조한다 (계약서_ship_turn배별yaml_20261115)
   T3 yaml 키 ⊆ 노드 declare_parameter 키 (미선언 키 = 조용히 버려지는 죽은 설정)
   T4 yaml 값 타입 = 선언 기본값 타입 (bool/int/float/str, 리스트는 원소 타입까지). yaml 빈 리스트 금지
-  T5 ship_back·ship_turn parameters = [yaml, search_behavior dict] — dict 가 **맨 뒤**
+  T5 ship_back parameters = [yaml, search_behavior dict], ship_turn = [yaml, *배별 yaml, dict] — dict 가 **맨 뒤**
   T6 setup.py 가 config/<pkg>.yaml 을 share 에 설치한다 (코스 패키지는 <pkg>_tournament.yaml 도)
   T7 blackbox: Node 1개, condition=IfCondition(record), ssf_tools.yaml, record 기본 'true'·choices,
      ssf_tools 없으면 건너뜀(PackageNotFoundError), healthcheck·mission_monitor 는 없음(결정 ④)
@@ -29,6 +30,11 @@
      [_pkg_yaml, *course_param_files, {'dwa_hull': boat}] (dict 맨 뒤), motor =
      [_pkg_yaml, *course_param_files], course_param_files: main → [], tournament → 설치 경로,
      없으면 RuntimeError, 모르는 course 는 ValueError, _course_check 가 목록 첫 OpaqueFunction
+  T9 ship_turn 배별 yaml(계약서_ship_turn배별yaml_20261115): ship_turn_param_files(share, boat) →
+     [share/config/ship_turn_<boat>.yaml], 없으면 RuntimeError, 모르는 boat 는 ValueError,
+     _course_check 가 boat 를 perform 해 부르고(어떤 Node 보다 먼저 raise) LogInfo 를 낸다,
+     _search_nodes 가 boat 를 perform 해 같은 함수를 쓴다, 벤치 ship_turn.launch.py 와 함수 본문 같음·
+     boat 필수(choices A/B, 기본값 없음)·parameters = [공통, *배별]
 """
 
 import ast
@@ -64,11 +70,22 @@ def _tournament_yaml(pkg):
     return os.path.join(SRC, pkg, 'config', f'{pkg}_tournament.yaml')
 
 
+# ship_turn 배별 yaml (계약서_ship_turn배별yaml_20261115) — 공통 ship_turn.yaml 뒤에 붙는다
+BOATS = ('A', 'B')
+TURN_BENCH_LAUNCH = os.path.join(SRC, 'ship_turn', 'launch', 'ship_turn.launch.py')
+
+
+def _turn_boat_yaml(boat):
+    return os.path.join(SRC, 'ship_turn', 'config', f'ship_turn_{boat}.yaml')
+
+
 def _node_cases():
     """(노드 이름, yaml 경로, 노드 소스) — T2·T3·T4 공통. 코스 yaml 도 같은 노드 절로 대조한다."""
     cases = [(p, os.path.join(SRC, p, 'config', f'{p}.yaml'),
               os.path.join(SRC, p, p, f'{p}.py')) for p in YAML_PKGS]
     cases += [(p, _tournament_yaml(p), os.path.join(SRC, p, p, f'{p}.py')) for p in COURSE_PKGS]
+    cases += [('ship_turn', _turn_boat_yaml(b), os.path.join(SRC, 'ship_turn', 'ship_turn', 'ship_turn.py'))
+              for b in BOATS]
     cases.append((BLACKBOX['name'], BLACKBOX['yaml'], BLACKBOX['source']))
     return cases
 
@@ -385,11 +402,34 @@ def test_t1b_every_context_function_is_listed():
 
 # ------------------------------------------------------------ T5  [yaml, dict] — dict 맨 뒤
 
+def _is_turn_boat_files_starred(node):
+    """*ship_turn_param_files(get_package_share_directory('ship_turn'), boat)"""
+    if not isinstance(node, ast.Starred):
+        return False
+    c = node.value
+    if not (isinstance(c, ast.Call) and _call_name(c) == 'ship_turn_param_files' and len(c.args) == 2):
+        return False
+    share, boat = c.args
+    return (isinstance(share, ast.Call) and _call_name(share) == 'get_package_share_directory'
+            and len(share.args) == 1 and isinstance(share.args[0], ast.Constant)
+            and share.args[0].value == 'ship_turn'
+            and isinstance(boat, ast.Name) and boat.id == 'boat')
+
+
+# ship_turn 은 공통 yaml 과 dict 사이에 배별 yaml 이 낀다 (계약서_ship_turn배별yaml_20261115, 계약 위험 1)
+SEARCH_PARAM_LEN = {'ship_back': 2, 'ship_turn': 3}
+
+
 @pytest.mark.parametrize('pkg', SEARCH_PKGS)
 def test_t5_search_dict_is_last(pkg):
     elts = _params_list(_nodes(_tree(), pkg)[0])
-    assert len(elts) == 2, f'{pkg}: parameters 항목 {len(elts)}개 — [yaml, search_behavior dict]'
+    assert len(elts) == SEARCH_PARAM_LEN[pkg], (
+        f'{pkg}: parameters 항목 {len(elts)}개 — ship_back [yaml, dict] / ship_turn [yaml, *배별, dict]')
     assert _is_pkg_yaml_call(elts[0], pkg), f'{pkg}: 첫 항목이 yaml 이 아니다'
+    if pkg == 'ship_turn':
+        assert _is_turn_boat_files_starred(elts[1]), (
+            "ship_turn: 두 번째가 *ship_turn_param_files(get_package_share_directory('ship_turn'), boat) "
+            '가 아니다 — 배별 값이 빠지거나 공통 yaml 에 진다')
     last = elts[-1]
     assert (isinstance(last, ast.Subscript) and isinstance(last.value, ast.Name)
             and last.value.id == 'params' and isinstance(last.slice, ast.Constant)
@@ -710,3 +750,131 @@ def test_t8_course_check_before_any_node():
     names = [_call_name(n) for n in ast.walk(fn) if isinstance(n, ast.Call)]
     assert 'course_param_files' in names and 'LogInfo' in names
     assert 'Node' not in names
+
+
+# ------------------------------------------------------------ T9  ship_turn 배별 yaml (boat 층)
+
+def _turn_param_files(tree):
+    """launch 의 ship_turn_param_files 를 떼어 실행 (launch·ament 없이)."""
+    fn = _func(tree, 'ship_turn_param_files')
+    ns = {'os': os}
+    exec(compile(ast.Module(body=[fn], type_ignores=[]), '<launch>', 'exec'), ns)
+    return ns['ship_turn_param_files']
+
+
+def _launch_trees():
+    return {'competition': _tree(), 'bench': _source_tree(TURN_BENCH_LAUNCH)}
+
+
+@pytest.mark.parametrize('which', ['competition', 'bench'])
+@pytest.mark.parametrize('boat', BOATS)
+def test_t9_turn_param_files_path(which, boat):
+    """(c) 경로 = <share>/config/ship_turn_<boat>.yaml — 소스 config/ 를 share 로 두면 실제 파일이 나온다."""
+    fn = _turn_param_files(_launch_trees()[which])
+    got = fn(os.path.join(SRC, 'ship_turn'), boat)
+    assert got == [_turn_boat_yaml(boat)]
+    assert os.path.isfile(got[0])
+
+
+@pytest.mark.parametrize('which', ['competition', 'bench'])
+@pytest.mark.parametrize('boat', BOATS)
+def test_t9_turn_param_files_missing_raises(which, boat):
+    """(c) 배별 파일이 없으면(설치 누락·빌드 안 함) RuntimeError — 코드 기본값으로 조용히 안 뜬다."""
+    fn = _turn_param_files(_launch_trees()[which])
+    with pytest.raises(RuntimeError, match=re.escape(
+            os.path.join('/install/ship_turn/share/ship_turn', 'config', f'ship_turn_{boat}.yaml'))):
+        fn('/install/ship_turn/share/ship_turn', boat)
+
+
+@pytest.mark.parametrize('which', ['competition', 'bench'])
+@pytest.mark.parametrize('boat', ['', 'a', 'b', 'C', 'A ', 'AB'])
+def test_t9_turn_param_files_unknown_boat_raises(which, boat):
+    """(c) 모르는 boat 는 ValueError — 파일 조회 전에(다른 배 값으로 안 떨어진다)."""
+    fn = _turn_param_files(_launch_trees()[which])
+    with pytest.raises(ValueError):
+        fn(os.path.join(SRC, 'ship_turn'), boat)
+
+
+def test_t9_turn_param_files_boats_match_launch_choices():
+    """함수가 받는 boat = 대회 launch boat choices (A·B)."""
+    boat = ast.literal_eval(_kw(_declare(_tree(), 'boat'), 'choices'))
+    assert sorted(boat) == sorted(BOATS)
+
+
+def test_t9_two_launch_helpers_identical():
+    """대회·벤치 ship_turn_param_files 본문이 같다(docstring 제외) — 어긋나면 벤치와 대회가 다른 파일을 읽는다."""
+    bodies = []
+    for tree in _launch_trees().values():
+        fn = _func(tree, 'ship_turn_param_files')
+        bodies.append(ast.dump(ast.Module(body=fn.body[1:], type_ignores=[])))
+    assert bodies[0] == bodies[1]
+
+
+def test_t9_course_check_calls_turn_param_files():
+    """(d) _course_check(목록 첫 OpaqueFunction, T8) 가 boat 를 perform 해 ship_turn_param_files 를 부른다
+    → 배별 파일이 없으면 어떤 Node 도 예약되기 전에 raise. 로그 'ship_turn boat=…, 파일=…' 를 낸다."""
+    fn = _func(_tree(), '_course_check')
+    _performed(fn, 'boat', 'boat')
+    calls = [n for n in ast.walk(fn) if isinstance(n, ast.Call) and _call_name(n) == 'ship_turn_param_files']
+    assert len(calls) == 1, f'_course_check 의 ship_turn_param_files 호출 {len(calls)}개'
+    share, boat = calls[0].args
+    assert _call_name(share) == 'get_package_share_directory' and share.args[0].value == 'ship_turn'
+    assert isinstance(boat, ast.Name) and boat.id == 'boat'
+    logs = [n for n in ast.walk(fn) if isinstance(n, ast.Call) and _call_name(n) == 'LogInfo']
+    texts = [ast.unparse(_kw(n, 'msg')) for n in logs]
+    assert any('ship_turn boat=' in t and '파일=' in t for t in texts), texts
+
+
+def test_t9_search_nodes_performs_boat():
+    """(g) _search_nodes 가 boat 를 perform 한다 (T5 의 *ship_turn_param_files(..., boat) 의 boat)."""
+    _performed(_func(_tree(), '_search_nodes'), 'boat', 'boat')
+
+
+def test_t9_no_files_assignment_added():
+    """계약 위험 4: ssf_heading test_boat_config 가 모듈 전체의 `files =` 대입을 1번으로 본다(_yaw_mux)."""
+    n = [a for a in ast.walk(_tree()) if isinstance(a, ast.Assign)
+         and any(isinstance(t, ast.Name) and t.id == 'files' for t in a.targets)]
+    assert len(n) == 1
+
+
+def test_t9_bench_launch_boat_required():
+    """벤치 ship_turn.launch.py: boat 필수(choices A/B, 기본값 없음), OpaqueFunction 하나."""
+    tree = _source_tree(TURN_BENCH_LAUNCH)
+    call = _declare(tree, 'boat')
+    assert _kw(call, 'default_value') is None and len(call.args) == 1, 'boat 에 기본값 금지'
+    assert ast.literal_eval(_kw(call, 'choices')) == list(BOATS)
+    opaque = [n for n in ast.walk(tree) if isinstance(n, ast.Call) and _call_name(n) == 'OpaqueFunction']
+    assert len(opaque) == 1 and _kw(opaque[0], 'function').id == '_ship_turn'
+
+
+def test_t9_bench_launch_params_common_then_boat():
+    """벤치 Node parameters = [공통 ship_turn.yaml, *ship_turn_param_files(share, boat)] (뒤가 이긴다)."""
+    tree = _source_tree(TURN_BENCH_LAUNCH)
+    fn = _func(tree, '_ship_turn')
+    _performed(fn, 'boat', 'boat')
+    nodes = _nodes(fn, 'ship_turn')
+    assert len(nodes) == 1 and _const_kw(nodes[0], 'name') == 'ship_turn'
+    elts = _params_list(nodes[0])
+    assert len(elts) == 2
+    assert isinstance(elts[0], ast.Name) and isinstance(elts[1], ast.Starred)
+    assigns = {t.id: a.value for a in ast.walk(fn) if isinstance(a, ast.Assign)
+               for t in a.targets if isinstance(t, ast.Name)}
+    common = assigns[elts[0].id]
+    assert ast.literal_eval(common.args[-1]) == 'ship_turn.yaml' and _call_name(common) == 'join'
+    boat_files = assigns[elts[1].value.id]
+    assert _call_name(boat_files) == 'ship_turn_param_files'
+    assert [getattr(a, 'id', None) for a in boat_files.args] == ['share', 'boat']
+    logs = [ast.unparse(_kw(n, 'msg')) for n in ast.walk(fn)
+            if isinstance(n, ast.Call) and _call_name(n) == 'LogInfo']
+    assert any('ship_turn boat=' in t and '파일=' in t for t in logs), logs
+
+
+@pytest.mark.parametrize('boat', BOATS)
+def test_t9_setup_installs_turn_boat_yaml(boat):
+    """ship_turn setup.py 가 config/*.yaml 을 glob 으로 설치 → 배별 파일도 share 에 간다."""
+    with open(os.path.join(SRC, 'ship_turn', 'setup.py'), encoding='utf-8') as f:
+        setup = f.read()
+    assert os.path.isfile(_turn_boat_yaml(boat))
+    assert re.search(r"""glob\(\s*['"]config/\*\.yaml['"]\s*\)""", setup), (
+        'ship_turn/setup.py 가 config/*.yaml 을 glob 으로 설치하지 않는다 — 배별 파일이 share 에 없으면 '
+        'launch 시작에서 RuntimeError')

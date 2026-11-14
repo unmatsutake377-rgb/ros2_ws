@@ -28,7 +28,10 @@ def _git(d, *a):
 def boat(tmp_path):
     """임시 저장소(진짜 config yaml 사본 + git 커밋) + 집 폴더(A번배 등록)."""
     repo = tmp_path / "ros2_ws"
-    for rel in subprocess.run(["git", "-C", REPO, "ls-files", "src/*/config/*.yaml"],
+    # 작업 트리 기준(--others: 아직 커밋 안 한 새 config yaml 도, 무시 파일은 빼고) — 커밋 전 검증에서도
+    #   새 배별 파일(예: ship_turn_A/B.yaml)이 사본에 들어가게. 임시 저장소에선 커밋돼 scan_files 가 본다.
+    for rel in subprocess.run(["git", "-C", REPO, "ls-files", "--cached", "--others", "--exclude-standard",
+                               "src/*/config/*.yaml"],
                               capture_output=True, text=True, check=True).stdout.split():
         if "ntrip" in rel:
             continue
@@ -69,6 +72,21 @@ def test_other_boat_file_hidden(boat):
     rels = {e["rel"] for g in groups.values() for e in g}
     assert any(r.endswith("ssf_heading_A.yaml") for r in rels)
     assert not any(r.endswith("ssf_heading_B.yaml") for r in rels)
+    # ship_turn 배별 파일(계약서_ship_turn배별yaml_20261115)도 같은 규칙
+    assert any(r.endswith("ship_turn_A.yaml") for r in rels)
+    assert not any(r.endswith("ship_turn_B.yaml") for r in rels)
+
+
+def test_ship_turn_boat_key_edits_this_boat_file_only(boat):
+    """계약 위험 3: 배별 키는 공통 파일에 없다 → 앱이 이 배 파일(_A)을 고치고 B 파일·공통 파일은 그대로."""
+    common = "src/ship_turn/config/ship_turn.yaml"
+    other = "src/ship_turn/config/ship_turn_B.yaml"
+    before = {rel: _text(boat, rel) for rel in (common, other)}
+    r = boat.apply("scan_timeout_sec", "30")
+    assert r["rel"].endswith("ship_turn_A.yaml") and r["new"] == "30.0"
+    assert yaml.safe_load(_text(boat, r["rel"]))["/ship_turn"]["ros__parameters"]["scan_timeout_sec"] == 30.0
+    for rel, text in before.items():
+        assert _text(boat, rel) == text, f"{rel} 가 바뀌었다"
 
 
 # ---------------------------------------------------------------- 타입

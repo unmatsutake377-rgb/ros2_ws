@@ -1,0 +1,32 @@
+# ship_turn — B배 전용 값 (나머지 공통값은 ship_turn.yaml). 계약서_ship_turn배별yaml_20261115
+#
+# launch 가 `boat:=B` 일 때 ship_turn.yaml **뒤에** 이 파일을 넘긴다 → 여기 값이 이긴다.
+#   대회: ros2 launch launch_files launch_files.launch.py boat:=B course:=main
+#   벤치: ros2 launch ship_turn ship_turn.launch.py boat:=B
+#   🚨 다른 배 인자로 띄워 놓고 이 파일을 고치지 말 것 — launch 로그 "ship_turn boat=…, 파일=…" 로 확인.
+#
+# 🚨 여기엔 배마다 다른 키 **9개만** 둔다(선회율·관성 의존): scan_* 7개 + orbit_target_deg + orbit_max_sec.
+#    두 배 파일의 키 집합은 같아야 한다(test_turn_boat_params.py 가 검사).
+#    enabled·active_wp_mode 는 **절대 넣지 말 것** — mode 3 담당이 배마다 갈리고, search_behavior
+#    검사(test_search_behavior·test_mode_gate)는 공통 yaml 만 본다.
+#    orbit_radius_m·lidar_track_max_m·approach_dist_m 은 서로 묶인 값이라 공통 파일에 둔다.
+# 🚨 전부 **소수점** 으로 (25 ❌ → 25.0 ✅). 정수면 ship_turn 이 부팅 때 죽는다(rclpy 타입 오류).
+# 코드 기본값(ship_turn.py)은 2026-11-15 공통값 그대로다 — 이 파일 없이 도는 시뮬·단위 테스트의 값.
+#   배별로 값을 바꿀 땐 이 파일만 고친다(full_course_sim 은 이 파일을 안 읽는다 → --param ship_turn.키=값).
+
+/ship_turn:
+  ros__parameters:
+    # ---- SCAN(도리도리) — 모드 3 첫 진입 INIT 뒤 한 번 (계약서_탐색전도리도리_20261115) ----
+    scan_angle_deg: 90.0     # ±90° + 카메라 HFOV ±40° ≈ ±130° 시야(§11 시뮬: ±60° 는 배 뒤 부표 놓침). 0 초과 150 이하
+    scan_tol_deg: 5.0        # ⚠️ 실측 필요 — 목표각 도달 허용(오버슈트)
+    scan_lead_sec: 0.3       # ⚠️ 실측 필요 — |yaw rate|×lead 만큼 일찍 멈춤
+    scan_stop_sec: 1.5       # ⚠️ 실측 필요 — 진입 시 정지 대기(관성)
+    scan_hold_sec: 1.2       # 끝각 정지 촬영(검출 confirm 여유)
+    scan_timeout_sec: 25.0   # SCAN 전체 상한 — 넘으면 SEARCH(무한 선회 금지, [5]① 재발 방지)
+    scan_clear_m: 1.0        # ⚠️ 실측 필요 — SCAN 시작 때 신선한 /scan 전 방위에 이보다 가까운 반사가 있으면 건너뜀
+                             #   (제자리 회전 원 반길이 ≈0.83 m + 여유. 선체 자기 반사가 잡히면 늘 건너뛴다 — 실기 확인)
+
+    # ---- ORBIT 진행각·상한 (둘이 묶여 있다 — 같이 고칠 것) ----
+    orbit_target_deg: 420.0  # 한 바퀴 이상(2026-11-15 승인, 계약서_탐색전도리도리 §14-7).
+                             #   더 올리면 orbit_max_sec 도 같이 — 540° 는 시뮬 55 s 로 상한에 붙는다(§12)
+    orbit_max_sec: 60.0      # 안전 타임아웃(ORBIT 진입부터, yaw 없어 진행각을 못 잴 때)

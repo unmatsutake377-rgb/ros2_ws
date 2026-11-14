@@ -10,6 +10,8 @@
   · ship_direction·motor_control 은 공통 yaml 뒤에 course_param_files() 를 붙인다
     (main = 붙이는 것 없음, tournament = <pkg>_tournament.yaml, 없으면 launch 를 세운다).
   · ship_direction 의 dwa_hull 은 boat 인자로 정한다(main·tournament 모두, §9-5).
+  · ship_turn 은 공통 yaml 뒤에 배별 yaml(ship_turn_{boat}.yaml, scan_*·orbit_target_deg·orbit_max_sec)을
+    붙인다(계약서_ship_turn배별yaml_20261115). 없으면 _course_check 가 launch 를 세운다.
   · 판 사이에는 launch 를 재시작한다(MANUAL→AUTO 재진입은 wp_idx 를 안 되돌린다).
 
 인식 융합 (계약서_인식융합_20261112 §10): d455_depth·perception_fusion 기본 true(대회에서 켬).
@@ -98,19 +100,39 @@ def course_param_files(pkg, course):
     return [path]
 
 
+def ship_turn_param_files(share_dir, boat):
+    """ship_turn 공통 yaml 뒤에 붙일 배별 파일 목록 = [<share>/config/ship_turn_<boat>.yaml].
+
+    ship_turn.launch.py(벤치)에 같은 함수가 있다 — 바꿀 땐 둘 다 (test_launch_params T9 가 검사).
+    🚨 파일이 없으면 RuntimeError: 배별 값 없이 뜨면 코드 기본값으로 조용히 돈다 → launch 를 세운다.
+    모르는 boat 는 ValueError — 조용히 다른 배 값으로 떨어지지 않는다.
+    """
+    if boat not in ('A', 'B'):
+        raise ValueError(f"boat={boat!r} — 'A' 또는 'B'")
+    path = os.path.join(share_dir, 'config', f'ship_turn_{boat}.yaml')
+    if not os.path.isfile(path):
+        raise RuntimeError(
+            f'ship_turn 배별 파일 없음: {path} — pull 뒤 colcon build 를 했는지 확인')
+    return [path]
+
+
 def _course_check(context):
-    # 코스 파일 확인(raise)을 launch 목록 첫 OpaqueFunction 으로 — _yaw_mux 보다도 앞, 어떤 Node
-    # 보다 먼저 한다(launch 는 깊이 우선 방문: 뒤에 두면 앞 OpaqueFunction 의 Node 가 먼저 예약된다).
+    # 코스 파일·ship_turn 배별 파일 확인(raise)을 launch 목록 첫 OpaqueFunction 으로 — _yaw_mux 보다도 앞,
+    # 어떤 Node 보다 먼저 한다(launch 는 깊이 우선 방문: 뒤에 두면 앞 OpaqueFunction 의 Node 가 먼저 예약된다).
     # 여기서는 LogInfo 만 낸다(Node 없음) → 다음 _yaw_mux 의 확인도 여전히 어떤 Node 보다 먼저다.
-    # 노드는 _control_nodes 가 띄운다 — 같은 course_param_files 를 다시 부른다.
+    # 노드는 _control_nodes·_search_nodes 가 띄운다 — 같은 course_param_files·ship_turn_param_files 를 다시 부른다.
+    # (_search_nodes 에서 처음 raise 하면 앞 Node 들이 이미 뜬 채 launch 가 죽는다.)
     course = LaunchConfiguration('course').perform(context)
+    boat = LaunchConfiguration('boat').perform(context)
     wp = LaunchConfiguration('waypoints_file').perform(context)
     # 🚨 변수 이름을 files 로 쓰지 말 것 — ssf_heading test_boat_config 가 모듈 전체에서
     #    yaw_mux parameters 변수(files) 대입이 1번인지 본다.
     by_pkg = {pkg: course_param_files(pkg, course) for pkg in COURSE_PKGS}
     attached = ', '.join(f'{pkg} ← {by_pkg[pkg] or "없음(공통 yaml 만)"}' for pkg in COURSE_PKGS)
+    turn_boat_files = ship_turn_param_files(get_package_share_directory('ship_turn'), boat)
     return [LogInfo(msg=f'course={course}: 코스 파일 {attached} / north_goal_angle ← '
-                        f'north_goal_angle_{course}.yaml, waypoints_file={wp or "(코스 기본)"}')]
+                        f'north_goal_angle_{course}.yaml, waypoints_file={wp or "(코스 기본)"}'),
+            LogInfo(msg=f'ship_turn boat={boat}, 파일={_pkg_yaml("ship_turn")} → {turn_boat_files[0]}')]
 
 
 def _control_nodes(context):
@@ -165,6 +187,7 @@ def _search_nodes(context):
     # 탐색(mode 3) 행동 스위치. 노드는 둘 다 항상 뜬다 — 바뀌는 건 파라미터뿐.
     # 기본 orbit(2026-11 경기규정 원 선회). 현장에서 위치유지로 돌리려면 search_behavior:=hold.
     behavior = LaunchConfiguration('search_behavior').perform(context)
+    boat = LaunchConfiguration('boat').perform(context)
     params = search_behavior_params(behavior)
     if behavior == 'hold':
         msg = 'search_behavior=hold(옵션): 탐색(3) = ship_back 위치유지(모드 2·3 담당), ship_turn 침묵'
@@ -174,9 +197,12 @@ def _search_nodes(context):
     # 🚨 parameters 순서가 의미다: yaml 먼저, search_behavior dict **맨 뒤** (뒤가 이긴다).
     #    거꾸로면 orbit 에서 ship_back 이 yaml [2,3] 으로 뜨고 ship_turn 도 켜져
     #    mode 3 /candidate_angle 발행자가 2개가 된다(에러 없음). test_launch_params T5 가 검사.
+    #    ship_turn = [공통 yaml, 배별 yaml(boat), search_behavior dict] — 배별 파일 확인은 _course_check 가 먼저 했다.
     actions += [
         Node(package='ship_turn', executable='ship_turn', name='ship_turn', output='screen',
-             parameters=[_pkg_yaml('ship_turn'), params['ship_turn']]),
+             parameters=[_pkg_yaml('ship_turn'),
+                         *ship_turn_param_files(get_package_share_directory('ship_turn'), boat),
+                         params['ship_turn']]),
         # ship_last 제거됨(6b): mode 0 을 ship_gate 가 인수. 하던 일은 /candidate_angle 에 20000
         #   폴백을 내는 것뿐이라 중복이었다. (mode 5 는 ship_avoid(_ship_avoid), mode 8 폴백은 north_goal_angle)
         Node(package='ship_back', executable='ship_back', name='ship_back', output='screen',
@@ -414,13 +440,15 @@ def generate_launch_description():
 
     return LaunchDescription([
         # 🚨 배 (필수, 기본값 없음 — 빠지거나 A/B 가 아니면 launch 거부).
-        #    yaw_mux 의 배별 IMU 값(ssf_heading_A/B.yaml)과 ship_direction 의 dwa_hull 을 고른다.
+        #    yaw_mux 의 배별 IMU 값(ssf_heading_A/B.yaml), ship_direction 의 dwa_hull,
+        #    ship_turn 의 배별 값(ship_turn_A/B.yaml — scan_*·orbit_target_deg·orbit_max_sec)을 고른다.
         #    GPS 는 아래 gps_config 따로.
         #    ros2 launch launch_files launch_files.launch.py boat:=A course:=main   (또는 boat:=B)
         #    기본값을 두면 다른 배에서 그 배 값으로 조용히 뜬다(gps_config 가 이미 그렇게 실패 중).
         DeclareLaunchArgument(
             'boat', choices=['A', 'B'],
-            description='배 (필수): A 또는 B — yaw_mux 배별 IMU 값, ship_direction dwa_hull'),
+            description='배 (필수): A 또는 B — yaw_mux 배별 IMU 값, ship_direction dwa_hull, '
+                        'ship_turn 배별 값'),
         # 🚨 코스 (필수, 기본값 없음 — boat 와 같은 이유. 계약서_토너먼트분리_20261109 결정 ③).
         #    main = 종합임무, tournament = 토너먼트(웨이포인트 전부 mode 8, 코스 yaml 덮어쓰기).
         #    기본값을 두면 토너먼트 날 인자를 빠뜨려도 main 값으로 조용히 뜬다.
@@ -462,7 +490,7 @@ def generate_launch_description():
             description='perception_fusion(/fused_objects: LiDAR+D455 뎁스+검출기 방위): true(기본) / false'),
 
         # ============================================================
-        # 0a) 코스 파일 확인 + LogInfo(course·붙인 파일). 없으면 raise
+        # 0a) 코스 파일·ship_turn 배별 파일 확인 + LogInfo(course·붙인 파일, ship_turn boat). 없으면 raise
         # ============================================================
         # 🚨 목록의 첫 OpaqueFunction — 어떤 Node 보다 먼저 돈다(launch 는 깊이 우선 방문이라
         #    _yaw_mux 뒤에 두면 yaw_mux Node 가 먼저 예약된다). Node 를 만들지 않는다.

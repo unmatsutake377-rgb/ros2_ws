@@ -54,7 +54,7 @@ git commit -m "작년 대회 최종본 (수정 전 기준선)"
 ### 1-4. 하드코딩 금지 — 파라미터로
 
 `[구판]` 배가 2척(A/B, 크기 다름)이다. 배 폭·PWM·거리 임계값은 **전부 `config/boat_a.yaml` / `boat_b.yaml`** 로 뺀다.
-→ **실제**: `boat_a.yaml`/`boat_b.yaml` 은 저장소에 없다(만든 적 없음). 값은 패키지별 `src/<pkg>/config/<pkg>.yaml` + 코드 기본값에 있다. 배별 분기는 ① GPS `gps_config` 인자 ② **10-29 신설 `boat:=A|B`(필수, 대문자)** — 지금은 IMU 두 값(`src/ssf_heading/config/ssf_heading_A/B.yaml`, 공통 `ssf_heading.yaml` 뒤에 실려 이김)만. 계약은 `CLAUDE.md` §1-4 와 `docs/문제와작업/계약서_배별IMU설정_20261029.md`.
+→ **실제**: `boat_a.yaml`/`boat_b.yaml` 은 저장소에 없다(만든 적 없음). 값은 패키지별 `src/<pkg>/config/<pkg>.yaml` + 코드 기본값에 있다. 배별 분기는 ① GPS `gps_config` 인자 ② **10-29 신설 `boat:=A|B`(필수, 대문자)** — 지금 고르는 것: IMU 두 값(`src/ssf_heading/config/ssf_heading_A/B.yaml`, 공통 `ssf_heading.yaml` 뒤에 실려 이김) + `ship_direction` `dwa_hull`(launch dict) + `ship_turn` 9개(scan_* 7개 — `scan_enabled`·`scan_stale_sec` 는 공통 —·`orbit_target_deg`·`orbit_max_sec`, `src/ship_turn/config/ship_turn_A/B.yaml`, 공통 `ship_turn.yaml` 뒤 — 11-15). 배별 키는 공통 파일에서 뺀다. 계약은 `CLAUDE.md` §1-4, `docs/문제와작업/계약서_배별IMU설정_20261029.md`, `docs/문제와작업/계약서_ship_turn배별yaml_20261115.md`.
 아직 모르는 실측값은 **`# ⚠️ 실측 필요` 주석**을 달고 임시값을 넣는다.
 
 ### 1-5. `time.time()` 쓰지 말 것
@@ -557,7 +557,7 @@ super().__init__('ship_turn')   # ← 복붙 실수. 파일은 ship_back 인데 
 하지만 `ros2 run ship_back ship_back` 으로 **단독 실행하면 진짜 `ship_turn` 과 충돌한다.**
 
 **올해는 더 위험하다.** 작년엔 **yaml 파라미터 파일이 아예 없었다**(전부 하드코딩).
-`[구판]` 올해는 `boat_a.yaml` / `boat_b.yaml` 을 **노드 이름으로 찾아 적용**한다. (→ 실제로는 이 파일들이 없다. yaml 은 노드 이름으로 적용된다는 메커니즘 설명만 유효하고, 배별 분리 파일은 미도입. `CLAUDE.md` §1-4)
+`[구판]` 올해는 `boat_a.yaml` / `boat_b.yaml` 을 **노드 이름으로 찾아 적용**한다. (→ 실제로는 이 파일들이 없다. yaml 은 노드 이름으로 적용된다는 메커니즘 설명만 유효하다. 배별 분리는 패키지별 `<pkg>_A/B.yaml` 로 일부만 도입 — `ssf_heading`(IMU 두 값)·`ship_turn`(scan_*·orbit 9개). `CLAUDE.md` §1-4)
 이름이 틀리면 **파라미터가 엉뚱한 노드로 간다.** (`ship_back` 이 `ship_turn` 의 `active_wp_mode: 3` 을 받아버림)
 
 **✅ 6d 에서 고침:** `ship_back` 의 `super().__init__('ship_turn')` → `'ship_back'`, 클래스명 `ShipTurn` → `ShipBack`.

@@ -8,7 +8,7 @@
     python3 tools/check_params.py some.yaml other.yaml      # 파일을 직접 고르면 --boat 불필요
 
 🚨 `--boat` 는 기본 파일 목록을 쓸 때 **필수**다 (2026-10-29, 계약서_배별IMU설정).
-   배별 파일(ssf_heading_A/B.yaml)은 **그 배 것 하나만** 대조한다 — 두 배 파일을 다 넣으면
+   배별 파일(ssf_heading_A/B.yaml · ship_turn_A/B.yaml)은 **그 배 것만** 대조한다 — 두 배 파일을 다 넣으면
    실측 뒤 안 실린 배 파일이 매번 거짓 '불일치' 로 뜨고, 사람들이 경고를 무시하게 된다.
    GPS 파일은 배에서 자동으로 고르지 않는다 — launch 의 gps_config 가 boat 와 따로이므로
    (수신기 배정 미확정) 여기서도 `--gps-config` 로 launch 에 준 값을 그대로 받는다.
@@ -60,9 +60,14 @@ DEFAULT_FILES = [
     "src/ssf_tools/config/ssf_tools.yaml",
 ]
 
-# 배별 파일 — 그 배 것 하나만 목록에 넣는다(위 docstring).
+# 배별 파일 — 그 배 것만 목록에 넣는다(위 docstring).
+#   ship_turn_<boat>.yaml(계약서_ship_turn배별yaml_20261115): scan_*·orbit_target_deg·orbit_max_sec 9개는
+#   공통 ship_turn.yaml 에 없고 여기에만 있다 → 넣지 않으면 그 9개는 대조되지 않는다.
 BOATS = ("A", "B")
-BOAT_FILE = "src/ssf_heading/config/ssf_heading_{boat}.yaml"
+BOAT_FILES = (
+    "src/ssf_heading/config/ssf_heading_{boat}.yaml",
+    "src/ship_turn/config/ship_turn_{boat}.yaml",
+)
 
 # GPS — launch_files.launch.py 의 gps_config 와 같은 이름·같은 기본값.
 GPS_CONFIG_DIR = "src/ublox/ublox_gps/config"
@@ -71,8 +76,8 @@ DEFAULT_GPS_CONFIG = "zed_f9p_rover.yaml"
 
 def default_files(boat, gps_config):
     """기본 대조 목록 = 공통 파일 + **그 배의** 배별 파일 + launch 에 준 GPS 파일."""
-    return DEFAULT_FILES + [BOAT_FILE.format(boat=boat),
-                            os.path.join(GPS_CONFIG_DIR, gps_config)]
+    return DEFAULT_FILES + [f.format(boat=boat) for f in BOAT_FILES] + [
+        os.path.join(GPS_CONFIG_DIR, gps_config)]
 
 
 def sh(cmd, timeout=40):
@@ -139,7 +144,7 @@ def main():
     ap.add_argument('yamls', nargs='*',
                     help="대조할 yaml (없으면 기본 목록 — 그때는 --boat 필수)")
     ap.add_argument('--boat', choices=BOATS,
-                    help="launch 에 준 boat 와 같게. 그 배의 ssf_heading_<boat>.yaml 만 대조")
+                    help="launch 에 준 boat 와 같게. 그 배의 ssf_heading_<boat>.yaml·ship_turn_<boat>.yaml 만 대조")
     ap.add_argument('--gps-config', default=DEFAULT_GPS_CONFIG,
                     help=f"launch 에 준 gps_config 와 같게 (기본 {DEFAULT_GPS_CONFIG})")
     args = ap.parse_args()

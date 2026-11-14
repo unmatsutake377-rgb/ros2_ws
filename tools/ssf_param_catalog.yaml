@@ -41,6 +41,46 @@ groups:
          change: water, when: "lost_sec 과 같이 본다",
          check: "물결로 검출이 끊길 때 SEARCH 로 너무 빨리 가는지", revert: "5.0"}
 
+  - name: 탐색 선회·도리도리 (ship_turn · 배마다 다름)
+    # 계약서_ship_turn배별yaml_20261115: 아래 9개는 공통 ship_turn.yaml 에 없고 ship_turn_A/B.yaml 에만 있다.
+    items:
+      - {pkg: ship_turn, key: scan_angle_deg, label: 도리도리 좌우 각도, unit: "°", step: 5.0, limits: [10.0, 150.0],
+         hint: "모드 3 첫 진입 때 제자리에서 오른쪽·왼쪽으로 이 각도만큼 돌며 부표를 찾는다(카메라 ±40° 를 더한 만큼 보인다). 배별 파일(ship_turn_A/B.yaml)에만 있다 — 이 배만 바뀐다. 🚨 바꾸면 launch 재시작(시작 때 한 번 읽음)",
+         advice: "90(11-15 승인). ±60 은 시뮬에서 배 뒤 부표를 놓쳤다. 노드는 0 이하·150 초과면 ERROR + 도리도리 끔",
+         change: water, when: "현장 조정표에 기준 없음 — 물 위에서 부표가 시야 밖에 남는지 보고 정한다"}
+      - {pkg: ship_turn, key: scan_tol_deg, label: 도리도리 목표각 허용, unit: "°", step: 1.0, limits: [1.0, 20.0],
+         hint: "목표 각도에 이만큼 가까우면 도착으로 본다. 배별 파일(ship_turn_A/B.yaml)에만 있다 — 이 배만 바뀐다. 🚨 바꾸면 launch 재시작(시작 때 한 번 읽음)",
+         advice: "5(⚠️ 실측 전 임시값). 선회가 빨라 오버슈트가 크면 올린다",
+         change: measure, when: "현장 조정표에 기준 없음 — 배마다 제자리 선회 오버슈트를 재서 넣는다"}
+      - {pkg: ship_turn, key: scan_lead_sec, label: 도리도리 미리 멈춤 시간, unit: s, step: 0.1, limits: [0.0, 2.0],
+         hint: "선회 속도 × 이 시간만큼 목표각 앞에서 멈춘다(관성 보정). 배별 파일(ship_turn_A/B.yaml)에만 있다 — 이 배만 바뀐다. 🚨 바꾸면 launch 재시작(시작 때 한 번 읽음)",
+         advice: "0.3(⚠️ 실측 전 임시값). 관성이 큰 배는 올린다",
+         change: measure, when: "현장 조정표에 기준 없음 — 배마다 선회 관성을 재서 넣는다"}
+      - {pkg: ship_turn, key: scan_stop_sec, label: 도리도리 시작 정지 대기, unit: s, step: 0.5, limits: [0.0, 5.0],
+         hint: "도리도리 시작 때 멈춰서 기다리는 시간(전진 관성이 빠지게). 배별 파일(ship_turn_A/B.yaml)에만 있다 — 이 배만 바뀐다. 🚨 바꾸면 launch 재시작(시작 때 한 번 읽음)",
+         advice: "1.5(⚠️ 실측 전 임시값)",
+         change: measure, when: "현장 조정표에 기준 없음 — 배마다 정지까지 걸리는 시간을 재서 넣는다"}
+      - {pkg: ship_turn, key: scan_hold_sec, label: 도리도리 끝각 정지 촬영, unit: s, step: 0.1, limits: [0.0, 5.0],
+         hint: "좌우 끝 각도에서 멈춰 카메라가 부표를 확인하는 시간. 배별 파일(ship_turn_A/B.yaml)에만 있다 — 이 배만 바뀐다. 🚨 바꾸면 launch 재시작(시작 때 한 번 읽음)",
+         advice: "1.2. 끝각에서 부표를 지나치면 올린다(검출 확인 여유)",
+         change: water, when: "현장 조정표에 기준 없음"}
+      - {pkg: ship_turn, key: scan_timeout_sec, label: 도리도리 전체 상한, unit: s, step: 1.0, limits: [5.0, 40.0],
+         hint: "도리도리 전체가 이 시간을 넘으면 그만두고 SEARCH(무한 선회 방지). 배별 파일(ship_turn_A/B.yaml)에만 있다 — 이 배만 바뀐다. 🚨 바꾸면 launch 재시작(시작 때 한 번 읽음)",
+         advice: "25. mode 3 WP 시간 초과는 90 s — 도리도리 + 접근 + 선회(orbit_max_sec) 가 그 안에 들어가게",
+         change: rarely, when: "현장 조정표에 기준 없음 — 좌우 다 도는 데 상한에 걸리면(로그 timeout) 올린다"}
+      - {pkg: ship_turn, key: scan_clear_m, label: 도리도리 주변 빈 공간, unit: m, step: 0.1, limits: [0.3, 3.0],
+         hint: "시작 때 LiDAR 전 방위에 이보다 가까운 반사가 있으면 도리도리를 건너뛴다(제자리 회전 원). 배별 파일(ship_turn_A/B.yaml)에만 있다 — 이 배만 바뀐다. 🚨 바꾸면 launch 재시작(시작 때 한 번 읽음)",
+         advice: "1.0(⚠️ 실측 전 임시값, 회전 원 반길이 약 0.83 m + 여유). 선체 자기 반사가 잡히면 늘 건너뛴다",
+         change: measure, when: "현장 조정표에 기준 없음 — 배마다 /scan 에 선체 반사가 잡히는지 확인하고 정한다"}
+      - {pkg: ship_turn, key: orbit_target_deg, label: 부표 선회 목표 각도, unit: "°", step: 30.0, limits: [360.0, 720.0],
+         hint: "부표를 도는 진행각이 이만큼 되면 선회 끝(DONE). 배별 파일(ship_turn_A/B.yaml)에만 있다 — 이 배만 바뀐다. 🚨 바꾸면 launch 재시작(시작 때 한 번 읽음)",
+         advice: "420(한 바퀴 이상, 11-15 승인). 🚨 orbit_max_sec 과 묶임 — 540 은 시뮬 55 s 로 상한 60 s 에 붙는다. 올리면 상한도 같이",
+         change: rarely, when: "현장 조정표에 기준 없음"}
+      - {pkg: ship_turn, key: orbit_max_sec, label: 부표 선회 시간 상한, unit: s, step: 5.0, limits: [45.0, 90.0],
+         hint: "선회(ORBIT) 진입부터 이 시간이 지나면 진행각과 상관없이 끝(방위를 못 잴 때 안전). 배별 파일(ship_turn_A/B.yaml)에만 있다 — 이 배만 바뀐다. 🚨 바꾸면 launch 재시작(시작 때 한 번 읽음)",
+         advice: "60. 🚨 orbit_target_deg 와 묶임 — 420° 시뮬 약 43 s 라 45 미만은 선회각을 못 채우고 끝난다(하한 45). 상한에 걸려 끝나면 실패 판정. scan_timeout_sec + 이 값 + 접근 시간이 mode 3 WP 시간 초과 90 s 를 넘지 않게",
+         change: rarely, when: "현장 조정표에 기준 없음"}
+
   - name: 거리 출처 (인식 융합)
     items:
       - {pkg: ship_back, key: distance_source, label: 위치유지 거리 출처, choices: [lidar, fill, fused],

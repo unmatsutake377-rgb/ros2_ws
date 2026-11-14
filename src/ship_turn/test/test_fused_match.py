@@ -491,16 +491,31 @@ def test_node_params_declared_before_subscriptions():
         assert EVENTS.index(('param', p)) < first_sub, (p, EVENTS)
 
 
-def test_node_defaults_equal_yaml():
-    """코드 기본값 = config/ship_turn.yaml (대회 launch 가 이 yaml 을 넘긴다)."""
+def _section(name):
     import yaml
+    with open(os.path.join(PKG, 'config', name), encoding='utf-8') as f:
+        return yaml.safe_load(f)['/ship_turn']['ros__parameters']
+
+
+def test_node_defaults_equal_yaml():
+    """코드 기본값 ↔ 층 병합(공통 ship_turn.yaml → 배별 ship_turn_<boat>.yaml, 대회 launch 순서).
+
+    계약서_ship_turn배별yaml_20261115: 배별 키 9개는 배별 파일에만 있다.
+      · 병합 키 집합 = 선언 키 (배마다)
+      · 공통 파일 값 = 코드 기본값 (값·타입)
+      · 배별 파일 값은 타입만 코드 기본값과 같게 — 두 배 값이 갈려도 코드 기본값은 그대로 둔다(승인 1).
+    """
     _make()
-    with open(os.path.join(PKG, 'config', 'ship_turn.yaml'), encoding='utf-8') as f:
-        y = yaml.safe_load(f)['/ship_turn']['ros__parameters']
-    assert set(DECLARED) == set(y), set(DECLARED) ^ set(y)
+    y = _section('ship_turn.yaml')
     diff = {k: (DECLARED[k], y[k]) for k in y if DECLARED[k] != y[k] or type(DECLARED[k]) is not type(y[k])}
     assert not diff, diff
     assert y['distance_source'] == 'fused' and y['fused_allowed_sources'] == ['lidar', 'fused', 'depth']
+    for boat in ('A', 'B'):
+        b = _section(f'ship_turn_{boat}.yaml')
+        merged = dict(y, **b)
+        assert set(DECLARED) == set(merged), (boat, set(DECLARED) ^ set(merged))
+        bad = {k: (DECLARED[k], v) for k, v in b.items() if type(DECLARED[k]) is not type(v)}
+        assert not bad, (boat, bad)
 
 
 def _approach(mode, lidar_dist, rel=0.0, color='red'):

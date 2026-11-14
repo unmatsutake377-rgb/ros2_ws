@@ -23,9 +23,9 @@
 **1-3. 토픽 이름을 바꾸지 않는다.** 새 기능은 토픽 **추가**. 옛+새 노드 혼합 상태에서도 돌아야 한다(5/5 조합 검증됨).
 ROS2 는 이름이 어긋나도 **에러 없이 아무것도 안 준다** — `/buoy_color` 사고(§3) 참고.
 
-**1-4. 하드코딩 금지.** 배 폭·PWM·거리 임계값은 패키지별 `src/<pkg>/config/<pkg>.yaml` + 코드 기본값에 둔다. 모르는 실측값은 임시값 + **`# ⚠️ 실측 필요`**. 배별 분기 = GPS `gps_config` 인자(A: `c94_m8p_rover.yaml` / B: `zed_f9p_rover.yaml`) + **`boat:=A|B`(필수, 대문자 — 없거나 소문자면 launch 가 노드 하나도 안 띄우고 거부)**. 지금 `boat` 가 고르는 건 IMU 두 값뿐(`ssf_heading_A/B.yaml`, 923b903). 다른 배별 값(half_width·PWM)은 그 노드들에 yaml 이 안 실려 별도 계약. 상세 §1-4
+**1-4. 하드코딩 금지.** 배 폭·PWM·거리 임계값은 패키지별 `src/<pkg>/config/<pkg>.yaml` + 코드 기본값에 둔다. 모르는 실측값은 임시값 + **`# ⚠️ 실측 필요`**. 배별 분기 = GPS `gps_config` 인자(A: `c94_m8p_rover.yaml` / B: `zed_f9p_rover.yaml`) + **`boat:=A|B`(필수, 대문자 — 없거나 소문자면 launch 가 노드 하나도 안 띄우고 거부)**. 지금 `boat` 가 고르는 것: ① IMU 두 값(`ssf_heading_A/B.yaml`, 923b903) ② `ship_direction` `dwa_hull`(launch dict) ③ `ship_turn` 9개 — scan_* 7개(`scan_enabled`·`scan_stale_sec` 는 공통) + `orbit_target_deg`·`orbit_max_sec`(`ship_turn_A/B.yaml`, 계약서_ship_turn배별yaml_20261115). 배별 파일 키는 **공통 파일에서 뺀다**(공통 → 배별 순서, 뒤가 이김 — 공통에 남기면 고쳐도 안 먹는다). 배별 파일이 없으면 launch 가 노드 하나도 안 띄우고 멈춘다. 다른 배별 값(half_width·PWM)은 별도 계약. 상세 §1-4
 yaml 은 **노드 이름으로** 적용된다 → `super().__init__('<이름>')` 은 패키지명과 일치해야 한다(전수 감사 완료, 상세 §3-7).
-🚨 대회 launch(`launch_files.launch.py`)는 미션 노드·`ship_direction`·`motor_control` 을 **`parameters=` 없이** 띄운다 → 이 노드들의 값은 **코드 기본값**이 대회값이다. yaml 만 고치면 대회 실행에 반영되지 않으니 코드 기본값과 yaml 을 같이 맞춘다.
+🚨 대회 launch(`launch_files.launch.py`)는 11-05 부터 미션 노드(`ship_gate`·`ship_dock`·`ship_turn`·`ship_back`·`ship_avoid`)·`ship_direction`·`motor_control`·`perception_fusion` 에 **`config/<pkg>.yaml` 을 넘긴다**(`_pkg_yaml`) → **yaml 값이 대회값**이다. 코드 기본값(yaml 없이 도는 시뮬·단위 테스트 값)과 yaml 을 같이 맞춘다 — 배별 파일 값만은 배마다 갈릴 수 있어 코드 기본값과 달라도 된다. yaml 타입 오타(3 ↔ 3.0)는 그 노드를 부팅 때 죽인다(`test_launch_params.py` T3·T4 가 키·타입 검사).
 
 **1-5. `time.time()` 금지 → `time.monotonic()`.** (벽시계는 NTP 보정·시간 점프에 취약)
 
