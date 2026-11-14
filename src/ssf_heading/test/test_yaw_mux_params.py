@@ -1,0 +1,93 @@
+#!/usr/bin/env python3
+"""
+yaw_mux yaml ↔ declare_parameter 정적 검사 (계약서_GPS방위_20261114 검증 계획 12). ROS 없이 돈다.
+
+    tools/run_tests.sh ssf_heading
+
+왜: yaw_mux 는 launch_files 의 _pkg_yaml 이 아니라서 test_launch_params.py 의 "yaml 키 ⊆ 선언 키"
+    검사를 안 받는다. yaml 키 오타는 **조용히 버려지고**(코드 기본값으로 뜸), 타입이 어긋나면
+    (예: float 키에 정수 37) yaw_mux 가 부팅 즉시 죽는다(10-29 실측).
+
+지키는 것
+  ① ssf_heading*.yaml 의 yaw_mux 키는 전부 yaw_mux.py 에 declare_parameter 로 있다
+  ② 값 타입이 코드 기본값 타입과 같다 (bool·int·float·str 엄격 — 37 ≠ 37.0)
+  ③ 공통 파일 값 = 코드 기본값 (CLAUDE.md 1-4: 코드 기본값과 yaml 을 같이 맞춘다)
+"""
+
+import ast
+import glob
+import os
+import sys
+
+import pytest
+import yaml
+
+PKG = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
+sys.path.insert(0, PKG)
+
+from ssf_heading import heading_logic  # noqa: E402
+
+YAW_MUX = os.path.join(PKG, 'ssf_heading', 'yaw_mux.py')
+CFG = os.path.join(PKG, 'config')
+COMMON = os.path.join(CFG, 'ssf_heading.yaml')
+YAMLS = sorted(glob.glob(os.path.join(CFG, 'ssf_heading*.yaml')))
+
+
+def _declared():
+    """yaw_mux.py 의 declare_parameter('이름', 기본값) → {이름: 기본값}."""
+    with open(YAW_MUX, encoding='utf-8') as f:
+        tree = ast.parse(f.read(), filename=YAW_MUX)
+    out = {}
+    for n in ast.walk(tree):
+        if not (isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
+                and n.func.attr == 'declare_parameter'):
+            continue
+        assert len(n.args) == 2 and isinstance(n.args[0], ast.Constant), \
+            f'yaw_mux.py:{n.lineno} declare_parameter 는 (이름 상수, 기본값) 로'
+        name = n.args[0].value
+        d = n.args[1]
+        if isinstance(d, ast.Constant):
+            val = d.value
+        elif isinstance(d, ast.Name) and hasattr(heading_logic, d.id):
+            val = getattr(heading_logic, d.id)       # 예: SRC_IMU_RELATIVE
+        else:
+            raise AssertionError(f'yaw_mux.py:{n.lineno} {name} 기본값을 정적으로 못 읽는다')
+        assert name not in out, f'{name} 두 번 선언 (ParameterAlreadyDeclaredException)'
+        out[name] = val
+    return out
+
+
+def _params(path):
+    with open(path, encoding='utf-8') as f:
+        doc = yaml.safe_load(f)
+    return doc['yaw_mux']['ros__parameters']
+
+
+def test_found_files():
+    assert COMMON in YAMLS and len(YAMLS) >= 3, YAMLS
+    assert len(_declared()) >= 20
+
+
+@pytest.mark.parametrize('path', YAMLS, ids=os.path.basename)
+def test_yaml_keys_are_declared_with_same_type(path):
+    decl = _declared()
+    for key, val in _params(path).items():
+        assert key in decl, (
+            f'{os.path.basename(path)}: {key} 는 yaw_mux.py 에 선언이 없다 → 조용히 버려진다')
+        want = type(decl[key])
+        assert type(val) is want, (
+            f'{os.path.basename(path)}: {key}={val!r} ({type(val).__name__}) — 코드 기본값은 '
+            f'{want.__name__}. float 면 소수점으로(37 ❌ 37.0 ✅) — 아니면 부팅 즉시 죽는다')
+
+
+def test_common_yaml_equals_code_defaults():
+    decl = _declared()
+    for key, val in _params(COMMON).items():
+        assert val == decl[key], (
+            f'{key}: 공통 yaml {val!r} ≠ 코드 기본값 {decl[key]!r} (CLAUDE.md 1-4)')
+
+
+def test_common_heading_source_stays_imu_relative():
+    """공통 기본값은 imu_relative — gps_cog 전환은 배별 파일에서만 (C2)."""
+    assert _params(COMMON)['heading_source'] == heading_logic.SRC_IMU_RELATIVE
+    assert _declared()['heading_source'] == heading_logic.SRC_IMU_RELATIVE

@@ -16,6 +16,9 @@ yaw_mux — /imu/yaw 의 **단독 발행자**.
 동작:
   - 고정주기 타이머로 발행한다 (3단계에서 확립한 패턴 — 입력 콜백에 매달지 않는다)
   - 입력이 stale 하거나 소스가 미구현이면 **발행하지 않는다.**
+    (예외 — gps_cog: HOLD 는 마지막 방위를, INIT_GOAL 은 /north_goal_angle_tp 를 낸다.
+     계약서_GPS방위_20261114 Q1 (c) 승인. tp 도 없으면 INIT 로 침묵.
+     /boat_mode 가 AUTO(2)로 바뀌는 순간 첫 COG 전 상태로 되돌린다 — 보완 A)
     틀린 방위 하나가 배를 정반대로 보낸다. 소비자는 이미 침묵을 처리한다:
       ship_goal_angle  → /yaw_error 발행 중단 → ship_direction 이 감속/정지
       north_goal_angle → geofence 침묵(빈 배열)
@@ -27,16 +30,22 @@ import time
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy
-from std_msgs.msg import Bool, Float64, String
+from std_msgs.msg import Bool, Float32, Float64, Int32, String
 from geometry_msgs.msg import TwistWithCovarianceStamped
 
 from ssf_heading.heading_logic import (
-    ALL_SOURCES, SRC_COG_OFFSET, SRC_IMU_RELATIVE, ST_OK,
-    COGOffsetEstimator, HeadingMux, cog_from_velocity,
+    ALL_SOURCES, BOAT_MODE_AUTO, GPS_COG_INIT_GOAL, PUBLISH_STATES,
+    SRC_COG_OFFSET, SRC_GPS_COG, SRC_IMU_RELATIVE,
+    ST_HOLD, ST_INIT_GOAL, ST_OK,
+    COGOffsetEstimator, GPSCOGTracker, HeadingMux, cog_from_velocity,
 )
 
 
 class YawMux(Node):
+    # gps_cog 에서 부팅 뒤 이 시간 넘게 /boat_mode 를 한 번도 못 받으면 WARN (보완 A, §1-6 드러내기).
+    # 계약서 고정값 — 로그 시점일 뿐 제어에 안 쓴다(새 yaml 키는 boat_mode_topic 하나만, 보완 A).
+    BOAT_MODE_WARN_AFTER_SEC = 5.0
+
     def __init__(self):
         super().__init__('yaw_mux')
 
@@ -69,6 +78,36 @@ class YawMux(Node):
         self.gps_vel_frame = str(self.declare_parameter('gps_vel_frame', 'enu').value)
         gps_rate_hz = float(self.declare_parameter('gps_rate_hz', 1.0).value)
 
+        # 🚨 CLAUDE.md 7-2 안전 스위치. cog_offset 후진 게이트이자 gps_cog 의 후진·선회 게이트.
+        #    (gps_cog 벤치는 이 하나로 둘 다 끈다 — 계약서_GPS방위_20261114 Q5)
+        require_gate = bool(self.declare_parameter('cog_require_reverse_gate', True).value)
+
+        # ---- gps_cog: GPS 도플러 진행방향 그대로 (계약서_GPS방위_20261114) ----
+        #    구독 생성보다 먼저 선언한다. 코드 기본값 = 공통 ssf_heading.yaml 값.
+        desired_angle_topic = str(self.declare_parameter(
+            'desired_angle_topic', '/desired_angle').value)
+        goal_bearing_topic = str(self.declare_parameter(
+            'goal_bearing_topic', '/north_goal_angle_tp').value)
+        # 보완 A: AUTO 진입(→2) 순간 gps_cog 를 첫 COG 전 상태로 (MANUAL 로 들고 온 COG 를 버린다)
+        boat_mode_topic = str(self.declare_parameter(
+            'boat_mode_topic', '/boat_mode').value)
+        self.gps_cog_hold_warn_sec = float(
+            self.declare_parameter('gps_cog_hold_warn_sec', 5.0).value)
+        gps_cog = GPSCOGTracker(
+            min_speed_mps=float(self.declare_parameter('gps_cog_min_speed_mps', 0.5).value),
+            fresh_sec=float(self.declare_parameter('gps_cog_fresh_sec', 1.5).value),
+            predict_max_sec=float(
+                self.declare_parameter('gps_cog_predict_max_sec', 1.5).value),
+            max_rate_dps=float(self.declare_parameter('gps_cog_max_rate_dps', 30.0).value),
+            settle_sec=float(self.declare_parameter('gps_cog_settle_sec', 2.0).value),
+            jump_deg=float(self.declare_parameter('gps_cog_jump_deg', 90.0).value),
+            # 모르는 값이면 ValueError 로 부팅 거부 — 조용히 다른 초기화로 떨어지지 않는다.
+            init=str(self.declare_parameter('gps_cog_init', GPS_COG_INIT_GOAL).value),
+            init_stale_sec=float(
+                self.declare_parameter('gps_cog_init_stale_sec', 2.0).value),
+            require_gate=require_gate,
+        )
+
         self.mux = HeadingMux(
             source,
             invert_yaw=invert_yaw,
@@ -91,9 +130,9 @@ class YawMux(Node):
                 #    cog_offset 이 **영구히 수렴하지 않는다.** 그 상태를 조용히 두지 않으려고
                 #    /heading_status 에 rej=no_reverse_gate 로 노출하고 주기 경고를 낸다.
                 #    헤딩만 벤치할 때는 이 파라미터를 false 로.
-                require_reverse_gate=bool(
-                    self.declare_parameter('cog_require_reverse_gate', True).value),
+                require_reverse_gate=require_gate,
             ),
+            gps_cog=gps_cog,
         )
 
         # 🚨 감쇠가 있으면 표본수가 포화한다: n_max = 1/(1-0.5^(dt/half_life)).
@@ -116,6 +155,10 @@ class YawMux(Node):
                 "🚨 cog_require_reverse_gate=false — 후진 게이트가 꺼져 있다. "
                 "벤치 전용이다. 대회 설정이면 지금 true 로 되돌려라. "
                 "(후진 중 표본이 섞이면 헤딩이 180° 틀린 값에 수렴할 수 있다)")
+            if source == SRC_GPS_COG:
+                self.get_logger().error(
+                    "🚨 gps_cog: 게이트가 꺼져 후진·제자리 선회 중 COG 도 방위로 채택한다 "
+                    "(후진이면 180° 반대). 벤치 전용 — 대회 설정이면 true 로.")
 
         qos = QoSProfile(depth=2, reliability=ReliabilityPolicy.RELIABLE)
         self.create_subscription(Float64, raw_topic, self.raw_yaw_cb, qos)
@@ -126,11 +169,22 @@ class YawMux(Node):
         reverse_topic = str(self.declare_parameter(
             'motor_reverse_topic', '/motor_reverse').value)
         self.create_subscription(Bool, reverse_topic, self.reverse_cb, qos)
+        # gps_cog 선회 판정(5000/6000)·첫 COG 전 초기 방위. 둘 다 발행자가 이미 있는 토픽.
+        # 소스가 gps_cog 가 아니어도 구독한다(추정기와 같은 이유 — 출력엔 안 쓴다).
+        self.create_subscription(Float32, desired_angle_topic, self.desired_angle_cb, qos)
+        self.create_subscription(Float32, goal_bearing_topic, self.goal_bearing_cb, qos)
+        # ssf_bridge 발행 RELIABLE(§3 /boat_*) ↔ 이 구독 RELIABLE d2 — 호환
+        self.create_subscription(Int32, boat_mode_topic, self.boat_mode_cb, qos)
         self.yaw_pub = self.create_publisher(Float64, out_topic, qos)
         self.status_pub = self.create_publisher(String, '/heading_status', qos)
 
         self._last_status = None
         self._last_status_pub_t = 0.0
+        # gps_cog 로그 상태 (HOLD WARN 뒤 복구 INFO, 1회성 INFO)
+        self._gps_hold_warned = False
+        self._gps_init_goal_logged = False
+        self._gps_first_cog_logged = False
+        self._boot_t = time.monotonic()      # /boat_mode 미수신 WARN 기준 (단조시계, §1-5)
 
         self.timer = self.create_timer(self.period_sec, self.tick)
 
@@ -146,6 +200,14 @@ class YawMux(Node):
             self.get_logger().info(
                 "cog_offset: mount_offset_deg 미적용 — 추정 오프셋(off)이 mount + 게걸음을 "
                 "흡수한다. invert_yaw 는 s·yaw 로 한 번만 적용(오프셋 위에 다시 안 건다).")
+        if source == SRC_GPS_COG:
+            trk = self.mux.gps_cog
+            self.get_logger().info(
+                f"gps_cog: /imu/yaw = GPS 도플러 진행방향(게걸음 포함). IMU 배제, "
+                f"mount_offset_deg·invert_yaw·편각 미적용. "
+                f"채택 속도≥{trk.min_speed_mps}m/s, settle={trk.settle_sec}s, "
+                f"fresh={trk.fresh_sec}s, 첫 COG 전 초기값={goal_bearing_topic}(INIT_GOAL), "
+                f"{boat_mode_topic}={BOAT_MODE_AUTO}(AUTO) 진입마다 초기화")
 
     # ───────────────────────── 콜백 ─────────────────────────
     def raw_yaw_cb(self, msg):
@@ -157,16 +219,39 @@ class YawMux(Node):
     def gps_vel_cb(self, msg):
         v = msg.twist.twist.linear
         cog, speed = cog_from_velocity(v.x, v.y, self.gps_vel_frame)
-        if cog is None:
-            return          # 정지/무효 — COG 가 정의되지 않는다. 0.0 을 대신 넣지 않는다.
+        # 정지/무효면 cog=None — 0.0 을 대신 넣지 않는다. 그래도 넘긴다: gps_cog 는 이 순간
+        # 얼려야 한다(외삽 계속 금지). 추정기 경로는 update_cog 안에서 예전처럼 무시한다.
         self.mux.update_cog(cog, speed, time.monotonic())
+
+    def desired_angle_cb(self, msg):
+        self.mux.update_desired_angle(float(msg.data), time.monotonic())
+
+    def goal_bearing_cb(self, msg):
+        self.mux.update_goal_bearing(float(msg.data), time.monotonic())
+
+    def boat_mode_cb(self, msg):
+        entered = self.mux.update_boat_mode(int(msg.data))
+        if not (entered and self.mux.source == SRC_GPS_COG):
+            return
+        now = time.monotonic()
+        yaw, status = self.mux.heading(now)
+        # 진입 INFO 가 INIT_GOAL 을 알렸으면 tick 의 INIT_GOAL INFO 는 다시 안 낸다
+        # (INIT 으로 들어갔으면 나중에 tp 가 와서 INIT_GOAL 이 될 때 알린다).
+        # 진입 뒤 첫 COG 채택은 다시 알린다. HOLD WARN 이력은 새 출발이라 지운다.
+        self._gps_init_goal_logged = (status == ST_INIT_GOAL)
+        self._gps_first_cog_logged = False
+        self._gps_hold_warned = False
+        what = (f"INIT_GOAL(현재 WP 방위 {yaw:.1f}°)" if status == ST_INIT_GOAL
+                else f"{status}(현재 WP 방위 없음 → /imu/yaw 침묵)")
+        self.get_logger().info(f"AUTO 진입 → gps_cog 초기화, {what}")
 
     # ───────────────────────── 주기 ─────────────────────────
     def tick(self):
         now = time.monotonic()
         yaw, status = self.mux.heading(now)
 
-        if yaw is not None and status == ST_OK:
+        # gps_cog 의 HOLD·INIT_GOAL 도 발행한다(PUBLISH_STATES). imu_relative 등은 예전처럼 OK 만.
+        if yaw is not None and status in PUBLISH_STATES:
             self.yaw_pub.publish(Float64(data=float(yaw)))
         else:
             # 발행하지 않는다 — 소비자가 stale 로 감지해 스스로 안전 동작한다.
@@ -185,7 +270,49 @@ class YawMux(Node):
                 "cog_require_reverse_gate:=false.",
                 throttle_duration_sec=10.0)
 
+        if self.mux.source == SRC_GPS_COG:
+            self._gps_cog_logs(yaw, status, now)
+
         self._publish_status(status, now)
+
+    def _gps_cog_logs(self, yaw, status, now):
+        """gps_cog 상태 로그. 🚨 심각도마다 호출 지점을 나눈다 (CLAUDE.md 1-7)."""
+        trk = self.mux.gps_cog
+        if status == ST_INIT_GOAL and not self._gps_init_goal_logged:
+            self._gps_init_goal_logged = True
+            self.get_logger().info(
+                f"gps_cog INIT_GOAL: 첫 유효 COG 전 → 현재 WP 방위 {yaw:.1f}° 를 /imu/yaw 로 발행 "
+                f"(전제: 출발 때 뱃머리를 현재 WP 로 겨눴다)")
+        if status in (ST_OK, ST_HOLD) and not self._gps_first_cog_logged:
+            self._gps_first_cog_logged = True
+            self.get_logger().info(f"gps_cog: 첫 COG 채택 → {yaw:.1f}°")
+
+        if status == ST_HOLD:
+            age = trk.age(now)
+            if age is not None and age > self.gps_cog_hold_warn_sec:
+                self._gps_hold_warned = True
+                self.get_logger().warn(
+                    f"gps_cog HOLD {age:.0f}s — 새 COG 채택 없음(rej={trk.last_reject or '-'}) "
+                    f"→ 마지막 방위 {yaw:.1f}° 유지 발행",
+                    throttle_duration_sec=5.0)
+        elif status == ST_OK and self._gps_hold_warned:
+            self._gps_hold_warned = False
+            self.get_logger().info(f"gps_cog 복구 → OK {yaw:.1f}°")
+
+        # /boat_mode 를 한 번도 못 받으면 AUTO 진입 초기화가 안 일어난다(= C1 동작) — 드러낸다 (§1-6)
+        if (self.mux.boat_mode is None
+                and (now - self._boot_t) > self.BOAT_MODE_WARN_AFTER_SEC):
+            self.get_logger().warn(
+                "/boat_mode 미수신 → AUTO 진입 때 gps_cog 초기화 안 됨"
+                "(MANUAL 중 채택한 COG 가 그대로 남는다). ssf_bridge 가 떠 있나?",
+                throttle_duration_sec=10.0)
+
+        # 선회 게이트가 안 와서 갱신이 멈춰 있으면 조용히 두지 않는다 (후진 게이트 경고와 같은 취지)
+        if trk.require_gate and self.mux.spin_state(now) is None:
+            self.get_logger().warn(
+                "/desired_angle 없음(또는 stale) → gps_cog 갱신 정지(마지막 방위 유지). "
+                "ship_direction 이 떠 있나? 헤딩만 벤치 중이면 cog_require_reverse_gate:=false.",
+                throttle_duration_sec=10.0)
 
     def _publish_status(self, status, now):
         """상태가 바뀌었거나 1초 지났을 때만 (50Hz 로 문자열을 뿌리지 않는다)."""
@@ -193,6 +320,9 @@ class YawMux(Node):
             return
         self._last_status = status
         self._last_status_pub_t = now
+        if self.mux.source == SRC_GPS_COG:
+            self.status_pub.publish(String(data=self._gps_cog_status(status, now)))
+            return
         est = self.mux.estimator
         # 추정 진행도를 항상 같이 싣는다 — cog_offset 이 아닐 때도 '전환하면 쓸 만한가' 가 보인다.
         off = est.offset_deg
@@ -203,6 +333,22 @@ class YawMux(Node):
             f" n={est.samples:.0f} R={est.resultant:.2f}"
             f" off={'--' if off is None else f'{off:.1f}'}"
             f" rej={est.last_reject or '-'}{gate}")))
+
+    def _gps_cog_status(self, status, now):
+        """
+        gps_cog 상태 문자열. 접두 '<source>:<state>' 유지.
+        OK 는 뒤에 아무것도 안 붙인다 — healthcheck 가 endswith(':OK') 로 본다(게이트가 꺼졌을 때만 gate=off).
+        """
+        trk = self.mux.gps_cog
+        gate = "" if trk.require_gate else " gate=off"
+        rej = trk.last_reject or '-'
+        if status == ST_OK:
+            return f"{SRC_GPS_COG}:{ST_OK}{gate}"
+        if status == ST_HOLD:
+            age = trk.age(now)
+            age_s = '--' if age is None else f'{age:.1f}'
+            return f"{SRC_GPS_COG}:{ST_HOLD} age={age_s} rej={rej}{gate}"
+        return f"{SRC_GPS_COG}:{status} rej={rej}{gate}"
 
 
 def main(args=None):

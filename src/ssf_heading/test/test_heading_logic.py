@@ -10,11 +10,13 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from ssf_heading.heading_logic import (  # noqa: E402
-    ALL_SOURCES, SOURCE_IS_MAGNETIC, SILENT_STATES,
-    SRC_IMU_RELATIVE, SRC_COG_OFFSET, SRC_DUAL_GPS, SRC_IMU_ABSOLUTE,
+    ALL_SOURCES, SOURCE_IS_MAGNETIC, SILENT_STATES, PUBLISH_STATES,
+    SRC_IMU_RELATIVE, SRC_COG_OFFSET, SRC_DUAL_GPS, SRC_IMU_ABSOLUTE, SRC_GPS_COG,
     ST_OK, ST_NO_DATA, ST_STALE, ST_NOT_IMPLEMENTED, ST_NOT_CONVERGED,
-    HeadingMux, COGOffsetEstimator, cog_from_velocity, saturation_samples,
-    wrap360, wrap180, ang_diff, is_finite, apply_corrections,
+    ST_HOLD, ST_INIT_GOAL, ST_INIT,
+    SPIN_RIGHT, SPIN_LEFT, GPS_COG_INIT_GOAL, BOAT_MODE_AUTO,
+    HeadingMux, COGOffsetEstimator, GPSCOGTracker, cog_from_velocity, saturation_samples,
+    wrap360, wrap180, ang_diff, is_finite, apply_corrections, is_spin_code,
 )
 
 import math  # noqa: E402
@@ -765,6 +767,25 @@ def test_imu_relative_bit_identical_with_cog_input():
                 yaw, st = mux.heading(t)
                 assert st == ST_OK and yaw == want, f"{tag} (COG 중): {yaw} != {want}"
 
+                # gps_cog 입력(계약서_GPS방위_20261114)이 들어와도 같아야 한다:
+                # 선회 신호·초기 방위·정지(cog None)·후진 — imu_relative 출력엔 무관
+                for code in (SPIN_RIGHT, SPIN_LEFT, 20000.0, 50000.0, 12.0):
+                    mux.update_desired_angle(code, t)
+                    mux.update_goal_bearing(222.0, t)
+                    mux.update_cog(None, 0.0, t)
+                    mux.update_reverse(True, t)
+                    mux.update_cog(300.0, 3.0, t)
+                    yaw, st = mux.heading(t)
+                    assert st == ST_OK and yaw == want, \
+                        f"{tag} (gps_cog 입력 {code}): {yaw} != {want}"
+
+                # /boat_mode 입력(보완 A — AUTO 진입 초기화)도 imu_relative 출력엔 무관
+                for bm in (0, 1, BOAT_MODE_AUTO, BOAT_MODE_AUTO, 1, BOAT_MODE_AUTO, 0, 7):
+                    mux.update_boat_mode(bm)
+                    yaw, st = mux.heading(t)
+                    assert st == ST_OK and yaw == want, \
+                        f"{tag} (boat_mode {bm}): {yaw} != {want}"
+
 
 def test_cog_offset_invert_turning_reject_uses_abs():
     """8) invert=T 에서도 선회 배제는 abs(선회율) — 좌·우 선회 모두 'turning'."""
@@ -782,6 +803,480 @@ def test_cog_offset_invert_turning_reject_uses_abs():
         _drive(mux, _straight(direction * 60.0, 4), invert=True, mount=37.0, t0=t + 10.0)
         assert mux.estimator.last_reject is None, mux.estimator.last_reject
         assert mux.estimator.samples > n_before
+
+
+# ================================================================ gps_cog (계약서_GPS방위_20261114)
+def _gmux(require_gate=True, **mux_kw):
+    """계약 기본값(공통 yaml 과 같은 값)으로 gps_cog 믹서."""
+    trk = GPSCOGTracker(min_speed_mps=0.5, fresh_sec=1.5, predict_max_sec=1.5,
+                        max_rate_dps=30.0, settle_sec=2.0, jump_deg=90.0,
+                        init=GPS_COG_INIT_GOAL, init_stale_sec=2.0,
+                        require_gate=require_gate)
+    mux_kw.setdefault('stale_sec', 0.5)
+    return HeadingMux(SRC_GPS_COG, gps_cog=trk, **mux_kw)
+
+
+def _gfeed(mux, cog, t, speed=1.0, reverse=False, desired=12.0):
+    """게이트(전진·선회 아님) 신선하게 주고 COG 표본 하나. 채택 여부를 돌려준다."""
+    if reverse is not None:
+        mux.update_reverse(reverse, t)
+    if desired is not None:
+        mux.update_desired_angle(desired, t)
+    before = mux.gps_cog.age(t)
+    mux.update_cog(cog, speed, t)
+    return mux.gps_cog.age(t) == 0.0 and before != 0.0
+
+
+def test_gps_cog_is_known_true_north_source():
+    assert SRC_GPS_COG in ALL_SOURCES
+    assert SOURCE_IS_MAGNETIC[SRC_GPS_COG] is False, "COG 는 진북 — 편각 이중 보정 금지"
+
+
+def test_gps_cog_publish_and_silent_states_disjoint():
+    """HOLD·INIT_GOAL 은 발행, INIT 은 침묵. 겹치면 발행 판정이 모호해진다."""
+    assert ST_HOLD in PUBLISH_STATES and ST_INIT_GOAL in PUBLISH_STATES
+    assert ST_OK in PUBLISH_STATES
+    assert ST_HOLD not in SILENT_STATES and ST_INIT_GOAL not in SILENT_STATES
+    assert ST_INIT in SILENT_STATES and ST_INIT not in PUBLISH_STATES
+    assert not (set(PUBLISH_STATES) & set(SILENT_STATES))
+
+
+def test_gps_cog_unknown_init_raises():
+    try:
+        GPSCOGTracker(init="imu")
+    except ValueError:
+        return
+    assert False, "모르는 gps_cog_init 을 조용히 받아들이면 안 된다"
+
+
+def test_spin_codes_match_contract_table():
+    """CLAUDE.md §3 특수 신호표: 5000 우선회, 6000 좌선회 (ssf-reviewer 6번 점검)."""
+    assert SPIN_RIGHT == 5000.0 and SPIN_LEFT == 6000.0
+    assert is_spin_code(5000.0) and is_spin_code(6000.0)
+    assert is_spin_code(5000.0001), "float32 왕복 오차"
+    for v in (20000.0, 50000.0, 260.0, 0.0, -30.0, float('nan'), None):
+        assert not is_spin_code(v), v
+
+
+# ---- 1) 첫 COG 전 (Q1 (c))
+def test_gps_cog_init_goal_before_first_cog():
+    mux = _gmux()
+    yaw, st = mux.heading(0.0)
+    assert yaw is None and st == ST_INIT, "tp 도 없으면 침묵"
+
+    mux.update_goal_bearing(123.0, 0.0)
+    yaw, st = mux.heading(0.1)
+    assert st == ST_INIT_GOAL and yaw == 123.0, (yaw, st)
+    mux.update_goal_bearing(-10.0, 0.5)               # tp 를 따라간다(감아서)
+    assert mux.heading(0.6) == (350.0, ST_INIT_GOAL)
+    assert mux.heading(2.5) == (350.0, ST_INIT_GOAL), "경계 = 초과"
+    yaw, st = mux.heading(2.5001)
+    assert yaw is None and st == ST_INIT, "tp stale 이면 다시 침묵"
+
+    # 채택 못 받는 표본(느림·후진)은 INIT_GOAL 을 안 바꾼다
+    mux.update_goal_bearing(40.0, 3.0)
+    _gfeed(mux, 200.0, 3.0, speed=0.2)
+    _gfeed(mux, 200.0, 3.1, reverse=True)
+    assert mux.heading(3.2) == (40.0, ST_INIT_GOAL)
+
+    # 첫 COG 채택 → 그 뒤로 tp 는 안 쓴다 (첫 표본은 jump 검사 없음 — tp 는 측정이 아니다)
+    _gfeed(mux, 250.0, 6.0)
+    assert mux.heading(6.0) == (250.0, ST_OK)
+    mux.update_goal_bearing(10.0, 6.5)
+    assert mux.heading(6.6)[0] == 250.0
+
+
+# ---- 2) 느림 → HOLD, 값 유지, 계속 발행
+def test_gps_cog_slow_holds_forever_and_keeps_publishing():
+    mux = _gmux()
+    assert _gfeed(mux, 45.0, 0.0)
+    assert _gfeed(mux, 45.0, 1.0)
+    assert mux.heading(2.5) == (45.0, ST_OK), "fresh 경계 = 초과"
+    assert mux.heading(2.5001) == (45.0, ST_HOLD)
+    t = 2.0
+    while t < 3600.0:                               # 한 시간 정지
+        _gfeed(mux, 200.0, t, speed=0.3)            # 느린 COG 는 노이즈
+        mux.update_cog(None, 0.0, t + 0.5)          # 속도 0 (cog_from_velocity → None)
+        t += 1.0
+        yaw, st = mux.heading(t)
+        assert yaw == 45.0 and st == ST_HOLD, (t, yaw, st)
+        assert st in PUBLISH_STATES
+    assert mux.gps_cog.last_reject == "slow"
+    assert mux.gps_cog.age(t) > 3500.0
+
+
+# ---- 3) 후진 True / 모름 → 갱신 안 함
+def test_gps_cog_reverse_true_or_unknown_blocks_update():
+    mux = _gmux()
+    assert _gfeed(mux, 45.0, 0.0)
+    assert not _gfeed(mux, 225.0, 1.0, reverse=True)
+    assert mux.gps_cog.last_reject == "reverse"
+    assert mux.heading(1.0)[0] == 45.0
+
+    mux2 = _gmux()                                  # motor_control 이 안 뜬 상황
+    assert not _gfeed(mux2, 45.0, 0.0, reverse=None)
+    assert mux2.gps_cog.last_reject == "no_reverse_gate"
+    assert mux2.heading(0.0) == (None, ST_INIT)
+    # 신호가 끊겨 stale 이 돼도 '모름'
+    mux2.update_reverse(False, 1.0)
+    mux2.update_desired_angle(12.0, 1.6)
+    mux2.update_cog(45.0, 1.0, 1.6)                 # 후진 신호 0.6 s 전 → stale
+    assert mux2.gps_cog.last_reject == "no_reverse_gate"
+
+
+def test_gps_cog_gate_off_accepts_unknown():
+    """벤치: cog_require_reverse_gate:=false 하나로 후진·선회 게이트 둘 다 끈다 (Q5)."""
+    mux = _gmux(require_gate=False)
+    assert _gfeed(mux, 45.0, 0.0, reverse=None, desired=None)
+    assert mux.heading(0.0) == (45.0, ST_OK)
+    # 게이트를 꺼도 '알려진' 후진·선회는 여전히 막는다
+    assert not _gfeed(mux, 225.0, 1.0, reverse=True, desired=None)
+
+
+# ---- 4) 5000/6000 수신 중 + settle 동안 갱신 안 함
+def test_gps_cog_spin_and_settle_block_update():
+    for code in (SPIN_RIGHT, SPIN_LEFT):
+        mux = _gmux()
+        assert _gfeed(mux, 45.0, 0.0)
+        assert not _gfeed(mux, 100.0, 1.0, desired=code)
+        assert mux.gps_cog.last_reject == "spin"
+        mux.update_desired_angle(code, 1.4)          # 마지막 선회 명령
+        mux.update_desired_angle(12.0, 1.5)          # 선회 끝
+        for t in (2.0, 3.0, 3.39):
+            assert not _gfeed(mux, 100.0, t), (code, t)
+            assert mux.gps_cog.last_reject == "settle"
+            assert mux.heading(t)[0] == 45.0
+        assert _gfeed(mux, 100.0, 3.45), "settle 2.0 s 경과(1.4 + 2.0) → 채택"
+        assert mux.heading(3.45) == (100.0, ST_OK)
+
+
+def test_gps_cog_reverse_end_starts_settle():
+    mux = _gmux()
+    assert _gfeed(mux, 45.0, 0.0)
+    mux.update_reverse(True, 0.5)
+    mux.update_reverse(False, 0.6)
+    assert not _gfeed(mux, 225.0, 1.5)              # 후진 관성으로 뒤로 밀리는 중
+    assert mux.gps_cog.last_reject == "settle"
+    assert mux.heading(1.5)[0] == 45.0
+
+
+def test_gps_cog_desired_unknown_blocks_update():
+    mux = _gmux()
+    assert not _gfeed(mux, 45.0, 0.0, desired=None)
+    assert mux.gps_cog.last_reject == "no_spin_gate"
+    assert mux.spin_state(0.0) is None
+    mux.update_desired_angle(12.0, 1.0)
+    assert mux.spin_state(1.5) is False
+    assert mux.spin_state(1.5001) is None, "stale 이면 모름"
+
+
+# ---- 5) 359→1 랩어라운드 회전율
+def test_gps_cog_rate_wraparound():
+    mux = _gmux()
+    assert _gfeed(mux, 359.0, 0.0)
+    assert _gfeed(mux, 1.0, 1.0)                    # +2°/s 이지 −358°/s 가 아니다
+    assert near(mux.heading(1.5)[0], 2.0), mux.heading(1.5)
+    mux = _gmux()
+    assert _gfeed(mux, 1.0, 0.0)
+    assert _gfeed(mux, 359.0, 1.0)
+    assert near(mux.heading(1.5)[0], 358.0), mux.heading(1.5)
+
+
+# ---- 6) 외삽 상한·회전율 클램프
+def test_gps_cog_predict_stops_at_max_and_rate_clamped():
+    mux = _gmux()
+    assert _gfeed(mux, 0.0, 0.0)
+    assert _gfeed(mux, 20.0, 1.0)                   # 20°/s
+    assert near(mux.heading(1.5)[0], 30.0)
+    assert near(mux.heading(2.5)[0], 50.0), "predict_max 1.5 s 까지"
+    assert near(mux.heading(100.0)[0], 50.0), "그 뒤엔 그 자리 값 유지"
+    assert mux.heading(100.0)[1] == ST_HOLD
+
+    mux = _gmux()
+    assert _gfeed(mux, 0.0, 0.0)
+    assert _gfeed(mux, 80.0, 1.0)                   # 80°/s → 30°/s 로 클램프
+    assert near(mux.heading(2.0)[0], 110.0), mux.heading(2.0)
+    mux = _gmux()
+    assert _gfeed(mux, 80.0, 0.0)
+    assert _gfeed(mux, 0.0, 1.0)                    # −80°/s → −30°/s
+    assert near(mux.heading(2.0)[0], 330.0), mux.heading(2.0)
+
+    mux = _gmux()
+    assert _gfeed(mux, 0.0, 0.0)
+    assert _gfeed(mux, 20.0, 1.6)                   # 간격 > fresh → 짝 없음, 회전율 0
+    assert near(mux.heading(2.5)[0], 20.0)
+
+
+# ---- 7) 거부·선회 시작 순간 출력 연속
+def test_gps_cog_freeze_is_continuous():
+    for how in ("slow", "zero", "spin_msg", "reverse_msg", "jump"):
+        mux = _gmux()
+        assert _gfeed(mux, 0.0, 0.0)
+        assert _gfeed(mux, 20.0, 1.0)               # 20°/s 외삽 중
+        before = mux.heading(1.4999)[0]
+        if how == "slow":
+            _gfeed(mux, 20.0, 1.5, speed=0.1)
+        elif how == "zero":
+            mux.update_cog(None, 0.0, 1.5)
+        elif how == "spin_msg":
+            mux.update_desired_angle(SPIN_RIGHT, 1.5)    # 선회 시작 — GPS 표본 기다리지 않고 얼림
+        elif how == "reverse_msg":
+            mux.update_reverse(True, 1.5)
+        else:
+            _gfeed(mux, 200.0, 1.5)                 # 180° 튐 1회
+        at = mux.heading(1.5)[0]
+        assert near(at, 30.0, 1e-6), (how, at)
+        assert abs(ang_diff(at, before)) < 0.01, f"{how}: 튐 {before} → {at}"
+        for t in (1.6, 2.0, 5.0, 60.0):
+            assert near(mux.heading(t)[0], 30.0, 1e-6), f"{how}: 얼림이 안 됐다 t={t}"
+
+
+def test_gps_cog_jump_needs_two_in_a_row():
+    mux = _gmux()
+    assert _gfeed(mux, 0.0, 0.0)
+    assert not _gfeed(mux, 180.0, 1.0)
+    assert mux.gps_cog.last_reject == "jump" and mux.heading(1.0)[0] == 0.0
+    assert _gfeed(mux, 181.0, 2.0), "2회 연속 → 채택"
+    assert mux.heading(2.0)[0] == 181.0
+
+    # 사이에 정상 표본이 끼면 연속이 끊긴다
+    mux = _gmux()
+    assert _gfeed(mux, 0.0, 0.0)
+    assert not _gfeed(mux, 180.0, 1.0)
+    assert _gfeed(mux, 5.0, 2.0)
+    assert not _gfeed(mux, 180.0, 3.0)
+    # 사이에 다른 거부(느림)가 끼어도 끊긴다
+    mux = _gmux()
+    assert _gfeed(mux, 0.0, 0.0)
+    assert not _gfeed(mux, 180.0, 1.0)
+    assert not _gfeed(mux, 180.0, 2.0, speed=0.1)
+    assert not _gfeed(mux, 180.0, 3.0)
+    assert _gfeed(mux, 180.0, 4.0)
+    # 튄 두 표본끼리도 jump_deg 안이어야 한다
+    mux = _gmux()
+    assert _gfeed(mux, 0.0, 0.0)
+    assert not _gfeed(mux, 150.0, 1.0)
+    assert not _gfeed(mux, 260.0, 2.0), "150 과 260 은 110° 차 — 연속으로 안 친다"
+    assert _gfeed(mux, 250.0, 3.0)
+    # 정확히 90° 는 '넘게' 가 아니다
+    mux = _gmux()
+    assert _gfeed(mux, 0.0, 0.0)
+    assert _gfeed(mux, 90.0, 3.0)
+
+
+# ---- 8) mount·invert·편각을 줘도 출력 = COG
+def test_gps_cog_ignores_mount_invert_declination():
+    for invert in (False, True):
+        mux = _gmux(invert_yaw=invert, mount_offset_deg=40.3, declination_deg=-8.0)
+        mux.update_imu(10.0, 0.0)
+        mux.update_goal_bearing(77.0, 0.0)
+        assert mux.heading(0.0) == (77.0, ST_INIT_GOAL), "INIT_GOAL 에도 안 건다"
+        assert _gfeed(mux, 123.0, 0.0)
+        assert mux.heading(0.0) == (123.0, ST_OK), (invert, mux.heading(0.0))
+
+
+# ---- 9) IMU 를 줬다 끊어도 출력 불변 (IMU 슬롯을 안 읽는다)
+def test_gps_cog_does_not_read_imu():
+    seq = [(0.0, 10.0), (1.0, 14.0), (2.0, 17.0), (3.0, 17.5)]
+    a = _gmux()
+    b = _gmux()
+    for t, c in seq:
+        a.update_imu(300.0 + t * 37.0, t)           # IMU 는 엉뚱한 값을 내다가
+        _gfeed(a, c, t)
+        _gfeed(b, c, t)
+    probes = [3.0, 3.5, 4.0, 4.6, 10.0]             # 3.0 뒤로 IMU 끊김(stale)
+    for t in probes:
+        assert a.heading(t) == b.heading(t), (t, a.heading(t), b.heading(t))
+    a._imu = "읽으면 터진다"                         # 슬롯을 읽으면 예외
+    for t in probes:
+        assert a.heading(t) == b.heading(t)
+
+
+# ---- 11) ENU 정북·정동 벡터 → 믹서 출력
+def test_gps_cog_enu_north_and_east():
+    for (vx, vy), want in (((0.0, 1.0), 0.0), ((1.0, 0.0), 90.0),
+                           ((0.0, -1.0), 180.0), ((-1.0, 0.0), 270.0)):
+        mux = _gmux()
+        mux.update_reverse(False, 0.0)
+        mux.update_desired_angle(12.0, 0.0)
+        cog, spd = cog_from_velocity(vx, vy, "enu")
+        mux.update_cog(cog, spd, 0.0)
+        yaw, st = mux.heading(0.0)
+        assert st == ST_OK and near(yaw, want), ((vx, vy), yaw, st)
+    # 정지 벡터 → COG 정의 안 됨 → 채택 안 함 (0.0 = 정북을 대신 내지 않는다)
+    mux = _gmux()
+    mux.update_reverse(False, 0.0)
+    mux.update_desired_angle(12.0, 0.0)
+    cog, spd = cog_from_velocity(0.0, 0.0, "enu")
+    mux.update_cog(cog, spd, 0.0)
+    assert mux.heading(0.0) == (None, ST_INIT)
+    assert mux.gps_cog.last_reject == "slow"
+
+
+# ================================================================ 보완 A: AUTO 진입 초기화
+def _manual_cog(mux, cog=40.0, t0=0.0, n=3):
+    """MANUAL 로 들고 걷는 중 COG 채택 (C1 동작 그대로 채택된다). 마지막 시각을 돌려준다."""
+    t = t0
+    for i in range(n):
+        t = t0 + i
+        assert _gfeed(mux, cog, t), (cog, t)
+    return t
+
+
+# ---- (1) MANUAL 중 COG 채택 → AUTO 진입 → INIT_GOAL(tp)
+def test_auto_entry_resets_to_init_goal():
+    mux = _gmux()
+    assert mux.update_boat_mode(1) is False
+    t = _manual_cog(mux, 40.0)
+    mux.update_goal_bearing(200.0, t)
+    assert mux.heading(t)[1] == ST_OK, "MANUAL 중 COG 채택은 그대로(관측·경계용)"
+    assert near(mux.heading(t)[0], 40.0)
+
+    assert mux.update_boat_mode(BOAT_MODE_AUTO) is True
+    assert mux.heading(t) == (200.0, ST_INIT_GOAL), mux.heading(t)
+    assert mux.gps_cog.age(t) is None, "'첫 COG 받음' 표시가 남아 있다"
+    # 시간이 지나도 HOLD 로 '걸어온 방향' 이 되살아나지 않는다
+    mux.update_goal_bearing(201.0, t + 1.0)
+    assert mux.heading(t + 1.0) == (201.0, ST_INIT_GOAL)
+    # 진입 뒤 첫 COG → OK
+    assert _gfeed(mux, 195.0, t + 2.0)
+    assert mux.heading(t + 2.0) == (195.0, ST_OK)
+
+
+# ---- (2) 첫 수신이 AUTO 면 진입
+def test_auto_entry_on_first_message():
+    mux = _gmux()
+    t = _manual_cog(mux, 40.0)
+    mux.update_goal_bearing(10.0, t)
+    assert mux.boat_mode is None
+    assert mux.update_boat_mode(BOAT_MODE_AUTO) is True
+    assert mux.heading(t) == (10.0, ST_INIT_GOAL)
+    assert mux.boat_mode == BOAT_MODE_AUTO
+
+
+# ---- (3) AUTO→AUTO 반복은 재초기화 안 함
+def test_auto_repeat_does_not_reset():
+    mux = _gmux()
+    mux.update_boat_mode(BOAT_MODE_AUTO)
+    t = _manual_cog(mux, 40.0)
+    mux.update_goal_bearing(200.0, t)
+    for _ in range(10):                         # ssf_bridge 10 Hz 반복 발행
+        assert mux.update_boat_mode(BOAT_MODE_AUTO) is False
+    yaw, st = mux.heading(t)
+    assert st == ST_OK and near(yaw, 40.0), (yaw, st)
+
+
+# ---- (4) AUTO→MANUAL→AUTO 재진입마다 초기화 (WAIT 경유도)
+def test_auto_reentry_resets_each_time():
+    mux = _gmux()
+    assert mux.update_boat_mode(BOAT_MODE_AUTO) is True
+    t = 0.0
+    for k, via in enumerate((1, 0, 1)):
+        t = _manual_cog(mux, 40.0 + k, t0=t + 1.0)   # AUTO 중 COG 채택 → OK
+        assert mux.heading(t)[1] == ST_OK
+        assert mux.update_boat_mode(via) is False, "AUTO 해제는 초기화 아님"
+        assert mux.heading(t)[1] == ST_OK, "해제 순간엔 그대로"
+        mux.update_goal_bearing(300.0 + k, t)
+        assert mux.update_boat_mode(BOAT_MODE_AUTO) is True, f"{k}번째 재진입"
+        assert mux.heading(t) == (300.0 + k, ST_INIT_GOAL), (k, mux.heading(t))
+
+
+# ---- (5) /boat_mode 미수신이면 C1 과 같다
+def test_no_boat_mode_is_c1_behaviour():
+    a = _gmux()
+    b = _gmux()
+    b.update_boat_mode(1)                       # MANUAL 만 계속 — 진입 없음
+    seq = [(0.0, 40.0), (1.0, 42.0), (2.0, 44.0), (3.0, 45.0)]
+    for t, c in seq:
+        a.update_goal_bearing(200.0, t)
+        b.update_goal_bearing(200.0, t)
+        _gfeed(a, c, t)
+        _gfeed(b, c, t)
+    assert a.boat_mode is None
+    for t in (3.0, 3.7, 5.0, 30.0):
+        assert a.heading(t) == b.heading(t), (t, a.heading(t), b.heading(t))
+    assert a.heading(30.0)[1] == ST_HOLD, "미수신이면 걸어온 방향 HOLD 그대로(C1)"
+
+
+# ---- (6) 진입 때 tp stale 이면 INIT 침묵
+def test_auto_entry_with_stale_goal_is_silent():
+    mux = _gmux()
+    mux.update_goal_bearing(200.0, 0.0)
+    t = _manual_cog(mux, 40.0, t0=1.0)          # t=3.0, tp 는 3 s 묵음(init_stale 2.0 초과)
+    assert mux.update_boat_mode(BOAT_MODE_AUTO) is True
+    assert mux.heading(t) == (None, ST_INIT), mux.heading(t)
+    # tp 가 다시 오면 INIT_GOAL
+    mux.update_goal_bearing(210.0, t + 0.5)
+    assert mux.heading(t + 0.5) == (210.0, ST_INIT_GOAL)
+
+
+# ---- (7) 진입 뒤 첫 COG 는 jump 검사 없이 채택, 진입 전 jump 대기 표본은 버린다
+def test_auto_entry_first_cog_skips_jump_and_drops_pending():
+    mux = _gmux()
+    mux.update_boat_mode(0)
+    assert _gfeed(mux, 0.0, 0.0)
+    assert not _gfeed(mux, 180.0, 1.0), "MANUAL 중 180° 튐 1회 = jump 대기"
+    assert mux.gps_cog._pending is not None
+    mux.update_goal_bearing(270.0, 1.0)
+    assert mux.update_boat_mode(BOAT_MODE_AUTO)
+    assert mux.gps_cog._pending is None, "jump 대기 표본이 남았다"
+    # 진입 전 앵커(0°)와 비교하지 않는다 — 90° 넘게 달라도 한 번에 채택
+    assert _gfeed(mux, 100.0, 2.0)
+    assert mux.heading(2.0) == (100.0, ST_OK)
+    # 진입 전 대기 표본(180°)이 '2회 연속' 짝으로 쓰이지 않는다: 200° 는 앵커 100° 와 100° 차 → jump 대기 1회째
+    assert not _gfeed(mux, 200.0, 3.0)
+    assert mux.gps_cog.last_reject == "jump"
+    # 회전율 짝도 지워졌다: 진입 직후 첫 표본의 회전율은 0
+    m2 = _gmux()
+    assert _gfeed(m2, 0.0, 0.0)
+    assert _gfeed(m2, 10.0, 1.0)                # 10°/s 짝
+    m2.update_boat_mode(BOAT_MODE_AUTO)
+    assert _gfeed(m2, 20.0, 1.5)
+    assert m2.heading(2.5) == (20.0, ST_OK), "진입 전 표본과 회전율 짝을 지었다"
+
+
+# ---- (8) 진입 순간 후진·선회 중이면 게이트·settle 유지
+def test_auto_entry_keeps_reverse_and_spin_gates():
+    # 후진 중 진입
+    mux = _gmux()
+    _manual_cog(mux, 40.0)                      # t=0,1,2
+    mux.update_goal_bearing(200.0, 2.5)
+    mux.update_reverse(True, 2.5)
+    assert mux.update_boat_mode(BOAT_MODE_AUTO)
+    assert mux.heading(2.5) == (200.0, ST_INIT_GOAL)
+    assert not _gfeed(mux, 220.0, 2.6, reverse=True)
+    assert mux.gps_cog.last_reject == "reverse"
+    assert not _gfeed(mux, 220.0, 3.0), "후진 끝 직후 settle 이 지워졌다"
+    assert mux.gps_cog.last_reject == "settle"
+    assert mux.heading(3.0)[1] == ST_INIT_GOAL
+    assert _gfeed(mux, 220.0, 4.7)              # 2.6 + 2.0 settle 경과
+    # 선회 중 진입
+    mux = _gmux()
+    _manual_cog(mux, 40.0)
+    mux.update_goal_bearing(200.0, 2.5)
+    mux.update_desired_angle(SPIN_RIGHT, 2.5)
+    assert mux.update_boat_mode(BOAT_MODE_AUTO)
+    assert not _gfeed(mux, 220.0, 2.6, desired=SPIN_RIGHT)
+    assert mux.gps_cog.last_reject == "spin"
+    assert not _gfeed(mux, 220.0, 3.5)
+    assert mux.gps_cog.last_reject == "settle"
+    assert _gfeed(mux, 220.0, 4.7)
+
+
+# ---- (10) AUTO 상수 = CLAUDE.md §3 /boat_mode 2 = 펌웨어 enum = north_goal_angle MODE_AUTO
+def test_boat_mode_auto_matches_contract():
+    import re
+    assert BOAT_MODE_AUTO == 2, "CLAUDE.md §3: /boat_mode 0=WAIT 1=MANUAL 2=AUTO"
+    ws = os.path.normpath(os.path.join(os.path.dirname(os.path.realpath(__file__)),
+                                       '..', '..', '..'))
+    ino = os.path.join(ws, 'arduino', 'ssf_boat', 'ssf_boat.ino')
+    with open(ino, encoding='utf-8') as f:
+        m = re.search(r'enum\s+Mode\s*\{[^}]*MODE_AUTO\s*=\s*(\d+)', f.read())
+    assert m and int(m.group(1)) == BOAT_MODE_AUTO, f"ssf_boat.ino enum Mode MODE_AUTO ≠ {BOAT_MODE_AUTO}"
+    ng = os.path.join(ws, 'src', 'north_goal_angle', 'north_goal_angle', 'north_goal_angle.py')
+    with open(ng, encoding='utf-8') as f:
+        m = re.search(r'^MODE_AUTO\s*=\s*(\d+)', f.read(), re.M)
+    assert m and int(m.group(1)) == BOAT_MODE_AUTO, f"north_goal_angle MODE_AUTO ≠ {BOAT_MODE_AUTO}"
 
 
 def main():

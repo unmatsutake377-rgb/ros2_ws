@@ -33,8 +33,10 @@ SRC_IMU_RELATIVE = "imu_relative"   # 지금 쓸 수 있는 것: IMU 상대 yaw 
 SRC_COG_OFFSET   = "cog_offset"     # 옵션 B: GPS COG 로 IMU 오프셋을 추정 (N2)
 SRC_DUAL_GPS     = "dual_gps"       # 옵션 A: 듀얼 F9P relPosNED (N3, 보드 확보 후)
 SRC_IMU_ABSOLUTE = "imu_absolute"   # 옵션 C: IMU 지자기 절대 heading (N4, 드라이버 조사 후)
+SRC_GPS_COG      = "gps_cog"        # GPS 도플러 진행방향(COG) 그대로. IMU 배제 (계약서_GPS방위_20261114)
 
-ALL_SOURCES = (SRC_IMU_RELATIVE, SRC_COG_OFFSET, SRC_DUAL_GPS, SRC_IMU_ABSOLUTE)
+ALL_SOURCES = (SRC_IMU_RELATIVE, SRC_COG_OFFSET, SRC_DUAL_GPS, SRC_IMU_ABSOLUTE,
+               SRC_GPS_COG)
 
 # 🚨 자기북 기준 소스만 자기편각(declination)을 받는다.
 #    진북 기준 소스에 편각을 더하면 한국 기준 약 8° 가 통째로 틀어진다.
@@ -43,6 +45,7 @@ SOURCE_IS_MAGNETIC = {
     SRC_COG_OFFSET:   False,   # COG = 진북 기준
     SRC_DUAL_GPS:     False,   # relPosNED = 진북 기준
     SRC_IMU_ABSOLUTE: True,    # 자기북 기준 → 편각 보정 필요
+    SRC_GPS_COG:      False,   # COG = 진북 기준. mount·invert 도 안 건다 (HeadingMux.heading)
 }
 
 # ---------------------------------------------------------------- 상태 코드
@@ -51,11 +54,37 @@ ST_NO_DATA         = "NO_DATA"          # 아직 한 번도 안 들어옴
 ST_STALE           = "STALE"            # 들어왔었는데 끊김
 ST_NOT_IMPLEMENTED = "NOT_IMPLEMENTED"  # 소스는 골랐는데 구현 전 (N3/N4)
 ST_NOT_CONVERGED   = "NOT_CONVERGED"    # 소스는 돌고 있는데 아직 추정이 안 섰다 (N2)
+# gps_cog 전용 (계약서_GPS방위_20261114)
+ST_HOLD            = "HOLD"             # 새 COG 가 gps_cog_fresh_sec 넘게 없다 → 마지막 방위 유지·발행
+ST_INIT_GOAL       = "INIT_GOAL"        # 첫 유효 COG 전 → /north_goal_angle_tp 를 초기 방위로 발행
+ST_INIT            = "INIT"             # 첫 유효 COG 전 + tp 도 없음(또는 stale) → 침묵
 
 # 침묵해야 하는 상태. 틀린 방위를 내보내느니 안 내보낸다.
 # (north_goal_angle 은 /imu/yaw 없으면 geofence 를 침묵시키고,
 #  ship_goal_angle 은 imu_stale 이면 /yaw_error 발행을 멈춘다 — 둘 다 이미 그렇게 돼 있다)
-SILENT_STATES = (ST_NO_DATA, ST_STALE, ST_NOT_IMPLEMENTED, ST_NOT_CONVERGED)
+SILENT_STATES = (ST_NO_DATA, ST_STALE, ST_NOT_IMPLEMENTED, ST_NOT_CONVERGED, ST_INIT)
+
+# 발행하는 상태. HOLD·INIT_GOAL 은 SILENT_STATES 에 넣지 않는다(계약 — 출발 교착·정지 중 침묵 방지).
+# 🚨 INIT_GOAL 은 CLAUDE.md §1-6·§3 "헤딩 없으면 발행하지 않는다" 의 **승인된 예외**다
+#    (Davidson Q1 = (c), 11-14). 출발 때 뱃머리를 현재 WP 로 겨눈다는 전제. tp 도 없으면 INIT(침묵).
+PUBLISH_STATES = (ST_OK, ST_HOLD, ST_INIT_GOAL)
+
+# ---------------------------------------------------------------- /desired_angle 특수 신호
+# 🚨 CLAUDE.md §3 특수 신호표와 값까지 같아야 한다 (공유 모듈 금지 §1-8 — ssf-reviewer 6번 점검 대상).
+#    yaw_mux 는 선회 판정에만 쓴다. 260/180(후진)은 /motor_reverse 로 거른다.
+SPIN_RIGHT = 5000.0         # 우선회
+SPIN_LEFT = 6000.0          # 좌선회
+SPIN_CODES = (SPIN_RIGHT, SPIN_LEFT)
+
+# ---------------------------------------------------------------- /boat_mode (ssf_bridge)
+# 🚨 CLAUDE.md §3 `/boat_*` 값 = ssf_boat.ino `enum Mode` 와 값까지 같다(0=WAIT 1=MANUAL 2=AUTO).
+#    새 번호·변환표 금지. 공유 모듈 금지(§1-8) — 테스트가 펌웨어 enum·north_goal_angle MODE_AUTO 와 대조.
+#    gps_cog 는 AUTO 진입 순간 초기화에만 쓴다 (계약서_GPS방위_20261114 보완 A).
+BOAT_MODE_AUTO = 2
+
+# gps_cog 첫 유효 COG 전 동작 (Q1). 지금은 (c) 하나 — 모르는 값은 조용히 넘기지 않고 거부한다.
+GPS_COG_INIT_GOAL = "goal"
+GPS_COG_INIT_CHOICES = (GPS_COG_INIT_GOAL,)
 
 
 # ---------------------------------------------------------------- 각도 유틸
@@ -77,6 +106,11 @@ def ang_diff(a, b):
 def is_finite(x):
     """None / NaN / inf 를 한 번에 막는다. 센서값은 전부 이걸 통과시킨 뒤 쓴다."""
     return x is not None and isinstance(x, (int, float)) and math.isfinite(x)
+
+
+def is_spin_code(value):
+    """/desired_angle 값이 제자리 선회(5000/6000)인가. float32 왕복 오차를 0.5 로 흡수."""
+    return is_finite(value) and any(abs(value - c) < 0.5 for c in SPIN_CODES)
 
 
 def apply_corrections(yaw_deg, *, invert_yaw=False, mount_offset_deg=0.0,
@@ -273,6 +307,168 @@ class COGOffsetEstimator:
         return wrap360(math.degrees(math.atan2(self._cy, self._cx)))
 
 
+# ---------------------------------------------------------------- gps_cog 추적기
+class GPSCOGTracker:
+    """
+    GPS 도플러 진행방향(COG)을 그대로 방위로 쓴다 (계약서_GPS방위_20261114). IMU 는 안 쓴다.
+
+    출력 = 앵커(값 v, 시각 t0, 회전율 w) 에서
+        yaw(t) = v + w · min(max(t − t0, 0), predict_max_sec)
+      · 채택 표본마다 앵커를 새로 놓는다. w = 직전 두 채택 표본(간격 ≤ fresh_sec)의 회전율,
+        ±max_rate_dps 클램프. 짝이 없으면 0.
+      · 거부·선회/후진 시작 순간엔 그 순간 출력값에서 **얼린다**(w=0). 마지막 COG 로 되돌아가며
+        튀지 않게 — 출력은 연속이다.
+      · 🚨 R3(부록 R, spin_rotation)는 선회 중 회전량을 이 앵커 값에 더하는 자리다.
+        C1 은 얼림만 한다(R-Q4 결정: 구조만 남기고 /spin_rotation 구독은 넣지 않는다).
+
+    표본 채택 조건 (계약 '구현 요구'):
+      속도 ≥ min_speed_mps, 후진 아님, 최근 /desired_angle 이 5000/6000 아님,
+      선회·후진이 끝난 뒤 settle_sec 경과, finite.
+      후진·선회 상태를 모르면(None) require_gate 일 때 거부 (Q5 — 벤치는 게이트 하나로 둘 다 끔).
+      앵커와 jump_deg 넘게 다른 표본은 **2회 연속**(서로 jump_deg 안)일 때만 채택
+      — 후진 관성으로 뒤로 밀릴 때의 180° 오채택 방지 (Q5).
+
+    상태:
+      INIT       첫 채택 전 + 초기 방위(tp) 없음/stale → None (침묵)
+      INIT_GOAL  첫 채택 전 + tp 신선 → tp 를 그대로 (§1-6 승인된 예외, Q1 (c))
+      OK         마지막 채택 표본 나이 ≤ fresh_sec
+      HOLD       그보다 오래됨 → 마지막 방위를 **시간 제한 없이** 유지·발행 (사용자 규칙 2)
+
+    🚨 COG 는 '간 방향' 이지 뱃머리가 아니다 — 게걸음각이 그대로 들어간다(계약서 토픽 표).
+    """
+
+    def __init__(self, *, min_speed_mps=0.5, fresh_sec=1.5, predict_max_sec=1.5,
+                 max_rate_dps=30.0, settle_sec=2.0, jump_deg=90.0,
+                 init=GPS_COG_INIT_GOAL, init_stale_sec=2.0, require_gate=True):
+        if init not in GPS_COG_INIT_CHOICES:
+            raise ValueError(
+                f"gps_cog_init '{init}' 를 모른다. 가능한 값: {list(GPS_COG_INIT_CHOICES)}")
+        self.min_speed_mps = float(min_speed_mps)
+        self.fresh_sec = float(fresh_sec)
+        self.predict_max_sec = float(predict_max_sec)
+        self.max_rate_dps = float(max_rate_dps)
+        self.settle_sec = float(settle_sec)
+        self.jump_deg = float(jump_deg)
+        self.init = init
+        self.init_stale_sec = float(init_stale_sec)
+        self.require_gate = bool(require_gate)
+
+        self._anchor = None             # (값, 시각, 회전율) — 첫 채택 전엔 None
+        self._prev_accept = None        # (cog, 시각) — 회전율 짝. 거부·선회 시 끊는다
+        self._last_accept_t = None
+        self._pending = None            # jump_deg 넘게 튄 표본 하나 (2회 연속 확인용)
+        self._last_maneuver_t = None    # 마지막으로 선회/후진을 본 시각 (settle 기준)
+        self._goal = (None, None)       # (/north_goal_angle_tp, 수신시각) — INIT_GOAL 용
+        self.last_reject = None         # 왜 버렸는지 (진단용)
+
+    # ------------------------------------------------ 입력
+    def update_goal(self, bearing_deg, t):
+        if is_finite(bearing_deg):
+            self._goal = (wrap360(bearing_deg), t)
+
+    def reset_to_init(self):
+        """
+        첫 COG 전 상태로 되돌린다 (보완 A: AUTO 진입 초기화).
+        앵커·회전율 짝·jump 대기 표본·'첫 COG 받음'(마지막 채택 시각)을 지운다
+        → 다음 출력은 tp 신선하면 INIT_GOAL, 아니면 INIT(침묵).
+        🚨 지우지 않는 것: 선회·후진 settle 시각(_last_maneuver_t)·tp(_goal) — 실제 기동 상태라 유지.
+        진입 뒤 첫 COG 는 앵커가 없으니 jump 검사 없이 채택된다(진입 전 표본과 비교 안 함).
+        """
+        self._anchor = None
+        self._prev_accept = None
+        self._last_accept_t = None
+        self._pending = None
+        self.last_reject = None
+
+    def note_maneuver(self, t):
+        """선회(5000/6000) 또는 후진을 봤다. 그 순간 값에서 얼리고 settle 시계를 다시 건다."""
+        self._last_maneuver_t = t
+        self._pending = None
+        self._prev_accept = None
+        self._freeze(t)
+
+    def update(self, cog_deg, speed_mps, t, *, reverse, spin):
+        """
+        COG 표본 하나. 채택하면 True.
+        reverse / spin: True / False / None(모름). None 은 require_gate 면 거부.
+        """
+        if not is_finite(speed_mps):
+            return self._reject("bad_input", t)
+        if reverse is True:
+            return self._reject("reverse", t)
+        if reverse is None and self.require_gate:
+            return self._reject("no_reverse_gate", t)
+        if spin is True:
+            return self._reject("spin", t)
+        if spin is None and self.require_gate:
+            return self._reject("no_spin_gate", t)
+        if (self._last_maneuver_t is not None
+                and (t - self._last_maneuver_t) < self.settle_sec):
+            return self._reject("settle", t)
+        if speed_mps < self.min_speed_mps:
+            return self._reject("slow", t)
+        if not is_finite(cog_deg):
+            return self._reject("bad_input", t)
+
+        c = wrap360(cog_deg)
+        if self._anchor is not None and abs(ang_diff(c, self._output(t))) > self.jump_deg:
+            if self._pending is None or abs(ang_diff(c, self._pending)) > self.jump_deg:
+                self._pending = c
+                return self._reject("jump", t, keep_pending=True)
+            # 직전 표본도 같은 쪽으로 튀었다 = 2회 연속 → 진짜 방향 전환으로 보고 채택
+
+        rate = 0.0
+        if self._prev_accept is not None:
+            pc, pt = self._prev_accept
+            dt = t - pt
+            if 0.0 < dt <= self.fresh_sec:
+                rate = max(-self.max_rate_dps,
+                           min(self.max_rate_dps, ang_diff(c, pc) / dt))
+        self._anchor = (c, t, rate)
+        self._prev_accept = (c, t)
+        self._last_accept_t = t
+        self._pending = None
+        self.last_reject = None
+        return True
+
+    # ------------------------------------------------ 출력
+    def heading(self, t):
+        """(yaw, 상태). yaw None = 발행하지 마라."""
+        if self._anchor is None:
+            g, gt = self._goal
+            if gt is None or (t - gt) > self.init_stale_sec:
+                return None, ST_INIT
+            return g, ST_INIT_GOAL
+        yaw = self._output(t)
+        if (t - self._last_accept_t) > self.fresh_sec:
+            return yaw, ST_HOLD
+        return yaw, ST_OK
+
+    def age(self, t):
+        """마지막 채택 표본 나이 [s]. 한 번도 채택 안 했으면 None."""
+        if self._last_accept_t is None:
+            return None
+        return t - self._last_accept_t
+
+    # ------------------------------------------------ 내부
+    def _output(self, t):
+        v, t0, rate = self._anchor
+        dt = min(max(t - t0, 0.0), self.predict_max_sec)
+        return wrap360(v + rate * dt)
+
+    def _freeze(self, t):
+        if self._anchor is not None:
+            self._anchor = (self._output(t), t, 0.0)
+
+    def _reject(self, reason, t, keep_pending=False):
+        self.last_reject = reason
+        if not keep_pending:
+            self._pending = None
+        self._prev_accept = None
+        self._freeze(t)
+        return False
+
+
 # ---------------------------------------------------------------- 믹서
 class HeadingMux:
     """
@@ -282,11 +478,11 @@ class HeadingMux:
         mux = HeadingMux(SRC_IMU_RELATIVE, mount_offset_deg=37.0)
         mux.update_imu(raw_yaw, t)
         yaw, status = mux.heading(t)
-        if yaw is None: 발행하지 않는다
+        if yaw is None (또는 status not in PUBLISH_STATES): 발행하지 않는다
     """
 
     def __init__(self, source, *, invert_yaw=False, mount_offset_deg=0.0,
-                 declination_deg=0.0, stale_sec=0.5, estimator=None):
+                 declination_deg=0.0, stale_sec=0.5, estimator=None, gps_cog=None):
         if source not in ALL_SOURCES:
             raise ValueError(
                 f"heading_source '{source}' 를 모른다. 가능한 값: {list(ALL_SOURCES)}")
@@ -310,6 +506,12 @@ class HeadingMux:
         self._turn_rate_dps = 0.0       # imu yaw 미분 (선회 중 표본 배제용)
         self._reverse = (None, None)    # (후진중?, 수신시각) — motor_control 이 준다
 
+        # gps_cog (계약서_GPS방위_20261114). 추정기처럼 소스와 무관하게 입력을 받지만
+        # 출력은 source == gps_cog 일 때만 쓴다.
+        self.gps_cog = gps_cog if gps_cog is not None else GPSCOGTracker()
+        self._desired = (None, None)    # (/desired_angle, 수신시각) — ship_direction 이 준다
+        self._boat_mode = None          # 마지막 /boat_mode (None = 한 번도 못 받음)
+
     # ------------------------------------------------ 입력
     def update_imu(self, raw_yaw_deg, t):
         if not is_finite(raw_yaw_deg):
@@ -322,7 +524,14 @@ class HeadingMux:
         self._imu = (y, t)
 
     def update_cog(self, cog_deg, speed_mps, t):
-        """COG 표본 도착. IMU 와 짝지어 추정기에 넣는다."""
+        """COG 표본 도착. gps_cog 추적기에 넣고, IMU 와 짝지어 추정기에 넣는다.
+
+        cog_deg=None, speed 0.0 (정지 — COG 정의 안 됨)도 받는다: gps_cog 는 그 순간 얼린다.
+        추정기 경로는 예전처럼 무시한다.
+        """
+        # gps_cog 는 IMU 슬롯을 읽지 않는다 — 후진·선회 게이트만 본다.
+        self.gps_cog.update(cog_deg, speed_mps, t,
+                            reverse=self.reverse_state(t), spin=self.spin_state(t))
         if not (is_finite(cog_deg) and is_finite(speed_mps)):
             return
         self._cog = (wrap360(cog_deg), t)
@@ -347,6 +556,46 @@ class HeadingMux:
     def update_reverse(self, is_reverse, t):
         """후진 상태 갱신. motor_control 이 PWM 규약의 소유자라 거기서 판정해 보낸다."""
         self._reverse = (bool(is_reverse), t)
+        if self._reverse[0]:
+            self.gps_cog.note_maneuver(t)     # gps_cog: 후진 시작 순간 얼림 + settle
+
+    def update_desired_angle(self, value, t):
+        """/desired_angle (ship_direction 최종 출력). 5000/6000 이면 제자리 선회 중."""
+        if not is_finite(value):
+            return
+        self._desired = (float(value), t)
+        if is_spin_code(value):
+            self.gps_cog.note_maneuver(t)     # gps_cog: 선회 시작 순간 얼림 + settle
+
+    def spin_state(self, t):
+        """True/False/None. None = /desired_angle 없음 또는 stale → '모른다'."""
+        val, ts = self._desired
+        if ts is None or (t - ts) > self.stale_sec:
+            return None
+        return is_spin_code(val)
+
+    def update_boat_mode(self, mode):
+        """
+        /boat_mode (ssf_bridge). AUTO **진입**이면 gps_cog 추적기를 첫 COG 전 상태로 되돌리고 True.
+        진입 = 직전 값이 AUTO 아님(0/1/그 밖/None=미수신) 이고 지금 AUTO. 첫 수신이 AUTO 여도 진입.
+        AUTO→AUTO 는 진입 아님. 한 번도 못 받으면 아무 일도 안 일어난다(= C1 동작).
+        출력엔 source == gps_cog 일 때만 반영된다(다른 소스는 추적기를 안 읽는다).
+        """
+        prev = self._boat_mode
+        self._boat_mode = int(mode)
+        if self._boat_mode == BOAT_MODE_AUTO and prev != BOAT_MODE_AUTO:
+            self.gps_cog.reset_to_init()
+            return True
+        return False
+
+    @property
+    def boat_mode(self):
+        """마지막 /boat_mode. None = 한 번도 못 받음."""
+        return self._boat_mode
+
+    def update_goal_bearing(self, bearing_deg, t):
+        """/north_goal_angle_tp (현재 WP 방위). gps_cog 첫 유효 COG 전 초기값 (Q1 (c))."""
+        self.gps_cog.update_goal(bearing_deg, t)
 
     def reverse_state(self, t):
         """True/False/None. None = 신호 없음 또는 stale → '모른다'."""
@@ -367,6 +616,13 @@ class HeadingMux:
         """
         if self.source == SRC_IMU_RELATIVE:
             return self._from_slot(self._imu, t)
+
+        if self.source == SRC_GPS_COG:
+            # 🚨 IMU 슬롯을 읽지 않는다(사용자 규칙 6). _correct 도 거치지 않는다 —
+            #    mount_offset_deg·invert_yaw 는 IMU 장착값이라 COG 에 걸면 그만큼 틀어지고
+            #    (B 로컬 40.3 이면 40°), 편각은 COG 가 진북 기준이라 이중 보정이다.
+            #    HOLD·INIT_GOAL 도 값을 낸다 → 호출부는 PUBLISH_STATES 로 발행을 판정한다.
+            return self.gps_cog.heading(t)
 
         if self.source == SRC_DUAL_GPS:
             val, ts = self._dual
