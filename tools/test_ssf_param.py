@@ -1292,3 +1292,40 @@ def test_server_launch_routes(server, monkeypatch, tmp_path):
     assert d["ok"] is False and "코스는" in d["error"]
     st, d = _req(port, "/api/launch/stop", {}, {"X-SSF": "1"})
     assert d["ok"] is False and "꺼져 있다" in d["error"]
+
+
+# ---------------------------------------------------------------- 11-15: 롤백 인자·찍는 자리 주석·순서표
+def test_launch_rollback_args(launchboat):
+    b = launchboat
+    st = b.launch("start", course="main", wp="practice_avoid.yaml", rollback=True)
+    assert st["command"].endswith("perception_fusion:=false d455_depth:=false scan_mode:=Sensitivity")
+    st = _ln_wait(b, lambda s: s["running"] and any("웨이포인트 13개" in ln for ln in s["log"]))
+    line = next(ln for ln in st["log"] if "웨이포인트 13개" in ln)
+    for a in ("perception_fusion:=false", "d455_depth:=false", "scan_mode:=Sensitivity", "practice_avoid.yaml"):
+        assert a in line, line
+    b.launch("stop")
+    _ln_wait(b, lambda s: not s["running"])
+    b.launch("start", course="main", rollback="yes")          # True 만 롤백 — 문자열은 무시
+    st = _ln_wait(b, lambda s: s["running"] and any("웨이포인트 13개" in ln for ln in s["log"]))
+    assert not any("perception_fusion" in ln for ln in st["log"] if "웨이포인트 13개" in ln)
+    b.launch("stop")
+    _ln_wait(b, lambda s: not s["running"])
+
+
+def test_row_comments_and_template_notes(tmp_path):
+    f = tmp_path / "w.yaml"
+    f.write_text('waypoints:\n  - {구역: "a", lat: 1, lon: 2, mode: 0, dwell: 1.0}  # ⚠️ 현장: 여기\n'
+                 '  - {구역: "b", lat: 1, lon: 2, mode: 1, dwell: 1.0}\n', encoding="utf-8")
+    assert wpm.row_comments(str(f), 2) == ["⚠️ 현장: 여기", ""]
+    assert wpm.row_comments(str(f), 3) == ["", "", ""]          # 줄 수 다르면 비움
+    assert wpm.row_comments(str(tmp_path / "없음.yaml"), 1) == [""]
+    t = wpm.check_file(REPO, os.path.join(REPO, "src/north_goal_angle/config/waypoints.yaml"), "main")
+    assert not t["errors"] and len(t["points"]) == 15
+    by = {p["label"]: p["note"] for p in t["points"]}
+    assert "뚫린 면" in by["출항(ㄷ자 출구 앞)"] and "A7" in by["장애물 구간 접근"]
+
+
+def test_app_page_has_order_table_and_rollback(server):
+    port, _ = server
+    st, page = _req(port, "/")
+    assert b"wpOrderCard" in page and "롤백(융합·뎁스 끔)".encode() in page and b"rollback" in page

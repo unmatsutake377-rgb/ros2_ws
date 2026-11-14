@@ -125,7 +125,8 @@ def make_handler(repo, port):
                         return self._send(200, dict(repo.cam("stop"), ok=True))
                     if path == "/api/launch/start":
                         return self._send(200, dict(repo.launch("start", course=body.get("course"),
-                                                                wp=body.get("wp")), ok=True))
+                                                                wp=body.get("wp"), rollback=body.get("rollback")),
+                                                    ok=True))
                     if path == "/api/launch/stop":
                         return self._send(200, dict(repo.launch("stop"), ok=True))
                     if path == "/api/wp/rec/start":

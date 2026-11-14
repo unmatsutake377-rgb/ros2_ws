@@ -19,6 +19,15 @@ groups:
          change: rarely, when: "현장 조정표 hold_source 행 — GPS 가 FLOAT·끊김이 잦으면 vision(당일 turn_color_mode2 도 맞출 것)",
          check: "시작 로그 hold_source=gps(mode 2: …) · 대기점에 서서 6 s 뒤 다음 WP · 정지 위치가 WP 앞 약 1.5 m",
          revert: "vision"}
+      - {pkg: ship_back, key: gps_hold_time_sec, label: 위치유지 판정 시간(GPS), unit: s, step: 0.5, limits: [5.0, 15.0],
+         hint: "hold_source gps: WP2 판정 반경 안에 연속 이 시간 머물면 위치유지 끝(규정 5 s + 여유). 반경을 벗어나면 0 부터",
+         advice: "기본 6.0(규정 5 s + 1 s). 5 s 아래로 내리지 않는다",
+         change: rarely, when: "현장 조정표에 따로 바꾸는 기준 없음(계약서_GPS위치유지_20261113)",
+         check: "WP2 에서 멈춘 뒤 이 시간 지나 다음 WP 로 넘어가는지", revert: "6.0"}
+      - {pkg: ship_back, key: gps_keep_radius_m, label: 위치유지 판정 반경(GPS), unit: m, step: 0.1, limits: [2.0, 5.0],
+         hint: "hold_source gps: WP2 에서 이 거리 안에 있어야 시간을 센다 — 규정 5 m 보다 안쪽(GPS 필터 지연 ⚠️ 미실측)",
+         advice: "기본 4.5. gps_resume_m(4.0)보다 커야 한다(어기면 시작 ERROR + 기본값)",
+         change: rarely, when: "현장 조정표에 따로 바꾸는 기준 없음", check: "시작 로그 hold_source=gps 줄에 반경·시간", revert: "4.5"}
       - {pkg: ship_back, key: hold_dist_m, label: 부표 앞 유지 거리, unit: m, step: 0.1, limits: [1.0, 4.5],
          hint: "탐색(mode 3)·위치유지 vision 방식에서 부표 앞에 머무는 거리(hold_source gps 면 위치유지엔 안 씀)",
          advice: "2.5~3.5. hold + dist_tol(0.4) 가 규정 5 m 보다 작아야 한다. 3.2 넘게 올리면 도착 반경도 같이 본다",

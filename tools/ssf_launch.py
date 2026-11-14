@@ -21,6 +21,7 @@ import subprocess
 import time
 
 COURSES = ("main", "tournament")
+ROLLBACK_ARGS = "perception_fusion:=false d455_depth:=false scan_mode:=Sensitivity"   # f04b9c7 이전 구성
 WP_NAME = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_.-]{0,80}\.ya?ml")
 
 
@@ -79,10 +80,10 @@ def wp_files(home):
     return [{"name": n, "mtime": time.strftime("%m-%d %H:%M", time.localtime(t))} for t, n in sorted(out, reverse=True)]
 
 
-def command(boat, course, wp_path=None):
+def command(boat, course, wp_path=None, rollback=False):
     """화면에 보여 줄 명령(손으로 칠 때와 같은 꼴)."""
     c = f"ros2 launch launch_files launch_files.launch.py boat:={boat} course:={course}"
-    return c + (f" waypoints_file:={wp_path}" if wp_path else "")
+    return c + (f" waypoints_file:={wp_path}" if wp_path else "") + (f" {ROLLBACK_ARGS}" if rollback else "")
 
 
 def _pane(boat):
@@ -128,7 +129,7 @@ def _wp_path(home, course, wp):
     return p
 
 
-def start(repo, boat, home, course, wp=None):
+def start(repo, boat, home, course, wp=None, rollback=False):
     if course not in COURSES:
         raise RuntimeError(f"코스는 main·tournament 중 하나 (받은 값 {course!r})")
     path = _wp_path(home, course, wp)
@@ -144,14 +145,14 @@ def start(repo, boat, home, course, wp=None):
     s = session_name(boat)
     if _pane(boat) == "ended":
         _tmux("kill-session", "-t", s)            # 지난 launch 의 '끝' 화면만 남은 창(sleep) — 정리
-    cmd = ["bash", os.path.join(repo, "tools", "ssf_launch_run.sh"), boat, course] + ([path] if path else [])
+    cmd = ["bash", os.path.join(repo, "tools", "ssf_launch_run.sh"), boat, course, path or ""] + (["rollback"] if rollback else [])
     r = _tmux("new-session", "-d", "-s", s, "-x", "200", "-y", "50", "-c", repo, "-e", f"HOME={home}", *cmd)
     if r.returncode != 0:
         raise RuntimeError("tmux 시작 실패: " + (r.stderr or r.stdout).strip())
     _tmux("set-option", "-t", s, "history-limit", "5000")
     time.sleep(0.5)
     st = status(boat, home)
-    st["command"] = command(boat, course, path)
+    st["command"] = command(boat, course, path, rollback)
     return st
 
 

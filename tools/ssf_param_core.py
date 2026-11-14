@@ -1093,7 +1093,8 @@ class Repo:
             b = self.boat()
             with ssf_lock.locked(self.home, f"launch_{b}"):   # 두 곳에서 동시에 눌러도 하나만 뜬다
                 if action == "start":
-                    return ssf_launch.start(self.repo, b, self.home, kw.get("course") or "", kw.get("wp"))
+                    return ssf_launch.start(self.repo, b, self.home, kw.get("course") or "", kw.get("wp"),
+                                             rollback=kw.get("rollback") is True)
                 if action == "stop":
                     return ssf_launch.stop(b, self.home)
         except RuntimeError as e:      # LockTimeout 도 RuntimeError

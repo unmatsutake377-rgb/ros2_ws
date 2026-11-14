@@ -483,7 +483,7 @@ function viewDiff() {
     h("div", {class:"right"}, h("button", {class:"btn", text:"전부 저장소 값으로", onclick:undoAll}))];
 }
 
-const MODE_KO = {0:"게이트 시작", 1:"게이트 끝", 2:"위치유지", 3:"탐색 부표", 5:"회피·도킹 접근", 7:"도킹", 8:"토너먼트 회피·종합 종료"};
+const MODE_KO = {0:"게이트 시작", 1:"게이트 끝", 2:"위치유지", 3:"탐색 부표", 5:"회피·경유(출항·접근)", 7:"도킹", 8:"토너먼트 회피·종합 종료"};
 function copyBtn(text) {
   return h("button", {class:"linkbtn", text:"복사", onclick:async e => {
     try { await navigator.clipboard.writeText(text); e.target.textContent = "복사됨"; }
@@ -678,7 +678,7 @@ function viewCam() { return [camPanel()]; }
 // ---- 자율 launch (배 tmux ssf_launch_<배>, tools/ssf_launch.py). 끄기 = Ctrl+C 한 번. 출발(자율)은 조종기로만
 const LN = {el:null, st:null, busy:false, msg:""};
 // 시작 로그에서 눈으로 확인할 줄
-const LN_KEY = /웨이포인트 \d+개|미션 순서|geofence (ON|OFF)|장애물 구간 경계|reverse_trim_us|DWA (켬|끔)|course=|노랑·흰색·검정/;
+const LN_KEY = /웨이포인트 \d+개|미션 순서|geofence (ON|OFF)|장애물 구간 경계|reverse_trim_us|DWA (켬|끔)|course=|노랑·흰색·검정|yaw_mux 시작|source=|첫 COG|hold_source|red_on_port|scan mode|distance_source|d455_depth|perception_fusion/;
 async function lnCall(path, body) {
   if (LN.busy) return; LN.busy = true; lnUpdate();
   try { const r = await api(path, body, 30000); LN.msg = r.ok === false ? "❌ " + r.error : (r.stopping ? "Ctrl+C 보냄 — 끝날 때까지 수십 초" : ""); if (r.ok !== false) LN.st = r; }
@@ -686,13 +686,15 @@ async function lnCall(path, body) {
   LN.busy = false; await lnPoll();
 }
 function lnStart() {
-  const P = LN.parts, course = P.course.value, wp = P.wp.value;
+  const P = LN.parts, course = P.course.value, wp = P.wp.value, rollback = P.rb.checked;
   if (course === "tournament" && !wp) { LN.msg = "❌ 토너먼트는 레인 녹화본을 골라야 한다"; return lnUpdate(); }
   const ok = confirm(
     `launch 를 켤까요? — ${S.state?.boat_ko || ""} · ${COURSE_KO[course]}${wp ? " · " + wp : " · 템플릿 웨이포인트"}\n\n` +
     "확인:\n· 지금 판과 판 사이다\n· 조종기 SwD [위] = 수동, 스틱에서 손 뗌\n· 배터리는 launch 가 뜬 뒤에 꽂는다(이미 꽂혀 있으면 수동인지 다시 확인)\n" +
-    "· 출발은 조종기 SwD [아래] — 앱은 출발시키지 않는다");
-  if (ok) lnCall("/api/launch/start", {course, wp});
+    "· 출발은 조종기 SwD [아래] — 앱은 출발시키지 않는다\n" +
+    "· 방위가 gps_cog 면: 출발 전 뱃머리를 첫 WP(출항) 쪽으로, AUTO 뒤 0.5 m/s 넘게 직진해야 방위가 잡힌다" +
+    (rollback ? "\n\n⚠️ 롤백 구성: 인식 융합·D455 뎁스 끔, 라이다 Sensitivity" : ""));
+  if (ok) lnCall("/api/launch/start", {course, wp, rollback});
 }
 function lnPanel() {
   if (LN.el) return LN.el;
@@ -701,20 +703,22 @@ function lnPanel() {
   course.value = S.course;
   const wp = h("select", {});
   const go = btn("▶ launch 켜기", "go", lnStart);
+  const rb = h("input", {type:"checkbox"});
   LN.parts = {
-    go,
+    go, rb,
     status: h("div", {class:"label"}),
     boot: h("div", {class:"guide", style:"margin:8px 0"}),
     course, wp,
     cmd: h("div", {class:"mono small", style:"margin:6px 0;word-break:break-all"}),
-    on: h("div", {class:"tools"}, h("span", {text:"코스"}), course, h("span", {text:"웨이포인트"}), wp, go),
+    on: h("div", {class:"tools"}, h("span", {text:"코스"}), course, h("span", {text:"웨이포인트"}), wp,
+      h("label", {title:"허브 끊김·수면 반사 등 문제 때 — 인식 융합·D455 뎁스 끄고 라이다 Sensitivity (f04b9c7 이전 구성)"}, rb, " 롤백(융합·뎁스 끔)"), go),
     off: h("div", {class:"tools"}, btn("■ 끄기 (Ctrl+C 한 번)", "primary", () => {
       if (confirm("launch 를 끌까요? Ctrl+C 한 번 — 라이다 정지까지 수십 초. 판과 판 사이에만.")) lnCall("/api/launch/stop", {}); })),
     keys: h("div", {class:"guide", style:"margin:8px 0"}),
     log: h("pre", {class:"out", style:"max-height:420px;white-space:pre-wrap"}),
     msg: h("div", {class:"small"}),
   };
-  course.onchange = wp.onchange = lnUpdate;
+  course.onchange = wp.onchange = rb.onchange = lnUpdate;
   LN.el = h("div", {},
     h("div", {class:"card", style:"padding:12px 14px;margin-bottom:12px"}, LN.parts.status, LN.parts.boot, LN.parts.on, LN.parts.cmd,
       LN.parts.off, LN.parts.msg, LN.parts.keys,
@@ -731,6 +735,9 @@ function lnPanel() {
           "(배 노트북은 boat-a 라는 이름을 모른다 — 'Could not resolve hostname')."),
         h("p", {}, h("span", {class:"k", text:"켜기"}), "센서·아두이노(노트북 직결) 연결 → 조종기 수동 → 여기서 켜기 → 아래 확인 줄 → 배터리 1·2번 → 5·6번 → 삑 → 15~25 s."),
         h("p", {class:"adv"}, h("span", {class:"k", text:"출발"}), "조종기 SwD [아래]. 앱·노트북으로는 출발시키지 않는다. 위험하면 SwD [위]."),
+        h("p", {}, h("span", {class:"k", text:"방위"}), "시작 로그 'yaw_mux 시작: source=…' 로 확인. imu_relative 면 출발 전 IMU 방위 맞추기(§9-0g, mount_offset_deg). " +
+          "gps_cog 면 MANUAL 로 출발 자리 → 뱃머리를 첫 WP(출항) 쪽으로 → AUTO → 0.5 m/s 넘게 직진 → '첫 COG 채택'."),
+        h("p", {}, h("span", {class:"k", text:"롤백"}), "허브 끊김(dmesg)·물 위 정면 뎁스 물체 상시(수면 반사)면 '롤백' 체크 후 다시 켜기 — 인식 융합·D455 뎁스 끔, 라이다 Sensitivity."),
         h("p", {}, h("span", {class:"k", text:"판 사이"}), "끄기(Ctrl+C) → '■ launch 끝' 줄 확인 → 다시 켜기. 다시 켜야 웨이포인트가 처음부터 시작한다."),
         h("p", {}, h("span", {class:"k", text:"터미널로 켠 것"}), "ssh 로 tmux ssf 에서 띄운 launch 는 여기서 끌 수 없다 — 그 창에서 Ctrl+C."))));
   return LN.el;
@@ -758,7 +765,8 @@ function lnUpdate() {
   }
   const b = st?.boat || S.state?.boat || "A";
   P.cmd.textContent = "실행될 명령: ros2 launch launch_files launch_files.launch.py boat:=" + b + " course:=" + P.course.value +
-    (P.wp.value ? " waypoints_file:=~/ssf_logs/" + P.wp.value : "");
+    (P.wp.value ? " waypoints_file:=~/ssf_logs/" + P.wp.value : "") +
+    (P.rb.checked ? " perception_fusion:=false d455_depth:=false scan_mode:=Sensitivity" : "");
   P.on.hidden = run || st?.pane === "run"; P.cmd.hidden = P.on.hidden; P.off.hidden = !(mine || st?.pane === "run");
   const log = st?.log || [];
   fill(P.keys, ...log.filter(l => LN_KEY.test(l)).slice(-12).map(l => h("p", {class:"mono small", text:"🔎 " + l.trim()})),
@@ -812,6 +820,8 @@ function viewWp() {
   if (!S.wp) { out.push(h("div", {class:"empty", text:"읽는 중…"})); return out; }
   if (S.wp.error) { out.push(h("div", {class:"banner bad", text:"❌ " + S.wp.error})); return out; }
   if (!S.wp.files.length) out.push(h("div", {class:"card"}, h("div", {class:"empty", text:"웨이포인트 파일 없음"})));
+  const tpl = S.wp.files.find(f => f.name === "waypoints.yaml" && f.kind.startsWith("저장소") && f.points.length);
+  if (tpl) out.push(wpOrderCard(tpl));
   for (const f of S.wp.files) {
     const st = f.errors.length ? "bad" : f.warnings.length ? "warn" : "ok";
     const card = h("div", {class:"card", style:"margin-bottom:10px"});
@@ -841,6 +851,43 @@ function viewWp() {
     out.push(card);
   }
   return out;
+}
+// 종합임무 녹화 순서 + 각 점에서 무엇을 하고 얼마나 머무는지 (저장소 템플릿 + 이 배 현재 값)
+function pv(pkg, key) {   // 종합임무에서 이 배가 실제로 읽는 값(없으면 null)
+  const p = S.params.find(q => q.pkg === pkg && q.key === key);
+  const e = p && p.effective && p.effective.main;
+  return e ? e.value : null;
+}
+function wpDoes(p) {
+  const v = (pkg, key, unit) => { const x = pv(pkg, key); return x == null ? "?" : x + (unit || ""); };
+  switch (p.mode) {
+    case 0: return "게이트 시작 — 빨강·초록 사이 통과";
+    case 1: return "게이트 끝 — 통과 뒤 다음 WP";
+    case 2: return pv("ship_back", "hold_source") === "vision"
+      ? `위치유지(부표 보고): 부표 앞 ${v("ship_back", "hold_dist_m", " m")}에서 연속 ${v("ship_back", "hold_time_sec", " s")}`
+      : `위치유지(GPS): 이 점 ${v("ship_back", "gps_keep_radius_m", " m")} 안에 연속 ${v("ship_back", "gps_hold_time_sec", " s")} 서 있기 (규정 5 m·5 s)`;
+    case 3: return "탐색: 이 부표 둘레 원 선회(공지 색 — 빨강·초록 시계, 검정 반시계)";
+    case 5: return /출항/.test(p.label) ? "출항: 출발 자리 뚫린 쪽으로 곧게 나감(LiDAR 회피), 그동안 GPS 방위 확보"
+      : /도킹/.test(p.label) ? "도킹 정렬: 도크 칸 정면 축에 도착 → 바로 도킹(제자리 선회로 표식 찾기)"
+      : /회피/.test(p.label) ? "장애물 회피(LiDAR" + (pv("ship_direction", "dwa_enabled") ? "·DWA" : "") + ") — 장애물 구간 경계 안"
+      : "경유점: 도착 반경 통과(LiDAR 회피 켜짐)";
+    case 7: return /이탈/.test(p.label) ? "도킹 이탈: 후진으로 빠져나와 이 점으로" : "도킹: 제자리 선회로 표식 찾기 → 정렬 → 접안 → 후진";
+    case 8: return "종료: 도착하면 정지(코스 끝)";
+    default: return "";
+  }
+}
+function wpOrderCard(f) {
+  return h("div", {class:"card", style:"margin-bottom:12px"},
+    h("div", {style:"padding:12px 14px 4px"},
+      h("div", {class:"label", text:`종합임무 녹화 순서 — ${f.points.length}점 (저장소 템플릿 · 엔터 기본값 순서)`}),
+      h("div", {class:"small", text:"머무는 초(dwell) = 도착 뒤 다음 WP 로 넘어가기 전 기다리는 시간. 위치유지·탐색·도킹은 담당 노드가 끝낼 때까지 + dwell. " +
+        "'하는 일' 의 숫자는 이 배가 지금 읽는 값(현장 조정에서 바꾸면 여기도 바뀐다)."})),
+    h("div", {class:"tablewrap", style:"padding:0 14px 10px"}, h("table", {},
+      h("thead", {}, h("tr", {}, ["#", "구역", "mode", "머무는 초", "하는 일 · 유지 시간", "찍는 자리"].map(t => h("th", {text:t})))),
+      h("tbody", {}, f.points.map(p => h("tr", {},
+        h("td", {class:"m", style:"white-space:nowrap", text:p.i}), h("td", {text:p.label}),
+        h("td", {text:p.mode + " " + (MODE_KO[p.mode] || "")}), h("td", {class:"m", style:"white-space:nowrap", text:p.dwell + " s"}),
+        h("td", {text:wpDoes(p)}), h("td", {class:"small", text:(p.note || "").replace(/^⚠️\s*현장:\s*/, "")})))))));
 }
 async function loadWp() {
   S.wp = null; render();

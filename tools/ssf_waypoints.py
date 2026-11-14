@@ -54,6 +54,22 @@ def point_in_polygon(lat, lon, poly):
     return inside
 
 
+def row_comments(path, n):
+    """'- {…}' 줄 끝 주석(# 뒤, ⚠️ 현장: 찍는 자리 안내) n 개. 줄 수가 안 맞거나 못 읽으면 전부 ''."""
+    try:
+        with open(path, encoding="utf-8") as f:
+            rows = [ln for ln in f.read().splitlines() if ln.lstrip().startswith("- {")]
+    except (OSError, UnicodeDecodeError):
+        return [""] * n
+    if len(rows) != n:
+        return [""] * n
+    out = []
+    for ln in rows:
+        tail = ln[ln.rfind("}") + 1:] if "}" in ln else ""
+        out.append(tail.split("#", 1)[1].strip() if "#" in tail else "")
+    return out
+
+
 def check_file(repo, path, course=None, template_modes=None, geofence=None):
     """웨이포인트 파일 하나 검사 → dict(course, points, modes, errors, warnings, notes)."""
     wl = _loader(repo)
@@ -83,8 +99,9 @@ def check_file(repo, path, course=None, template_modes=None, geofence=None):
         out["errors"].append(str(e))
         return out
     labels = wl.waypoint_labels(raw)
+    notes = row_comments(path, len(wps))
     out["points"] = [{"i": i, "lat": w[0], "lon": w[1], "mode": w[2], "dwell": w[3],
-                      "label": labels[i] if i < len(labels) else ""} for i, w in enumerate(wps)]
+                      "label": labels[i] if i < len(labels) else "", "note": notes[i]} for i, w in enumerate(wps)]
     out["modes"] = [w[2] for w in wps]
     # 아래 경고는 전부 녹화절차 문서·param_check 에 있는 것만
     if wps[-1][2] not in (5, 8):

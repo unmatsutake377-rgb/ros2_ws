@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # 파라미터 앱 'launch' 탭이 tmux 세션(ssf_launch_<배>) 안에서 돌린다 — tools/ssf_launch.py.
 #
-#   bash tools/ssf_launch_run.sh <A|B> <main|tournament> [웨이포인트 파일 절대경로]
+#   bash tools/ssf_launch_run.sh <A|B> <main|tournament> [웨이포인트 파일 절대경로|""] [rollback]
+#   rollback = 인식 융합·D455 뎁스 끄고 라이다 Sensitivity (f04b9c7 이전 구성 — 허브 끊김·수면 반사 때)
 #
 # 손으로 칠 때와 같은 명령이다:
 #   ros2 launch launch_files launch_files.launch.py boat:=<배> course:=<코스> [waypoints_file:=<파일>]
@@ -14,10 +15,12 @@ set -u
 boat=${1:?배}
 course=${2:?코스}
 wp=${3:-}
+rb=${4:-}
 cd "$(dirname "$0")/.." || exit 1
 
 args=("boat:=$boat" "course:=$course")
 [ -n "$wp" ] && args+=("waypoints_file:=$wp")
+[ "$rb" = "rollback" ] && args+=("perception_fusion:=false" "d455_depth:=false" "scan_mode:=Sensitivity")
 
 if [ -n "${SSF_LAUNCH_FAKE:-}" ]; then            # 테스트 전용 — ROS 없이 가짜 launch
   launch=(bash "$SSF_LAUNCH_FAKE")
