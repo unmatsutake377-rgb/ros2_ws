@@ -78,7 +78,7 @@
     --dyn fossen 이면 3자유도 모델(boat3dof.py: 질량·수력 계수·추진기 위치, Gazebo 모델과 같은 계수, 가정값).
     후진도 같은 K_V. 충돌 물리 없음(통과) — 접촉은 횟수만 센다.
   · LiDAR: 360°/0.5° (fastworld 와 같은 규약, 80° = 정면), 최대 20 m, 원형 부표(반경 0.2 m)+도크 선분 레이캐스트, 잡음 없음.
-    LiDAR 위치 = 배 중심.
+    LiDAR 위치 = 배 중심(--lidar-x m 로 앞으로 옮길 수 있다 — 2번배 실물은 선수 근처).
   · 카메라(검출기): gate_sim·dock_sim 규약 — HFOV 63.9°, 부표 0.5~12 m(도크 표식 0.7~12 m), 방위 왼쪽 양수, 잡음 σ 0.5°,
     각 토픽에 가장 가까운 가시 대상 1개(= 가장 큰 컨투어). 가림(occlusion) 없음. 검출기 프레임 10 Hz.
     색 대상: gate = 빨강·초록, turn = 모드별 색(실제 wp_color_map: 2 → white, 3 → red), dock = 목표 칸 표식(빨강 사각)만.
@@ -95,6 +95,9 @@
   · 장애물(주황, 검출기 대상 색 아님): WP6→WP7(이름에 '회피' 가 든 mode 5 두 점) 선분의 10~90 % 구간에 6~10개.
     옛 순서(도킹 바로 뒤 WP10 mode 8)일 때만 도크(첫 mode 7)→WP10 선 위 WP10 앞 3~20 m 구간에 6~10개 더.
     경로선 ±3 m, 서로 1.5 m 이상, 다른 부표와 1.5 m 이상.
+    --avoid-obs walls_random|photo (11-13 현장 사진 — 실제 구간은 긴 흰 벽 + 누운 흰 펜더): 위 WP6→WP7 부표 대신
+    벽·펜더 선분(avoid_layout.py). LiDAR 레이캐스트 대상, 접촉 = 선체 중심선과 선분 거리 < 반폭 + 반두께(벽 0.15·펜더 0.15).
+    구간 크기 = --param north_goal_angle.geofence_avoid_polygon(있으면). photo 는 손 디지타이즈 추정, --photo-entry 로 찍은 둑.
   · 도크(dock_sim 과 같은 규격): 정면 벽 3 m(1 m 칸 3개) + 칸막이 0.5 m 4개. 정면 벽 중심 = WP8 좌표,
     정면(물 쪽)이 직전 WP(도킹 접근 6m) 방향을 향함. 목표 칸(표식) 좌·중·우 무작위.
     --dock-* 로 칸 폭·칸막이 두께(덩어리)·깊이를 바꾸면 dock_geometry: 뒷벽(front) + 칸 옆벽·양 끝 벽(div) + 덩어리 끝면(cap).
@@ -119,6 +122,7 @@
   · 코스 시간 = WP10(마지막 WP) 2.5 m 안에 처음 든 시각. 그 뒤 dwell 완료를 --tail 초까지만 기다린다.
 """
 import argparse
+import collections
 import csv
 import math
 import os
@@ -171,9 +175,11 @@ rosstub.Pub.get_subscription_count = lambda self: 1      # /geofence_state 구�
 
 import kaboat_full_course_sim as K               # noqa: E402  (운동 상수: gate_sim 과 같은 출처)
 from dock_geometry import DOCK_DEFAULT, dock_geometry, bay_offsets, extent as dock_extent   # noqa: E402
+import avoid_layout as AL                        # noqa: E402  (--avoid-obs walls_random|photo — 11-13 현장 사진)
 
 std = sys.modules["std_msgs.msg"]
 Float32, Float64, Int32, String = std.Float32, std.Float64, std.Int32, std.String
+Float32MultiArray = std.Float32MultiArray
 
 
 def _load(rel, name, pkg):
@@ -328,7 +334,8 @@ def hold_mismatch_color():
     return next(c for c in ("yellow", "blue", "purple") if c not in used)
 
 
-def build_world(world_wps, seed, dock_cfg=None, world=None, hold_standoff=0.0, hold_color_mismatch=False):
+def build_world(world_wps, seed, dock_cfg=None, world=None, hold_standoff=0.0, hold_color_mismatch=False,
+                avoid_obs="buoys", avoid_poly_ll=None, photo_entry="right"):
     """dock_cfg = resolve_dock_cfg() 결과(None 이면 기본 = 옛 형상), world = load_world() 결과(None 이면 옛 규칙).
     hold_standoff = 위치유지 부표를 WP 에서 진입 구간 왼쪽 수직으로 옮길 거리(m, 0 = WP 위 — 옛 배치),
     hold_color_mismatch = 위치유지 부표 색을 검출기 대상 밖 색으로(False = 흰색 — 옛 배치). 난수는 안 쓴다."""
@@ -415,8 +422,19 @@ def build_world(world_wps, seed, dock_cfg=None, world=None, hold_standoff=0.0, h
     W["i5"] = i5
     a, b = P[i5[0]], P[i5[1]]; L = np.linalg.norm(b - a)
     rand_obst = world is None or world.get("random_obstacles", True)
-    if rand_obst:
-        scatter(a, b, 0.1 * L, 0.9 * L, "obst_5")
+    W["avoid_segs"] = []
+    if avoid_obs == "buoys":
+        if rand_obst:
+            scatter(a, b, 0.1 * L, 0.9 * L, "obst_5")
+    else:                                    # 긴 흰 벽 + 누운 펜더(avoid_layout.py). 옛 부표 무작위는 끈다.
+        poly_xy = None
+        if avoid_poly_ll and len(avoid_poly_ll) == 8:
+            poly_xy = [geo.xy(avoid_poly_ll[k], avoid_poly_ll[k + 1]) for k in range(0, 8, 2)]
+        F = AL.zone_frame(a, b, poly_xy)
+        W["avoid_frame"] = F
+        W["avoid_segs"] = (AL.photo_objects(F, photo_entry) if avoid_obs == "photo"
+                           else AL.random_objects(F, a, b, rng))
+        W["avoid_c"] = F["c"]; W["avoid_r"] = F["Lz"] / 2.0 + 2.0
     i8 = by_mode.index(8)
     if rand_obst and by_mode[i8 - 1] == 7:   # 옛 순서(도킹 → WP10 토너먼트 회피)만 두 번째 장애물 구간이 있다. 2026 순서는 회피 → 종료.
         a, b = P[i7], P[i8]; L = np.linalg.norm(b - a)
@@ -424,6 +442,16 @@ def build_world(world_wps, seed, dock_cfg=None, world=None, hold_standoff=0.0, h
     arr = np.array([[q["x"], q["y"]] for q in W["buoys"]])
     W["bx"], W["by"] = arr[:, 0], arr[:, 1]
     W["seg_arr"] = np.array([[p[0], p[1], q[0], q[1]] for p, q, _ in W["segs"]])
+    # LiDAR 는 벽·펜더의 '겉면'을 본다: 중심선을 반두께만큼 키운 직사각형 외곽(긴 변 2 + 끝면 2, 끝은 반두께만큼 연장).
+    #   접촉 판정(중심선 거리 − 반두께)과 같은 두께 — 두께 0 선분을 보게 하면 배가 겉면에 0.15 m 더 붙는다.
+    outl = []
+    for p, q, kind in W["avoid_segs"]:
+        rr = AL.SEG_R[kind]; d_ = (q - p) / max(float(np.linalg.norm(q - p)), 1e-9); n_ = np.array([-d_[1], d_[0]])
+        p2, q2 = p - d_ * rr, q + d_ * rr
+        for a_, b_ in ((p2 + n_ * rr, q2 + n_ * rr), (p2 - n_ * rr, q2 - n_ * rr),
+                       (p2 + n_ * rr, p2 - n_ * rr), (q2 + n_ * rr, q2 - n_ * rr)):
+            outl.append([a_[0], a_[1], b_[0], b_[1]])
+    W["avoid_seg_arr"] = np.array(outl)
     # 출발
     back = -u; lat_off = rng.uniform(-1.0, 1.0)
     s0 = P[0] + back * 8.0 + left * lat_off
@@ -445,6 +473,17 @@ def lidar(W, x, y, psi):
     near = math.hypot(x - W["dock"]["O"][0], y - W["dock"]["O"][1]) < LIDAR_MAX + W["dock"].get("reach", 3.0)   # 도크 크기(tournament_sim 등 reach 없는 W = 옛 3.0)
     if near:
         for ax, ay, bx, by in W["seg_arr"]:
+            ex, ey = bx - ax, by - ay
+            den = dx * ey - dy * ex
+            ok = np.abs(den) > 1e-9
+            dd = np.where(ok, den, 1.0)
+            tt = ((ax - x) * ey - (ay - y) * ex) / dd
+            uu = ((ax - x) * dy - (ay - y) * dx) / dd
+            m = ok & (tt > 0) & (uu >= 0.0) & (uu <= 1.0)
+            rng = np.where(m & (tt < rng), tt, rng)
+    if len(W.get("avoid_segs", ())) and \
+            math.hypot(x - W["avoid_c"][0], y - W["avoid_c"][1]) < LIDAR_MAX + W["avoid_r"]:
+        for ax, ay, bx, by in W["avoid_seg_arr"]:          # 장애물 구간 벽·펜더(--avoid-obs)
             ex, ey = bx - ax, by - ay
             den = dx * ey - dy * ex
             ok = np.abs(den) > 1e-9
@@ -553,6 +592,57 @@ def cam_closest(x, y, psi, pts, rng, dmin=CAM_MIN):
     return None if best is None else (best[0], best[1] + rng.gauss(0.0, CAM_NOISE))
 
 
+# ---- 도리도리(ship_avoid fused) 카메라 검출 모델 (--doridori) — doridori_sim.run_core 와 같은 규약 ----
+#   OAK 설계값(mast v2, 실측 아님): 수면 위 0.415 m, 아래로 11°, 선체 중심 앞 0.15 m(boat3dof B camera x) ⚠️.
+#   흰 벽·펜더(--avoid-obs) 한 물체 = 검출 한 개(cls 0): 화각 안 선분 위 가장 가까운 점(겉면)이 블롭 바닥.
+#   파도 피치·롤 σ 2°(주행)/0.5°(정지) — /imu/data 는 발행 안 됨(11-14 결정) → 노드는 장착값만 쓴다.
+#   검출 확률 0.9(선회 5 °/s 넘으면 0.5), 방위 잡음 0.4°, 처리 지연 0.08 s(보상 안 함). 가림(occlusion) 없음.
+#   range_m = NaN(실제 검출기와 같음 → 단안). 노랑(로프 부이 cls 2)은 넣지 않는다 ⚠️.
+AV_CAM_X, AV_CAM_H, AV_CAM_PITCH, AV_CAM_VFOV, AV_CAM_MAX = 0.15, 0.415, 11.0, 55.0, 8.0
+AV_WAVE_MOVE, AV_WAVE_HOLD, AV_P_DET, AV_SIG_BEAR, AV_LAT = 2.0, 0.5, 0.9, 0.4, 0.08
+
+
+def _cam_project(D, beta_deg, pitch_deg, roll_deg, h=AV_CAM_H):
+    """doridori_sim.cam_project 와 같다: 수면 위 점(수평 거리 D, 방위 β 좌 +) → (bearing_left_deg, v_norm). 뒤면 None."""
+    b = math.radians(beta_deg)
+    r_, dn, fw = -D * math.sin(b), h, D * math.cos(b)
+    p, q = math.radians(pitch_deg), math.radians(roll_deg)
+    y1 = dn * math.cos(p) - fw * math.sin(p)
+    z = dn * math.sin(p) + fw * math.cos(p)
+    if z <= 1e-6:
+        return None
+    x_ = r_ * math.cos(q) + y1 * math.sin(q)
+    y_ = -r_ * math.sin(q) + y1 * math.cos(q)
+    return -math.degrees(math.atan(x_ / z)), y_ / z
+
+
+def avoid_detections(W, x, y, psi, w_dps, v, drng):
+    """/avoid_detections VER 1 data(list). 흰 벽·펜더만(cls 0)."""
+    hp = math.radians(psi)
+    cx, cy = x + AV_CAM_X * math.sin(hp), y + AV_CAM_X * math.cos(hp)
+    ws = AV_WAVE_MOVE if (abs(v) > 0.05 or abs(w_dps) > 5.0) else AV_WAVE_HOLD
+    wave_p, wave_r = drng.gauss(0, ws), drng.gauss(0, ws)
+    p_det = AV_P_DET if abs(w_dps) < 5.0 else 0.5
+    v_max = math.tan(math.radians(AV_CAM_VFOV / 2.0))
+    out = []
+    for a_, b_, kind in W.get("avoid_segs", ()):
+        rr = AL.SEG_R[kind]
+        best = None
+        for k_ in range(11):                                  # 선분 위 11점 중 화각 안에서 가장 가까운 점
+            pt = a_ + (b_ - a_) * (k_ / 10.0)
+            d = math.hypot(pt[0] - cx, pt[1] - cy)
+            rel_cw = wrap(math.degrees(math.atan2(pt[0] - cx, pt[1] - cy)) - psi)
+            if abs(rel_cw) <= HFOV / 2 and (best is None or d < best[0]):
+                best = (d, -rel_cw)
+        if best is None or best[0] - rr > AV_CAM_MAX or drng.random() > p_det:
+            continue
+        pr = _cam_project(max(0.05, best[0] - rr), best[1], AV_CAM_PITCH + wave_p, wave_r)
+        if pr is None or pr[1] > v_max:
+            continue                                          # 화면 아래 끝 밖(근거리 사각)
+        out += [0.0, pr[0] + drng.gauss(0, AV_SIG_BEAR) + w_dps * AV_LAT, pr[1], float("nan"), 1.0, AV_LAT]
+    return [1.0, 6.0, float(len(out) // 6)] + out
+
+
 AVOID_ZONE_END_M = 4.0    # 장애물 구간 직사각형이 WP6·WP7 너머로 뻗는 길이(회피 WP 가 경계에서 3 m 이상 안쪽)
 
 
@@ -640,7 +730,11 @@ def apply_dwell(path, overrides):
 def run(seed, variant="A", wp_file=None, world_wp_file=WP_DEFAULT, gps_sigma=0.03, current=(0.0, 0.0),
         t_max=1500.0, tail=90.0, record=False, dwell_override=None, fault=None, dyn="legacy", hull=None,
         node_overrides=None, lidar_noise=False, search_behavior="orbit", avoid_zone=0.0, avoid_measure_only=False,
-        world=None, dock_cfg=None, dock_align="wp", hold_standoff=0.0, hold_color_mismatch=False):
+        world=None, dock_cfg=None, dock_align="wp", hold_standoff=0.0, hold_color_mismatch=False,
+        avoid_obs="buoys", photo_entry="right", lidar_x=0.0, doridori=False,
+        heading_model="true", imu_drift_dps=0.64, imu_drift_still_dps=0.07, gps_vel_sigma=0.05,
+        gps_cog_min_speed=0.5, slow_pred_sec=4.0, transit_wps=(3, 6, 10, 12),
+        imu_lag_sec=1.0, imu_drift_max_dps=1.0, imu_assist_max_sec=10.0, imu_scale_min=1.0, real_trk_kw=None):
     """world = 세계 파일 경로(--world, None = 옛 규칙), dock_cfg = {bay_w, gap, depth, target}(None 값은 기본·세계 파일),
     dock_align = "wp"(웨이포인트 파일 그대로) | "target"(정렬·WP8·WP9 를 목표 칸 축으로 옮긴 사본)."""
     world_d = load_world(world) if isinstance(world, str) else world
@@ -652,7 +746,9 @@ def run(seed, variant="A", wp_file=None, world_wp_file=WP_DEFAULT, gps_sigma=0.0
     dock_custom = world_d is not None or any(v is not None for v in (dock_cfg or {}).values()) or dock_align != "wp"
     world_wps = load_wps(world_wp_file)
     nrng = np.random.default_rng(20_000 + seed) if lidar_noise else None
-    W = build_world(world_wps, seed, dcfg, world_d, hold_standoff=hold_standoff, hold_color_mismatch=hold_color_mismatch)
+    W = build_world(world_wps, seed, dcfg, world_d, hold_standoff=hold_standoff, hold_color_mismatch=hold_color_mismatch,
+                    avoid_obs=avoid_obs, photo_entry=photo_entry,
+                    avoid_poly_ll=(node_overrides or {}).get("north_goal_angle", {}).get("geofence_avoid_polygon"))
     geo = W["geo"]; dock = W["dock"]
     if wp_file is None:
         wp_file = variant_b_file(W) if variant == "B" else world_wp_file
@@ -671,6 +767,7 @@ def run(seed, variant="A", wp_file=None, world_wp_file=WP_DEFAULT, gps_sigma=0.0
     node_params(wp_file, node_overrides, search_behavior)
     Clock.t = 0.0
     vtag = variant + ("" if not dwell_override else "-dwell(" + ",".join(f"{k}={v:g}" for k, v in dwell_override.items()) + ")")
+    drng = random.Random(30_000 + seed)            # 도리도리 카메라 검출 전용 난수(다른 흐름과 분리)
     out = dict(seed=seed, variant=vtag, wp_file=wp_file, bay=dock["bay"], exception="", search_behavior=search_behavior)
     rng = random.Random(10_000 + seed)
 
@@ -685,6 +782,134 @@ def run(seed, variant="A", wp_file=None, world_wp_file=WP_DEFAULT, gps_sigma=0.0
                  ("ship_avoid", sa)]
     cnt = {name: n.pubs["/candidate_angle"].count for name, n in cand_pubs}
     nga.boat_mode_cb(Int32(2))                     # ssf_bridge /boat_mode = AUTO
+    # ---- 방위 모델 (--heading-model, 11-14 계약서_GPS방위) ----
+    #  true    = /imu/yaw 참값(옛 동작)
+    #  gps_cog = 실제 src/ssf_heading heading_logic.HeadingMux(gps_cog) 에 1 Hz GPS 속도(잡음 σ)·/motor_reverse·
+    #            /desired_angle·/north_goal_angle_tp·/boat_mode=2(t=0 AUTO 진입)를 넣고 그 출력을 /imu/yaw 로
+    #  imu_drift = 참값 + 누적 드리프트(전진 중 imu_drift_dps, 정지 imu_drift_still_dps, CW+) — 11-14 2번배 재현
+    #  gps_cog_pred = gps_cog + (시뮬 전용 실험) 저속 거부 때 얼리지 않고 직전 회전율로 계속 예측(최대 slow_pred_sec)
+    #  gps_cog_v2   = gps_cog + (시뮬 전용 실험, 11-15) ① 저속 예측은 '이동 구간'(transit_wps 로 가는 다리)에서만
+    #                 ② 후진 중 COG 를 180° 뒤집어 뱃머리 방위로 채택(후진 중 settle 없음, 후진이 끝난 뒤 settle 은 그대로)
+    real_trk_kw = dict(real_trk_kw or {})
+    hmux = None; drift = 0.0; hm_pub_n = 0; hm_silent_n = 0; hm_err = []
+    hm_gt30_mode = collections.Counter(); hm_gt30_why = collections.Counter(); hm_phase = {}
+    _trk = None
+    if heading_model in ("gps_cog", "gps_cog_pred", "gps_cog_v2", "gps_cog_imu", "gps_cog_imu_ideal", "gps_cog_final", "gps_cog_real"):
+        sys.path.insert(0, os.path.join(SRC, "ssf_heading"))
+        from ssf_heading import heading_logic as HL
+        if heading_model in ("gps_cog_pred", "gps_cog_v2"):
+            class _PredTracker(HL.GPSCOGTracker):
+                """저속('slow') 거부만 앵커·회전율을 살려 둔다 — 둥글게 도는 중이면 그 회전율로 이어 그린다.
+                transit=False 인 동안엔 원래대로 얼린다. flip_reverse 면 후진 중 COG+180 을 채택한다."""
+                transit = True
+                flip_reverse = False
+
+                def _output(self, t):
+                    v0, t0, rate = self._anchor
+                    lim = slow_pred_sec if self.last_reject == "slow" else self.predict_max_sec
+                    return HL.wrap360(v0 + rate * min(max(t - t0, 0.0), lim))
+
+                def _reject(self, reason, t, keep_pending=False):
+                    if reason == "slow" and self.transit and self.last_reject in (None, "slow"):
+                        self.last_reject = reason
+                        self._pending = None
+                        return False
+                    self._freeze(t)                     # 이어 그리던 값에서 얼린다(super 가 last_reject 를 바꾸기 전에)
+                    return super()._reject(reason, t, keep_pending)
+
+                def update(self, cog_deg, speed_mps, t, *, reverse, spin):
+                    if self.flip_reverse and reverse is True:
+                        return super().update(cog_deg + 180.0 if HL.is_finite(cog_deg) else cog_deg,
+                                              speed_mps, t, reverse=False, spin=spin)
+                    return super().update(cog_deg, speed_mps, t, reverse=reverse, spin=spin)
+
+            class _FlipMux(HL.HeadingMux):
+                """후진 신호: 시작 순간 얼림(settle 없음), 후진이 끝나는 순간 settle 시작. 선회는 원래대로."""
+                _rev_prev = False
+
+                def update_reverse(self, is_reverse, t):
+                    self._reverse = (bool(is_reverse), t)
+                    if self._reverse[0] and not self._rev_prev:
+                        self.gps_cog._freeze(t); self.gps_cog._prev_accept = None; self.gps_cog._pending = None
+                    elif self._rev_prev and not self._reverse[0]:
+                        self.gps_cog.note_maneuver(t)
+                    self._rev_prev = self._reverse[0]
+            _trk = _PredTracker(min_speed_mps=gps_cog_min_speed)
+            if heading_model == "gps_cog_v2":
+                _trk.flip_reverse = True
+                hmux = _FlipMux(HL.SRC_GPS_COG, gps_cog=_trk)
+            else:
+                hmux = HL.HeadingMux(HL.SRC_GPS_COG, gps_cog=_trk)
+        elif heading_model in ("gps_cog_imu", "gps_cog_imu_ideal", "gps_cog_final", "gps_cog_real"):
+            class _ImuAssistTracker(HL.GPSCOGTracker):
+                """후진·선회·settle 로 얼릴 때 그 자리에 멈추지 않고 IMU 가 그동안 돈 양(Δ)만 더한다.
+                절대값은 늘 GPS COG(앵커)에서 — IMU 는 상대 회전량만. 다음 COG 채택 때 끝,
+                imu_assist_max_sec 넘게 이어지면 그 값에서 얼린다(드리프트 누적 제한)."""
+                imu_now = None
+                transit = False         # gps_cog_final: 이동 구간이면 저속 때 직전 회전율로 이어 그린다(최대 slow_pred_sec)
+                _man = False            # 기동 뒤 IMU 보조 중
+                _imu_ref = None         # 앵커 시점 IMU
+                _man_t0 = None
+
+                def _output(self, t):
+                    v0, t0, rate = self._anchor
+                    if self._man and self._imu_ref is not None and self.imu_now is not None:
+                        return HL.wrap360(v0 + HL.ang_diff(self.imu_now, self._imu_ref))
+                    if self.last_reject == "slow" and self.transit:
+                        return HL.wrap360(v0 + rate * min(max(t - t0, 0.0), slow_pred_sec))
+                    return super()._output(t)
+
+                def _freeze(self, t):
+                    if self._anchor is not None:
+                        self._anchor = (self._output(t), t, 0.0)
+                    self._imu_ref = self.imu_now
+
+                def _start_assist(self, t):
+                    if not self._man:
+                        self._freeze(t)                 # 지금 출력에서 출발
+                        self._man = True; self._man_t0 = t
+
+                def note_maneuver(self, t):
+                    self._start_assist(t)
+                    super().note_maneuver(t)            # settle·짝 끊기. _freeze 는 IMU 보조 값으로 다시 앵커
+
+                def _reject(self, reason, t, keep_pending=False):
+                    if reason in ("reverse", "spin", "settle"):
+                        self._start_assist(t)
+                    if self._man and self._man_t0 is not None and (t - self._man_t0) > imu_assist_max_sec:
+                        self._freeze(t); self._man = False
+                    if (reason == "slow" and self.transit and not self._man
+                            and self.last_reject in (None, "slow")):
+                        self.last_reject = reason; self._pending = None
+                        return False                    # 앵커·회전율 유지 = 이어 그리기
+                    self._freeze(t)                     # 이어 그리던 값에서(super 가 last_reject 바꾸기 전에)
+                    return super()._reject(reason, t, keep_pending)
+
+                def update(self, cog_deg, speed_mps, t, *, reverse, spin):
+                    ok = super().update(cog_deg, speed_mps, t, reverse=reverse, spin=spin)
+                    if ok:
+                        self._man = False
+                    return ok
+            if heading_model == "gps_cog_real":
+                # 실제 src 코드 경로(C1b): 추적기 기본값 그대로 + IMU 는 HeadingMux.update_imu 로만 넣는다
+                _trk = HL.GPSCOGTracker(min_speed_mps=gps_cog_min_speed, **real_trk_kw)
+            else:
+                _trk = _ImuAssistTracker(min_speed_mps=gps_cog_min_speed)
+            hmux = HL.HeadingMux(HL.SRC_GPS_COG, gps_cog=_trk)
+            # IMU 모델: 실측(11-14 2번배 블랙박스 imu_delta2) — 1차 지연 τ, 런마다 드리프트율(전진 중) ±, 정지 0.07°/s, 잡음
+            _irng = random.Random(30_000 + seed)       # 다른 난수열과 분리(같은 seed 끼리 짝 비교 유지)
+            if heading_model in ("gps_cog_imu", "gps_cog_final", "gps_cog_real"):
+                imu_tau, imu_noise = imu_lag_sec, 0.3
+                imu_rate_mv = _irng.uniform(-imu_drift_max_dps, imu_drift_max_dps); imu_rate_st = 0.07
+            else:
+                imu_tau, imu_noise, imu_rate_mv, imu_rate_st = 0.0, 0.0, 0.0, 0.0
+            imu_scale = _irng.uniform(imu_scale_min, 1.0) if heading_model != "gps_cog_imu_ideal" else 1.0
+            imu_lag_v = None; imu_drift_acc = 0.0; imu_true_prev = None; imu_scaled = 0.0
+        else:
+            _trk = HL.GPSCOGTracker(min_speed_mps=gps_cog_min_speed)
+            hmux = HL.HeadingMux(HL.SRC_GPS_COG, gps_cog=_trk)
+        hmux.update_boat_mode(2)
+        HM_PUB = HL.PUBLISH_STATES
 
     reds = [(b["x"], b["y"]) for b in W["buoys"] if b["color"] == "red"]
     greens = [(b["x"], b["y"]) for b in W["buoys"] if b["color"] == "green"]
@@ -702,9 +927,12 @@ def run(seed, variant="A", wp_file=None, world_wp_file=WP_DEFAULT, gps_sigma=0.0
     mode_pubs = {}                 # mode → {노드: 틱 수}
     multi_pub_ticks = {}           # mode → 같은 틱 발행자 2개 이상 횟수
     last_cand = None
-    contact_on = {}; contacts = {"gate": 0, "hold": 0, "search": 0, "obst_5": 0, "obst_8": 0, "dock": 0}
+    contact_on = {}; contacts = {"gate": 0, "hold": 0, "search": 0, "obst_5": 0, "obst_8": 0, "dock": 0,
+                                   "wall": 0, "fender": 0}
     contacts_by_mode = {}
     prev_xy = np.array([x, y])
+    avoid_hits = []                # 벽·펜더 접촉 (t, 종류, 선체 부위, 속도, 직전 /desired_angle) — 진단
+    sd_last_des = float('nan')
     gate_cross = [0] * len(W["gates"]); gate_wrong = [0] * len(W["gates"])
     hold_run = 0.0; hold_best = {i: 0.0 for i in W["hold_by_wp"]}; hold_wp = None; srch_run = {}; srch_best = {}
     sb_events = []; sk_events = []; prev_sb = sb.state; prev_sk = sk.state
@@ -754,18 +982,83 @@ def run(seed, variant="A", wp_file=None, world_wp_file=WP_DEFAULT, gps_sigma=0.0
                 f_node = "/scan" if f_kind.startswith("scan") else ("GPS" if f_kind == "gps10" else ("/imu/yaw" if f_kind == "imu3" else ("north_goal_angle" if fault["group"] == "north" else MODE_OWNER.get(pub_mode, "north_goal_angle"))))
                 f_cand0 = last_cand
             # ---- 센서 ----
-            _r = lidar(W, x, y, psi)
+            _r = lidar(W, x + lidar_x * math.sin(math.radians(psi)), y + lidar_x * math.cos(math.radians(psi)), psi)
             scan = Scan((add_lidar_noise(_r, nrng) if nrng is not None else _r).tolist())
             if not (fa and f_kind in ("scan2", "scan5")):
                 for cb in (sd.scan_callback, sg.scan_cb, sb.scan_cb, st.scan_cb, sk.scan_cb):
                     cb(scan)
-            yaw = Float64(psi)
-            if not (fa and f_kind == "imu3"):
+            yaw_v = psi
+            if heading_model == "imu_drift":
+                drift += (imu_drift_dps if abs(v) > 0.3 else imu_drift_still_dps) * DT
+                yaw_v = (psi + drift) % 360.0
+            elif hmux is not None:
+                if heading_model in ("gps_cog_v2", "gps_cog_final"):
+                    _trk.transit = nga.wp_idx in transit_wps
+                if heading_model in ("gps_cog_imu", "gps_cog_imu_ideal", "gps_cog_final", "gps_cog_real"):
+                    # 축척 오차(11-15 카메라 대조 이득 0.95): 참 회전량 × imu_scale 을 누적
+                    imu_scaled = (imu_scaled + (wrap(psi - imu_true_prev) * imu_scale if imu_true_prev is not None else psi)) % 360.0
+                    imu_true_prev = psi
+                    if imu_lag_v is None or imu_tau <= 0.0:
+                        imu_lag_v = imu_scaled
+                    else:
+                        imu_lag_v = (imu_lag_v + wrap(imu_scaled - imu_lag_v) * min(1.0, DT / imu_tau)) % 360.0
+                    imu_drift_acc += (imu_rate_mv if abs(v) > 0.3 else imu_rate_st) * DT
+                    _imu_v = (imu_lag_v + imu_drift_acc + _irng.gauss(0, imu_noise)) % 360.0 if imu_noise else (imu_lag_v + imu_drift_acc) % 360.0
+                    if heading_model == "gps_cog_real":
+                        hmux.update_imu(_imu_v, t)
+                    else:
+                        _trk.imu_now = _imu_v
+                _mr = mc.pubs["/motor_reverse"].last
+                if _mr is not None:
+                    hmux.update_reverse(bool(_mr.data), t)
+                _da = sd.pubs["/desired_angle"].last
+                if _da is not None:
+                    hmux.update_desired_angle(float(_da.data), t)
+                _tp = nga.pubs["/north_goal_angle_tp"].last
+                if _tp is not None:
+                    hmux.update_goal_bearing(float(_tp.data), t)
+                if k % 10 == 3:                       # GPS 1 Hz — 속도벡터(대지, 조류 포함) + 잡음
+                    _vx = v * math.sin(math.radians(psi)) + current[0] + rng.gauss(0, gps_vel_sigma)
+                    _vy = v * math.cos(math.radians(psi)) + current[1] + rng.gauss(0, gps_vel_sigma)
+                    _cog, _spd = HL.cog_from_velocity(_vx, _vy, "enu")
+                    hmux.update_cog(_cog, _spd, t)
+                _hy, _hs = hmux.heading(t)
+                if _hy is not None and _hs in HM_PUB:
+                    yaw_v = _hy; hm_pub_n += 1; hm_err.append(abs(wrap(_hy - psi)))
+                    if hm_err[-1] > 30.0:
+                        hm_gt30_mode[pub_mode] += DT; hm_gt30_why[_trk.last_reject or "ok"] += DT
+                    # 구간 분류: 도리도리(ship_avoid DORI) > 선회 > 후진 > 직후(settle) > 이동 구간 > 미션 중
+                    _sal = sa.pubs["/avoid_state"].last
+                    if _sal is not None and "DORI" in str(_sal.data):
+                        _ph = "dori"
+                    elif hmux.spin_state(t):
+                        _ph = "spin"
+                    elif hmux.reverse_state(t):
+                        _ph = "reverse"
+                    elif _trk._last_maneuver_t is not None and t - _trk._last_maneuver_t < _trk.settle_sec:
+                        _ph = "settle"
+                    elif nga.wp_idx in transit_wps:
+                        _ph = "transit"
+                    else:
+                        _ph = "mission"
+                    hm_phase.setdefault(_ph, []).append(hm_err[-1])
+                else:
+                    yaw_v = None; hm_silent_n += 1
+            if yaw_v is not None and not (fa and f_kind == "imu3"):
+                yaw = Float64(yaw_v)
                 nga.yaw_cb(yaw); sga.yaw_callback(yaw); st.yaw_cb(yaw)
+                if doridori:
+                    sa.yaw_cb(yaw)
+            if doridori:                               # ship_avoid fused: /scan(부표 추출)·/avoid_detections(mode 5 검출기)
+                sa.scan_cb(scan)
+                if pub_mode == 5:
+                    sa.det_cb(Float32MultiArray(avoid_detections(W, x, y, psi, w, v, drng)))
             if k % 10 == 3:                           # GPS 1 Hz
                 lat, lon = geo.ll(x + rng.gauss(0, gps_sigma), y + rng.gauss(0, gps_sigma))
                 if not (fa and f_kind == "gps10"):
                     nga.gps_cb(NavSatFix(lat, lon, cov=max(gps_sigma, 1e-3) ** 2))
+                    if doridori:
+                        sa.gps_cb(NavSatFix(lat, lon, cov=max(gps_sigma, 1e-3) ** 2))
             silent = f_node if (fa and f_kind == "node3") else None
             if k % 50 == 0:
                 nga.boat_mode_cb(Int32(2))
@@ -884,6 +1177,7 @@ def run(seed, variant="A", wp_file=None, world_wp_file=WP_DEFAULT, gps_sigma=0.0
             sd.watchdog_cb(); sd.control_cb()
             if sd.pubs["/desired_angle"].last is not None:
                 mc.angle_callback(sd.pubs["/desired_angle"].last)
+                sd_last_des = sd.pubs["/desired_angle"].last.data
             if sd.pubs["/obstacle_distance_array"].last is not None:
                 mc.obstacle_callback(sd.pubs["/obstacle_distance_array"].last)
             if sd.pubs["/failsafe_level"].last is not None:
@@ -930,6 +1224,20 @@ def run(seed, variant="A", wp_file=None, world_wp_file=WP_DEFAULT, gps_sigma=0.0
                         ks = f"{kind}@WP{nga.wp_idx}(m{cur_mode}):{sb.state}"
                         contacts_sb_state[ks] = contacts_sb_state.get(ks, 0) + 1
                 contact_on[("b", i)] = on if on else (dd < HALF_W + 0.1 and contact_on.get(("b", i), False))
+            if W["avoid_segs"] and math.hypot(x - W["avoid_c"][0], y - W["avoid_c"][1]) < W["avoid_r"] + 2.0:
+                h = np.array([math.sin(math.radians(psi)), math.cos(math.radians(psi))])
+                bow, stern = pos + h * HULL_HALF_L, pos - h * HULL_HALF_L
+                for j, (a_, b_, kind) in enumerate(W["avoid_segs"]):   # 벽·펜더: 선체 중심선 vs 선분
+                    dd = seg_seg_dist(stern, bow, a_, b_) - AL.SEG_R[kind]
+                    on = dd < HALF_W
+                    if on and not contact_on.get(("a", j)):
+                        contacts[kind] += 1; contacts_by_mode[cur_mode] = contacts_by_mode.get(cur_mode, 0) + 1
+                        part = min((("선수", bow), ("중앙", pos), ("선미", stern)),
+                                   key=lambda kv: AL._pt_seg(kv[1], a_, b_))[0]   # 가장 가까운 선체 부위(진단)
+                        _st = sa.pubs["/avoid_state"].last
+                        avoid_hits.append((round(t, 1), kind, part, round(v, 2), round(float(sd_last_des), 1),
+                                           (_st.data.split(" cells=")[0] if _st is not None else None)))
+                    contact_on[("a", j)] = on if on else (dd < HALF_W + 0.1 and contact_on.get(("a", j), False))
                 rd = rect_hull_dist(x, y, psi, b["x"], b["y"], rect_hl, rect_hb)
                 ron = rd < BUOY_R
                 if ron and not rect_on.get(i):
@@ -1098,7 +1406,11 @@ def run(seed, variant="A", wp_file=None, world_wp_file=WP_DEFAULT, gps_sigma=0.0
     out["dock_class"] = dock_outcome(out, sk_events, dock_contact, dock["bay_w"], dock["depth"])
     out["sk_events"] = sk_events; out["sb_events"] = sb_events
     out["contacts"] = contacts; out["contacts_total"] = sum(contacts.values())
-    out["contacts_avoid"] = contacts["obst_5"] + contacts["obst_8"]
+    out["contacts_avoid"] = contacts["obst_5"] + contacts["obst_8"] + contacts["wall"] + contacts["fender"]
+    out["avoid_obs"] = avoid_obs if avoid_obs != "photo" else f"photo-{photo_entry}"
+    out["avoid_hits"] = avoid_hits
+    out["n_walls"] = sum(1 for *_, kd in W["avoid_segs"] if kd == "wall")
+    out["n_fenders"] = sum(1 for *_, kd in W["avoid_segs"] if kd == "fender")
     out["avoid_zone"] = avoid_zone; out["avoid_measure_only"] = avoid_measure_only
     out["zone_true_s"] = round(zone_true_s, 1)
     out["zone_wps"] = sorted(zone_wps)
@@ -1118,6 +1430,22 @@ def run(seed, variant="A", wp_file=None, world_wp_file=WP_DEFAULT, gps_sigma=0.0
                 errs.setdefault(name, set()).add(ln.splitlines()[0][:70])
     out["node_errors"] = {kk: sorted(vv) for kk, vv in errs.items()}
     out["ok"] = ok
+    out["heading_model"] = heading_model
+    if hmux is not None:
+        _e = sorted(hm_err)
+        out["hm_pub_frac"] = round(hm_pub_n / max(1, hm_pub_n + hm_silent_n), 4)
+        out["hm_err_med"] = round(_e[len(_e) // 2], 2) if _e else None
+        out["hm_err_p95"] = round(_e[int(0.95 * (len(_e) - 1))], 2) if _e else None
+        out["hm_err_max"] = round(_e[-1], 2) if _e else None
+        out["hm_err_gt30_s"] = round(sum(1 for e in _e if e > 30.0) * DT, 1)
+        out["hm_gt30_by_mode"] = {kk: round(vv, 1) for kk, vv in sorted(hm_gt30_mode.items())}
+        out["hm_gt30_by_why"] = {kk: round(vv, 1) for kk, vv in sorted(hm_gt30_why.items())}
+        # 구간별 [시간 s, 오차 중앙, 오차 90%, 30° 초과 s]
+        out["hm_phase"] = {kk: [round(len(vv) * DT, 1), round(sorted(vv)[len(vv) // 2], 2),
+                                round(sorted(vv)[int(0.9 * (len(vv) - 1))], 2), round(sum(1 for e in vv if e > 30.0) * DT, 1)]
+                           for kk, vv in sorted(hm_phase.items())}
+    elif heading_model == "imu_drift":
+        out["hm_drift_end"] = round(drift, 1)
     out.update(failsafe_summary(TK))
     if fault is not None:
         out.update(fault_metrics(TK, f_kind, f_t0, f_dur, f_node, f_cand0, wps))
@@ -1364,7 +1692,8 @@ CSV_COLS = ["variant", "seed", "bay", "ok", "exception", "t_course", "t_end", "f
             "gps_stale_n", "north_imu_stale_n", "sga_imu_stale_n", "sga_goal_stale_n", "stop_hold_s", "stop_hold_by_mode",
             "segments", "sk_events", "node_errors", "mode_pubs",
             "search_behavior", "orbit_node", "orbit_geo_deg", "orbit_geo_ok", "orbit_ok", "orbit_tries",
-            "orbit_min_d_after_done"]
+            "orbit_min_d_after_done", "avoid_obs", "n_walls", "n_fenders", "c_wall", "c_fender",
+            "heading_model", "hm_pub_frac", "hm_err_med", "hm_err_p95", "hm_err_max", "hm_err_gt30_s", "hm_drift_end", "hm_gt30_by_mode", "hm_gt30_by_why", "hm_phase"]
 FAULT_COLS = ["fault", "fault_applied", "fault_t0", "fault_wp", "fault_mode", "fault_node", "fault_cand0", "t_L1", "t_L2", "max_lvl", "t_wd", "wd_ticks",
               "stop_s", "v_before", "v_in_mean", "v_in_late", "recover_s", "contacts_fault", "sga_goal_stale", "sga_imu_stale", "gps_stale_flag",
               "base_t_course", "d_t_course", "mission_continued", "same_outcome"]
@@ -1383,7 +1712,10 @@ def to_row(r):
             r["gps_stale_n"], r["north_imu_stale_n"], r["sga_imu_stale_n"], r["sga_goal_stale_n"], r["stop_hold_s"], str(r["stop_hold_by_mode"]),
             seg, ske, str(r["node_errors"]), str({m: sorted(v) for m, v in r["mode_pubs"].items()}),
             r.get("search_behavior"), r.get("orbit_node"), r.get("orbit_geo_deg"), int(bool(r.get("orbit_geo_ok"))),
-            int(bool(r.get("orbit_ok"))), r.get("orbit_tries"), r.get("orbit_min_d_after_done")] + \
+            int(bool(r.get("orbit_ok"))), r.get("orbit_tries"), r.get("orbit_min_d_after_done"),
+            r.get("avoid_obs"), r.get("n_walls"), r.get("n_fenders"), c.get("wall", 0), c.get("fender", 0),
+            r.get("heading_model"), r.get("hm_pub_frac"), r.get("hm_err_med"), r.get("hm_err_p95"), r.get("hm_err_max"),
+            r.get("hm_err_gt30_s"), r.get("hm_drift_end"), r.get("hm_gt30_by_mode"), r.get("hm_gt30_by_why"), r.get("hm_phase")] + \
            ([r.get(kk) for kk in FAULT_COLS] if "fault" in r else [])
 
 
@@ -1431,6 +1763,11 @@ def summarize(R, label):
     lines.append(f"  WP 시간 초과 합 {sum(r['timeouts'] for r in R)} (런당 중앙값 {med(sorted(r['timeouts'] for r in R))}) | 접촉 합 {sum(r['contacts_total'] for r in R)} "
                  f"(회피 장애물 {sum(r['contacts_avoid'] for r in R)}, 게이트 {sum(r['contacts']['gate'] for r in R)}, 위치유지 {sum(r['contacts']['hold'] for r in R)}, "
                  f"탐색 부표 {sum(r['contacts']['search'] for r in R)}, 도크 {sum(r['contacts']['dock'] for r in R)})")
+    if any(r.get("avoid_obs", "buoys") != "buoys" for r in R):
+        cw = [r["contacts"].get("wall", 0) + r["contacts"].get("fender", 0) for r in R]
+        lines.append(f"  장애물 구간({R[0].get('avoid_obs')}, 벽 {med(sorted(r.get('n_walls', 0) for r in R))}·펜더 {med(sorted(r.get('n_fenders', 0) for r in R))}개 중앙값) "
+                     f"벽 접촉 {sum(r['contacts'].get('wall', 0) for r in R)}, 펜더 접촉 {sum(r['contacts'].get('fender', 0) for r in R)} | "
+                     f"접촉 0 런 {sum(1 for v in cw if v == 0)}/{n}, 1 런 {sum(1 for v in cw if v == 1)}, 2+ 런 {sum(1 for v in cw if v >= 2)}")
     if all("avoid_out_s" in r for r in R):
         om = sorted(r["avoid_out_max"] for r in R)
         lines.append(f"  장애물 구간 경계(±{R[0]['avoid_zone']:g} m, 끝 {AVOID_ZONE_END_M:g} m{', 노드엔 안 넘김 — 기준선' if R[0]['avoid_measure_only'] else ''}) 이탈 런 {sum(1 for r in R if r['avoid_out_s'] > 0)}/{n} "
@@ -1439,6 +1776,7 @@ def summarize(R, label):
         zst = {}
         for r in R:
             for kk, vv in r.get("sa_states", {}).items():
+                kk = kk.split(" cells=")[0]          # 도리도리 코어 상태 문자열의 카운터 꼬리는 묶는다
                 zst[kk] = zst.get(kk, 0) + vv
         zw = sorted(set(i for r in R for i in r.get('zone_wps', [])))
         lines.append(f"  /avoid_zone true 런 {sum(1 for r in R if r.get('zone_true_s'))}/{n}, 시간 중앙값 "
@@ -1521,6 +1859,9 @@ def plot(r, path):
         ax.plot([g["red"][0], g["green"][0]], [g["red"][1], g["green"][1]], color="k", ls=":", lw=0.7)
     for a_, b_, kind in W["segs"]:
         ax.plot([a_[0], b_[0]], [a_[1], b_[1]], color="#222", lw=3 if kind == "front" else (2.5 if kind == "cap" else 2))
+    for a_, b_, kind in W.get("avoid_segs", ()):             # 장애물 구간 벽·펜더(--avoid-obs) — 흰색, 검은 테
+        ax.plot([a_[0], b_[0]], [a_[1], b_[1]], color="k", lw=6 if kind == "wall" else 5, solid_capstyle="round", zorder=4)
+        ax.plot([a_[0], b_[0]], [a_[1], b_[1]], color="#f4f4f4", lw=4 if kind == "wall" else 3.5, solid_capstyle="round", zorder=4)
     if W.get("arena"):
         ar = W["arena"] + [W["arena"][0]]
         ax.plot([q[0] for q in ar], [q[1] for q in ar], color="#888", lw=0.8, ls="--")
@@ -1706,8 +2047,37 @@ def main():
                     help="위치유지 부표를 WP 에서 진입 구간 왼쪽 수직으로 m 옮김(WP = 부표 옆 대기점, 기본 0 = WP 위)")
     ap.add_argument("--hold-color-mismatch", action="store_true",
                     help="위치유지 부표 색을 검출기 mode 2 대상 색 밖으로(vision 경로가 못 잡고 지나가는 경우)")
+    ap.add_argument("--avoid-obs", default="buoys", choices=["buoys", "walls_random", "photo"],
+                    help="장애물 구간 물체: buoys = 옛 둥근 부표 6~10개(기본) / walls_random = 긴 흰 벽 4~6 + 누운 펜더 8~14 "
+                         "시드마다 무작위 / photo = 11-13 현장 사진 배치(⚠️ 손 디지타이즈 추정). avoid_layout.py. "
+                         "구간 크기는 --param north_goal_angle.geofence_avoid_polygon 이 있으면 그 폴리곤")
+    ap.add_argument("--lidar-x", type=float, default=0.0, metavar="m",
+                    help="LiDAR 를 배 중심보다 앞(+)으로 m 옮겨 스캔(기본 0 = 옛 시뮬). 2번배 실물 ≈ 0.83(선수 끝 5 cm 뒤, 11-13). "
+                         "노드 파라미터는 안 바꾼다(실물도 노드는 스캔 원점 = 기준으로 계산)")
+    ap.add_argument("--doridori", action="store_true",
+                    help="ship_avoid fused(도리도리)에 /imu/yaw·/scan·GPS·/avoid_detections(흰 벽·펜더 카메라 모델) 배선. "
+                         "기본 끔 = 옛 동작(검출 침묵 → 20000 폴백). /virtual_obstacle_state 는 실제처럼 ship_direction 에 안 넣는다")
+    ap.add_argument("--photo-entry", default="right", choices=["right", "left"],
+                    help="photo: 배가 사진의 어느 끝으로 들어가나(right = 남쪽 둑에서 찍음, left = 북쪽 둑)")
     ap.add_argument("--dock-align", default="wp", choices=["wp", "target"],
                     help="wp = 웨이포인트 그대로(정렬점 = 파일 값) / target = 정렬·WP8·WP9 를 목표 칸 축으로 옮긴 사본")
+    ap.add_argument("--real-trk", default="",
+                    help="gps_cog_real: GPSCOGTracker 키워드 덮기 'k=v,k=v' (float·true/false), 예 imu_assist_max_sec=20.0")
+    ap.add_argument("--imu-scale-min", type=float, default=1.0, help="gps_cog_imu/final: 런마다 IMU 축척 U(값, 1.0) — 11-15 카메라 대조 0.95")
+    ap.add_argument("--imu-lag-sec", type=float, default=1.0, help="gps_cog_imu: IMU 1차 지연 τ(s) — 11-14 실측 근사")
+    ap.add_argument("--imu-drift-max-dps", type=float, default=1.0, help="gps_cog_imu: 런마다 전진 중 드리프트율 U(±값) °/s")
+    ap.add_argument("--imu-assist-max-sec", type=float, default=10.0, help="gps_cog_imu: COG 없이 IMU Δ 로 이어 가는 최대 시간(s)")
+    ap.add_argument("--transit-wps", default="3,6,10,12",
+                    help="--heading-model gps_cog_v2/final: 저속 예측을 켜는 '이동 구간' = 이 WP 번호로 가는 다리 "
+                         "(기본 = 2번배 11-13 녹화 13점 순번: 도킹 정렬·탐색 접근·회피 시작·종료. "
+                         "🚨 다른 WP 파일(15점 템플릿 등)이면 순번이 다르니 직접 지정)")
+    ap.add_argument("--slow-pred-sec", type=float, default=4.0,
+                    help="--heading-model gps_cog_pred: 저속 동안 직전 회전율로 이어 그리는 최대 시간(s)")
+    ap.add_argument("--gps-cog-min-speed", type=float, default=0.5,
+                    help="--heading-model gps_cog 의 COG 채택 최저 속도(m/s). 코드 기본 0.5")
+    ap.add_argument("--heading-model", default="true", choices=["true", "gps_cog", "gps_cog_pred", "gps_cog_v2", "gps_cog_imu", "gps_cog_imu_ideal", "gps_cog_final", "gps_cog_real", "imu_drift"],
+                    help="/imu/yaw 모델: true=참값, gps_cog=src heading_logic HeadingMux(gps_cog)에 1 Hz GPS 속도, "
+                         "imu_drift=참값+전진 중 0.64°/s 누적(11-14 2번배)")
     a = ap.parse_args()
     os.makedirs(OUT_DIR, exist_ok=True)
     if a.write_world_wp:
@@ -1725,7 +2095,14 @@ def main():
               dwell_override=dov, node_overrides=parse_param_overrides(a.param), lidar_noise=a.lidar_noise,
               search_behavior=a.search_behavior, avoid_zone=a.avoid_zone,
               avoid_measure_only=a.avoid_measure_only, world=a.world, dock_cfg=dock_cfg, dock_align=a.dock_align,
-              hold_standoff=a.hold_standoff, hold_color_mismatch=a.hold_color_mismatch)
+              hold_standoff=a.hold_standoff, hold_color_mismatch=a.hold_color_mismatch,
+              avoid_obs=a.avoid_obs, photo_entry=a.photo_entry, lidar_x=a.lidar_x,
+              doridori=a.doridori, heading_model=a.heading_model, gps_cog_min_speed=a.gps_cog_min_speed, slow_pred_sec=a.slow_pred_sec,
+              transit_wps=tuple(int(x) for x in a.transit_wps.split(",") if x.strip()),
+              imu_lag_sec=a.imu_lag_sec, imu_drift_max_dps=a.imu_drift_max_dps, imu_assist_max_sec=a.imu_assist_max_sec, imu_scale_min=a.imu_scale_min,
+              real_trk_kw={kv.split("=")[0].strip(): ({"true": True, "false": False}.get(kv.split("=")[1].strip().lower())
+                                                      if kv.split("=")[1].strip().lower() in ("true", "false")
+                                                      else float(kv.split("=")[1])) for kv in a.real_trk.split(",") if "=" in kv})
     variants = ["A", "B"] if a.variant == "AB" else [a.variant]
     if a.plot_seed is not None:
         for vv in variants:
