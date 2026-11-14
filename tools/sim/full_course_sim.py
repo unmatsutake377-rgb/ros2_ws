@@ -350,8 +350,10 @@ def build_world(world_wps, seed, dock_cfg=None, world=None, hold_standoff=0.0, h
     def add_buoy(p, color, kind):
         W["buoys"].append(dict(x=float(p[0]), y=float(p[1]), color=color, kind=kind))
 
-    # 게이트
-    d01 = P[1] - P[0]; L01 = np.linalg.norm(d01); u = d01 / L01; left = np.array([-u[1], u[0]])
+    by_mode = [w["mode"] for w in world_wps]
+    # 게이트 = 첫 mode 0 WP → 다음 WP (맨 앞 '출항' mode 5 가 있으면 그 뒤, 11-14)
+    ig = by_mode.index(0) if 0 in by_mode else 0
+    d01 = P[ig + 1] - P[ig]; L01 = np.linalg.norm(d01); u = d01 / L01; left = np.array([-u[1], u[0]])
     W["gates"] = []
     if world is not None and world.get("gates"):
         for k, g in enumerate(world["gates"]):
@@ -360,13 +362,12 @@ def build_world(world_wps, seed, dock_cfg=None, world=None, hold_standoff=0.0, h
             add_buoy(red, "red", f"gate{k}"); add_buoy(green, "green", f"gate{k}")
     else:
         for k in range(4):
-            c = P[0] + u * L01 * (k + 0.5) / 4.0; w = rng.uniform(3.0, 6.0)
+            c = P[ig] + u * L01 * (k + 0.5) / 4.0; w = rng.uniform(3.0, 6.0)
             red, green = c + left * w / 2, c - left * w / 2
             W["gates"].append(dict(c=c, w=w, red=red, green=green))
             add_buoy(red, "red", f"gate{k}"); add_buoy(green, "green", f"gate{k}")
     W["gate_u"] = u
     # 미션 부표 (구역 이름대로)
-    by_mode = [w["mode"] for w in world_wps]
     W["hold_by_wp"] = {}                     # 위치유지 WP 순번 → 부표 index (2026 규정: 2회)
     hold_col = hold_mismatch_color() if hold_color_mismatch else "white"
     for i2 in [i for i, m in enumerate(by_mode) if m == 2]:
@@ -452,9 +453,10 @@ def build_world(world_wps, seed, dock_cfg=None, world=None, hold_standoff=0.0, h
                        (p2 + n_ * rr, p2 - n_ * rr), (q2 + n_ * rr, q2 - n_ * rr)):
             outl.append([a_[0], a_[1], b_[0], b_[1]])
     W["avoid_seg_arr"] = np.array(outl)
-    # 출발
-    back = -u; lat_off = rng.uniform(-1.0, 1.0)
-    s0 = P[0] + back * 8.0 + left * lat_off
+    # 출발 = 첫 WP 뒤 8 m (첫 WP → 둘째 WP 연장선). 출항이 없으면 게이트 방향과 같다(옛 결과 그대로)
+    d_s = P[1] - P[0]; u_s = d_s / np.linalg.norm(d_s); left_s = np.array([-u_s[1], u_s[0]])
+    back = -u_s; lat_off = rng.uniform(-1.0, 1.0)
+    s0 = P[0] + back * 8.0 + left_s * lat_off
     W["start"] = s0
     brg = math.degrees(math.atan2(P[0][0] - s0[0], P[0][1] - s0[1]))
     W["psi0"] = (brg + rng.uniform(-20.0, 20.0)) % 360.0

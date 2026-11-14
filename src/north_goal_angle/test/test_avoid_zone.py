@@ -114,13 +114,20 @@ def _course_wps():
 
 
 def test_default_course_wp6_wp7():
-    """실제 waypoints.yaml: WP6·WP7 둘레 폴리곤이면 WP6 로 가는 중(idx 10) false, WP7 로 가는 중(idx 11) true.
+    """실제 waypoints.yaml: WP6·WP7 둘레 폴리곤이면 WP6 로 가는 중 false, WP7 로 가는 중 true.
 
-    도킹 정렬·탐색 접근(구역 밖 mode 5)은 켜지지 않는다. 폴리곤이 비면(yaml 기본 []) 늘 false.
+    출항·도킹 정렬·탐색 접근·장애물 구간 접근(구역 밖 mode 5)은 켜지지 않는다. 폴리곤이 비면(yaml 기본 []) 늘 false.
+    순번은 구역 이름으로 찾는다(맨 앞 '출항' 추가 11-14 로 한 칸 밀림 — 순번 고정 금지).
     """
     wps = _course_wps()
-    i6, i7 = 10, 11
-    assert wps[i6][2] == 5 and wps[i7][2] == 5 and wps[i6 - 1][2] != 5
+    with open(_WP_YAML, encoding='utf-8') as f:
+        labels = [str(w.get('구역', '')) for w in yaml.safe_load(f)['waypoints']]
+    i6 = next(i for i, lb in enumerate(labels) if 'WP6' in lb)
+    i7 = next(i for i, lb in enumerate(labels) if 'WP7' in lb)
+    assert i7 == i6 + 1, labels
+    assert wps[i6][2] == 5 and wps[i7][2] == 5
+    # 바로 앞은 '장애물 구간 접근'(mode 5, 11-15 A7 자리) — 구역 밖이라 아래 flags 에 안 들어가야 한다
+    assert '장애물 구간 접근' in labels[i6 - 1] and wps[i6 - 1][2] == 5, labels
     lats = (wps[i6][0], wps[i7][0])
     lons = (wps[i6][1], wps[i7][1])
     m_lat, m_lon = 3.0 / M_PER_DEG_LAT, 3.0 / KX         # 두 WP 둘레 3 m 여유
