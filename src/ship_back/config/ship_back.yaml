@@ -12,16 +12,18 @@
     hold_dist_m: 2.5         # ⚠️ 실측 필요 — 능동 유지 목표 거리(충돌 여유 + 5m 안을 동시에 만족)
     dist_tol_m: 0.4          # 데드밴드(±). 벗어나면 전/후진으로 되돌린다(표류를 ~tol 로 제한)
 
-    # ---- 위치유지 출처 (계약서_GPS위치유지_20261113, 사용자 결정 11-13) ----
-    # gps = mode 2 를 'WP 반경에 들어가면 GPS(/goal_distance) 기준 정지 유지'로 돈다(기본, 코드 기본값과 같이 고칠 것).
+    # ---- 위치유지 출처 (계약서_GPS위치유지_20261113 → 계약서 v2 위치유지 사각형, Davidson 답 v2 6번 11-15) ----
+    # square = mode 2 를 '남색 부표 4개(5×5 m) 사각형 중심 GPS 기준 유지, 선체 전체 내부 연속 hold_time_sec' 로 돈다
+    #   (기본, 코드 기본값과 같이 고칠 것). 아래 '사각형 위치유지' 절. 🚨 WP2 좌표 = 사각형 중심.
+    #   부표 검출기 image_subscriber_stop(/buoy_bearings)이 없으면 50000 + ERROR 뒤 unknown_giveup_sec 에 포기.
+    # gps = 롤백 1 — mode 2 를 'WP 반경에 들어가면 GPS(/goal_distance) 기준 정지 유지'로 돈다(옛 기본).
     #   SEARCH 20000(north 가 WP 로) → 거리 < gps_enter_m 이면 정지(50000) → 거리 > gps_resume_m 이면 < gps_enter_m
     #   까지 20000(재접근) → gps_keep_radius_m 안 연속 gps_hold_time_sec 이면 완료. 180(후진)·조향각은 안 낸다.
     #   ⚠️ 위치유지 WP 는 부표 좌표가 아니라 부표 옆 2~3 m 물 위 대기점에 찍는다(GPS 지연 ~1 m + 관성 → 접촉 위험).
     # vision = 부표 색(검출기 turn_color_mode2) + LiDAR 거리 능동 유지(위 hold_dist_m, 옛 동작). 롤백 = 이 한 줄.
-    #   잘못된 값 → ERROR 후 gps. search_behavior:=hold 의 mode 3 은 이 값과 무관하게 vision.
-    hold_source: "gps"
-    #   /buoy_bearings(남색 부표 다중 방위, image_subscriber_stop) 은 계약서 v2 (a) 부터 구독·저장만 한다 —
-    #   위 어느 hold_source 에서도 아직 쓰지 않는다(동작 불변). 사각형 위치유지는 변경 단위 (b). 새 파라미터 없음.
+    #   잘못된 값 → ERROR 후 square. search_behavior:=hold 의 mode 3 은 이 값과 무관하게 vision.
+    hold_source: "square"
+    #   /buoy_bearings(남색 부표 다중 방위, image_subscriber_stop) 은 늘 구독한다(gps·vision 은 저장만, 동작 불변).
     # 🚨 gps_enter_m ≥ north arrive_radius_hold_modes_m(3.5), gps_resume_m ≥ gps_enter_m,
     #    gps_keep_radius_m > gps_resume_m — 어기면 시작 ERROR + 셋 모두 기본값.
     #    (enter < 3.5 면 20000 동안 north 가 3.5 m 안 dwell 0.5 s 로 WP 를 넘겨 정지 전에 끝난다)
@@ -30,6 +32,55 @@
     gps_keep_radius_m: 4.5   # 판정 반경 — 규정 5 m 보다 안쪽(GPS 필터 지연 ⚠️ 미실측)
     gps_hold_time_sec: 6.0   # 판정 시간 — 규정 5 s + 여유. 반경을 벗어나면 0 부터
     goal_dist_stale_sec: 2.0 # /goal_distance 가 이보다 묵으면 모름 → 정지, unknown_giveup_sec 뒤 포기
+
+    # ---- 사각형 위치유지 (hold_source=square, 계약서 v2 위치유지 사각형 (b)) ----
+    # 흐름(square_logic.SquareFSM): INIT 20000(north 가 WP2=중심으로) → /goal_distance < square_engage_m 이면 DORI(제자리
+    #   도리도리) → 부표 2개 → SEEK3(예측 꼭짓점 쪽으로 돌아 봄) → 3개 → ENTER(평행사변형 보완 중심으로 진입)
+    #   → FIND4(안에서 4번째) → HOLD(4점 중심 유지, 선체 전체 내부 연속 hold_time_sec) → DONE 20000 + /hold_done true.
+    #   🚨 INIT·DONE 밖에선 20000 을 내지 않는다(north dwell 대기 — WP2 3.5 m 안에서 20000 이면 WP 를 넘긴다).
+    #   부표 위치 = 자기 RTK fix + 헤딩 + /buoy_bearings 방위 + LiDAR(/scan) 거리. 카메라 거리는 안 쓴다.
+    #   헤딩 = /imu/yaw(gps_cog 절대) 를 기준으로, 회전량은 /imu/yaw_raw(IMU 상대) — gps_cog 저속 HOLD 보완.
+    # 🚨 숫자는 소수점 그대로(5.0 ↔ 5 는 노드 부팅 사망), buoy_confirm_obs 만 정수.
+    square_side_m: 5.0           # 규정 사각형 한 변(Davidson 답 1)
+    hull_length_m: 1.77          # 선체 길이 — 공용 보수값(2번배, Davidson 답 v1 7-(i)). 배별 분기 없음
+    hull_beam_m: 0.57            # 선체 폭 — 공용 보수값(1번배)
+    buoy_radius_m: 0.25          # ⚠️ 실측 필요 — 남색 부표 반지름
+    square_inside_margin_m: 0.3  # ⚠️ 실측 필요 — '내부' 판정 여유(GPS·헤딩·안테나 위치). 변에서 부표 반지름+이 값 안쪽
+    #   🚨 square_side_m − 2×(buoy_radius_m + square_inside_margin_m) < hull_length_m 이면 '안전영역 소멸' — 시작 ERROR,
+    #      그 설정으론 성공(DONE) 판정이 안 난다(성공 금지).
+    square_shape_tol_m: 2.0      # ⚠️ 실측 필요 — 변·대각선 길이 허용 오차(부표마다 표류 ~1 m → 변 ±2 m). 넘으면 사각형으로 안 봄
+    buoy_pos_max_err_m: 0.6      # ⚠️ 실측 필요 — 부표 GPS 추정 흩어짐(RMS) 상한. 넘는 부표는 확정 안 함 → 성공 금지
+    buoy_confirm_obs: 5          # 부표 확정 관측 수(정수)
+    buoy_assoc_m: 1.2            # ⚠️ 실측 필요 — 관측을 같은 부표로 묶는 거리
+    obs_min_conf: 0.1            # /buoy_bearings conf 하한(conf = 면적 비례 — 먼 부표는 낮다, 9 m ≈ 0.3)
+    obs_max_range_m: 10.0        # LiDAR 거리 상한(멀수록 헤딩 오차가 위치 오차로 커진다)
+    obs_max_turn_dps: 15.0       # ⚠️ 실측 필요 — /imu/yaw_raw 회전율이 이보다 크면 관측 버림(번짐)
+    bearings_stale_sec: 1.0      # ⚠️ 실측 필요 — /buoy_bearings 침묵 판정(BEST_EFFORT d1, 프레임 간격의 여러 배)
+    fix_stale_sec: 2.0           # GPS 1 Hz
+    yaw_stale_sec: 1.0           # /imu/yaw(yaw_mux) 침묵 판정
+    yaw_raw_stale_sec: 0.5       # /imu/yaw_raw(iahrs 100 Hz) 침묵 판정
+    heading_use_raw: true        # false = /imu/yaw 만(옛 방식 — gps_cog 정지 HOLD 동안 회전을 모른다. 비교·롤백용)
+    yaw_offset_tau_sec: 3.0      # ⚠️ 실측 필요 — 기준(offset = /imu/yaw − raw)이 /imu/yaw 새 값을 따라가는 시상수(0 = 그대로)
+    yaw_offset_max_turn_dps: 5.0 # ⚠️ 실측 필요 — /imu/yaw_raw 회전율이 이보다 크면 기준 안 고침(선회 중 COG 지연)
+    yaw_offset_min_speed_mps: 0.6 # ⚠️ 실측 필요 — GPS 로 잰 속도가 이보다 느리면 기준 안 고침(gps_cog HOLD·예측 값)
+    yaw_raw_invert: false        # ⚠️ 실측 필요 — 🚨 이 배의 ssf_heading_{A,B}.yaml invert_yaw 와 같게(지금 둘 다 false)
+    square_engage_m: 8.0         # /goal_distance 가 이보다 작으면 INIT(20000) → 찾기. 🚨 ≥ 3.5 + 2.0
+    init_min_sec: 1.0            # INIT 최소 시간
+    look_tol_deg: 10.0           # 목표 방위 이만큼 안이면 멈춰 본다
+    look_dwell_sec: 1.5          # 한 방위에서 멈춰 보는 시간
+    look_turn_max_sec: 8.0       # 한 방위로 돌기 상한(못 맞추면 그 자리에서 본다)
+    dori_amp_deg: 40.0           # 도리도리 한 칸(카메라 63.9° 와 겹치게)
+    spin_pulse_sec: 0.3          # ⚠️ 실측 필요 — 제자리 선회 펄스(5000/6000) 길이
+    spin_pause_sec: 0.4          # ⚠️ 실측 필요 — 펄스 사이 정지(50000). 0 이면 연속 선회
+    hold_in_m: 0.4               # 중심 이만큼 안이면 정지
+    hold_out_m: 0.8              # 중심 이만큼 밖이면 다시 이동(히스테리시스, > hold_in_m)
+    steer_spin_deg: 60.0         # 목표 상대방위가 이보다 크면 선회부터(≤ 80)
+    entry_clear_m: 1.2           # 진입 직선이 부표에 이보다 가까우면 그 변 바깥 중간점을 먼저
+    entry_standoff_m: 1.5        # 그 중간점에서 바깥으로 떨어진 거리
+    close_m: 0.4                 # ⚠️ 실측 필요 — 선체↔물체 여유(LiDAR 최근접). 선수 앞 이 안이면 짧게 후진(180)·전진 금지,
+    #                              선체 반대각선(0.93) + 이 값 안이면 제자리 선회 금지. LiDAR 원점 = 선체 중심 가정
+    reverse_pulse_sec: 1.0       # 후진 펄스 길이(같은 길이만큼 쉬고 다시 판단). 후진 중 geofence 가드 없음
+    square_max_sec: 90.0         # 찾기 시작(DORI) 뒤 이 시간에 못 끝내면 포기 DONE(ERROR)
 
     # ---- 탐색/신선도 ----
     # SEARCH 시간 초과로 DONE 래치할지(계약 전체코스 §2-4). false(기본) = 계속 SEARCH(20000),
@@ -43,6 +94,7 @@
     # HOLD 에서 거리 'unknown'(LiDAR 가 부표를 못 봄)이 이 시간 이어지면 포기 → DONE(20000), ERROR 1회.
     #   거리가 다시 잡히면 리셋. (계약 전체코스 §10-추가 결정 4)
     unknown_giveup_sec: 10.0
+    #   square 도 이 값 — 센서(/buoy_bearings·fix·헤딩) 없음이 이어지면 포기.
     # 한 WP(담당 모드 진입)에서 HOLD 시간 합이 이 값에 닿으면 포기 → DONE(20000), ERROR 1회.
     #   HOLD↔SEARCH 를 오가도 합산, 모드 진입 때만 0. (계약 전체코스 §10-추가 결정 5)
     #   아래 재획득 정지 창(STOP_HOLD) 시간도 합에 든다 — 창 중에도 판정해 넘으면 DONE.

@@ -383,9 +383,9 @@ def _load_node_module():
         'rclpy.executors': dict(MultiThreadedExecutor=object),
         'rclpy.qos': dict(QoSProfile=_QoS, ReliabilityPolicy=_enum('R'), HistoryPolicy=_enum('H')),
         'std_msgs': {},
-        'std_msgs.msg': dict(Float32=_Msg, Int32=_Msg, Float32MultiArray=_F32MA),
+        'std_msgs.msg': dict(Float32=_Msg, Float64=_Msg, Int32=_Msg, Bool=_Msg, Float32MultiArray=_F32MA),
         'sensor_msgs': {},
-        'sensor_msgs.msg': dict(LaserScan=object),
+        'sensor_msgs.msg': dict(LaserScan=object, NavSatFix=object),
     }
     saved = {k: sys.modules.get(k) for k in mods}
     try:
@@ -570,8 +570,8 @@ def test_node_default_without_fusion_equals_lidar():
 
 
 def test_node_default_gps_mode2_never_consults_fused():
-    """기본 hold_source=gps 의 mode 2 는 GPS 경로 — distance_source=fused 여도 /fused_objects 를 안 본다(무영향)."""
-    n = _make()
+    """hold_source=gps(롤백) 의 mode 2 는 GPS 경로 — distance_source=fused 여도 /fused_objects 를 안 본다(무영향)."""
+    n = _make(hold_source='gps')
     assert n.hold_source == 'gps' and n.distance_source == 'fused'
 
     def boom(*a, **k):

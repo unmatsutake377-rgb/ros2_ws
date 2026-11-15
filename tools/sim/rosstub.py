@@ -114,6 +114,7 @@ def install():
     for n in ("Float32", "Float64", "Int32", "Bool", "Float32MultiArray", "String", "Int32MultiArray", "Float64MultiArray"):
         setattr(stdm, n, type(n, (Msg,), {}))
     sen = types.ModuleType("sensor_msgs"); senm = types.ModuleType("sensor_msgs.msg"); senm.LaserScan = type("LaserScan", (), {})
+    senm.NavSatFix = type("NavSatFix", (), {})     # ship_back(hold_source=square) import 용 — full_course_sim 은 자기 것으로 덮는다
     rcli = types.ModuleType("rcl_interfaces"); rclim = types.ModuleType("rcl_interfaces.msg")
     rclim.ParameterDescriptor = ParameterDescriptor; rcli.msg = rclim
     for k, v in {"rclpy": rclpy, "rclpy.node": node, "rclpy.executors": ex, "rclpy.qos": qos,

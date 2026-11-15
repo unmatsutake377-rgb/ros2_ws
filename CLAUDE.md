@@ -80,13 +80,15 @@ rclpy 는 소스 위치별로 심각도를 캐싱해 `ValueError: Logger severit
 | `/gates_passed` | `Int32` | `ship_gate` | `blackbox` — 🚨 `/gate_pass_count` 아님 |
 | `/geofence_state` | `Float32MultiArray` | `north_goal_angle` | `ship_direction` |
 | `/image_color` | `String` | `basic_image_subscriberturn` | `ship_turn`, `blackbox` |
-| `/buoy_bearings` | `Float32MultiArray` | `basic_image_subscriberstop` (mode 2, 프레임마다, RELIABLE) | `ship_back` (저장만 — 위치유지 사각형 (b) 전까지 동작에 안 씀) — `[VER=1, STRIDE=4, N, (bearing_left_deg, area_px, conf, age_s)×N]`, 남색(`hsv.navy`) 부표 전부, 방위 = camera_info fx·cx(좌 +), **거리 없음**. 0개면 N=0 하트비트 |
+| `/buoy_bearings` | `Float32MultiArray` | `basic_image_subscriberstop` (mode 2, 프레임마다, RELIABLE) | `ship_back` (**구독 BEST_EFFORT d1**. `hold_source: square`(기본) 위치유지 입력 — 거리는 LiDAR 만, `bearings_stale_sec` 넘게 침묵이면 고정주기 타이머에서 50000 + ERROR. gps·vision 은 저장만) — `[VER=1, STRIDE=4, N, (bearing_left_deg, area_px, conf, age_s)×N]`, 남색(`hsv.navy`) 부표 전부, 방위 = camera_info fx·cx(좌 +), **거리 없음**. 0개면 N=0 하트비트 |
+| `/hold_done` | `Bool` | `ship_back` (`hold_source: square` 일 때만, mode 2 틱마다, RELIABLE) — true = 위치유지 DONE(성공·포기 모두, 포기는 ERROR 로그), 그 전 false | 없음 — `north_goal_angle` 구독은 위치유지 사각형 변경 단위 (c) |
 | `/boat_mode` `/boat_id` | `Int32` | `ssf_bridge` | `mission_monitor` |
 | `/boat_cmd_watchdog` `/boat_estop` | `Bool` | `ssf_bridge` | `mission_monitor` |
 | `/obstacle_distance_array` | `Float32MultiArray` | `ship_direction` | `motor_control`, `blackbox` — `[거리(m), 각도(deg)]`, 없으면 `[inf, nan]` |
 | `/motor_reverse` | `Bool` | `motor_control` | `yaw_mux` — 실제 출력 PWM 좌우 평균 > 1500 |
-| `/imu/yaw` | `Float64` | **`ssf_heading/yaw_mux` 하나뿐**(`yaw_mux.py:129`) | `ship_goal_angle`, `north_goal_angle`, `ship_turn` |
-| `/imu/yaw_raw` | `Float64` | `iahrs_driver` | `yaw_mux`, `healthcheck` |
+| `/imu/yaw` | `Float64` | **`ssf_heading/yaw_mux` 하나뿐**(`yaw_mux.py:129`) | `ship_goal_angle`, `north_goal_angle`, `ship_turn`, `ship_avoid`, `perception_fusion`, `ship_back`(`hold_source: square` 일 때만), `healthcheck`·`blackbox`(관찰) |
+| `/imu/yaw_raw` | `Float64` | `iahrs_driver` | `yaw_mux`, `healthcheck`, `ship_back`(`hold_source: square` 일 때만 — 회전량만, 절대값은 `/imu/yaw`) |
+| `/ublox_gps_node/fix` | `NavSatFix` | `ublox_gps_node` | `north_goal_angle`, `perception_fusion`, `ship_avoid`, `ship_back`(`hold_source: square` 일 때만) |
 | `/heading_status` | `String` | `yaw_mux` | `healthcheck` |
 | `/obstacle_reject_count` | `Int32` | `ship_direction` (median 기각 수, 관측 전용) | `blackbox` — 제어에 안 쓴다 |
 
@@ -113,7 +115,7 @@ rclpy 는 소스 위치별로 심각도를 캐싱해 `ValueError: Logger severit
 | 값 | 의미 |
 |---|---|
 | `5000.0` | 우선회 SPIN_RIGHT |
-| `6000.0` | 좌선회 SPIN_LEFT (현재 발행 노드 없음, 예약) |
+| `6000.0` | 좌선회 SPIN_LEFT (`ship_dock` SEARCH 스윕, `ship_avoid` core, `ship_back` `hold_source: square` 가 낸다) |
 | `20000.0` | 미션 없음 CANDIDATE_INVALID → fallback 전진 |
 | `50000.0` | 정지 STOP_HOLD / STOP_VALUE |
 
@@ -192,7 +194,7 @@ SPIN 중심 `spin_forward_pwm`(기본 1500 → 1400/1600 = 제자리 선회). �
 - **TTC 비상제동은 '해로워서' 폐기**, 시간투표는 '무익해서' OFF — 둘을 구분할 것.
 
 **6-2. 재론 금지 (경쟁팀 분석 결론).** 갭 목표방위 가중·최소 갭폭 제약·선회 bbox∩LiDAR = 이미 있음 / median = 채택(DBSCAN 안 함) /
-위치유지 = LiDAR 유지, RTK 는 폴백만, **PD 미채택**(체인이 각도 기반) / 게이트 유체장 = 안 함 / `obstacle_detector` = 안 함 / 도킹 확인-N = 5단계 후. 근거 상세 §6-2
+위치유지 = **`ship_back` `hold_source: square`(기본, 11-15 Davidson — 남색 부표 4개 GPS 투영 중심 기준, 선체 전체 내부 5 s)**, 롤백 `gps`(WP 반경 정지)·`vision`(LiDAR 거리 유지). "RTK 는 폴백만" 은 이 미션에 한해 Davidson 결정으로 바뀜(계약서 v2 위치유지 사각형), **PD 미채택**(체인이 각도 기반) / 게이트 유체장 = 안 함 / `obstacle_detector` = 안 함 / 도킹 확인-N = 5단계 후. 근거 상세 §6-2
 
 ## 7. 작업이 끝나면
 

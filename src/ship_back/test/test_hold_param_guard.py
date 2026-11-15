@@ -153,9 +153,10 @@ def _load_node_module():
         'rclpy.qos': {n: _qos_cls(n) for n in
                       ('QoSProfile', 'ReliabilityPolicy', 'HistoryPolicy')},
         'std_msgs': {},
-        'std_msgs.msg': dict(Float32=object, Int32=object, Float32MultiArray=object),
+        'std_msgs.msg': dict(Float32=object, Float64=object, Int32=object, Bool=object,
+                             Float32MultiArray=object),
         'sensor_msgs': {},
-        'sensor_msgs.msg': dict(LaserScan=object),
+        'sensor_msgs.msg': dict(LaserScan=object, NavSatFix=object),
     }
     saved = {k: sys.modules.get(k) for k in mods}
     try:

@@ -5,7 +5,9 @@
       tools/run_tests.sh ship_back
 
 계약서 docs/문제와작업/계약서_GPS위치유지_20261113.md (사용자 결정 11-13):
-  · 기본 hold_source = gps(코드 기본값 == yaml). vision 은 옵션 — 명시하면 지금과 출력이 비트 동일.
+  · 기본 hold_source = square(계약서 v2 위치유지 사각형, 11-15 — 코드 기본값 == yaml, test_square_logic). gps 는
+    롤백 스위치 — 이 파일의 gps 시나리오는 hold_source='gps' 를 명시하고, 출력이 수정 전과 비트 동일해야 한다.
+    vision 도 옵션 — 명시하면 지금과 출력이 비트 동일.
   · gps(mode 2 만): INIT 20000 1 s → SEARCH 20000 → /goal_distance(쓸 수 있는 값) < gps_enter_m 이면 HOLD
     → HOLD 는 50000(정지) / 거리 > gps_resume_m 이면 < gps_enter_m 까지 20000(재접근, 히스테리시스)
     → gps_keep_radius_m(4.5) 안 연속 gps_hold_time_sec(6) 이면 DONE(20000). 180·조향각은 절대 안 낸다.
@@ -44,7 +46,7 @@ def _levels(issues):
 
 # ─────────────── 순수 함수 ───────────────
 def test_constants():
-    assert DEFAULT_HOLD_SOURCE == 'gps'
+    assert DEFAULT_HOLD_SOURCE == 'square'      # 11-15 계약서 v2 (b) Davidson 답 v2 6번(옛 기본 gps)
     assert (DEFAULT_GPS_ENTER_M, DEFAULT_GPS_RESUME_M, DEFAULT_GPS_KEEP_RADIUS_M) == (3.5, 4.0, 4.5)
     assert (DEFAULT_GPS_HOLD_TIME_SEC, DEFAULT_GOAL_DIST_STALE_SEC) == (6.0, 2.0)
     assert GOAL_DIST_ENTRY_GUARD_SEC == 1.0 and NORTH_ARRIVE_HOLD_M == 3.5
@@ -54,9 +56,10 @@ def test_hold_source_values():
     assert check_hold_source('gps') == ('gps', None)
     assert check_hold_source('vision') == ('vision', None)
     assert check_hold_source(' Vision ') == ('vision', None)
+    assert check_hold_source(' SQUARE ') == ('square', None)
     for bad in ('lidar', '', None, 3, ['gps']):
         v, err = check_hold_source(bad)
-        assert v == 'gps' and err is not None and 'vision|gps' in err, (bad, v, err)
+        assert v == 'square' and err is not None and 'vision|gps|square' in err, (bad, v, err)
 
 
 def test_gps_applies_mode_2_only():
@@ -207,9 +210,9 @@ def _load_node_module():
         'rclpy.executors': dict(MultiThreadedExecutor=object),
         'rclpy.qos': dict(QoSProfile=_QoS, ReliabilityPolicy=_enum('R'), HistoryPolicy=_enum('H')),
         'std_msgs': {},
-        'std_msgs.msg': dict(Float32=_F32, Int32=_Msg, Float32MultiArray=_Msg),
+        'std_msgs.msg': dict(Float32=_F32, Float64=_Msg, Int32=_Msg, Bool=_Msg, Float32MultiArray=_Msg),
         'sensor_msgs': {},
-        'sensor_msgs.msg': dict(LaserScan=object),
+        'sensor_msgs.msg': dict(LaserScan=object, NavSatFix=object),
     }
     saved = {k: sys.modules.get(k) for k in mods}
     try:
@@ -401,8 +404,8 @@ def test_vision_no_goal_distance_subscription():
     assert _lines(n, 'ERROR') == []
 
 
-def test_gps_default_subscribes_goal_distance_reliable_d5():
-    n = _make()
+def test_gps_subscribes_goal_distance_reliable_d5():
+    n = _make(hold_source='gps')
     assert n.hold_source == 'gps'
     subs = [s for s in n.subs if s[1] == '/goal_distance']
     assert len(subs) == 1 and subs[0][0] is _F32, n.subs
@@ -497,9 +500,9 @@ def test_buoy_bearings_does_not_change_vision_output():
 
 
 def test_buoy_bearings_does_not_change_gps_output():
-    """기본 gps 경로 같은 입력 — /buoy_bearings 유무와 무관하게 발행값·상태가 같다."""
+    """gps 경로(롤백) 같은 입력 — /buoy_bearings 유무와 무관하게 발행값·상태가 같다."""
     def scenario(runner):
-        r = runner(_make())
+        r = runner(_make(hold_source='gps'))
         vis = dict(angle=15.0, scan=_Scan(ring=1.2))
         r.tick(mode=2, goal=0.1, **vis)
         r.run(11, goal=20.0, **vis)
@@ -514,7 +517,8 @@ def test_buoy_bearings_does_not_change_gps_output():
 
 # ─────────── gps 노드 동작 ───────────
 def _gps_run(**over):
-    return _Run(_make(**over))
+    """hold_source=gps(롤백 스위치) 명시 — 11-15 부터 코드 기본은 square."""
+    return _Run(_make(**dict({'hold_source': 'gps'}, **over)))
 
 
 def test_gps_normal_flow_init_search_stop_6s_done():
@@ -709,6 +713,10 @@ def test_node_defaults_silent_single_start_line():
     n = _make()
     assert n.get_logger().lines and len(n.get_logger().lines) == 1, n.get_logger().lines
     s = _start_line(n)[0]
+    assert 'hold_source=square' in s and '사각형' in s, s
+    n = _make(hold_source='gps')
+    assert len(n.get_logger().lines) == 1, n.get_logger().lines
+    s = _start_line(n)[0]
     assert 'hold_source=gps' in s and '3.5' in s and '4.5' in s and '6.0' in s, s
 
 
@@ -720,13 +728,13 @@ def test_node_band_error_once_defaults():
         assert n.gps_hold_timer.keep_radius == 4.5 and n.gps_hold_timer.hold_time == 6.0
 
 
-def test_node_bad_hold_source_error_gps():
+def test_node_bad_hold_source_error_square():
     n = _make(hold_source='lidar')
-    assert n.hold_source == 'gps'
+    assert n.hold_source == 'square'                      # 잘못된 값 → 기본(square) 쪽
     e = _lines(n, 'ERROR')
     assert len(e) == 1 and 'lidar' in e[0], e
     assert len([s for s in n.subs if s[1] == '/goal_distance']) == 1
-    assert 'hold_source=gps' in _start_line(n)[0]
+    assert 'hold_source=square' in _start_line(n)[0]
 
 
 def test_node_vision_skips_gps_guard_lines_but_keeps_values():

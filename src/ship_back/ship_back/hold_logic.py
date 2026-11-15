@@ -244,11 +244,14 @@ class HoldTimer:
 
 
 # ==================== GPS 위치유지 hold_source=gps (계약서_GPS위치유지_20261113) ====================
-# 사용자 결정 11-13: 위치유지(mode 2) = 'WP 반경에 들어가면 GPS 기준 정지 유지'. 기본 gps, 부표 비전 경로는
-#   hold_source=vision 옵션(지금 동작 그대로). ⚠️ CLAUDE.md §6-2 'LiDAR 유지, RTK 폴백' 과 반대 — 계약서가 근거.
+# 사용자 결정 11-13: 위치유지(mode 2) = 'WP 반경에 들어가면 GPS 기준 정지 유지'. 11-15 부터 기본은 square
+#   (계약서 v2 위치유지 사각형) — gps 는 롤백 옵션, 부표 비전 경로는 hold_source=vision 옵션(지금 동작 그대로).
+#   ⚠️ CLAUDE.md §6-2 'LiDAR 유지, RTK 폴백' 과 반대 — 계약서가 근거.
 # 아래 DEFAULT_* = ship_back.py declare_parameter 리터럴 = config/ship_back.yaml (test_gps_hold 가 묶음).
-HOLD_SOURCES = ('vision', 'gps')
-DEFAULT_HOLD_SOURCE = 'gps'
+# 계약서 v2 위치유지 사각형 (b), Davidson 답 v2 6번: square 추가 + 대회 기본 square. gps·vision 은 롤백 스위치.
+#   square 의 로직은 square_logic.py(사각형 FSM). gps/vision 경로는 이 값만 다르고 출력 비트 그대로.
+HOLD_SOURCES = ('vision', 'gps', 'square')
+DEFAULT_HOLD_SOURCE = 'square'
 GPS_HOLD_MODES = (2,)               # search_behavior:=hold 의 mode 3 은 vision 경로 그대로(결정 4)
 DEFAULT_GPS_ENTER_M = 3.5           # 이 거리 미만이면 정지 시작 / 재접근 끝
 DEFAULT_GPS_RESUME_M = 4.0          # 정지 중 이 거리 초과면 재접근(20000)
@@ -268,13 +271,13 @@ GOAL_DIST_ENTRY_GUARD_SEC = 1.0
 def check_hold_source(value):
     """파라미터 hold_source → (쓸 값, 오류 메시지 or None). 순수 함수.
 
-    vision|gps(앞뒤 공백·대소문자 무시) 밖이면 기본(gps, 결정 1 — 기본과 같은 쪽) + 메시지.
+    vision|gps|square(앞뒤 공백·대소문자 무시) 밖이면 기본(square, 결정 1 — 기본과 같은 쪽) + 메시지.
     """
     v = value.strip().lower() if isinstance(value, str) else None
     if v in HOLD_SOURCES:
         return v, None
-    return DEFAULT_HOLD_SOURCE, (f"🚨 hold_source={value!r} 는 vision|gps 가 아님 → {DEFAULT_HOLD_SOURCE} 로 돈다"
-                                 f"(mode 2 = /goal_distance 정지 유지). ship_back.yaml 확인.")
+    return DEFAULT_HOLD_SOURCE, (f"🚨 hold_source={value!r} 는 vision|gps|square 가 아님 → {DEFAULT_HOLD_SOURCE} 로 돈다"
+                                 f"(mode 2 = 남색 부표 4개 사각형 중심 유지). ship_back.yaml 확인.")
 
 
 def gps_hold_applies(hold_source, wp_mode):

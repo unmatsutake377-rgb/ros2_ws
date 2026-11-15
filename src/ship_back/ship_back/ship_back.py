@@ -50,6 +50,18 @@ FSM: INIT → SEARCH → HOLD → DONE.
     hold_source=vision 이면 위 [1]~[5] 그대로(출력 비트 동일, /goal_distance 구독도 안 만듦).
     search_behavior:=hold 의 mode 3 은 늘 vision 경로. ⚠️ 위치유지 WP = 부표 옆 대기점(2~3 m)에 찍는다.
 
+[7] (계약서 v2 위치유지 사각형 (b), Davidson 답 v2) hold_source 기본 square — mode 2 만:
+    남색 부표 4개(5×5 m) 사각형을 찾아 그 중심 GPS 를 기준으로 선체 전체를 사각형 안에 연속 hold_time_sec 유지.
+    로직·상태(INIT·DORI·SEEK3·ENTER·FIND4·HOLD·DONE)는 square_logic.SquareFSM — 이 파일은 센서 배선·투영·발행만.
+    입력: /buoy_bearings(방위) + /scan(거리, LiDAR 만) + /ublox_gps_node/fix(자기 RTK) + 헤딩(/imu/yaw 절대 +
+    /imu/yaw_raw 회전량, square_logic.HeadingFuser) + /goal_distance(INIT → 사각형 찾기 시작 거리).
+    출력: INIT·DONE 만 20000(🚨 그 사이엔 절대 아님 — north dwell 대기, 계약서 위험 1), 그 밖 {±80 조향, 5000,
+    6000, 50000, 180(앞쪽 근접 때만 짧게)}. /hold_done(Bool, RELIABLE) = DONE 이면 true(성공·포기 모두 — 포기는
+    ERROR), 그 전 false — square 일 때만 mode 2 틱마다 발행(구독은 north, 변경 단위 (c)).
+    /buoy_bearings 침묵·형식 오류, fix 없음, 헤딩 없음 → 50000 + ERROR(5 s 주기), unknown_giveup_sec 뒤 포기 DONE.
+    square 일 때만 fix·/imu/yaw·/imu/yaw_raw·/hold_done 을 만든다(gps·vision 은 DDS 그래프·출력 비트 그대로).
+    ⚠️ WP2 좌표 = 사각형 중심(Davidson 답 v2 6번) — waypoints.yaml 지침은 변경 단위 (d).
+
 ⚠️ ship_last 는 6b 에서 이미 제거됨(6d-[3]). 여기선 ship_back 만 다룬다.
 """
 
@@ -61,8 +73,8 @@ import rclpy
 from rclpy.node import Node
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
-from std_msgs.msg import Float32, Int32, Float32MultiArray
-from sensor_msgs.msg import LaserScan
+from std_msgs.msg import Float32, Float64, Int32, Bool, Float32MultiArray
+from sensor_msgs.msg import LaserScan, NavSatFix
 
 from ship_back.hold_logic import station_keep_action, HoldTimer, should_reset_on_mode
 from ship_back.hold_logic import target_source, counts_as_seen, search_timed_out, unknown_giveup
@@ -73,6 +85,9 @@ from ship_back.hold_logic import check_distance_source, fused_allowed_src_ids, p
 from ship_back.hold_logic import fused_fresh, match_fused, choose_distance
 from ship_back.hold_logic import check_hold_source, gps_hold_applies, check_gps_hold_params
 from ship_back.hold_logic import goal_dist_usable, gps_hold_action
+from ship_back.square_logic import (SquareFSM, HeadingFuser, check_square_params, square_hold_applies,
+                                    parse_buoy_bearings, fix_usable, ll_to_xy, project, gps_velocity,
+                                    dead_reckon)
 
 IMAGE_ANGLE_INVALID = 10000.0
 CANDIDATE_INVALID = 20000.0
@@ -193,11 +208,12 @@ class ShipBack(Node):     # 🚨 작년엔 ShipTurn 이었다(복붙). 이름을
             self.get_logger().error(
                 f"fused_allowed_sources 에 모르는 출처 {bad_src} → 무시(lidar|depth|fused|row 만)")
 
-        # 위치유지 출처(계약서_GPS위치유지_20261113 결정 1). 코드 기본값 = yaml = 'gps'. 잘못된 값 → ERROR 후 gps.
+        # 위치유지 출처(계약서_GPS위치유지_20261113 결정 1 → 계약서 v2 위치유지 사각형 Davidson 답 v2 6번).
+        #   코드 기본값 = yaml = 'square'. 잘못된 값 → ERROR 후 square. gps·vision 은 롤백 스위치.
         #   vision 이면 /goal_distance 구독을 만들지 않는다(DDS 그래프까지 지금 그대로). 구독보다 먼저 선언.
-        #   gps_* 는 vision 이어도 선언·검사한다(yaml 키가 버려지지 않게, 다시 gps 로 바꿀 때 같은 기준).
+        #   gps_*·square 키는 다른 출처여도 선언·검사한다(yaml 키가 버려지지 않게, 다시 바꿀 때 같은 기준).
         self.hold_source, hs_err = check_hold_source(
-            self.declare_parameter('hold_source', 'gps').value)
+            self.declare_parameter('hold_source', 'square').value)
         (self.gps_enter_m, self.gps_resume_m, self.gps_keep_radius_m, self.gps_hold_time_sec,
          self.goal_dist_stale_sec, gps_issues) = check_gps_hold_params(
             self.declare_parameter('gps_enter_m', 3.5).value,
@@ -210,6 +226,52 @@ class ShipBack(Node):     # 🚨 작년엔 ShipTurn 이었다(복붙). 이름을
         for _level, text in gps_issues:      # 가드는 ERROR 만 낸다
             self.get_logger().error(text)
 
+        # 사각형 위치유지(hold_source=square, 계약서 v2 (b)). 기본값 리터럴 = square_logic.DEFAULTS = yaml
+        #   (test_square_logic 이 묶음 — launch_files T3/T4 가 ast 로 리터럴을 읽으므로 상수 참조 금지).
+        #   구독·타이머보다 먼저 선언. 가드는 ERROR 만(잘못된 값 → 그 값만 기본값, 안전영역 소멸 → 값 유지·성공 금지).
+        sq_raw = {
+            'square_side_m': self.declare_parameter('square_side_m', 5.0).value,
+            'hull_length_m': self.declare_parameter('hull_length_m', 1.77).value,
+            'hull_beam_m': self.declare_parameter('hull_beam_m', 0.57).value,
+            'buoy_radius_m': self.declare_parameter('buoy_radius_m', 0.25).value,
+            'square_inside_margin_m': self.declare_parameter('square_inside_margin_m', 0.3).value,
+            'square_shape_tol_m': self.declare_parameter('square_shape_tol_m', 2.0).value,
+            'buoy_pos_max_err_m': self.declare_parameter('buoy_pos_max_err_m', 0.6).value,
+            'buoy_confirm_obs': self.declare_parameter('buoy_confirm_obs', 5).value,
+            'buoy_assoc_m': self.declare_parameter('buoy_assoc_m', 1.2).value,
+            'obs_min_conf': self.declare_parameter('obs_min_conf', 0.1).value,
+            'obs_max_range_m': self.declare_parameter('obs_max_range_m', 10.0).value,
+            'obs_max_turn_dps': self.declare_parameter('obs_max_turn_dps', 15.0).value,
+            'bearings_stale_sec': self.declare_parameter('bearings_stale_sec', 1.0).value,
+            'fix_stale_sec': self.declare_parameter('fix_stale_sec', 2.0).value,
+            'yaw_stale_sec': self.declare_parameter('yaw_stale_sec', 1.0).value,
+            'yaw_raw_stale_sec': self.declare_parameter('yaw_raw_stale_sec', 0.5).value,
+            'heading_use_raw': self.declare_parameter('heading_use_raw', True).value,
+            'yaw_offset_tau_sec': self.declare_parameter('yaw_offset_tau_sec', 3.0).value,
+            'yaw_offset_max_turn_dps': self.declare_parameter('yaw_offset_max_turn_dps', 5.0).value,
+            'yaw_offset_min_speed_mps': self.declare_parameter('yaw_offset_min_speed_mps', 0.6).value,
+            'yaw_raw_invert': self.declare_parameter('yaw_raw_invert', False).value,
+            'square_engage_m': self.declare_parameter('square_engage_m', 8.0).value,
+            'init_min_sec': self.declare_parameter('init_min_sec', 1.0).value,
+            'look_tol_deg': self.declare_parameter('look_tol_deg', 10.0).value,
+            'look_dwell_sec': self.declare_parameter('look_dwell_sec', 1.5).value,
+            'look_turn_max_sec': self.declare_parameter('look_turn_max_sec', 8.0).value,
+            'dori_amp_deg': self.declare_parameter('dori_amp_deg', 40.0).value,
+            'spin_pulse_sec': self.declare_parameter('spin_pulse_sec', 0.3).value,
+            'spin_pause_sec': self.declare_parameter('spin_pause_sec', 0.4).value,
+            'hold_in_m': self.declare_parameter('hold_in_m', 0.4).value,
+            'hold_out_m': self.declare_parameter('hold_out_m', 0.8).value,
+            'steer_spin_deg': self.declare_parameter('steer_spin_deg', 60.0).value,
+            'entry_clear_m': self.declare_parameter('entry_clear_m', 1.2).value,
+            'entry_standoff_m': self.declare_parameter('entry_standoff_m', 1.5).value,
+            'close_m': self.declare_parameter('close_m', 0.4).value,
+            'reverse_pulse_sec': self.declare_parameter('reverse_pulse_sec', 1.0).value,
+            'square_max_sec': self.declare_parameter('square_max_sec', 90.0).value,
+        }
+        self.sq, sq_issues = check_square_params(sq_raw)
+        for _level, text in sq_issues:       # 가드는 ERROR 만 낸다
+            self.get_logger().error(text)
+
         # ---- 발행/구독 (토픽 이름 불변, /image_distance 는 버림) ----
         self.pub_candidate = self.create_publisher(Float32, '/candidate_angle', qos)
         self.create_subscription(Int32, '/wp_mode', self.wp_cb, qos)
@@ -217,13 +279,31 @@ class ShipBack(Node):     # 🚨 작년엔 ShipTurn 이었다(복붙). 이름을
         self.create_subscription(LaserScan, '/scan', self.scan_cb, SCAN_QOS)
         if self.distance_source != 'lidar':
             self.create_subscription(Float32MultiArray, self.fused_topic, self.fused_cb, FUSED_QOS)
-        if self.hold_source == 'gps':
+        if self.hold_source in ('gps', 'square'):
             # 새 토픽 아님 — north 발행(RELIABLE d2) 구독자 추가. 구독 RELIABLE d5(ship_dock 과 같음).
+            #   square 는 INIT(20000) → 사각형 찾기 시작 거리(square_engage_m)에만 쓴다.
             self.create_subscription(Float32, '/goal_distance', self.goal_distance_cb, qos)
         # 남색 부표 다중 방위(계약서 v2 위치유지 사각형 (a)) — image_subscriber_stop 발행, mode 2 프레임마다.
         #   🚨 (a) 에선 **원시 저장만** 한다(파싱·검증·제어 사용 없음). 위치유지 동작은 hold_source 그대로 —
         #   사각형 FSM 이 쓰는 것은 변경 단위 (b). 형식 [VER 1, STRIDE 4, N, (bearing_left_deg, area_px, conf, age_s)×N].
         self.create_subscription(Float32MultiArray, '/buoy_bearings', self.buoy_bearings_cb, BUOY_QOS)
+        # 사각형 위치유지(계약서 v2 (b)) — square 일 때만 만든다(gps·vision 은 DDS 그래프 그대로).
+        #   /ublox_gps_node/fix: 자기 RTK 위치(north 와 같은 RELIABLE d5). /imu/yaw: 절대 헤딩(yaw_mux, gps_cog).
+        #   /imu/yaw_raw: IMU 상대 회전량(iahrs, Davidson 답 v2 5번 — gps_cog 저속 HOLD 보완). /hold_done: 발행만.
+        #   🚨 헤딩 두 구독은 모드와 무관하게 늘 받는다 — WP2 진입 전 이동 구간의 COG 로 offset 을 잡아 둔다.
+        self.pub_hold_done = None
+        self.fuser = HeadingFuser(use_raw=self.sq['heading_use_raw'], invert=self.sq['yaw_raw_invert'],
+                                  yaw_stale=self.sq['yaw_stale_sec'], raw_stale=self.sq['yaw_raw_stale_sec'],
+                                  tau_sec=self.sq['yaw_offset_tau_sec'],
+                                  max_turn_dps=self.sq['yaw_offset_max_turn_dps'],
+                                  min_speed=self.sq['yaw_offset_min_speed_mps'])
+        self.sq_fsm = SquareFSM(dict(self.sq, hold_time_sec=self.hold_time_sec,
+                                     unknown_giveup_sec=self.unknown_giveup_sec))
+        if self.hold_source == 'square':
+            self.pub_hold_done = self.create_publisher(Bool, '/hold_done', qos)
+            self.create_subscription(NavSatFix, '/ublox_gps_node/fix', self.fix_cb, qos)
+            self.create_subscription(Float64, '/imu/yaw', self.yaw_cb, qos)
+            self.create_subscription(Float64, '/imu/yaw_raw', self.yaw_raw_cb, qos)
 
         # ---- 상태 ----
         self.wp_mode = -1
@@ -252,6 +332,14 @@ class ShipBack(Node):     # 🚨 작년엔 ShipTurn 이었다(복붙). 이름을
         self.mode_enter_t = None       # 담당 모드 진입(리셋) 시각 — 진입 가드 기준
         self.gps_approach = False      # 직전 HOLD 출력이 재접근(20000)이었나 — 히스테리시스 기억
         self.gps_hold_timer = HoldTimer(self.gps_keep_radius_m, self.gps_hold_time_sec)
+        # 사각형 위치유지(hold_source=square, mode 2) 상태
+        self.fix = None                # 마지막 fix (lat, lon, status, t) — 검사는 쓸 때(fix_usable)
+        self.fix_vel = None            # 연속 두 쓸 수 있는 fix 로 잰 대지 속도 (vx, vy) m/s, 모르면 None
+        self.fix_speed = None          # 그 크기
+        self.sq_origin = None          # 지역 평면 원점(lat, lon) — 모드 진입 뒤 첫 쓸 수 있는 fix
+        self.sq_last_bb_t = None       # 마지막으로 투영한 /buoy_bearings 수신 시각(같은 메시지 두 번 안 셈)
+        self.sq_bb_ok = False          # 마지막 /buoy_bearings 형식이 맞았나
+        self.sq_obs_n = 0              # 이번 진입 뒤 투영한 부표 관측 수(로그·시뮬용)
 
         self.create_timer(self.period_sec, self.timer_cb)
         self.get_logger().info(
@@ -267,7 +355,13 @@ class ShipBack(Node):     # 🚨 작년엔 ShipTurn 이었다(복붙). 이름을
             + ("" if self.hold_source != 'gps' else
                f"(mode 2: /goal_distance < {self.gps_enter_m}m 정지, > {self.gps_resume_m}m 재접근, "
                f"{self.gps_keep_radius_m}m 안 연속 {self.gps_hold_time_sec}s 완료, "
-               f"stale {self.goal_dist_stale_sec}s)") + "."
+               f"stale {self.goal_dist_stale_sec}s)")
+            + ("" if self.hold_source != 'square' else
+               f"(mode 2: 남색 부표 {self.sq['square_side_m']:g}m 사각형 중심 유지, 선체 "
+               f"{self.sq['hull_length_m']:g}×{self.sq['hull_beam_m']:g}m 전체 내부 연속 {self.hold_time_sec:g}s 완료, "
+               f"/goal_distance < {self.sq['square_engage_m']:g}m 부터 찾기, 헤딩 "
+               + ("/imu/yaw + /imu/yaw_raw 회전량" if self.sq['heading_use_raw'] else "/imu/yaw 만")
+               + f", 부표 오차 ≤ {self.sq['buoy_pos_max_err_m']:g}m, 포기 {self.sq['square_max_sec']:g}s)") + "."
         )
 
     # ---------------------- 콜백 ----------------------
@@ -289,6 +383,10 @@ class ShipBack(Node):     # 🚨 작년엔 ShipTurn 이었다(복붙). 이름을
                 self.mode_enter_t = self.state_t   # GPS 진입 가드 기준(이 뒤 1.0 s 지나 받은 거리만)
                 self.gps_approach = False
                 self.gps_hold_timer.reset()
+                self.sq_fsm.reset(self.state_t)    # 사각형: 지도·원점·상태 새로(헤딩 fuser 는 이어 간다)
+                self.sq_origin = None
+                self.sq_last_bb_t = None
+                self.sq_obs_n = 0
 
     def goal_distance_cb(self, msg):
         """/goal_distance(north, 현재 WP 까지 m). hold_source=gps 일 때만 구독된다. 검사는 쓸 때(goal_dist_usable)."""
@@ -315,6 +413,27 @@ class ShipBack(Node):     # 🚨 작년엔 ShipTurn 이었다(복붙). 이름을
         with self.lock:
             self.buoy_bearings_raw = list(msg.data)
             self.t_buoy_bearings = time.monotonic()
+
+    def fix_cb(self, msg):
+        """/ublox_gps_node/fix — square 일 때만 구독. 검사는 쓸 때(fix_usable). 연속 두 fix 로 속도(헤딩 기준 학습용)."""
+        now = time.monotonic()
+        with self.lock:
+            prev = self.fix
+            self.fix = (msg.latitude, msg.longitude, msg.status.status, now)
+            self.fix_vel = gps_velocity(prev, self.fix, self.sq['fix_stale_sec'])
+            self.fix_speed = None if self.fix_vel is None else math.hypot(*self.fix_vel)
+
+    def yaw_cb(self, msg):
+        now = time.monotonic()
+        with self.lock:
+            spd = self.fix_speed
+            if self.fix is None or (now - self.fix[3]) > self.sq['fix_stale_sec']:
+                spd = None
+            self.fuser.update_yaw(msg.data, now, speed=spd)
+
+    def yaw_raw_cb(self, msg):
+        with self.lock:
+            self.fuser.update_raw(msg.data, time.monotonic())
 
     def fused_cb(self, msg):
         objs, err = parse_fused_objects(msg.data)
@@ -455,6 +574,10 @@ class ShipBack(Node):     # 🚨 작년엔 ShipTurn 이었다(복붙). 이름을
             if self.state_t is None:
                 self.state_t = now
 
+        # hold_source=square 의 mode 2 는 사각형 경로(계약서 v2 (b)).
+        if square_hold_applies(self.hold_source, self.wp_mode):
+            self._square_tick(now)
+            return
         # hold_source=gps 의 mode 2 는 GPS 경로. 그 밖(vision, mode 3)은 아래 비전 경로 그대로.
         if gps_hold_applies(self.hold_source, self.wp_mode):
             self._gps_tick(now)
@@ -639,6 +762,78 @@ class ShipBack(Node):     # 🚨 작년엔 ShipTurn 이었다(복붙). 이름을
             self.get_logger().info(f"WP {dist:.1f}m < {self.gps_enter_m:g}m → 다시 정지(50000)")
         self.gps_approach = False            # stop·unknown 모두 정지 — 돌아오면 '정지' 기준으로 본다
         self.publish(STOP_HOLD)
+
+
+    # ---------------------- 사각형 (hold_source=square) ----------------------
+    def _nearest_any(self, now):
+        """LiDAR 360° 최근접 (거리, 상대방위 좌 +). 모르면 None. 근접 안전(선회 금지·짧은 후진) 판정용."""
+        info = self._scan_fresh(now)
+        if info is None:
+            return None
+        s, inc, a_min = info
+        best_d, best_i = float('inf'), -1
+        for i, r in enumerate(s.ranges):
+            if math.isfinite(r) and r > 0.0 and r < best_d:
+                best_d, best_i = r, i
+        if best_i < 0:
+            return None
+        return best_d, clamp_pm180((a_min + best_i * inc) - LIDAR_FORWARD_DEG)
+
+    def _square_inputs(self, now):
+        """센서 → SquareFSM 입력. 새 /buoy_bearings 메시지는 한 번만 투영한다."""
+        sq = self.sq
+        with self.lock:
+            fix, vel, raw_bb, t_bb = self.fix, self.fix_vel, self.buoy_bearings_raw, self.t_buoy_bearings
+            goal = goal_dist_usable(self.goal_dist, self.goal_dist_t, self.mode_enter_t, now,
+                                    self.goal_dist_stale_sec)
+            heading = self.fuser.heading(now)
+            rate = self.fuser.turn_rate(now)
+        xy = xy_fix = None
+        if fix is not None and (now - fix[3]) <= sq['fix_stale_sec'] and fix_usable(fix[2], fix[0], fix[1]):
+            if self.sq_origin is None:
+                self.sq_origin = (fix[0], fix[1])
+            xy_fix = ll_to_xy(fix[0], fix[1], self.sq_origin[0], self.sq_origin[1])
+            xy = dead_reckon(xy_fix, fix[3], vel, now)
+        obs = []
+        if t_bb is not None and t_bb != self.sq_last_bb_t:
+            self.sq_last_bb_t = t_bb
+            rows, err = parse_buoy_bearings(raw_bb)
+            self.sq_bb_ok = err is None
+            if err is not None:
+                self.get_logger().error(f"/buoy_bearings 형식 불일치({err}) → 버림(VER 1·STRIDE 4 기대)",
+                                        throttle_duration_sec=5.0)
+            elif xy is not None and heading is not None and (rate is None or rate <= sq['obs_max_turn_dps']):
+                for brg, _area, conf, age in rows:
+                    if not (conf >= sq['obs_min_conf'] and math.isfinite(brg) and age >= 0.0):
+                        continue
+                    with self.lock:
+                        h_obs = self.fuser.heading_at(t_bb - age, now)
+                    rng = self._dist_at(clamp_pm180(brg), now)
+                    if h_obs is None or rng is None or rng > sq['obs_max_range_m']:
+                        continue
+                    bx, by = dead_reckon(xy_fix, fix[3], vel, t_bb - age)    # 관측 시각의 배 위치
+                    # LiDAR 거리 = 부표 표면 → 중심까지 반지름을 더한다(안 더하면 부표가 배 쪽으로 반지름만큼 당겨진다)
+                    obs.append(project(bx, by, h_obs, brg, rng + sq['buoy_radius_m']))
+                self.sq_obs_n += len(obs)
+        bb_ok = (t_bb is not None and (now - t_bb) <= sq['bearings_stale_sec'] and self.sq_bb_ok)
+        return goal, xy, heading, bb_ok, obs, self._nearest_any(now)
+
+    def _square_tick(self, now):
+        """hold_source=square, mode 2 한 틱 — 판단은 SquareFSM, 여기선 입력·발행·로그만. 틱마다 하나씩 낸다."""
+        goal, xy, heading, bb_ok, obs, near = self._square_inputs(now)
+        value, logs = self.sq_fsm.step(now, goal_dist=goal, xy=xy, heading=heading, bearings_ok=bb_ok,
+                                       obs=obs, near=near)
+        for level, text in logs:              # 심각도마다 호출 지점을 따로(§1-7)
+            if level == 'ERROR':
+                self.get_logger().error(text)
+            elif level == 'WARN':
+                self.get_logger().warn(text)
+            else:
+                self.get_logger().info(text)
+        self.state = self.sq_fsm.state        # 시뮬·로그가 보는 이름(INIT·…·HOLD·DONE)
+        self.publish(value)
+        if self.pub_hold_done is not None:
+            self.pub_hold_done.publish(Bool(data=self.sq_fsm.state == 'DONE'))
 
 
 def clamp_pm180(a):
