@@ -30,10 +30,14 @@ else
     echo "❌ ROS(/opt/ros/*/setup.bash) 또는 install/setup.bash 가 없다 — launch 못 함"
     exec sleep infinity
   fi
+  # ROS setup 파일은 안 정해진 변수(AMENT_TRACE_SETUP_FILES 등)를 읽는다 → set -u 면 여기서 죽어 launch 가 안 뜬다
+  # (11-15 2번배: 앱 launch 탭이 즉시 끝남 — ssf_tournament.sh 98023ed 와 같은 원인).
+  set +u
   # shellcheck disable=SC1090
   source "$setup"
   # shellcheck disable=SC1091
   source install/setup.bash
+  set -u
   launch=(ros2 launch launch_files "launch_files.launch.py")
 fi
 # shellcheck disable=SC1091
