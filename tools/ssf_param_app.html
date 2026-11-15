@@ -678,6 +678,7 @@ function viewCam() { return [camPanel()]; }
 // ---- 자율 launch (배 tmux ssf_launch_<배>, tools/ssf_launch.py). 끄기 = Ctrl+C 한 번. 출발(자율)은 조종기로만
 const LN = {el:null, st:null, busy:false, msg:""};
 // 시작 로그에서 눈으로 확인할 줄
+const MAIN_WP_DEFAULT = "waypoints_recorded.yaml";   // 종합임무 launch 기본 웨이포인트(~/ssf_logs 녹화본, 11-15)
 const LN_KEY = /웨이포인트 \d+개|미션 순서|geofence (ON|OFF)|장애물 구간 경계|reverse_trim_us|DWA (켬|끔)|course=|노랑·흰색·검정|yaw_mux 시작|source=|첫 COG|hold_source|red_on_port|scan mode|distance_source|d455_depth|perception_fusion/;
 async function lnCall(path, body) {
   if (LN.busy) return; LN.busy = true; lnUpdate();
@@ -718,7 +719,9 @@ function lnPanel() {
     log: h("pre", {class:"out", style:"max-height:420px;white-space:pre-wrap"}),
     msg: h("div", {class:"small"}),
   };
-  course.onchange = wp.onchange = rb.onchange = lnUpdate;
+  course.onchange = rb.onchange = lnUpdate;
+  // 사람이 웨이포인트를 직접 고르면 자동 기본값(종합임무 녹화본)을 다시 넣지 않는다
+  wp.onchange = () => { wp.dataset.auto = wp.value === MAIN_WP_DEFAULT ? "1" : "off"; lnUpdate(); };
   LN.el = h("div", {},
     h("div", {class:"card", style:"padding:12px 14px;margin-bottom:12px"}, LN.parts.status, LN.parts.boot, LN.parts.on, LN.parts.cmd,
       LN.parts.off, LN.parts.msg, LN.parts.keys,
@@ -761,7 +764,17 @@ function lnUpdate() {
     const cur = P.wp.value;
     fill(P.wp, h("option", {value:"", text:"(템플릿 그대로 — 종합임무만)"}),
       ...(st?.files || []).map(f => h("option", {value:f.name, text:`${f.name}  (${f.mtime})`})));
-    P.wp.value = names.includes(cur) ? cur : ""; P.wp.dataset.k = key;
+    // 종합임무 기본 = 노트북 녹화본 waypoints_recorded.yaml(있으면). 비우면 저장소 템플릿(다른 좌표)으로 떠서 위험(11-15).
+    const auto = !names.includes(cur) && P.course.value === "main" && names.includes(MAIN_WP_DEFAULT);
+    P.wp.value = names.includes(cur) ? cur : (auto ? MAIN_WP_DEFAULT : ""); P.wp.dataset.k = key;
+    if (auto) P.wp.dataset.auto = "1";
+  }
+  // 자동으로 고른 종합임무 녹화본은 토너먼트로 바꾸면 비운다(토너먼트는 레인 녹화본을 직접 고른다)
+  if (P.wp.dataset.auto === "1" && P.course.value !== "main" && P.wp.value === MAIN_WP_DEFAULT) {
+    P.wp.value = ""; P.wp.dataset.auto = "";
+  }
+  if (P.course.value === "main" && !P.wp.value && names.includes(MAIN_WP_DEFAULT) && P.wp.dataset.auto !== "off") {
+    P.wp.value = MAIN_WP_DEFAULT; P.wp.dataset.auto = "1";
   }
   const b = st?.boat || S.state?.boat || "A";
   P.cmd.textContent = "실행될 명령: ros2 launch launch_files launch_files.launch.py boat:=" + b + " course:=" + P.course.value +
