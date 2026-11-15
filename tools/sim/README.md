@@ -10,6 +10,7 @@
 | `sweep_s1.py` | half_width × clearance 스윕 (`python3 tools/sim/sweep_s1.py --seeds 20`) |
 | `tournament_sim.py` | 토너먼트 1:1 — 실제 노드 4개(north·ship_goal·ship_direction·motor_control) + 대본 상대 배(none·side_by_side·slow_ahead·fast_behind·cut_in). `--param`, `--fence-inset`(지오펜스 좌우 안쪽, 이탈은 실제 경기장 기준). 결과: 계약서_토너먼트분리_20261109 §11 |
 | `full_course_sim.py --world worlds/arena_2025.yaml` | 규정 그림(2025-11) 배치 세계 — 게이트 5쌍·장애물 격자·위치유지·탐색·도크 12 m(칸 2 m·칸막이 1.5 m·깊이 3 m), 2026 OT 순서 13점. 가정은 yaml 머리말. 위경도 사본 `worlds/arena_2025_wp.yaml` 은 `--write-world-wp` 로 생성 |
+| `square_hold_sim.py` | 위치유지 사각형(계약서 v2, `ship_back` `hold_source: square`) — 남색 부표 4개 5×5 m + 실제 north·ship_goal_angle·ship_direction·motor_control·ship_back. 검출기 모형(OAK 63.9°, `stop_detect_logic.pack_bearings`), fix 1 Hz, `/imu/yaw` 참값 또는 실제 `HeadingMux(gps_cog)`, `/imu/yaw_raw` 드리프트. `--drift 1.0`(부표 표류) `--cog-noise` `--imu-drift` `--current` `--param ship_back.heading_use_raw=false`. 지표: 노드 DONE·참 선체 전체 내부 연속 5 s·접촉(직사각형 1.77×0.57)·조기 넘김·INIT·DONE 밖 20000. matplotlib 없으면 빈 모듈로 돈다 |
 | `dock_geometry.py` | 도크 선분 생성 순수 함수(`--dock-bay-w/--dock-gap/--dock-depth`, 기본 = 옛 1 m 칸 형상과 선분까지 같음). 테스트 `python3 -m pytest tools/sim/test_dock_geometry.py -q` (LiDAR 전방 섹터 거리 vs 닫힌 식, 옆 비킴 거짓 CONTACT 경계) |
 
 ## 노드와 다른 점 (알고 쓸 것)
