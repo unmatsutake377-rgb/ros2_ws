@@ -763,8 +763,8 @@ class ShipBack(Node):     # 🚨 작년엔 ShipTurn 이었다(복붙). 이름을
         self.gps_approach = False            # stop·unknown 모두 정지 — 돌아오면 '정지' 기준으로 본다
         self.publish(STOP_HOLD)
 
-
     # ---------------------- 사각형 (hold_source=square) ----------------------
+
     def _nearest_any(self, now):
         """LiDAR 360° 최근접 (거리, 상대방위 좌 +). 모르면 None. 근접 안전(선회 금지·짧은 후진) 판정용."""
         info = self._scan_fresh(now)
